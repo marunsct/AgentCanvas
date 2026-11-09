@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Path, Request, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.deps import CurrentUser, current_user, get_session
@@ -23,7 +23,7 @@ class SecretOut(BaseModel):
 
 
 class SecretIn(BaseModel):
-    value: str
+    value: str = Field(max_length=65536, description="at most 64 KB (a key, a token, a certificate or a JSON key file)")
 
 
 def service(request: Request, session: AsyncSession = Depends(get_session)) -> SecretService:

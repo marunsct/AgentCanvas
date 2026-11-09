@@ -5,13 +5,14 @@ from __future__ import annotations
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.deps import CurrentUser, current_user, get_session, get_settings_dep, members_here
-from agentcanvas.db.models import Organization
+from agentcanvas.db.models import AppUser, Organization
 from agentcanvas.db.repositories import UserRepo
+from agentcanvas.errors import NotFound
 from agentcanvas.services import matura as matura_svc
 from agentcanvas.settings import Settings
 
@@ -30,6 +31,13 @@ class AuthConfig(BaseModel):
     tenant_param: str | None = None
 
 
+class Preferences(BaseModel):
+    """What follows a person from browser to browser. Fields left out of a PUT keep their value."""
+
+    theme: Literal["system", "light", "medium", "dark"] | None = None
+    simple_mode: bool | None = Field(default=None, description="the editor opens in Simple mode")
+
+
 class MeOut(BaseModel):
     id: str
     email: str
@@ -39,6 +47,7 @@ class MeOut(BaseModel):
     org_names: dict[str, str] = {}  # organisation id -> name, for each membership
     # Matura mode: this organisation's page in Matura's customer portal (members, roles, SSO, security settings)
     portal_url: str | None = None
+    preferences: Preferences = Field(default_factory=Preferences)
 
 
 @public_router.get("/auth/config", response_model=AuthConfig)
@@ -67,10 +76,26 @@ async def me(
         select(Organization.id, Organization.name).where(Organization.id.in_(user.memberships))
     )
     portal = matura_svc.portal_link(settings, user.org_id) if settings.auth_mode == "matura" else None
+    row = await session.get(AppUser, user.id)
     return MeOut(
         id=user.id, email=user.email, org_id=user.org_id, role=user.role, memberships=user.memberships,
         org_names={i: n for i, n in rows.all()}, portal_url=portal,
+        preferences=Preferences.model_validate((row.preferences if row else None) or {}),
     )  # fmt: skip
+
+
+@router.put("/me/preferences", response_model=Preferences)
+async def put_preferences(
+    body: Preferences, user: CurrentUser = Depends(current_user), session: AsyncSession = Depends(get_session)
+) -> Preferences:
+    """Save the signed-in person's preferences (merged: a field left out keeps its value)."""
+    row = await session.get(AppUser, user.id)
+    if row is None:
+        raise NotFound("this session has no user record to keep preferences in")
+    merged = {**(row.preferences or {}), **body.model_dump(include=body.model_fields_set)}
+    row.preferences = Preferences.model_validate(merged).model_dump(exclude_none=True)
+    await session.commit()
+    return Preferences.model_validate(row.preferences)
 
 
 class InvitationOut(BaseModel):

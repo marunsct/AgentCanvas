@@ -9,6 +9,7 @@
 import { create } from "zustand";
 import { ApiError, apiFetch } from "../api/client";
 import { can, ME } from "../api/session";
+import { followProject, PROJECT_ID } from "../api/queries";
 import type { Diagnostic, Layout, Position } from "../api/types";
 import { applyAll, applyLocal, type Command, CommandError, composePatches } from "../ir/commands";
 import { normalize, type WF } from "../ir/model";
@@ -22,6 +23,7 @@ export interface Notice {
 interface WorkflowOut {
   id: string;
   name: string;
+  project_id: string;
   version: number;
   ir_hash: string;
   ir: G.Workflow;
@@ -46,6 +48,7 @@ export interface EditorState {
   undoStack: Command[][];
   redoStack: Command[][];
   notice: Notice | null;
+  unsaved: string | null; // why the last edit is not on the server (refused, or no longer fits); null once a save lands
   connectHint: string | null;
   focusNode: ((id: string) => void) | null;
   tidy: (() => Promise<void>) | null;
@@ -55,7 +58,8 @@ export interface EditorState {
   drill: string[]; // subgraph node ids the canvas is showing (read-only drill-in, M2-T13)
   group: (() => Promise<void>) | null; // "convert selection to subgraph", registered by the canvas
 
-  load: (id: string) => Promise<void>;
+  /** `keepEdits`: the reload after a refused save, which keeps the edits queued meanwhile and stays "saving". */
+  load: (id: string, opts?: { keepEdits?: boolean }) => Promise<void>;
   dispatch: (cmds: Command[], opts?: { debounceMs?: number; history?: "push" | "undo" | "redo" }) => void;
   flush: () => Promise<void>;
   undo: () => void;
@@ -83,6 +87,7 @@ let layoutTimer: ReturnType<typeof setTimeout> | null = null;
 let layoutDirty: Layout = {};
 const historyMode: { next: "push" | "undo" | "redo" } = { next: "push" };
 const savedVersion = new Map<string, number>(); // workflow id -> version after its last saved batch
+let loadSeq = 0; // the latest load(): an earlier one that answers later (A -> B, A slower) is ignored
 
 /** Edits not yet on the server (queued, waiting for the debounce, or in flight). */
 export function hasUnsavedEdits(): boolean {
@@ -118,7 +123,7 @@ if (typeof window !== "undefined") {
 
 const initial = {
   workflowId: null, wf: null, version: 0, irHash: "", layout: {}, diagnostics: [], selected: null, pending: [],
-  inflight: false, undoStack: [], redoStack: [], notice: null, connectHint: null, focusNode: null, tidy: null,
+  inflight: false, undoStack: [], redoStack: [], notice: null, unsaved: null as string | null, connectHint: null, focusNode: null, tidy: null,
   breakpoints: [] as string[], pins: {} as Record<string, Record<string, unknown>>, mocks: {} as Record<string, unknown[]>,
   drill: [] as string[], group: null, frame: null as (() => void) | null,
 };
@@ -158,6 +163,20 @@ export function coalesce(pending: Command[], cmd: Command): Command[] {
   return [...pending, cmd];
 }
 
+/**
+ * Which edit the server refused and why, e.g. "RenameNode 'n1': id 'x' already exists." (the server names it as
+ * `command #i (Op): …`, an index into the batch).
+ */
+export function describeRefused(batch: Command[], message: string): string {
+  const m = /^command #(\d+) \(\w+\): /.exec(message);
+  const cmd = m ? batch[Number(m[1])] : batch.length === 1 ? batch[0] : undefined;
+  const target = !cmd ? undefined
+    : "id" in cmd ? cmd.id : "node" in cmd ? cmd.node.id : "resource" in cmd ? cmd.resource.id : "edge" in cmd ? cmd.edge.id : undefined;
+  const reason = m ? message.slice(m[0].length) : message;
+  const text = cmd ? `${cmd.op}${target ? ` '${target}'` : ""}: ${reason}` : reason;
+  return /[.!?]$/.test(text) ? text : `${text}.`;
+}
+
 /** Send the queued edits as one commands request. */
 async function save(workflowId: string): Promise<void> {
   const get = useEditor.getState, set = useEditor.setState;
@@ -174,24 +193,30 @@ async function save(workflowId: string): Promise<void> {
     const rest = get().pending; // edits made while the request was in flight are re-applied on top
     const { undoStack, redoStack } = get();
     set({
-      version: res.version,
+      version: res.version, unsaved: null,
       irHash: res.ir_hash,
       diagnostics: res.diagnostics,
       wf: rest.length ? applyAll(normalize(res.ir), rest) : normalize(res.ir),
-      undoStack: mode === "undo" ? undoStack : [...undoStack, res.inverse].slice(-200),
-      redoStack: mode === "undo" ? [...redoStack, res.inverse] : mode === "redo" ? redoStack : [],
+      // an undo or redo step leaves its stack once the server took it (popped before, a refused step was lost)
+      undoStack: mode === "undo" ? undoStack.slice(0, -1) : [...undoStack, res.inverse].slice(-200),
+      redoStack: mode === "undo" ? [...redoStack, res.inverse] : mode === "redo" ? redoStack.slice(0, -1) : [],
     });
   } catch (e) {
     if (get().workflowId !== workflowId) return;
     const conflict = e instanceof ApiError && e.status === 409;
-    const mine = conflict ? [...batch, ...get().pending] : []; // the edits not on the server
+    // the edits not on the server: on a conflict the whole batch; on a refusal the edits typed after it (a refusal
+    // used to drop those too)
+    const before = conflict ? [...batch, ...get().pending] : get().pending;
+    const refused = conflict ? null : `Edit rejected: ${describeRefused(batch, (e as Error).message)}`;
     set({ pending: [] });
-    const reloaded = await get().load(workflowId).then(() => true, () => false);
+    // still "saving" while the latest version loads: undo and redo wait, and edits typed meanwhile stay queued
+    const reloaded = await get().load(workflowId, { keepEdits: true }).then(() => true, () => false);
     if (get().workflowId !== workflowId) return;
-    if (!conflict) {
-      set({ notice: { kind: "error", text: `Edit rejected: ${(e as Error).message}` } });
-    } else if (!mine.length) {
-      set({ notice: { kind: "info", text: "Updated elsewhere — reloaded the latest version." } });
+    const mine = [...before, ...get().pending]; // a reload used to drop what was typed while it loaded
+    historyMode.next = "push"; // the edits put back are new edits, whatever step was queued before
+    if (refused) set({ unsaved: refused }); // the badge said "Saved" next to an edit the server had refused
+    if (!mine.length) {
+      set({ notice: refused ? { kind: "error", text: refused } : { kind: "info", text: "Updated elsewhere — reloaded the latest version." } });
     } else {
       // a 409 used to drop the person's edits: put them back on top of the latest version and save them again
       const latest = get().wf;
@@ -199,17 +224,57 @@ async function save(workflowId: string): Promise<void> {
         if (!latest || !reloaded) throw new CommandError("the workflow did not reload");
         set({
           wf: applyAll(latest, mine), pending: mine,
-          notice: { kind: "info", text: "Updated elsewhere — your edits were applied to the latest version." },
+          notice: refused ? { kind: "error", text: refused }
+            : { kind: "info", text: "Updated elsewhere — your edits were applied to the latest version." },
         });
         if (flushTimer) clearTimeout(flushTimer);
         flushTimer = setTimeout(() => void get().flush(), 0);
       } catch {
-        set({ notice: { kind: "error", text: "Updated elsewhere — your last edits no longer fit the latest version and were not saved. Make them again." } });
+        const text = refused ? `${refused} The edits made after it no longer fit and were not saved.`
+          : "Updated elsewhere — your last edits no longer fit the latest version and were not saved. Make them again.";
+        set({ notice: { kind: "error", text }, unsaved: text });
       }
     }
   } finally {
     if (get().workflowId === workflowId) set({ inflight: false });
   }
+}
+
+/** Undo or redo presses waiting for the edits being saved; each runs once the save before it has settled. */
+const historyQueue: ("undo" | "redo")[] = [];
+let historyDraining = false;
+
+/** Dispatch the last undo (or redo) step; the step leaves its stack when it is saved. */
+function step(kind: "undo" | "redo") {
+  const { undoStack, redoStack, dispatch } = useEditor.getState();
+  const stack = kind === "undo" ? undoStack : redoStack;
+  const batch = stack[stack.length - 1];
+  if (batch) dispatch(batch, { history: kind });
+}
+
+function queueHistory(kind: "undo" | "redo") {
+  const { pending, inflight } = useEditor.getState();
+  if (!historyQueue.length && !pending.length && !inflight) {
+    step(kind);
+    return;
+  }
+  historyQueue.push(kind);
+  if (historyDraining) return;
+  historyDraining = true;
+  const workflowId = useEditor.getState().workflowId;
+  void (async () => {
+    try {
+      while (historyQueue.length) {
+        await useEditor.getState().flush();
+        const s = useEditor.getState();
+        if (s.workflowId !== workflowId || s.pending.length || s.inflight) break; // another workflow, or a save that failed
+        step(historyQueue.shift()!);
+      }
+    } finally {
+      historyQueue.length = 0;
+      historyDraining = false;
+    }
+  })();
 }
 
 export const useEditor = create<EditorState>((set, get) => ({
@@ -224,16 +289,24 @@ export const useEditor = create<EditorState>((set, get) => ({
       void saveLeftBehind(workflowId, pending, version, layoutDirty); // queued edits are saved, not dropped
     }
     layoutDirty = {};
+    loadSeq++; // a load still on its way is for the workflow left behind
     set({ ...initial });
   },
 
-  load: async (id) => {
+  load: async (id, opts = {}) => {
+    const seq = ++loadSeq;
     const out = await apiFetch<WorkflowOut>(`/workflows/${id}`);
+    if (seq !== loadSeq) return;
+    // the editor reads blocks, models and settings of the app's project: open another project's workflow in it
+    if (out.project_id !== PROJECT_ID && followProject(out.project_id)) return;
+    const { workflowId, version, undoStack, redoStack } = get();
+    const same = workflowId === id && version === out.version; // a reload after a refused edit keeps the history
     set({
       workflowId: id, wf: normalize(out.ir), version: out.version, irHash: out.ir_hash, layout: out.layout ?? {},
-      diagnostics: out.diagnostics, pending: [], inflight: false, breakpoints: loadBreakpoints(id),
+      diagnostics: out.diagnostics, ...(opts.keepEdits ? {} : { pending: [], inflight: false, unsaved: null }), breakpoints: loadBreakpoints(id),
       pins: loadLocal(pinKey(id), {}), mocks: loadLocal(mockKey(id), {}), drill: [],
-      undoStack: [], redoStack: [], // inverses from another version no longer apply
+      // inverses from another version no longer apply
+      undoStack: same ? undoStack : [], redoStack: same ? redoStack : [],
     });
   },
 
@@ -248,7 +321,12 @@ export const useEditor = create<EditorState>((set, get) => ({
       const next = applyAll(wf, cmds);
       set({ wf: next, pending: cmds.reduce(coalesce, pending), notice: null });
     } catch (e) {
-      if (e instanceof CommandError) set({ notice: { kind: "error", text: e.message } });
+      if (!(e instanceof CommandError)) return;
+      // an undo or redo step that no longer applies to the workflow never will: it leaves its stack
+      const { undoStack, redoStack } = get();
+      const drop = opts.history === "undo" ? { undoStack: undoStack.slice(0, -1) }
+        : opts.history === "redo" ? { redoStack: redoStack.slice(0, -1) } : {};
+      set({ notice: { kind: "error", text: e.message }, ...drop });
       return;
     }
     historyMode.next = opts.history ?? "push";
@@ -267,23 +345,9 @@ export const useEditor = create<EditorState>((set, get) => ({
     if (get().pending.length) await get().flush(); // edits made meanwhile
   },
 
-  undo: () => {
-    const { undoStack, pending, inflight } = get();
-    if (pending.length || inflight) return; // let queued edits land first; history stays linear
-    const batch = undoStack[undoStack.length - 1];
-    if (!batch) return;
-    set({ undoStack: undoStack.slice(0, -1) });
-    get().dispatch(batch, { history: "undo" });
-  },
-
-  redo: () => {
-    const { redoStack, pending, inflight } = get();
-    if (pending.length || inflight) return;
-    const batch = redoStack[redoStack.length - 1];
-    if (!batch) return;
-    set({ redoStack: redoStack.slice(0, -1) });
-    get().dispatch(batch, { history: "redo" });
-  },
+  // queued edits land first, then the step (history stays linear); a press while saving used to be ignored
+  undo: () => queueHistory("undo"),
+  redo: () => queueHistory("redo"),
 
   select: (id) => set({ selected: id }),
 

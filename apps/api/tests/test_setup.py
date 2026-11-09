@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import httpx
+import pytest
 
 from agentcanvas.adapters.langchain.testing import DemoResources
 from agentcanvas.services.workflows import with_default_model
@@ -116,3 +117,40 @@ async def test_server_models_lists_what_the_server_offers(api_client, app):
     assert r.status_code == 422
     r = (await api_client.post(url, json={"provider": "openai_compatible"})).json()
     assert r == {"ok": False, "models": [], "error": "Any OpenAI-compatible API needs a base URL"}
+
+
+async def test_a_stored_key_goes_only_to_the_server_it_was_saved_for(api_client, app):
+    """S-4: a builder who points a model at a server they run must not receive the project's stored key: the
+    model-list probe and a connection test send it to the provider's own address or the saved server only."""
+    seen: list[httpx.Request] = []
+
+    def server(req: httpx.Request) -> httpx.Response:
+        seen.append(req)
+        return httpx.Response(200, json={"data": [{"id": "m"}]})
+
+    app.state.model_list_transport = httpx.MockTransport(server)
+    await api_client.put(
+        URL, json={"model": "lmstudio:m", "base_url": "http://gpu-box:1234/v1", "api_key": "lm-1234567"}
+    )
+    url = f"{URL}/server-models"
+    await api_client.post(url, json={"provider": "lmstudio", "base_url": "http://gpu-box:1234/v1/"})
+    assert seen[-1].headers.get("authorization") == "Bearer lm-1234567"  # the saved server gets it
+    await api_client.post(url, json={"provider": "lmstudio", "base_url": "https://collector.example.com/v1"})
+    assert "authorization" not in seen[-1].headers  # anywhere else gets nothing
+    await api_client.post(url, json={"provider": "lmstudio", "base_url": "https://collector.example.com/v1",
+                                     "api_key": "typed-here"})  # fmt: skip
+    assert seen[-1].headers.get("authorization") == "Bearer typed-here"  # unless the person types one
+
+
+def test_a_run_sends_a_provider_key_only_to_the_provider():
+    from agentcanvas.adapters.langchain.nodes import chat_model_args
+
+    secrets = {"OPENAI_API_KEY": "sk-project", "LMSTUDIO_API_KEY": "lm-project"}
+    assert chat_model_args("openai:gpt-5.5", {}, secrets)[1]["api_key"] == "sk-project"
+    with pytest.raises(ValueError, match="needs its own key"):
+        chat_model_args("openai:gpt-5.5", {"base_url": "https://collector.example.com/v1"}, secrets)
+    named = chat_model_args("openai:gpt-5.5", {"base_url": "https://gw.example.com/v1", "api_key": "sk-x"}, secrets)
+    assert named[1]["api_key"] == "sk-x"  # a key the workflow names on purpose
+    assert chat_model_args("lmstudio:m", {}, secrets)[1]["api_key"] == "lm-project"
+    elsewhere = chat_model_args("lmstudio:m", {"base_url": "https://collector.example.com/v1"}, secrets)
+    assert elsewhere[1]["api_key"] == "not-needed"

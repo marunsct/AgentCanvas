@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -104,3 +105,61 @@ def diff_workflows(before: Workflow, after: Workflow) -> WorkflowDiff:
             after.model_dump(mode="json", include=top, exclude_none=True),
         ),
     )
+
+
+# ------------------------------------------------------------------ as Markdown (G-14) ----
+def _code(value: Any, limit: int = 80) -> str:
+    """A value as a Markdown code span that stays on its line, in a table cell and without a mention or a link."""
+    text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, default=str)
+    text = " ".join(text.split()).replace("`", "'").replace("|", "\\|")
+    if not text:
+        return "(empty)"
+    return "`" + (text[: limit - 1] + "…" if len(text) > limit else text) + "`"
+
+
+def _label(items: dict[str, Any], key: str) -> str:
+    el = items.get(key)
+    name = getattr(el, "name", None) or key
+    kind = getattr(el, "type", None)
+    return _code(name) + (f" ({_code(kind)})" if kind else "")
+
+
+def markdown(diff: WorkflowDiff, before: Workflow, after: Workflow, *, rows: int = 20) -> str:
+    """The diff as Markdown for a pull request description: one section per kind of element, a table of field changes
+    for each changed element. User text only ever appears in code spans, and long lists are cut at `rows`."""
+    if diff.empty:
+        return "No changes to the workflow.\n"
+    out: list[str] = []
+    now = {x.id: x for x in [*after.nodes, *after.resources]}
+    was = {x.id: x for x in [*before.nodes, *before.resources]}
+    for title, d in (("Steps", diff.nodes), ("Resources (models, tools, connections)", diff.resources)):
+        if d.empty:
+            continue
+        out += [f"#### {title}", ""]
+        out += [f"- added {_label(now, i)}" for i in d.added[:rows]]
+        out += [f"- removed {_label(was, i)}" for i in d.removed[:rows]]
+        if len(d.added) > rows or len(d.removed) > rows:
+            out.append("- … and more added or removed")
+        for change in d.changed[:rows]:
+            out += ["", f"**Changed** {_label(now, change.id)}", "", "| Field | Before | After |", "|---|---|---|"]
+            out += [f"| {_code(f.path)} | {_code(f.before)} | {_code(f.after)} |" for f in change.fields[:rows]]
+            if len(change.fields) > rows:
+                out.append(f"| … | {len(change.fields) - rows} more fields | |")
+        if len(d.changed) > rows:
+            out += ["", f"… and {len(d.changed) - rows} more changed."]
+        out.append("")
+    if not diff.edges.empty:
+        e = diff.edges
+        out += ["#### Connections between steps", "", f"{len(e.added)} added, {len(e.removed)} removed, "
+                f"{len(e.changed)} changed.", ""]  # fmt: skip
+    if not diff.channels.empty:
+        c = diff.channels
+        out += ["#### State fields", ""]
+        out += [f"- added {_code(n)}" for n in c.added[:rows]] + [f"- removed {_code(n)}" for n in c.removed[:rows]]
+        out += [f"- changed {_code(x.id)}: " + ", ".join(_code(f.path) for f in x.fields[:5]) for x in c.changed[:rows]]
+        out.append("")
+    if diff.workflow:
+        out += ["#### Workflow settings", "", "| Field | Before | After |", "|---|---|---|"]
+        out += [f"| {_code(f.path)} | {_code(f.before)} | {_code(f.after)} |" for f in diff.workflow[:rows]]
+        out.append("")
+    return "\n".join(out).rstrip() + "\n"

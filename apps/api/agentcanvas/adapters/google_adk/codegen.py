@@ -16,11 +16,11 @@ import re
 
 from agentcanvas import designs
 from agentcanvas.adapters.langchain.codegen import doc_line, one_line
-from agentcanvas.adapters.openai_agents.codegen import _camel, _lit, _py
+from agentcanvas.adapters.openai_agents.codegen import _camel, _lit, _py, model_settings
 from agentcanvas.ir.models import Node, Workflow
 
-ADK_VERSION = "2.11.0"
-LITELLM_VERSION = "1.104.2"
+ADK_VERSION = "2.13.0"
+LITELLM_VERSION = "1.105.7"
 RUNTIME_IMPORT = "from agentcanvas.adapters.google_adk import runtime as rt"
 STEP_TYPES = {
     "core.set", "core.router", "core.join", "core.approval", "core.human_input", "core.script", "core.llm",
@@ -103,7 +103,7 @@ def _function(n: Node, fn: str, body: str) -> str:
         _marker(n),
         f"@rt.step({step_args})",
         f"async def {fn}(run: rt.Run) -> {returns}:",
-        *[f"    {line}" if line else "" for line in body.split("\n")],
+        *[f"    {line}" if line else "" for line in body.split("\n")],  # so strings in a body are one-line (`_py`)
     ])  # fmt: skip
 
 
@@ -163,7 +163,7 @@ def _llm(wf: Workflow, n: Node) -> str:
     if not models:
         raise ValueError(f"'{n.name}' needs an AI model")
     m = models[0]
-    settings = [f", {k}={_py(m.config[k])}" for k in ("temperature", "max_tokens") if m.config.get(k) is not None]
+    settings = [f", {k}={_py(v)}" for k, v in model_settings(m).items()]
     return f"run.llm({_py(m.name)}{''.join(settings)})"
 
 
@@ -179,7 +179,7 @@ def _step(wf: Workflow, n: Node, names: _Names) -> tuple[str, str, str]:
         return "", '"""Goes on once every branch has finished (its JoinNode waits for them)."""\nreturn {}', ""
     if n.type == "core.set":
         items = ", ".join(
-            f"{_py(k)}: " + (f"rt.render({_lit(v)}, run.state)" if isinstance(v, str) else _py(v))
+            f"{_py(k)}: " + (f"rt.render({_py(v)}, run.state)" if isinstance(v, str) else _py(v))
             for k, v in (c.get("values") or {}).items()
         )
         return "", f"return {{{items}}}", ""
@@ -196,7 +196,7 @@ def _step(wf: Workflow, n: Node, names: _Names) -> tuple[str, str, str]:
         return "", f"return run.approval(show={_py(c['show'])}, output={_py(c['output'])})", ""
     if n.type == "core.human_input":
         schema = f", schema={_py(c['response_schema'])}" if c.get("response_schema") else ""
-        return "", f"return run.ask(prompt={_lit(c['prompt'])}, output={_py(c['output'])}{schema})", ""
+        return "", f"return run.ask(prompt={_py(c['prompt'])}, output={_py(c['output'])}{schema})", ""
     if n.type == "core.script":
         return "", f"return await run.script({_py(c['import_path'])})", ""
     if n.type == "knowledge.search":
@@ -207,7 +207,7 @@ def _step(wf: Workflow, n: Node, names: _Names) -> tuple[str, str, str]:
         kw += [f"sources_output={_py(c['sources_output'])}"] if c.get("sources_output") else []
         query = c.get("query", "{{ state.question }}")
         return "", (
-            f"return await run.search(\n    {_py(c['knowledge_base'])}, rt.render({_lit(query)}, run.state), "
+            f"return await run.search(\n    {_py(c['knowledge_base'])}, rt.render({_py(query)}, run.state), "
             + ", ".join(kw) + ",\n)"
         ), ""  # fmt: skip
     raise NotImplementedError(f"a Google ADK workflow cannot run '{n.type}' blocks")

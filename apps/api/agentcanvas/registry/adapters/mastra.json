@@ -1,7 +1,7 @@
 {
   "id": "mastra",
   "label": "Mastra",
-  "framework": "@mastra/core 1.76.0",
+  "framework": "@mastra/core 1.80.0",
   "version": "0.1.0",
   "tier": "T2",
   "description": "The workflow becomes a TypeScript Mastra flow: an async function for each block, Mastra Agents (an AI SDK model, createTool tools, a Zod schema for typed answers) for the AI blocks, and a FLOW that AgentCanvas's flow engine (in TypeScript) runs as the canvas draws it. Any catalog model works, and tool calls can wait for a person's approval (Mastra's own requireApproval, which suspends the agent's run). Runs need Node.js 22.18+ and Mastra on the server (`make mastra`); designing and exporting do not. Exports are TypeScript projects that Node.js runs as they are. No saved history, state editing or breakpoints; a paused run lives in memory.",

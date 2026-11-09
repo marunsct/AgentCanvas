@@ -83,6 +83,9 @@ async def test_run_pauses_for_tool_approval_and_inbox_resumes(triage_api):
     inbox = (await api.get("/v1/inbox", params={"workflow_id": wf})).json()
     assert len(inbox) == 1 and inbox[0]["payload"]["action_requests"][0]["name"] == "send_reply"
     assert inbox[0]["workflow_id"] == wf and inbox[0]["workflow_name"] == "Support triage"
+    assert inbox[0]["project_id"] == "prj_default" and inbox[0]["project_name"]  # it spans the organisation
+    node = next(n for n in (await api.get(f"/v1/workflows/{wf}")).json()["ir"]["nodes"] if n["id"] == "n_ag")
+    assert inbox[0]["node_label"] == (node.get("label") or node["name"].replace("_", " ").capitalize())  # not ids
     assert (await api.get("/v1/threads/th_low")).json()["status"] == "interrupted"
 
     r = await api.post(
@@ -222,6 +225,45 @@ async def test_cancel_reattach_and_double_texting(api_client):
     assert (await api_client.get(f"/v1/threads/{thread_id}")).json()["status"] == "idle"
     tail = events((await api_client.get(f"/v1/runs/{run_id}/events", params={"after": len(evs) - 1})).text)
     assert tail == evs[-1:]
+
+
+async def test_a_run_cancelled_before_its_task_began_still_finishes(app, api_client):
+    """RT-10: a task cancelled before its first step never runs its code, so `done` was never set and the thread
+    stayed busy for ever ('already has an active run')."""
+    wf = await make(api_client, linear(script("n_slow", "examples.scripts:slow"), channels=("out", "seconds")))
+    from agentcanvas.ir.models import Workflow
+
+    ir = (await api_client.get(f"/v1/workflows/{wf}")).json()["ir"]
+    runner = app.state.runner
+    h = await runner.start(Workflow.model_validate(ir), thread_id="th_early", input={"seconds": 30})
+    assert await runner.cancel(h.run_id)  # nothing has awaited since the start: the task has not begun
+    await asyncio.wait_for(h.done.wait(), 5)
+    assert h.status == "cancelled" and "th_early" not in runner.active_by_thread
+    assert (await api_client.get("/v1/threads/th_early")).json()["status"] == "idle"
+
+
+async def test_prepare_hooks_know_the_runs_project(app, api_client, monkeypatch):
+    """RT-18: the prepare hooks (secrets refresh, security gate) ran before the run looked its project up, so after a
+    restart they used the default project's secrets, registry and organisation settings."""
+    from agentcanvas.ir.models import Workflow
+    from agentcanvas.services.projects import PROJECT_OF
+
+    other = (await api_client.post("/v1/projects", json={"name": "Elsewhere"})).json()["id"]
+    wf = (await api_client.post(f"/v1/projects/{other}/workflows", json={"name": "g"})).json()["id"]
+    ir = linear({"id": "n_s", "type": "core.set", "name": "s", "config": {"values": {"out": "x"}}})
+    assert (await api_client.put(f"/v1/workflows/{wf}", json={"ir": {**ir, "id": wf}},
+                                 headers={"If-Match": "1"})).status_code == 200  # fmt: skip
+    runner = app.state.runner
+    seen: list[str | None] = []
+
+    async def hook(w):
+        seen.append(PROJECT_OF.get(w.id))
+
+    monkeypatch.setattr(runner, "prepare_hooks", [*runner.prepare_hooks, hook])
+    PROJECT_OF.pop(wf, None)  # as after a restart, or on another replica
+    h = await runner.start(Workflow.model_validate({**ir, "id": wf}))
+    await runner.wait(h.run_id)
+    assert seen == [other]
 
 
 async def test_concurrent_starts_on_one_thread_run_once(app, api_client):
@@ -443,7 +485,7 @@ async def test_usage_per_node_and_run_totals(app, api_client, monkeypatch):
 
     demo_triage(app)
     for model_id, (p_in, p_out) in {
-        "openai:gpt-5-mini": (1.0, 4.0),
+        "openai:gpt-5.6-luna": (1.0, 4.0),
         "anthropic:claude-sonnet-5-5": (3.0, 15.0),
     }.items():
         info = default_registry().model(model_id)
@@ -454,7 +496,7 @@ async def test_usage_per_node_and_run_totals(app, api_client, monkeypatch):
     usage = [e["value"] for e in evs if e.get("name") == "ac.usage"]
     assert {u["canvas_node_id"] for u in usage} == {"n_cls", "n_ag"}  # the agent's inner model counts for n_ag
     cls = next(u for u in usage if u["canvas_node_id"] == "n_cls")
-    assert cls["model"] == "openai:gpt-5-mini"
+    assert cls["model"] == "openai:gpt-5.6-luna"
     assert cls["cost_usd"] == pytest.approx((cls["input_tokens"] * 1.0 + cls["output_tokens"] * 4.0) / 1e6)
     steps = [e for e in evs if e["type"] == "STEP_FINISHED"]
     assert steps and all(isinstance(e["duration_ms"], int) for e in steps)
@@ -550,3 +592,179 @@ async def test_mock_models_follow_the_conversation_across_resume(triage_api, app
     assert state["messages"][-1]["content"] == "Mocked: reply sent."
     unknown = {**body, "thread_id": None, "mocks": {"nope": ["x"]}}
     assert (await api.post(f"/v1/workflows/{wf}/runs/stream", json=unknown)).status_code == 422
+
+
+async def test_the_runs_page_lists_a_projects_conversations_with_their_runs(app, api_client):
+    """GET /threads?project_id=: each conversation with its workflow's name and a summary of its runs."""
+    from test_publish import make_greeter
+
+    wf = await make_greeter(api_client)
+    r = await api_client.post(f"/v1/workflows/{wf}/runs/stream", json={"input": {"who": "Ada"}})
+    assert r.status_code == 200
+    other = (await api_client.post("/v1/projects", json={"name": "Elsewhere"})).json()["id"]
+    page = (await api_client.get("/v1/threads", params={"project_id": "prj_default"})).json()["items"]
+    mine = [t for t in page if t["workflow_id"] == wf]
+    assert len(mine) == 1 and mine[0]["workflow_name"] == "Greeter" and mine[0]["runs"] == 1
+    assert mine[0]["last_started_at"] and mine[0]["last_ended_at"] and mine[0]["last_error"] is None
+    assert mine[0]["last_run_id"].startswith("run_")
+    assert (await api_client.get("/v1/threads", params={"project_id": other})).json()["items"] == []
+    assert (await api_client.get("/v1/threads", params={"project_id": "prj_nope"})).status_code == 404
+
+
+async def test_the_runs_page_filters_conversations_by_date(app, api_client):
+    """GET /threads?since=&until=: conversations that began in a window (UTC), together with the other filters."""
+    from datetime import UTC, datetime, timedelta
+
+    from sqlalchemy import update
+    from test_publish import make_greeter
+
+    from agentcanvas.db.models import Thread
+
+    wf = await make_greeter(api_client)
+    now = datetime.now(UTC)
+    for name, days in (("th_today", 0), ("th_last_week", 5), ("th_last_month", 20)):
+        r = await api_client.post(f"/v1/workflows/{wf}/runs/stream", json={"input": {"who": "Ada"}, "thread_id": name})
+        assert r.status_code == 200
+        async with app.state.db.sessionmaker() as s:
+            await s.execute(update(Thread).where(Thread.id == name).values(created_at=now - timedelta(days=days)))
+            await s.commit()
+
+    async def ids(**params) -> list[str]:
+        r = await api_client.get("/v1/threads", params={"workflow_id": wf, **params})
+        assert r.status_code == 200, r.text
+        return [t["id"] for t in r.json()["items"]]
+
+    assert await ids() == ["th_today", "th_last_week", "th_last_month"]
+    assert await ids(since=(now - timedelta(days=1)).isoformat()) == ["th_today"]
+    assert await ids(since=(now - timedelta(days=7)).isoformat()) == ["th_today", "th_last_week"]
+    assert await ids(until=(now - timedelta(days=7)).isoformat()) == ["th_last_month"]
+    window = {"since": (now - timedelta(days=10)).isoformat(), "until": (now - timedelta(days=2)).isoformat()}
+    assert await ids(**window) == ["th_last_week"]
+    assert await ids(**window, status="error") == []  # with the other filters
+    assert await ids(since=(now - timedelta(days=7)).replace(tzinfo=None).isoformat()) == ["th_today", "th_last_week"]
+    assert (await api_client.get("/v1/threads", params={"since": "yesterday"})).status_code == 422
+
+
+async def test_the_runs_page_orders_conversations_by_when_they_began_not_by_id(app, api_client):
+    """A caller may name its own thread ("zz-support"); it still sorts by time, and paging walks every one once."""
+    from datetime import UTC, datetime, timedelta
+
+    from sqlalchemy import update
+    from test_publish import make_greeter
+
+    from agentcanvas.db.models import Thread
+
+    wf = await make_greeter(api_client)
+    for tid in ("zz-support", "th_b", "aa-support", "th_d"):
+        body = {"input": {"who": "Ada"}, "thread_id": tid}
+        assert (await api_client.post(f"/v1/workflows/{wf}/runs/stream", json=body)).status_code == 200
+    began = datetime(2026, 1, 1, tzinfo=UTC)
+    async with app.state.db.sessionmaker() as s:  # a second apart: SQLite's CURRENT_TIMESTAMP is to the second
+        for i, tid in enumerate(("zz-support", "th_b", "aa-support", "th_d")):
+            await s.execute(update(Thread).where(Thread.id == tid).values(created_at=began + timedelta(seconds=i)))
+        await s.commit()
+    seen, cursor = [], None
+    for _ in range(10):
+        params = {"workflow_id": wf, "limit": 1, **({"cursor": cursor} if cursor else {})}
+        page = (await api_client.get("/v1/threads", params=params)).json()
+        seen += page["items"]
+        if not (cursor := page["next_cursor"]):
+            break
+    assert [t["id"] for t in seen] == ["th_d", "aa-support", "th_b", "zz-support"]
+    assert (await api_client.get("/v1/threads", params={"cursor": "th_nope"})).status_code == 422
+
+
+async def test_running_a_workflow_with_no_steps_says_so_instead_of_failing_in_the_engine(app, api_client):
+    wf = (await api_client.post("/v1/projects/prj_default/workflows", json={"name": "Empty"})).json()["id"]
+    r = await api_client.post(f"/v1/workflows/{wf}/runs/stream", json={"input": {}})
+    assert r.status_code == 422 and "no steps yet" in r.text
+    assert (await api_client.get("/v1/threads", params={"workflow_id": wf})).json()["items"] == []
+
+
+async def test_an_answer_that_fails_at_once_goes_back_to_the_inbox(triage_api, app, monkeypatch):
+    """R-4: the Inbox item was marked decided before the resumed run started; when that run failed before the
+    answer took (the model provider down, say), the question disappeared though the run was still waiting."""
+    api, wf = triage_api, triage_api.wf_id
+    await api.post(f"/v1/workflows/{wf}/runs/stream", json={"input": {"ticket": "Invoice?"}, "thread_id": "th_back"})
+    [item] = (await api.get("/v1/inbox", params={"workflow_id": wf})).json()
+    adapters = app.state.runner.adapters
+    real = adapters["langchain"]
+
+    class FailsOnResume:
+        id, manifest = real.id, real.manifest
+
+        def __getattr__(self, name):
+            return getattr(real, name)
+
+        async def execute(self, spec, resources):
+            yield {"type": "RUN_ERROR", "code": "error", "message": "the model provider is down"}
+
+    monkeypatch.setitem(adapters, "langchain", FailsOnResume())
+    r = await api.post(f"/v1/inbox/{item['id']}/decision", params={"stream": "true"},
+                       json={"value": {"decisions": [{"type": "approve"}]}})  # fmt: skip
+    assert events(r.text)[-1]["type"] == "RUN_ERROR"
+    again = (await api.get("/v1/inbox", params={"workflow_id": wf})).json()
+    assert [i["id"] for i in again] == [item["id"]]  # still waiting for an answer
+    assert (await api.get("/v1/threads/th_back")).json()["status"] == "interrupted"
+
+
+def _resume_with(app, monkeypatch, execute):
+    adapters = app.state.runner.adapters
+    real = adapters["langchain"]
+
+    class OnResume:
+        id, manifest = real.id, real.manifest
+
+        def __getattr__(self, name):
+            return getattr(real, name)
+
+    OnResume.execute = execute  # type: ignore[attr-defined]
+    monkeypatch.setitem(adapters, "langchain", OnResume())
+
+
+@pytest.mark.parametrize("stop", ["cancel", "drain"])
+async def test_an_answer_stopped_before_it_took_goes_back_to_the_inbox(triage_api, app, monkeypatch, stop):
+    """RT-3: only a failed answer went back to the Inbox; a cancelled one, or one a restart stopped, stayed
+    decided though the run still waits for it."""
+    api, wf, runner = triage_api, triage_api.wf_id, app.state.runner
+    await api.post(f"/v1/workflows/{wf}/runs/stream", json={"input": {"ticket": "Invoice?"}, "thread_id": "th_stop"})
+    [item] = (await api.get("/v1/inbox", params={"workflow_id": wf})).json()
+
+    async def execute(self, spec, resources):
+        await asyncio.sleep(30)
+        yield {}
+
+    _resume_with(app, monkeypatch, execute)
+    r = await api.post(f"/v1/inbox/{item['id']}/decision", json={"value": {"decisions": [{"type": "approve"}]}})
+    assert r.status_code == 202, r.text
+    await asyncio.sleep(0.05)
+    if stop == "cancel":
+        assert (await api.post(f"/v1/runs/{r.json()['run_id']}/cancel")).json() == {"cancelled": True}
+        await runner.wait(r.json()["run_id"])
+    else:
+        await runner.drain(0)
+        runner.draining = False
+    again = (await api.get("/v1/inbox", params={"workflow_id": wf})).json()
+    assert [i["id"] for i in again] == [item["id"]]
+    assert (await api.get("/v1/threads/th_stop")).json()["status"] == "interrupted"
+
+
+async def test_a_question_asked_again_reopens_its_inbox_item(triage_api, app, monkeypatch):
+    """RT-3: when the run paused again on the same interrupt (its answer did not take), the decided row stayed
+    decided, so the question it waits for was nowhere in the Inbox."""
+    api, wf = triage_api, triage_api.wf_id
+    await api.post(f"/v1/workflows/{wf}/runs/stream", json={"input": {"ticket": "Invoice?"}, "thread_id": "th_again"})
+    [item] = (await api.get("/v1/inbox", params={"workflow_id": wf})).json()
+
+    async def execute(self, spec, resources):
+        yield {"type": "STEP_FINISHED", "task_id": "t1", "node_id": item["canvas_node_id"]}
+        same = {"id": item["id"], "kind": item["kind"], "canvas_node_id": item["canvas_node_id"],
+                "payload": {"question": "again?"}}  # fmt: skip
+        yield {"type": "RUN_FINISHED", "outcome": "interrupt", "interrupts": [same], "next": [], "output": {}}
+
+    _resume_with(app, monkeypatch, execute)
+    r = await api.post(f"/v1/inbox/{item['id']}/decision", params={"stream": "true"},
+                       json={"value": {"decisions": [{"type": "approve"}]}})  # fmt: skip
+    assert events(r.text)[-1]["type"] == "RUN_FINISHED"
+    [again] = (await api.get("/v1/inbox", params={"workflow_id": wf})).json()
+    assert again["id"] == item["id"] and again["status"] == "pending" and again["payload"] == {"question": "again?"}

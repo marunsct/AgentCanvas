@@ -9,9 +9,11 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import os
+import re
 import sys
 import time
 from contextlib import asynccontextmanager
+from typing import Any, cast
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -21,11 +23,15 @@ from structlog.contextvars import bind_contextvars, clear_contextvars
 
 from agentcanvas import observability
 from agentcanvas.adapters import get_adapter, installed_adapters, model_service
+from agentcanvas.adapters.langchain import interop
+from agentcanvas.adapters.langchain.answer_cache import DatabaseAnswerCache
+from agentcanvas.adapters.langchain.persistence import MemoryEmbedding
 from agentcanvas.adapters.spi import MemoryAbility, require
 from agentcanvas.api.audit import record as audit_record
 from agentcanvas.api.deps import release_sessions
-from agentcanvas.api.limits import BodyLimit
+from agentcanvas.api.limits import BodyLimit, RefuseClients
 from agentcanvas.api.problems import install_problem_handlers
+from agentcanvas.api.scim import router as scim_router
 from agentcanvas.api.v1 import router as v1_router
 from agentcanvas.api.v1 import runs as runs_module
 from agentcanvas.db.repositories import DEV_ORG, retire_dev_user, seed_dev
@@ -33,25 +39,31 @@ from agentcanvas.db.rls import bypasses_policies
 from agentcanvas.db.session import Database
 from agentcanvas.ids import new_id
 from agentcanvas.log import configure_logging, get_logger
+from agentcanvas.registry import default_registry
 from agentcanvas.runtime import masking
 from agentcanvas.runtime import paused as paused_runs
-from agentcanvas.runtime.paused import DatabasePaused, MemoryPaused
+from agentcanvas.runtime.paused import DatabasePaused, DatabaseReplies, MemoryPaused
 from agentcanvas.runtime.runner import Runner
 from agentcanvas.security.auth import check_auth_settings
 from agentcanvas.security.kms import Keyring
+from agentcanvas.services import oauth, routing
 from agentcanvas.services import projects as projects_module
 from agentcanvas.services.audit_sink import MaturaWebhookSink, sink_for
 from agentcanvas.services.events import EventService
 from agentcanvas.services.experiments import ExperimentJob
-from agentcanvas.services.knowledge import Searcher, knowledge_embedder
+from agentcanvas.services.files import FileStore
+from agentcanvas.services.knowledge import CrawlJob, Searcher, knowledge_embedder
 from agentcanvas.services.matura import MaturaFeed
 from agentcanvas.services.online import OnlineScorer
+from agentcanvas.services.org_settings import OrgSettingsCache
+from agentcanvas.services.presence import PresenceHub
 from agentcanvas.services.projects import DEFAULT_PROJECT, ProjectRegistry
 from agentcanvas.services.ratelimit import RateLimiter
 from agentcanvas.services.redeploy import HandoverJob
 from agentcanvas.services.retention import RetentionJob
 from agentcanvas.services.run_gate import RunGate
-from agentcanvas.services.secrets import SecretCache
+from agentcanvas.services.run_search import RunSearchService
+from agentcanvas.services.secrets import SecretCache, encoded_forms
 from agentcanvas.services.trace_export import TraceExportHook
 from agentcanvas.services.triggers import CronScheduler
 from agentcanvas.settings import Settings, get_settings
@@ -63,16 +75,53 @@ def sandbox_hint(settings: Settings) -> str | None:
     """A warning for a staging or production server whose workspace code is not isolated from the API."""
     if settings.env in ("staging", "prod") and settings.script_execution in ("inprocess", "subprocess"):
         return (
-            "workspace code runs as the API's user and can read its files; set AGENTCANVAS_SCRIPT_EXECUTION=docker "
-            "or langsmith when people you do not trust can edit workspaces"
+            "workspace code runs as the API's user and can read its files; set AGENTCANVAS_SCRIPT_EXECUTION=remote "
+            "(the sandbox service), docker or langsmith when people you do not trust can edit workspaces"
         )
     return None
+
+
+def kms_hint(settings: Settings) -> str | None:
+    """A warning for a staging or production server whose secrets master key is derived from its secret key."""
+    if settings.env in ("staging", "prod") and not settings.kms_key:
+        return (
+            "AGENTCANVAS_KMS_KEY is empty, so the master key of project secrets is derived from "
+            "AGENTCANVAS_SECRET_KEY: "
+            "changing that key makes every secret unreadable unless the old one is kept in "
+            "AGENTCANVAS_KMS_PREVIOUS_KEYS. Set AGENTCANVAS_KMS_KEY (file:, aws: or gcp:); see the deployment guide"
+        )
+    return None
+
+
+# the plan's work-item ids ("(S17)", "(M7-T3)", "(FR-X-13)") keep the code traceable; the API's readers do not need them
+_REF = r"(?:S\d+|M\d+-T\d+|T\d+|FR-[A-Z]+-\d+|SP-\d+|TS\d+)"
+_REFS = re.compile(rf"\s*\({_REF}(?:[ ,;/]+{_REF})*\)")
+
+
+def plain_openapi(app: FastAPI) -> dict[str, Any]:
+    """The OpenAPI document with the planning ids taken out of its descriptions (cached like FastAPI's own)."""
+    if app.openapi_schema is None:
+        from fastapi.openapi.utils import get_openapi
+
+        doc = get_openapi(title=app.title, version=app.version, routes=app.routes)
+
+        def clean(node: object) -> object:
+            if isinstance(node, dict):
+                return {k: _REFS.sub("", v) if k in ("description", "summary") and isinstance(v, str) else clean(v)
+                        for k, v in node.items()}  # fmt: skip
+            if isinstance(node, list):
+                return [clean(v) for v in node]
+            return node
+
+        app.openapi_schema = cast("dict[str, Any]", clean(doc))
+    return app.openapi_schema
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     configure_logging(json=settings.log_json)
     check_auth_settings(settings)
+    default_registry()  # a malformed AGENTCANVAS_MODEL_PRICES stops the start, not the first run that needs a price
 
     def _not_dumpable() -> None:
         """Linux: /proc/<this pid>/environ, mem and maps become readable by root only, and ptrace is refused, so a
@@ -106,14 +155,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             log.warning("rls.bypassed", hint=hint)
         app.state.db = db
         paused_runs.install(DatabasePaused(db))  # paused runs of every replica, kept across restarts
+        interop.install_replies(DatabaseReplies(db))  # and what remote A2A agents answered paused steps (G-9)
         if hint := sandbox_hint(settings):
             log.warning("sandbox.not_isolated", mode=settings.script_execution, hint=hint)
+        if hint := kms_hint(settings):
+            log.warning("kms.derived_from_secret_key", hint=hint)
         if settings.script_execution == "subprocess":
             _not_dumpable()  # sandbox children run as this user: keep them from reading this process's memory
         observability.trace_engine(db.engine)
         adapter = get_adapter("langchain")  # the host framework: long-term memory, MCP browsing, model resolution
         others = {i: a for i, a in installed_adapters().items() if i != adapter.id}  # S20: other frameworks
         async with contextlib.AsyncExitStack() as stack:
+            # the host framework's long-term memory gets a semantic index when the server names a model (F-7);
+            # the adapter outlives this app, so a server without one clears the previous app's
+            cast(Any, adapter).memory_embedding = (
+                MemoryEmbedding(
+                    settings.memory_embedding,
+                    settings.memory_embedding_dims,
+                    settings.memory_embedding_base_url or None,
+                )
+                if settings.memory_embedding
+                else None
+            )
             await stack.enter_async_context(adapter.persistence(settings.persistence_url or settings.database_url))
             for other in others.values():
                 await stack.enter_async_context(other.persistence(settings.persistence_url or settings.database_url))
@@ -125,7 +188,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.projects = ProjectRegistry(settings, adapter, getattr(app.state, "resources_class", None))
             projects_module.CURRENT = app.state.projects
             app.state.keyring = Keyring.from_settings(settings)
-            masking.provider = lambda: (v for values in app.state.projects.secrets.values() for v in values.values())
+            hosted = settings.edition == "hosted"
+            app.state.oauth = oauth.Connections(
+                app.state.keyring, settings.public_url or next(iter(settings.cors_origins), ""), public_only=hosted
+            )  # sign-ins to app connectors (G-7); with no address for the web app, a sign-in says so when it starts
+            app.state.oauth_tokens = oauth.ConnectionTokens(db, app.state.keyring, public_only=hosted)
+            oauth.install(app.state.oauth_tokens)
+            masking.provider = lambda: (  # traces: each secret and its encoded forms (S-9)
+                f for values in app.state.projects.secrets.values() for v in values.values() for f in encoded_forms(v)
+            )
             masking.install_langsmith()
             # decrypted at startup, reloaded when another instance changed them (each project's secrets_version)
             app.state.secrets = SecretCache(db, lambda: app.state.keyring, app.state.projects.secrets)
@@ -134,6 +205,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.projects.knowledge = Searcher(
                 db, knowledge_embedder(adapter), lambda project_id: app.state.projects.secrets.get(project_id, {})
             )
+            app.state.crawl = CrawlJob(
+                db,
+                knowledge_embedder(adapter),
+                lambda project_id: app.state.projects.secrets.get(project_id, {}),
+                transport=lambda: getattr(app.state, "knowledge_transport", None),
+            )
+            app.state.projects.answer_cache = lambda project_id: DatabaseAnswerCache(db, project_id)
+            app.state.projects.files = FileStore(db)  # G-5: file fields are read from the project's files
             runner = Runner(
                 db,
                 adapter,
@@ -142,14 +221,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 models=app.state.models,
             )
             app.state.runner = runner
+            runner.router = lambda session, wf, project_id: routing.route_run(app, session, wf, project_id)
+            runner.max_file_bytes = int(settings.max_upload_mb * 1024 * 1024)
+            runner.max_project_file_bytes = int(settings.max_project_files_mb * 1024 * 1024)
             runner.prepare_hooks.append(
                 lambda wf: app.state.secrets.refresh(projects_module.PROJECT_OF.get(wf.id, DEFAULT_PROJECT))
             )
             # every run, whatever started it (triggers, events, hand-over), passes the security rules first
+            app.state.org_settings = OrgSettingsCache(db)
             runner.prepare_hooks.append(
                 RunGate(
                     settings,
                     lambda wf: app.state.projects.registry(projects_module.PROJECT_OF.get(wf.id, DEFAULT_PROJECT)),
+                    lambda wf: app.state.org_settings.for_project(
+                        settings, projects_module.PROJECT_OF.get(wf.id, DEFAULT_PROJECT)
+                    ),
+                    lambda wf: app.state.projects.workspace(
+                        projects_module.PROJECT_OF.get(wf.id, DEFAULT_PROJECT)
+                    ).revision(),
                 )
             )
             app.state.events = EventService(db, runner, app.state.projects)
@@ -160,13 +249,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # tests check drift after every score; servers at most every few seconds per evaluator
             app.state.online = OnlineScorer(db, runner, drift_every_s=0 if settings.env == "test" else 10.0)
             runner.finish_hooks.append(app.state.online.on_run_finished)
+            # G-10: finished runs are embedded for "find conversations where …" (the project's embedding model)
+            app.state.run_search = RunSearchService(
+                db, knowledge_embedder(adapter), lambda project_id: app.state.projects.secrets.get(project_id, {})
+            )
+            runner.finish_hooks.append(app.state.run_search.on_run_finished)
+            app.state.presence = PresenceHub(db)  # G-4: who has a workflow open
             app.state.trace_export = TraceExportHook(db, app.state.projects)
             runner.finish_hooks.append(app.state.trace_export.on_run_finished)
             app.state.cron = CronScheduler(db, runner, app.state.keyring)
             app.state.ratelimit = RateLimiter(db)
             app.state.retention = RetentionJob(
                 db, runner, settings.retention_days, settings.retention_interval_s,
-                audit_days=settings.audit_retention_days, memory_days=settings.memory_retention_days,
+                audit_days=settings.audit_retention_days, memory_days=settings.memory_retention_days, server=settings,
             )  # fmt: skip
 
             async def handover_target(s, thread_id, version_id):
@@ -180,6 +275,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 app.state.experiments.start()
                 app.state.cron.start()
                 app.state.retention.start()
+                app.state.crawl.start()
                 app.state.handover.start()
                 app.state.online.start()
                 app.state.secrets.start()
@@ -190,7 +286,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     app.state.matura_feed.start()
             app.state.audit_sink = sink_for(settings)  # TS26: security-relevant entries also leave the app
             if settings.env in ("staging", "prod") and not os.getenv("LANGGRAPH_AES_KEY"):
-                log.warning("checkpoints.unencrypted", hint="set LANGGRAPH_AES_KEY (32 characters)")
+                log.warning("checkpoints.unencrypted", hint="set LANGGRAPH_AES_KEY (16, 24 or 32 characters)")
             log.info(
                 "api.started", env=settings.env, edition=settings.edition, auth=settings.auth_mode,
                 database=db.engine.dialect.name,
@@ -198,15 +294,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             try:
                 yield
             finally:
+                oauth.install(None)
                 await app.state.experiments.stop()  # before the drain: its runs are handed over with the rest
                 await app.state.handover.stop()
                 await app.state.cron.stop()
                 await app.state.retention.stop()
+                await app.state.crawl.stop()
                 await app.state.secrets.stop()
                 if app.state.matura_feed is not None:
                     await app.state.matura_feed.stop()
                 await runner.drain(settings.drain_grace_s)  # FR-X-10: other instances continue what is left
                 await app.state.online.stop()  # after the drain: runs finishing in it are scored too
+                await app.state.run_search.drain()
                 await runner.shutdown()
                 await asyncio.to_thread(app.state.trace_export.exporter.shutdown)  # flushes queued traces
                 await app.state.projects.aclose()
@@ -214,14 +313,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     await app.state.audit_sink.aclose()
                 await db.dispose()
                 paused_runs.install(MemoryPaused())  # this database is gone
+                interop.install_replies(interop.MemoryReplies())
 
     # interactive docs and the schema stay off in production: they map the attack surface (S15)
     docs: dict = {"docs_url": None, "redoc_url": None, "openapi_url": None} if settings.env == "prod" else {}
     app = FastAPI(title="AgentCanvas API", version="0.32.3", lifespan=lifespan, **docs)
     app.state.settings = settings
+    app.openapi = lambda: plain_openapi(app)  # type: ignore[method-assign]
     install_problem_handlers(app)
     observability.setup_tracing(app)
     app.add_middleware(BodyLimit)  # 413 for bodies over 20 MB, whoever reaches the API
+    if settings.refuse_clients:
+        app.add_middleware(RefuseClients, networks=settings.refuse_clients)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
@@ -290,6 +393,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return JSONResponse({"status": "ready"})
 
     app.include_router(v1_router)
+    app.include_router(scim_router)  # /scim/v2: the organisation's SCIM token (G-13)
     return app
 
 

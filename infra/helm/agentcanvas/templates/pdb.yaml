@@ -1,0 +1,26 @@
+{{- /* A voluntary disruption (a node drain, a cluster upgrade) leaves at least one pod of each component that runs two
+or more; with one replica a PDB would block every drain, so none is made. */}}
+{{- if .Values.podDisruptionBudget.enabled }}
+{{- $components := dict "api" .Values.api.replicas "web" .Values.web.replicas }}
+{{- if .Values.sandbox.enabled }}
+{{- $_ := set $components "sandbox" .Values.sandbox.replicas }}
+{{- if .Values.sandbox.egress.enabled }}{{ $_ := set $components "egress" .Values.sandbox.egress.replicas }}{{ end }}
+{{- end }}
+{{- range $component, $replicas := $components }}
+{{- if ge (int $replicas) 2 }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "agentcanvas.fullname" $ }}-{{ $component }}
+  labels:
+    {{- include "agentcanvas.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $component }}
+spec:
+  minAvailable: {{ $.Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "agentcanvas.selector" (dict "root" $ "component" $component) | nindent 6 }}
+{{- end }}
+{{- end }}
+{{- end }}

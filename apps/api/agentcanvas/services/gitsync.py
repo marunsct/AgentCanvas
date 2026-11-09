@@ -1,0 +1,277 @@
+"""Git round trip (G-14): a workflow connected to a branch of a GitHub repository.
+
+Out: a version (or the draft) is committed to the branch as its export plus `workflow.ir.json`, with a CI file at
+`.github/workflows/` that runs the export's own tests on the pull request, and a pull request into the repository's
+default branch is opened or updated. Its description is the IR diff against what the default branch holds (the same
+structural diff the Versions tab shows), rendered as Markdown, and the contract changes that break callers.
+
+Back: `workflow.ir.json` on the branch is imported into the draft. Both directions refuse to overwrite what the other
+side changed since the last sync: the link keeps the hash of the IR the branch held when AgentCanvas last pushed or
+pulled, and a push or an import is a conflict when the branch (or, for an import, the draft too) moved from it.
+
+Nothing here prints or returns a token; GitHub's own messages are all that reach an error.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+from collections.abc import Iterable
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import Literal
+
+import httpx
+from pydantic import ValidationError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from agentcanvas.db.models import GitLink
+from agentcanvas.errors import Conflict, InvalidInput
+from agentcanvas.ir.canonical import ir_hash
+from agentcanvas.ir.contract import breaking_changes, contract
+from agentcanvas.ir.diff import diff_workflows, markdown
+from agentcanvas.ir.models import Workflow
+from agentcanvas.services import github
+
+IR_FILE = "workflow.ir.json"
+MANIFEST = ".agentcanvas-files"  # the files a push wrote, one per line: the next push removes only those it drops
+AUTO = ("off", "publish", "version")
+MAX_BODY = 60_000  # GitHub takes 65536 characters in a pull request description
+
+
+def slug(name: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:50].strip("-") or "workflow"
+
+
+def safe_relative(path: str) -> bool:
+    """A manifest line that names a file inside the folder (nothing absolute, no `..`, no `.git`)."""
+    parts = path.strip().split("/")
+    return bool(path.strip()) and not path.startswith("/") and all(p not in ("", ".", "..", ".git") for p in parts)
+
+
+def ir_path(folder: str) -> str:
+    return f"{folder}/{IR_FILE}" if folder else IR_FILE
+
+
+def ci_path(name: str) -> str:
+    return f".github/workflows/agentcanvas-{slug(name)}.yml"
+
+
+def normalised(wf: Workflow, wf_id: str) -> Workflow:
+    """`wf` as the draft `wf_id` would hold it (an imported or exported file carries its own id)."""
+    return wf.model_copy(update={"id": wf_id})
+
+
+def hash_of(wf: Workflow, wf_id: str) -> str:
+    return ir_hash(normalised(wf, wf_id).model_dump(mode="json"))
+
+
+def ir_bytes(wf: Workflow, wf_id: str) -> bytes:
+    text = json.dumps(normalised(wf, wf_id).model_dump(mode="json"), indent=2, ensure_ascii=False)
+    return (text + "\n").encode()
+
+
+def parse_ir(data: bytes | None, wf_id: str) -> tuple[Workflow | None, str | None]:
+    """(the workflow in a file, None) or (None, why it is not one); (None, None) when there is no file."""
+    if data is None:
+        return None, None
+    try:
+        return normalised(Workflow.model_validate_json(data), wf_id), None
+    except (ValidationError, ValueError) as exc:
+        first = str(exc).splitlines()[0] if str(exc) else type(exc).__name__
+        return None, f"{IR_FILE} is not a valid AgentCanvas workflow ({first})"
+
+
+def ci_steps(files: Iterable[str] = ()) -> list[str]:
+    """How the export's own tests run (offline, no keys): `npm test` for a TypeScript export (Mastra: a
+    package.json and no pyproject.toml, with the Python helper's requirements when it has one), else `uv run
+    pytest`."""
+    found = set(files)
+    if "package.json" in found and "pyproject.toml" not in found:
+        steps = ['- uses: actions/setup-node@v4\n        with:\n          node-version: "22"']
+        if "python/requirements.txt" in found:  # tools, code steps, knowledge search: python/sidecar.py
+            steps += ["- uses: actions/setup-python@v5\n        with:\n          python-version: \"3.12\"",
+                      "- run: pip install -r python/requirements.txt"]  # fmt: skip
+        return [*steps, "- run: npm install --no-audit --no-fund", "- run: npm test"]
+    return ["- uses: astral-sh/setup-uv@v5", "- run: uv sync", "- run: uv run pytest -q"]
+
+
+def ci_file(link: GitLink, base: str, name: str, files: Iterable[str] = ()) -> str:
+    """The GitHub Actions workflow that runs the export's tests (`ci_steps`: offline, no keys) on a pull request
+    into `base` that touches the folder, and on the branch itself; its job is the status check. `files` are the
+    export's paths, which tell a TypeScript export from a Python one."""
+    steps = "".join(f"      {s}\n" for s in ci_steps(files))
+    folder = link.folder or "."
+    where = f"{link.folder}/**" if link.folder else "**"
+    quoted = json.dumps  # a JSON string is a YAML string: folders may hold spaces
+    return f"""# Generated by AgentCanvas: runs the exported workflow's own tests (offline, no API keys).
+name: {quoted(f"AgentCanvas export: {name}")}
+on:
+  pull_request:
+    branches: [{quoted(base)}]
+    paths: [{quoted(where)}, {quoted(ci_path(link.workflow_id))}]
+  push:
+    branches: [{quoted(link.branch)}]
+    paths: [{quoted(where)}]
+jobs:
+  export-tests:
+    name: {quoted("export tests")}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: {quoted(folder)}
+    steps:
+      - uses: actions/checkout@v4
+{steps}"""
+
+
+def pull_decision(draft: str, remote: str, synced: str | None) -> Literal["same", "unchanged", "apply", "conflict"]:
+    """What importing the branch's IR does, from the hashes of the draft, the branch, and the branch at last sync."""
+    if remote == draft:
+        return "same"
+    if remote == synced:
+        return "unchanged"  # nobody changed the branch: the draft is just ahead
+    return "apply" if draft == synced else "conflict"
+
+
+def pr_body(link: GitLink, name: str, label: str, message: str, before: Workflow | None, after: Workflow) -> str:
+    parts = [f"Exported from AgentCanvas: **{label}** of the workflow `{name.replace('`', chr(39))}`."]
+    if message.strip():
+        parts += ["", "> " + " ".join(message.split())[:300].replace("`", "'")]
+    if before is None:
+        parts += ["", "### Changes to the workflow", "",
+                  "This folder has no workflow on the base branch yet: the whole workflow is new."]  # fmt: skip
+    else:
+        diff = diff_workflows(before, after)
+        parts += ["", f"### Changes to the workflow: {diff.describe()}", "", markdown(diff, before, after).rstrip()]
+        breaking = [c for c in breaking_changes(contract(before), contract(after)) if c.severity == "breaking"]
+        if breaking:
+            parts += ["", "### Breaking changes for callers", ""]
+            parts += [f"- {' '.join(c.message.split())[:200].replace('`', chr(39))}" for c in breaking[:20]]
+    parts += [
+        "", "### Checks", "",
+        f"`{ci_path(link.workflow_id)}` runs the export's own tests (`uv run pytest`) here, with no API keys.",
+        "", "### After merging", "",
+        "In AgentCanvas, **Import from branch** brings the merged workflow back into the draft.",
+    ]  # fmt: skip
+    body = "\n".join(parts) + "\n"
+    return body if len(body) <= MAX_BODY else body[:MAX_BODY] + "\n\n… (cut: the description was too long)\n"
+
+
+@dataclass
+class Pushed:
+    commit: str
+    branch: str
+    base: str
+    changed: bool
+    created_branch: bool
+    pr_number: int | None
+    pr_url: str | None
+    pr_created: bool
+    note: str | None  # e.g. why there is no pull request
+
+
+async def push(
+    link: GitLink, wf: Workflow, files: dict[str, bytes], *, name: str, label: str, message: str, token: str,
+    note: str = "", overwrite: bool = False, transport: httpx.AsyncBaseTransport | None = None,
+) -> Pushed:  # fmt: skip
+    """Commit `files` (the export of `wf`) to the link's branch and open or update the pull request. Updates `link`
+    (the caller saves it). Raises Conflict when the branch changed since the last sync, unless `overwrite`."""
+    wf_id = link.workflow_id
+    github.check(link.repo, link.branch, link.folder)
+    base = await github.default_branch(link.repo, token, transport)
+    if link.branch == base:
+        raise InvalidInput(f"the branch '{base}' is the repository's default branch: pick another, then merge it by "
+                           "pull request")  # fmt: skip
+    path = ir_path(link.folder)
+    remote_data = await github.read_file(link.repo, path, link.branch, token, transport)
+    remote, why = parse_ir(remote_data, wf_id)
+    new_hash = hash_of(wf, wf_id)
+    remote_hash = hash_of(remote, wf_id) if remote is not None else ("unreadable" if why else None)
+    if not overwrite and remote_hash not in (None, link.repo_hash, new_hash):
+        raise Conflict(
+            f"the branch '{link.branch}' has changes AgentCanvas does not have"
+            + (f" ({why})" if why else "")
+            + ": import them first (Import from branch), or push again with overwrite to replace them",
+            reason="branch_changed",
+        )
+    base_ir, _ = parse_ir(await github.read_file(link.repo, path, base, token, transport), wf_id)
+    all_files = {**files, IR_FILE: ir_bytes(wf, wf_id)}
+    all_files[MANIFEST] = ("\n".join(sorted([*all_files, MANIFEST])) + "\n").encode()
+    manifest = f"{link.folder}/{MANIFEST}" if link.folder else MANIFEST
+    before = await github.read_file(link.repo, manifest, link.branch, token, transport)
+    if before is None:  # a new branch starts from the default branch: what a merged earlier push left there
+        before = await github.read_file(link.repo, manifest, base, token, transport)
+    written = [p for p in (before or b"").decode("utf-8", "replace").splitlines() if safe_relative(p)]
+    pushed = await github.push(
+        all_files, repo=link.repo, branch=link.branch, folder=link.folder, message=message, token=token,
+        transport=transport, root_files={ci_path(wf_id): ci_file(link, base, name, all_files).encode()},
+        delete=[p for p in written if p not in all_files], skip_unchanged=True,
+    )  # fmt: skip
+    pr = await github.open_pull_request(
+        repo=link.repo, branch=link.branch, base=base, title=f"{name}: {label} from AgentCanvas"[:200],
+        body=pr_body(link, name, label, note, base_ir, wf), token=token, transport=transport,
+    )  # fmt: skip
+    link.repo_hash = new_hash
+    link.last_version = label
+    link.last_synced_at = datetime.now(UTC)
+    link.last_error = None
+    if pr is not None:
+        link.pr_number, link.pr_url = pr.number, pr.url
+    why = None if pr else f"'{link.branch}' holds what '{base}' already has, so there is nothing to review"
+    return Pushed(pushed.commit, link.branch, base, pushed.changed, pushed.created_branch,
+                  pr.number if pr else None, pr.url if pr else None, bool(pr and pr.created), why)  # fmt: skip
+
+
+@dataclass
+class Pulled:
+    outcome: Literal["same", "unchanged", "applied", "conflict"]
+    workflow: Workflow | None
+
+
+async def fetch(link: GitLink, token: str, transport: httpx.AsyncBaseTransport | None = None) -> Workflow:
+    """The workflow on the link's branch."""
+    github.check(link.repo, link.branch, link.folder)
+    data = await github.read_file(link.repo, ir_path(link.folder), link.branch, token, transport)
+    if data is None:
+        raise InvalidInput(f"'{ir_path(link.folder)}' is not on the branch '{link.branch}' of {link.repo}")
+    found, why = parse_ir(data, link.workflow_id)
+    if found is None:
+        raise InvalidInput(why or f"{IR_FILE} is empty")
+    return found
+
+
+class GitLinks:
+    def __init__(self, session: AsyncSession):
+        self.s = session
+
+    async def get(self, wf_id: str) -> GitLink | None:
+        return await self.s.get(GitLink, wf_id)
+
+    async def save(
+        self, wf_id: str, *, repo: str, branch: str, folder: str, token_secret: str, target: str, auto: str,
+        user_id: str | None,
+    ) -> GitLink:  # fmt: skip
+        github.check(repo, branch, folder)
+        if auto not in AUTO:
+            raise InvalidInput(f"auto is one of {', '.join(AUTO)}")
+        link = await self.get(wf_id)
+        if link is None:
+            link = GitLink(workflow_id=wf_id, created_by=user_id)
+            self.s.add(link)
+        elif (link.repo, link.branch, link.folder) != (repo, branch, folder):  # another place: nothing is known of it
+            link.repo_hash = link.pr_number = link.pr_url = link.last_version = link.last_synced_at = None
+        link.repo, link.branch, link.folder = repo, branch, folder
+        link.token_secret, link.target, link.auto, link.last_error = token_secret, target, auto, None
+        link.updated_at = datetime.now(UTC)
+        await self.s.commit()
+        await self.s.refresh(link)
+        return link
+
+    async def delete(self, wf_id: str) -> bool:
+        link = await self.get(wf_id)
+        if link is None:
+            return False
+        await self.s.delete(link)
+        await self.s.commit()
+        return True

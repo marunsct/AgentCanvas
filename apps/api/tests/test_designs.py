@@ -330,7 +330,7 @@ def test_a_tool_becomes_a_plain_function():
 # ------------------------------------------------------------------ API and exports ----
 async def test_the_api_lists_frameworks_and_shows_an_agents_code(api_client, app):
     found = (await api_client.get("/v1/agent-frameworks")).json()
-    assert [f["id"] for f in found] == list(designs.AGENT_FRAMEWORKS)
+    assert [f["id"] for f in found] == [*designs.AGENT_FRAMEWORKS, "claude_managed_agents"]  # G-12: the platform last
     assert found[0]["installed"] is True and found[0]["own_env"] is False  # the OpenAI Agents SDK ships (S25)
     # CrewAI runs where it has an environment of its own (S28: make crewai / make framework FW=crewai)
     assert found[1]["installed"] is (designs.part_python("crewai") is not None) and found[1]["own_env"] is True
@@ -358,7 +358,7 @@ async def test_the_api_lists_frameworks_and_shows_an_agents_code(api_client, app
     r = await api_client.get(f"/v1/workflows/{wf['id']}/export.zip")
     z = zipfile.ZipFile(io.BytesIO(r.content))
     assert "orders/src/orders/agents/helper.py" in z.namelist()
-    assert "openai-agents==0.23.1" in z.read("orders/pyproject.toml").decode()
+    assert "openai-agents==0.24.0" in z.read("orders/pyproject.toml").decode()
     assert "orders/src/agentcanvas/adapters/langchain/bridge.py" in z.namelist()
 
 
@@ -373,5 +373,18 @@ def test_an_export_lists_its_tools_and_settings(tmp_path):
     assert "'allow_private_network': False" in tools  # Python literals, not JSON
     assert 'APPROVE = ["lookup_order"]' in tools
     assert "OPENAI_API_KEY=" in str(files["helper-agno/.env.example"])
-    assert '"agno==3.1.1"' in str(files["helper-agno/pyproject.toml"])
+    assert '"agno==3.1.11"' in str(files["helper-agno/pyproject.toml"])
     compile(str(files["helper-agno/tests/test_agent.py"]), "test_agent.py", "exec")
+
+
+@pytest.mark.parametrize("framework", list(designs.AGENT_FRAMEWORKS))
+def test_a_hostile_workflow_name_stays_text_in_the_generated_header(framework):
+    """S-10: the generated module's docstring names the workflow; that code is executed in the API process to run
+    the agent, so a name must never close the docstring and become code."""
+    import ast
+
+    hostile = 'Q"""\nimport os; os.system("touch /tmp/pwned")\n"""\\'
+    design = designs.AgentDesign("plain", hostile, "Hi", designs.ModelChoice("m", "anthropic", "claude-sonnet-5-5"))
+    tree = ast.parse(designs.generate(framework, design))
+    calls = [n for n in ast.walk(tree) if isinstance(n, ast.Attribute) and n.attr == "system"]
+    assert not calls and "pwned" in (ast.get_docstring(tree) or "")

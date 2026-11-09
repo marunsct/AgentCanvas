@@ -10,7 +10,314 @@ Merging, deleting branches and anything outward-facing stay with you: work is de
 - No version bump or tag (yours to decide); `CHANGELOG.md` "Unreleased" and `HARDENING.md` are kept current.
 - Prefer checks that grow with the product (driven by the OpenAPI document or the template list) over lists to maintain.
 
+## 2026-11-08
+
+### The second review: how it was fixed
+Seven read-only reviews found about 110 defects; six agents fixed them by area in worktrees and I merged their
+commits, each with a test that fails without it. No AI inference ran (the Copilot evaluation stays pending). The
+calls below are theirs or mine; each says how to reverse it.
+
+### Security calls
+- **SCIM and shared invitations:** a person invited by several organisations is one row until they sign in, so a
+  SCIM rename or re-address of such a person is refused (409) rather than split into two users. *Reverse:* split the
+  row in `ScimService._apply_user_attrs`.
+- **Groups tables add new members only on a one-organisation server** (or with `AGENTCANVAS_SSO_GROUPS_ADD_MEMBERS`).
+  Existing members and invitees are still changed by the table.
+- **Service connection:** used only by runs no person starts, deployments' runs resumed from the Inbox, and admins'
+  own runs. A builder can still publish to use it; that is inherent in publishing.
+- **Entered OAuth credentials are bound to the MCP servers they were entered with.** Existing rows from before stay
+  usable for the servers the organisation already connects to. No same-domain rule between connector and sign-in
+  server: many real servers sign in through a provider on another domain.
+- **Hosted edition:** other providers than OpenAI-compatible ones may not set their own address (refused, not
+  pinned), and 6to4 and Teredo addresses are refused outright.
+- **Deployment files:** runs started by a key, a share link or a webhook use only files given to that deployment; a
+  schedule's own input (written by a builder) may still use the project's files.
+- **Removing a member** deletes their tokens and connections in that organisation without asking the provider to
+  revoke them (that would need a network call); suspension keeps them, since they are refused while suspended.
+
+### Behaviour calls
+- **Unscored examples fail a gate**, including examples an evaluator cannot score by design (an exact match with no
+  reference): a gate must see every example scored.
+- **A judge score outside 0..1 is refused**, not rescaled: the prompt asks for 0..1.
+- **Copilot test runs stub remote agent steps** instead of asking about every new step with side effects (that would
+  block testing any new AI step).
+- **The fine-tuning export skips runs** with unanswered tool calls or clipped text rather than inventing tool messages.
+- **Anthropic refuses sampling for every model** since API version 2026-10-21 (SDK 2.x): a temperature on any Claude
+  model is dropped, with W020 saying so.
+- **Budgets in exports:** the LangGraph deploy kit enforces per-run token, cost and time limits; everything else is
+  listed in GAPS.md and warned about (W026), which also shows for people who never export.
+- **New models without verified prices** are listed without them (W015: cost unknown) rather than guessed.
+- **Git sync deletes only what an earlier push wrote** (`.agentcanvas-files`); a folder without that file is never
+  pruned, so a stale file someone else added stays.
+- **Read-only API container in production compose**, with `API_READ_ONLY=false` as the way out until the image stage
+  confirms nothing writes elsewhere. Dumps now keep table owners; a hand restore elsewhere needs `--no-owner --no-acl`.
+- **The "?" key opens the shortcuts page** (no overlay); queued and cancelled experiments are neutral, not red.
+
+## 2026-10-30
+
+### Closing the open items: what was built, and what was left
+Built: OCR (Tesseract; the Docker image now includes it), the retaken guide screenshots, `infra/schema.sql` regenerated,
+the Spending page by deployment, a trigger warning for per-person connectors, hand-entered OAuth client credentials,
+file upload with a deployment key, scripted multi-turn red teaming, an automated accessibility scan with its fixes, and
+broader cross-organisation tests. Left, with the reason in `HARDENING.md`: anything that needs a paid model or a
+service account (the Copilot score on a hosted model, the real `ant` and GitHub round trips), audio and video ports,
+live co-editing, OAuth in exported code, and an interactive attacker model.
+
+### OCR: pypdfium2 renders, Tesseract reads, nothing else
+Scanned PDF pages are rendered with pypdfium2 (a wheel with its own PDFium, no system library) and read by the
+`tesseract` program, called with fixed arguments and the picture on standard input. Only pages with under 20 characters
+of text are read, so a text PDF costs nothing. `AGENTCANVAS_OCR=auto` uses Tesseract when it is on the path, so the
+feature switches on by installing it; the image installs English, other languages are a build argument. *Reverse:*
+`AGENTCANVAS_OCR=off`. On this machine Tesseract and Ollama were installed under `~/.local` (no root here), not
+system-wide.
+
+### Entered OAuth credentials win over a metadata document
+An admin who types a client id for a sign-in server wants that one used, even when the server also takes metadata
+documents. They are stored in the table dynamic registration already used, so no migration. The secret is encrypted with
+the organisation's key and never returned.
+
+### The trigger warning is on the trigger, not in the validator
+The validator sees only the workflow, and schedules and webhooks are stored beside it. The trigger endpoints return
+`warnings` instead, shown in the editor. *Reverse:* delete `TriggerService.warnings`.
+
+### Colours: the light theme's tokens got darker
+The accessibility scan failed text and status colours at contrast ratios of 2.6 to 4.2. Muted text, the accent, the run
+blue, ok green, warn amber and error red are darker in the light theme; the dark theme only lightened its muted text.
+Buttons look the same at a glance. *Reverse:* the values are the first block of `src/styles.css`; the scan
+(`e2e/axe.spec.ts`) tells you what a change breaks.
+
+### Image CI no longer clashes with a running stack
+The compose files pin two internal subnets (the API trusts forwarded addresses from one of them). `scripts/ci-images.sh`
+now gives its two stacks subnets of their own, so it runs beside `make docker-up`. Running it found two real bugs, fixed
+the same day: the API failed to start when neither a public URL nor a CORS origin was set (the production compose files
+set neither), and the template export did not give a template its own workspace code.
+
+## 2026-10-29
+
+### Observability and presence: what they do and do not do
+Runs keep up to 2,000 compact events (long text clipped) in `run.events` for the trajectory tree. Run search masks
+project secrets before embedding; with a hosted embedding model the masked text goes to that provider (the docs say so).
+Red teaming is an experiment option, not just an evaluator kind, because an evaluator cannot generate inputs; without a
+judge model, "nothing leaked" counts as a hold for the first three categories and off-topic needs a refusal; multi-turn
+red teaming was not built on 2026-10-29 (a scripted multi-turn category was added on 2026-10-30; an interactive attacker is not). The fine-tuning export approximates a conversation for multi-step pipelines (the final model
+step with the run's input as the user message), and the OpenAI `tools` list is inferred from observed calls: check it
+before uploading. Presence is database-backed (works across replicas); each open stream polls every 2 seconds. It shows
+who is in the workflow and a "saved a newer version" notice; it is not live co-editing (no merging of simultaneous edits).
+
+### Governance and per-person connections: scope and limits
+Personal API tokens (`act_…`, shown once, SHA-256 at rest) are capped at the lower of their chosen role and the owner's
+current role, cannot create tokens, and stop when the owner is suspended or removed. The groups claim and SCIM 2.0
+work in **OIDC mode only**; Matura mode keeps its own member sync and refuses them, and tokens work in every mode.
+A SCIM member's role is the strongest role among their groups (default viewer). App connectors that need sign-in
+connect per person with OAuth (RFC 9728/8414, PKCE, Client ID Metadata Documents with dynamic registration as the
+fallback); a run acts as whoever started or resumed it, so a reviewer who resumes after an approval uses their own
+connection. Not built: a hand-entered OAuth client id/secret (GitHub and Slack still need keys), OAuth connectors in
+exported code (it fails with a clear message), and a validator diagnostic for "starter identity on a scheduled run"
+(runtime error only). New setting `AGENTCANVAS_PUBLIC_URL`; unset, the first CORS origin is used (right for development).
+
+### Files and images: references in state, bytes in the project
+A file field is a channel typed `{"type":"object","format":"file"}` (optionally `contentMediaType`, e.g. `image/*`);
+runs and checkpoints hold only a reference (`fil_…`, name, media type, size), never bytes. Uploads are capped
+(10 MB per file, 1024 MB per project, configurable), checked by content, served attachment-only under a locked-down
+CSP, and removed by the retention job. Only the LangGraph runtime shows files to a model; every other framework's
+export lists a file field in GAPS.md as "carried as plain data". Not built: audio and video, OCR, file upload by
+deployment-key callers (they send inline `data`), files for Planning Agents, and downloads by share visitors.
+
+### Half-finished features finished; `GET /projects/{id}/models/resolve` removed
+`GET model-defaults` already returns the resolved model for every purpose and the Settings page uses that, so the
+unused `models/resolve` route was removed (it had been released: **a breaking API change**; restore it from
+`d4ed815` if a client needs it). `settings.experimental` was dropped from the IR with IR 1.3 and a load-time migration
+that strips it from 1.0-1.2 documents. Organisation overrides (Settings › Organisation) are bounded by the server:
+local MCP can be switched off but never on when the server forbids it; the four rate limits can be lowered, never
+raised; audit retention can be longer, never shorter; the operator's per-environment limit still wins. Node defaults
+cover retry, timeout and cache only, the settings LangGraph applies. *Reverse:* delete an organisation's override to go
+back to the server's value.
+
+### Replicas: shared answer cache, budgets by database, routing by price
+The answer cache and a remote agent's pending questions live in the database (tables `answer_cache`, `a2a_reply`, with
+row-level security). Day and month budgets are read from the runs table after each model call, so two servers overshoot
+by at most one model call per run; the in-process spend tally is gone. `cheapest_of` routing (opt-in on the model block)
+picks the cheapest *ready* candidate by input plus output price at run start: local models are never routed (their
+server may be down; use them as backups), and policies that apply only to a named environment are not enforced during
+routing, as in the editor. A person in the spending report is the conversation's creator; runs from deployments,
+schedules and events show as "no person". *Reverse:* drop `cheapest_of` from a block to use its own model.
+
+### Claude Managed Agents and Git sync: built from the reference docs, not run against the services
+The Managed Agents export (`ant apply` bundle: `agent.md`, `environment.yaml`, optional `vault.yaml`, skills) follows the
+file shapes in the claude-api reference; the Git round trip uses the GitHub REST API through httpx. Neither has been run
+against the real service (tests use golden files and a stateful mock transport), so a first real `ant apply` or pull
+request may need a small fix. Settings with no Managed Agents counterpart (temperature, max tokens, add-ons, a
+forced answer shape) are listed under "did not carry over" rather than guessed. Git sync's conflict rule: the draft is
+replaced from the branch only when the draft and the branch have not both changed since the last sync.
+
+### Knowledge and memory at scale: what was built, what was not
+Knowledge search on Postgres uses pgvector and full-text search (1,000,000 chunks per base); SQLite keeps the in-process
+engine (50,000). Memory's semantic index is a **server** setting (`AGENTCANVAS_MEMORY_EMBEDDING`), not per project: the
+LangGraph store's vector column has one size per store. Re-crawl is an interval per knowledge base with its own job,
+not a cron trigger (cron triggers belong to workflows). OCR for scanned PDFs was not added: no pure-Python engine is
+installed and a real one is a heavy system or model dependency; the "needs OCR first" message stays. Reindexing memories
+refreshes their `updated_at`, which restarts their retention clock (documented). *Reverse:* none needed.
+
+### The Copilot's default engine stays the loop; AG-UI was not built
+A review agent made Deep Agents the default engine and every Copilot suite passes with it, but the real-model
+evaluation (`make copilot-evals` against Sonnet 5.5 and a local model) has never run, and the browser tests were not run
+against it. That commit (`6423f66` on the agent's branch `feat-copilot`) was left out; `AGENTCANVAS_COPILOT_ENGINE`
+still selects the engine. *Reverse:* cherry-pick it once the evaluation scores match. The AG-UI wire for the Copilot
+(PLAN.md) was not built: it would run beside the SSE format the web reads, with no `ag-ui` dependency to build on
+and no gain except CopilotKit interop, which the plan itself rejects.
+
+### S-10 needed a test, not a change
+The designed-agent header puts the block's name and the workflow's name into a docstring. The block's name is
+restricted to an identifier by the IR, and the workflow's name goes through `json.dumps`, which escapes quotes, so
+neither can close the docstring today. A test now sends a hostile workflow name through all nine generators and checks
+the result has no code from it, so a later edit that breaks either guard fails.
+
+### LiteLLM stays at 1.105.7, one step short of the newest
+The framework pins were raised to the releases of late October (HARDENING 1.7), except LiteLLM: 1.106.x makes Google
+ADK's tool calls fail with "No module named 'mcp'", a package it imports without declaring. 1.105.7 is the newest
+that passes the ADK, parts, conformance and interop tests. *Reverse:* raise it in `designs.AGENT_FRAMEWORKS` (the pins
+test lists every other place) once a LiteLLM release declares `mcp` or ADK stops importing it that way.
+
+### Merging the agents' work: cherry-picks onto the branch, not merges
+The review's fixes were made in parallel by four agents in their own worktrees, each rebased onto this branch and
+cherry-picked here, so the branch stays one line of commits, one concern each. Their changelog lines arrived in their
+commit messages and were added in separate "Changelog:" commits.
+
+### One decrypted secrets cache per API process stays (S-9)
+The review asked to decrypt secrets per project with a short lifetime instead of keeping every organisation's values
+in one process-wide dictionary. I did not: code that runs inside the API process can already read the KMS key and the
+database URL, so splitting the cache would not stop it, and the real defences are elsewhere (workspace code runs in
+the sandbox, which staging and production now require, S-8). The masking side of the item is done (encoded forms,
+a 6-character minimum). *Reverse:* make `SecretCache` load on first use per project with a TTL.
+
+### HARDENING.md rewritten as an open list; the "Done" table is gone
+The deep review of 2026-10-29 (seven read-only passes over run-time, control plane, security, web, Copilot and
+evaluation, adapters and exports, docs and completeness, plus a check of MCP 2026-07-28, A2A 1.0, the Anthropic and
+OpenAI platforms and the competitors) produced about 90 findings and a plan. The old file was two thirds history.
+The rewrite keeps only open work, with ids (`R-1`, `S-2`, …) so a PR can name its item, and marks each finding
+*confirmed* (reproduced in this repository) or *plausible* (from reading). What was done lives in `CHANGELOG.md`
+and this log, which git already keeps. *Reverse:* `git show 8304610:HARDENING.md` has the last version with the
+Done table. **Nothing in the new list is fixed yet**; the review found them, the fixes are the next passes, in the
+order the file's last section suggests (the confirmed highs and the one critical first).
+
+### Reviewers' reproductions stay out of the repository
+The scripts that confirmed findings (`scratchpad/test_double_cancel.py`, `n8n_loop.py`, `egr.py`, `blk.py`,
+`repro1-5.py`, `wipe/store.wipe.test.ts`) are throwaway probes in the session's scratchpad, not tests: each fix
+lands with its own regression test written against the fixed behaviour, as the standing rule says.
+
 ## 2026-10-28
+
+### The RLS migration stays one transaction (the plan said split it)
+Enabling row-level security and creating a policy change only the catalogue (no table is rewritten), so the 35
+tables are locked for a moment, and the 60 s `lock_timeout` stops the migration rather than queueing traffic behind
+it. Splitting it would mean committing inside a migration, which breaks the one-transaction advisory lock that keeps
+replicas from migrating at once, and installs that upgraded since 2026-10-17 have already run it. *Reverse:* write a
+new migration that drops and recreates the policies table by table, if a large install ever times out on it.
+
+### The Copilot's "interrupts" are its proposals, not a checkpointer
+The plan wanted LangGraph interrupts, with a persistent checkpointer per conversation, before real test runs and
+workspace file writes. Both are approvals, and the product already has one: nothing the Copilot proposes changes
+anything until the person accepts. Real runs already ask once per conversation (the permission card); files now
+ride in the proposal and are written on accept, credited in the workspace's git history. This needs no second state
+store beside the conversation row and works the same on both engines. *Reverse:* if the Copilot ever needs to
+pause mid-turn for something that is not a proposal, add the checkpointer then.
+
+### Only the Claude models get catalog prices; the rest are the operator's to set
+Costs, USD budgets and cost alerts all read the catalog's prices, and it had none. I filled in the Claude models
+from Anthropic's published list prices (as of 2026-10-06) and left the other providers empty rather than write down
+prices I could not check; `AGENTCANVAS_MODEL_PRICES` lets an operator price them (or record negotiated prices),
+and W015 still names any model a USD budget cannot count. *Reverse:* remove the `price_*` fields from `models.json`.
+
+### Opening another project's workflow switches the app to that project
+The Inbox spans the organisation (documented, and reviewers want one queue), but every page reads the project chosen
+at start-up, so a workflow reached from it could open with the wrong project's blocks and models. I made the editor
+follow the workflow (remember its project, load the page again) rather than narrow the Inbox to one project. A
+once-per-page marker stops a reload loop when the project cannot be chosen (Matura workspaces, blocked storage).
+Inbox items from another project show its name. *Reverse:* drop `followProject` in `editor/store.ts`.
+
+### A workflow with no steps is refused at run time, not flagged as an error
+An empty canvas shows no red (a new workflow is not "wrong"), but running it reached LangGraph and failed with a
+stack-trace message. `/runs` now answers 422 "no steps yet" before anything is recorded. *Reverse:* remove the check
+in `_runnable_workflow`.
+
+### Preferences: the theme follows the person, Simple mode stays with the browser
+The plan had both follow the person. Simple mode decides which blocks and panels the editor shows; syncing it made
+every browser of the person flip when one did, and the browser tests (one shared dev user) depend on each other's
+choice. The theme is cosmetic and safe to sync. The API keeps `simple_mode` for a client that wants it. *Reverse:*
+apply `preferences.simple_mode` in `api/preferences.ts`.
+
+### The IR's `settings.experimental` flag stays, unread
+Nothing reads it. Removing it from the IR would make documents that contain it invalid (the IR refuses unknown
+fields), for no gain; I010 already says when a block uses an upstream feature that may change, and the palette now
+marks beta blocks. *Reverse:* remove it with an IR version bump and a migration of stored documents.
+
+### The Copilot work so far, and the calls in it
+- **Deep Agents is built, not yet the default.** `AGENTCANVAS_COPILOT_ENGINE=deepagents` runs it; every Copilot test
+  runs on both engines and passes. I left the loop as the default because neither engine has been measured on a
+  real model. Switch the default when the nightly evaluation (below) shows Deep Agents at least as good; reverse by
+  leaving the variable unset.
+- **The nightly evaluation needs a key from you**: add `ANTHROPIC_API_KEY` as a repository secret (Settings →
+  Secrets → Actions). Until then the job says it was skipped. It uses `anthropic:claude-haiku-4-5` unless you set
+  the repository variable `COPILOT_EVAL_MODEL` (147 cases per engine per night, more as templates are added). Step by step, with what it checks:
+  `docs/agent-canvas-spec/build-guide/14-copilot-evaluation.md`.
+- **AG-UI: the event names and shapes, not the `ag-ui-langgraph` bridge.** The bridge expects its own agent
+  wrapper and input contract, which do not fit our sign-in, proposals and saved conversations; the panel reads our
+  stream, which now carries `text_delta` and `todos` beside the events it had. A CopilotKit client could be added
+  later by mapping these events one to one.
+- **Markdown: a small renderer of our own (about 120 lines), not react-markdown.** The Copilot's answers need a
+  safe subset (headings, lists, code, links); ours turns everything into React elements, so no HTML or
+  `javascript:` link from a reply reaches the page, and it adds nothing to the bundle.
+- **Partial accept is decided in the browser.** The editor applies the ticked commands through the normal edit
+  path (so Undo works as before) and the server records which were kept; a change that needs another (a wire and
+  its step) is ticked and unticked with it.
+- **New chat archives instead of deleting.** Conversations are kept until deleted from History; the retention job
+  does not touch them yet (they are small). Say if you want them to follow the organisation's retention.
+- **A turn's lease is 15 minutes.** A server that dies mid-turn leaves the conversation busy for at most that long;
+  a person can also start a New chat meanwhile.
+
+### Egress: how it is enforced, and the one place it is not
+The proxy is our own (about 250 lines of standard library) rather than Squid or Envoy: it has to check a list that
+differs per call and per project, which those would need a plugin or a control plane for; ours checks an HMAC-signed
+list carried in the proxy credentials, so it keeps no state and the code cannot widen its own list. It refuses names
+that resolve to private addresses unless the list names the address itself, so a project cannot reach the database
+or cloud metadata by listing a name that points there. Header injection (`inject`) stays LangSmith-only: doing it
+ourselves means intercepting TLS, which I will not add without a reason. The in-process mode has no single place
+where code starts, so it cannot refuse per call: there an egress list is a lint error (E084) in staging and
+production on top of the existing "not isolated" start-up warning; the subprocess mode refuses at run time.
+Production compose now requires `AGENTCANVAS_EGRESS_SECRET` (in the changelog under Upgrading). *Reverse:* set
+`sandbox.egress.enabled=false` (Helm) or drop the service; code then has no network, as before.
+
+### Approved by you: the Copilot on Deep Agents with AG-UI, and egress enforced or refused
+You said yes to both (2026-10-28). The Copilot moves to `deepagents` behind the adapter boundary, built behind a
+setting so the current loop stays the default until the new one passes the same scripted suite; then the old loop
+goes. Sandbox egress: enforced through an allow-list proxy for the Docker and remote backends; an allow-list on the
+in-process or subprocess backend is refused in staging and production and warned about in dev. Order of work stays
+as in `PLAN.md` §7: shell and design system first, then Settings, then the Copilot, with the egress work slotted in
+as a hardening item. *Reverse:* say so; each lands as its own commits.
+
+### PLAN.md: the product plan, and two decisions I am not taking alone
+You asked for a plan to make the product feel finished (settings, the Copilot, anything else). `PLAN.md` at the root
+is it, from three code surveys and a look at the open-source options. Two choices in it change architecture, so I
+will not start them until you say so: swapping the Copilot's hand-written loop for Deep Agents with AG-UI as the
+event stream (§2.1; my recommendation, with the reasons and the rejected CopilotKit option in the table), and how
+to enforce sandbox egress outside LangSmith (§6). The shell, design system and Settings tracks need no decision and
+are what I will start on next, on this branch, under the standing instruction. *Reverse:* edit the plan; nothing is
+built from it yet.
+
+### Wrong-shaped answers: a notice, not a validator
+When the API answers JSON of another shape than a page expects (a stale cached app against an upgraded server), the page
+ends in the error boundary. I added a hint to the notice (reload; the page and server may differ) and did not add runtime
+validation of every response: it would add a schema library to the bundle and a second place where the shapes are
+written, for a situation that Reload fixes. HTML with a 200 (a misrouted `/api`) is different, common and cheap to
+detect, so the client now refuses it with a message that names the likely cause. *Reverse:* none needed.
+
+### Working on one branch, no new PRs
+You asked for this on 2026-10-28: I keep committing to `claude/hardening-3` (fast-forwarded to `main` after #72) and push it,
+and I open no pull request until you say so. Anything I fix is in the branch's commits and in this file.
+
+### TOML strings get their own writer
+`json.dumps` is not a TOML string (surrogate pairs for emoji). A tiny `agentcanvas/tomltext.py` writes basic strings
+with only what TOML requires escaped; Unicode stays as it is. One helper for all packagers, not six local fixes.
 
 ### Kubernetes: schema-check the manifests, no kind cluster on this machine
 GitHub CI already deploys an export to a kind cluster. Locally I did not add one: it needs privileged containers and a

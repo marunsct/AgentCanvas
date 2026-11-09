@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas import bridges
-from agentcanvas.api.deps import get_session
+from agentcanvas.api.deps import attachment, get_session
 from agentcanvas.api.v1.versions import _export_source
 from agentcanvas.api.v1.workflows import service
 from agentcanvas.errors import NotFound
@@ -73,6 +73,4 @@ async def bridge_export(
         raise NotFound(f"no export to '{target}' (one of {', '.join(bridges.TARGETS)})")
     _, wf, _ = await _export_source(session, svc, wf_id, version)
     name, data = bridges.export_zip(wf, target)
-    return Response(
-        data, media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{name}"'}
-    )
+    return Response(data, media_type="application/zip", headers=attachment(name))

@@ -361,11 +361,9 @@ def test_most_templates_run_on_adk():
 @pytest.mark.parametrize("name", TEMPLATE_SUPPORT)
 async def test_supported_templates_run_on_adk(app, api_client, name):
     """Every template ADK can run does, end to end, with the demo model (like `test_templates` on LangGraph)."""
-    from test_templates import INPUTS
+    from test_templates import demo_resources, template_input
 
-    from agentcanvas.testing import DemoResources
-
-    demo = DemoResources()
+    demo = demo_resources(app)
     app.state.resources_factory = lambda thread_id, wf: demo
     P = "/v1/projects/prj_default"
     if name == "knowledge_qa":
@@ -375,7 +373,7 @@ async def test_supported_templates_run_on_adk(app, api_client, name):
     ir = {**wf["ir"], "framework": "google_adk"}
     r = await api_client.put(f"/v1/workflows/{wf['id']}", json={"ir": ir}, headers={"If-Match": str(wf["version"])})
     assert r.status_code == 200 and not [d for d in r.json()["diagnostics"] if d["severity"] == "error"], r.text
-    text = (await api_client.post(f"/v1/workflows/{wf['id']}/runs/stream", json={"input": INPUTS[name]})).text
+    text = (await api_client.post(f"/v1/workflows/{wf['id']}/runs/stream", json={"input": template_input(name)})).text
     last = [json.loads(ln[6:]) for ln in text.splitlines() if ln.startswith("data: ")][-1]
     assert last["type"] == "RUN_FINISHED", last
 
@@ -419,7 +417,7 @@ def test_export_is_an_adk_project(tmp_path):
             "src/agentcanvas/adapters/google_adk/runtime.py", "tests/test_workflow.py"} <= names  # fmt: skip
     assert not any("langchain" in n for n in names)
     pyproject = (project / "pyproject.toml").read_text()
-    assert "google-adk==2.11.0" in pyproject and "litellm==1.104.2" in pyproject
+    assert "google-adk==2.13.0" in pyproject and "litellm==1.105.7" in pyproject
     assert (project / ".env.example").read_text() == "OPENAI_API_KEY=\n"
     for py in project.rglob("*.py"):
         compile(py.read_text(), str(py), "exec")

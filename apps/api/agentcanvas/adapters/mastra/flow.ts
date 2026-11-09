@@ -266,8 +266,28 @@ export type Paused = {
   arrived?: Record<string, string[]>; // "wait for all" step -> branches in since it ran
 };
 
+/** LangGraph's `add_messages` on JSON messages: a message whose `id` is already there replaces it, a
+ * `{ type: "remove", id }` takes that message out (the id `__remove_all__`: every message), anything else is
+ * appended. */
+export function addMessages(old: any, value: any): any[] {
+  const same = (o: any, id: any) => id !== undefined && id !== null && o && typeof o === "object" && o.id === id;
+  let out: any[] = [...(old ?? [])];
+  for (const m of Array.isArray(value) ? value : [value]) {
+    const id = m && typeof m === "object" ? m.id : undefined;
+    if (m && typeof m === "object" && m.type === "remove") {
+      out = id === "__remove_all__" ? [] : out.filter((o) => !same(o, id));
+      continue;
+    }
+    const at = out.findIndex((o) => same(o, id));
+    if (at < 0) out.push(m);
+    else out[at] = m;
+  }
+  return out;
+}
+
 export function reduce(reducer: string, old: any, value: any): any {
-  if (reducer === "append" || reducer === "add_messages") {
+  if (reducer === "add_messages") return addMessages(old, value);
+  if (reducer === "append") {
     return [...(old ?? []), ...(Array.isArray(value) ? value : [value])];
   }
   if (reducer === "sum") return (old ?? 0) + (value ?? 0);

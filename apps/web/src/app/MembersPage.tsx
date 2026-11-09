@@ -2,13 +2,12 @@
  * With Matura (TS9a) the list is read-only here: members and roles are managed in Matura's portal. */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link } from "react-router";
 import { maturaMode } from "../api/auth";
 import { apiFetch } from "../api/client";
 import { orgPortalUrl, useCan, useMe, type Role } from "../api/session";
 import { QueryStatus } from "../ui/QueryStatus";
-import { ThemeSwitcher } from "../theme/ThemeSwitcher";
 import type { MemberOut as Member } from "../api/generated";
+import { confirmDialog } from "../ui/dialog";
 
 
 const ROLES: { role: Role; what: string }[] = [
@@ -37,8 +36,9 @@ export function MembersPage() {
   const portal = orgPortalUrl("members");
   const error = (set.error ?? remove.error) as Error | null;
   return (
-    <div className="page">
-      <header className="topbar"><Link to="/" className="brand">AgentCanvas</Link><span className="crumb">/ Members</span><span className="spacer" /><ThemeSwitcher /></header>
+    <section className="settings-card members">
+      <h2>Members</h2>
+      <p className="muted small">Who belongs to this organisation, and what each role may do.</p>
       <ul className="small muted">{ROLES.map((r) => <li key={r.role}><b>{r.role}</b> {r.what}</li>)}</ul>
       {maturaMode() && (
         <p className="muted" data-testid="managed-in-matura">
@@ -56,12 +56,17 @@ export function MembersPage() {
       )}
       {error && <p className="error-text" role="alert">{error.message}</p>}
       <QueryStatus q={members} what="members" />
-      <table className="members" data-testid="members">
+      <table className="table members" data-testid="members">
+        <thead><tr><th>Member</th><th>Status</th><th>Role</th><th aria-label="actions" /></tr></thead>
         <tbody>
           {(members.data ?? []).map((m) => (
             <tr key={m.user_id}>
               <td>{m.display_name ?? m.email}{m.display_name && <span className="muted small"> {m.email}</span>}</td>
-              <td>{m.invited || !m.accepted ? <span className="muted small">{m.invited ? "invited" : "awaiting acceptance"}</span> : null}</td>
+              <td>{m.deactivated
+                ? <span className="badge err" title="Suspended by your identity provider over SCIM; it can reactivate them">deactivated</span>
+                : m.invited || !m.accepted
+                ? <span className="badge warn" title="It takes effect when they next sign in">{m.invited ? "invited" : "awaiting acceptance"}</span>
+                : <span className="badge ok">member</span>}</td>
               <td>
                 {admin && m.user_id !== me.id
                   ? <select value={m.role} aria-label={`role of ${m.email}`} onChange={(e) => set.mutate({ email: m.email, role: e.target.value as Role })}>
@@ -70,12 +75,14 @@ export function MembersPage() {
                   : m.role}
               </td>
               <td>{admin && m.user_id !== me.id && (
-                <button type="button" className="link small" onClick={() => { if (window.confirm(`Remove ${m.email}?`)) remove.mutate(m.user_id); }}>Remove</button>
+                m.invited
+                  ? <button type="button" className="link small" onClick={async () => { if (await confirmDialog({ title: `Cancel the invitation to ${m.email}?`, confirm: "Cancel invitation", cancel: "Keep it", danger: true })) remove.mutate(m.user_id); }}>Cancel invitation</button>
+                  : <button type="button" className="link small" onClick={async () => { if (await confirmDialog({ title: `Remove ${m.email}?`, body: "They lose access to this organisation at once.", confirm: "Remove", danger: true })) remove.mutate(m.user_id); }}>Remove</button>
               )}</td>
             </tr>
           ))}
         </tbody>
       </table>
-    </div>
+    </section>
   );
 }

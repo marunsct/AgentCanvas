@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -37,6 +38,11 @@ class RunSpec:
     labels: dict[str, str] = field(default_factory=dict)  # trace metadata: origin, deployment, version (M6-T6)
     dry_run: bool = False  # stub every risky tool with a recorder (FR-X-02)
     org_id: str | None = None  # the workflow's organisation: long-term memory lives under it (M7-T2)
+    user_id: str | None = None  # the person who started or resumed this run; app connectors may act as them (G-7)
+    # usage the adapter had not reported when its event stream stopped (cancelled, timed out): its stream is
+    # closed by then, so it is handed over here and still counts for the run's tokens and cost
+    on_usage: Callable[[dict[str, Any]], None] | None = None
+    service_connection: bool = False  # connectors set to the service identity may use it though a person started it
 
 
 @dataclass

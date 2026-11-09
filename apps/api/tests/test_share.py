@@ -9,7 +9,7 @@ from test_ratelimit import limits  # noqa: F401 - fixture
 from test_versions import HIGH_CASE, new_triage
 
 from agentcanvas.ir.models import Workflow
-from agentcanvas.services.share import InputShape, answer_text, input_shape
+from agentcanvas.services.share import InputShape, answer_text, input_shape, text_inputs
 
 ADA = "visitor-ada-0123456789"
 BO = "visitor-bo-0123456789ab"
@@ -40,21 +40,24 @@ async def test_enable_share_and_chat(api_client):
     """S23 AC: a builder switches the link on; a visitor (no sign-in, no key) chats and continues the conversation."""
     _, dep, _ = await publish(api_client)
     off = (await api_client.get(f"/v1/deployments/{dep}/share")).json()
-    assert off["enabled"] is False and off["token"].startswith("sh_") and off["path"] == f"/s/{off['token']}"
+    assert off["enabled"] is False and off["token"] is None and off["path"] is None  # no link until one is made
     assert off["title"] == "Greeter" and off["input"] == {"field": "who", "chat": False}
-    assert (await api_client.get(f"/v1/share/{off['token']}")).status_code == 404  # off until switched on
+    assert (await api_client.get(f"/v1/deployments/{dep}/share")).json() == off  # reading it makes nothing
+    saved = (await api_client.put(f"/v1/deployments/{dep}/share", json={"title": "Say hi"})).json()
+    assert saved["enabled"] is False and saved["token"].startswith("sh_") and saved["path"] == f"/s/{saved['token']}"
+    assert (await api_client.get(f"/v1/share/{saved['token']}")).status_code == 404  # off until switched on
 
     share = await share_on(
         api_client, dep, title="Say hi", greeting="Tell me your name.", suggestions=["Ada", " ", "Bo"]
     )
     token = share["token"]
-    assert share["token"] == off["token"] and share["suggestions"] == ["Ada", "Bo"]
+    assert share["token"] == saved["token"] and share["suggestions"] == ["Ada", "Bo"]
 
     info = await api_client.get(f"/v1/share/{token}")
     assert info.status_code == 200
     assert info.json() == {
         "title": "Say hi", "greeting": "Tell me your name.", "suggestions": ["Ada", "Bo"],
-        "input": {"field": "who", "chat": False},
+        "input": {"field": "who", "chat": False}, "attachments": None, "frame_origins": [],
     }  # fmt: skip
     # nothing internal: no workflow, deployment, key or version
     assert all(s not in info.text for s in ("wf_", "dep_", "ac_", "ver_", "n_g", "core.set"))
@@ -127,12 +130,33 @@ async def test_disabled_regenerated_or_unpublished_links_are_404(api_client):
     assert (await api_client.get("/v1/share/sh_nope")).status_code == 404
 
 
+async def test_publishing_again_does_not_revive_the_old_link_or_its_conversations(api_client):
+    wf, dep, _ = await publish(api_client)
+    token = (await share_on(api_client, dep))["token"]
+    thread = events((await say(api_client, token, "Ada")).text)[0]["threadId"]
+    assert (await api_client.delete(f"/v1/deployments/{dep}")).status_code == 204
+    again = (await api_client.post(f"/v1/workflows/{wf}/publish", json={})).json()
+    assert again["deployment"]["id"] == dep
+    assert (await api_client.get(f"/v1/share/{token}")).status_code == 404
+    share = (await api_client.get(f"/v1/deployments/{dep}/share")).json()
+    assert share["enabled"] is False and share["token"] != token
+    fresh = (await share_on(api_client, dep))["token"]
+    assert (await say(api_client, fresh, "Ada", thread_id=thread)).status_code == 404  # the old conversation ended
+    assert (await api_client.get(f"/v1/threads/{thread}")).status_code == 200  # its run stays for the builders
+
+
 async def test_settings_validation_and_roles(api_client, app):
     from agentcanvas.api.deps import CurrentUser, current_user
 
     _, dep, _ = await publish(api_client)
     r = await api_client.put(f"/v1/deployments/{dep}/share", json={"input_field": "nope"})
     assert r.status_code == 422
+    share = (await api_client.get(f"/v1/deployments/{dep}/share")).json()
+    assert share["inputs"] == ["who", "out"] and share["input_field"] is None  # what the page offers; None: picked
+    chosen = (await api_client.put(f"/v1/deployments/{dep}/share", json={"input_field": "who"})).json()
+    assert chosen["input_field"] == "who" and chosen["input"]["field"] == "who"
+    cleared = (await api_client.put(f"/v1/deployments/{dep}/share", json={"input_field": ""})).json()
+    assert cleared["input_field"] is None
     r = await api_client.put(f"/v1/deployments/{dep}/share", json={"suggestions": ["a"] * 7})
     assert r.status_code == 422
     app.dependency_overrides[current_user] = lambda: CurrentUser(
@@ -186,6 +210,7 @@ async def test_a_visitor_answers_a_question(app, api_client):
     ir["state"]["channels"].append({"name": "nick", "type": {"type": "string"}, "io": "out"})
     ir["nodes"].append({"id": "n_ask", "type": "core.human_input", "name": "ask",
                         "config": {"prompt": "What should I call you?", "output": "nick"}})  # fmt: skip
+    first = ""
     for e in ir["edges"]:
         if e["kind"] == "flow" and e["source"]["node"] == "START":
             first, e["target"]["node"] = e["target"]["node"], "n_ask"
@@ -291,6 +316,8 @@ def test_input_shape_and_answer():
     })  # fmt: skip
     shape = input_shape(triage, None)
     assert shape == InputShape(field="ticket")  # a question-like text input wins over the message list
+    assert text_inputs(triage) == ["messages", "ticket", "summary"]
+    assert input_shape(triage, "messages") == InputShape(field="messages", chat=True)
     reply = {"messages": [{"type": "ai", "content": "Sorry about that."}], "summary": "ESCALATED", "ticket": "x"}
     assert answer_text(reply, shape) == "Sorry about that."
 
@@ -299,7 +326,7 @@ async def test_a_link_says_which_sites_may_frame_its_chat_page(api_client):
     """Review follow-up: the chat page was framable by any site. A builder can list the sites; none listed keeps the
     old behaviour; a link that is unknown or off allows only the app itself."""
     _, dep, _ = await publish(api_client)
-    off = (await api_client.get(f"/v1/deployments/{dep}/share")).json()
+    off = (await api_client.put(f"/v1/deployments/{dep}/share", json={"enabled": False})).json()  # a link, off
     token = off["token"]
     assert off["frame_origins"] == []
 

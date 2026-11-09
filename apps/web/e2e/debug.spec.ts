@@ -1,7 +1,9 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
 
-// Sprint 4 acceptance: debug & run UX on the support-triage template (the demo model answers "low").
+// Sprint 4 acceptance: debug & run UX on the support-triage template. The key-less server answers with a demo model;
+// these journeys assert on the run's structure (which steps ran, the route taken, what is waiting), not on what a model
+// said, so they hold with a real one too.
 
 async function openTriage(page: Page) {
   await page.goto("/");
@@ -32,15 +34,15 @@ test("timeline: edit a past checkpoint and fork into the other branch; explain n
   await expect(page.getByRole("group", { name: "Approval needed" })).toBeVisible({ timeout: 10_000 });
 
   await page.getByRole("tab", { name: "Explain" }).click();
-  await expect(page.getByTestId("explain")).toContainText("chose route 'normal' → reply_drafter");
+  await expect(page.getByTestId("explain")).toContainText(/chose route '\w+' → \w+/); // whichever way the classifier went
 
   await page.getByRole("tab", { name: "Timeline" }).click();
   await page.getByRole("option", { name: /→ route_urgency/ }).click();
   const state = page.getByLabel("checkpoint state");
-  await expect(state).toHaveValue(/"urgency": "low"/);
+  await expect(state).toHaveValue(/"urgency": "\w+"/);
   await expect(page.getByTestId("lineage-urgency")).toContainText("classify"); // FR-X-18
   await expect(page.getByTestId("lineage-ticket")).toContainText("run input");
-  await state.fill((await state.inputValue()).replace('"urgency": "low"', '"urgency": "high"'));
+  await state.fill((await state.inputValue()).replace(/"urgency": "\w+"/, '"urgency": "high"'));
   await page.getByRole("button", { name: "⑂ Fork from here" }).click();
   await expect(page.getByTestId("node-escalate")).toHaveClass(/status-ok/, { timeout: 10_000 });
   await expect(page.getByTestId("node-manager_approval")).toHaveClass(/status-interrupted/);
@@ -70,7 +72,7 @@ test("inbox shows pending approvals across workflows and resumes the run", async
   const thread = (await page.locator("label.row code").first().textContent())!.trim();
   expect(thread).toMatch(/^th_/);
   await page.getByTestId("inbox-link").click();
-  const mine = page.getByTestId("inbox-item").filter({ hasText: `thread ${thread}` });
+  const mine = page.getByTestId("inbox-item").filter({ has: page.locator(`a[href$="thread=${thread}"]`) });
   await expect(mine).toHaveCount(1);
   await mine.getByRole("button", { name: "Approve" }).click();
   await expect(mine).toHaveCount(0, { timeout: 10_000 });

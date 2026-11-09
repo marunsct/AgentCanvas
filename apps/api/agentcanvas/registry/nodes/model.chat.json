@@ -75,6 +75,17 @@
         "maxItems": 5,
         "description": "If this model fails (the service is down, out of quota, too slow), the same request goes to these models in order. Each uses its provider's own key (the project secret or server variable named after the provider) and this block's temperature, output limit and timeout."
       },
+      "cheapest_of": {
+        "type": "array",
+        "title": "Use the cheapest of",
+        "items": {
+          "type": "string",
+          "format": "model",
+          "pattern": "^[a-z0-9_\\-]+:.+$"
+        },
+        "maxItems": 10,
+        "description": "Each run uses the cheapest of these models that is ready (its provider has a key here) and that your organisation's policies allow, instead of the model above, which stays the choice when none qualifies. Cheapest by catalog price, input plus output; a model with no price only when no priced one qualifies; local models are never chosen (list them among the backup models). Backup models still apply after the one chosen. Exports use the model above."
+      },
       "cache_ttl": {
         "type": "integer",
         "title": "Reuse answers for (s)",

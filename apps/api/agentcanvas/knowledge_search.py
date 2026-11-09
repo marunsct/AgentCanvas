@@ -21,12 +21,14 @@ DIM = 512
 MODES = ("hybrid", "semantic", "keyword")
 STRATEGIES = ("paragraphs", "sentences", "fixed", "markdown")
 RRF_K = 60  # reciprocal-rank fusion constant (Cormack et al. 2009)
+FUSED = 50  # hybrid search fuses the best 50 of each ranking
 NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")  # a knowledge base's name: also its file name in exports
 
 _WORD = re.compile(r"[a-z0-9]+(?:'[a-z]+)?")
 # A markdown ATX heading line (matched on the right-stripped line). Deliberately simple so matching stays linear:
 # the optional closing `#`s are trimmed in Python, not by a lazy group followed by `\s*#*\s*$` (cubic backtracking).
 _HEADING = re.compile(r" {0,3}#{1,6}[ \t]+(.*)")
+_FENCE = re.compile(r" {0,3}(`{3,}|~{3,})[ \t]*(\S?)")  # a code fence line; group 2: an info string follows
 _STOP = frozenset(
     "a an and are as at be by can do does for from has have how i if in is it its me my of on or our so that the "
     "their them there these this to was we what when where which who why will with you your".split()
@@ -58,8 +60,14 @@ def chunk_text(
             if body:
                 out.extend({"text": t, "page": page, "heading": heading} for t in _pack(_paragraphs(body), size))
 
+        fence = ""  # the open code fence (``` or ~~~, at least that long): a `#` inside it is code, not a heading
         for line in text.split("\n"):
-            m = _HEADING.match(line.rstrip())
+            f = _FENCE.match(line)
+            if f and (not fence or (f.group(1)[0] == fence[0] and len(f.group(1)) >= len(fence) and not f.group(2))):
+                fence = "" if fence else f.group(1)
+                section.append(line)
+                continue
+            m = None if fence else _HEADING.match(line.rstrip())
             if m:
                 flush()
                 heading, section = _heading_text(m.group(1)), []
@@ -143,7 +151,8 @@ def builtin_embed(texts: Sequence[str]) -> list[list[float]]:
 
 
 def cosine(a: Sequence[float], b: Sequence[float]) -> float:
-    dot = sum(x * y for x, y in zip(a, b, strict=False))
+    """Cosine similarity of two vectors of the same length (vectors of different models raise ValueError)."""
+    dot = sum(x * y for x, y in zip(a, b, strict=True))
     na = math.sqrt(sum(x * x for x in a))
     nb = math.sqrt(sum(y * y for y in b))
     return dot / (na * nb) if na and nb else 0.0
@@ -158,8 +167,10 @@ class Index:
     terms: list[Counter[str]] = field(default_factory=list)
     df: Counter[str] = field(default_factory=Counter)
     avgdl: float = 0.0
+    norms: list[float] = field(default_factory=list)  # each chunk's vector length, computed once, not per query
 
     def __post_init__(self) -> None:
+        self.norms = [math.sqrt(sum(x * x for x in c["vector"])) if c.get("vector") else 0.0 for c in self.chunks]
         self.terms = [Counter(words(embed_text(c))) for c in self.chunks]
         for t in self.terms:
             self.df.update(t.keys())
@@ -181,8 +192,18 @@ class Index:
             scores.append(s)
         return scores
 
+    def comparable(self, query_vector: Sequence[float]) -> bool:
+        """Whether every chunk has a vector of the query's length, i.e. from the same embedding model."""
+        return all(c.get("vector") and len(c["vector"]) == len(query_vector) for c in self.chunks)
+
     def semantic(self, query_vector: Sequence[float]) -> list[float]:
-        return [cosine(query_vector, c["vector"]) if c.get("vector") else 0.0 for c in self.chunks]
+        """The cosine of the query with each chunk's vector (the chunks' lengths were computed with the index)."""
+        qn = math.sqrt(sum(x * x for x in query_vector))
+        out = []
+        for c, n in zip(self.chunks, self.norms, strict=True):
+            v = c.get("vector")
+            out.append(sum(x * y for x, y in zip(query_vector, v, strict=True)) / (qn * n) if v and qn and n else 0.0)
+        return out
 
 
 def search(
@@ -196,25 +217,28 @@ def search(
 ) -> list[dict[str, Any]]:
     """The best `top_k` chunks for `query`, each with `score` and a `cite` number (1, 2, …) for answers to quote.
     keyword = BM25 over words; semantic = cosine of embeddings (`query_vector` is the query's embedding from the
-    knowledge base's model, the built-in embedder's by default); hybrid = both rankings fused by reciprocal rank."""
+    knowledge base's model, the built-in embedder's by default); hybrid = both rankings fused by reciprocal rank.
+    When the chunks' vectors cannot be compared with the query's (another model's, or missing), the search is by
+    keywords: comparing vectors of different models gives noise.
+
+    `score` (and `min_score`) is 0-1 in every mode: keyword = BM25 relative to the best match (which scores 1);
+    semantic = the cosine; hybrid = the fused score relative to the most possible (1: first in both rankings)."""
     if mode not in MODES:
         raise ValueError(f"unknown search mode {mode!r}; use one of {', '.join(MODES)}")
     if not index.chunks or not query.strip():
         return []
     ranked: list[tuple[int, float]]
-    if mode == "keyword":
+    qv = None if mode == "keyword" else query_vector if query_vector is not None else builtin_embed([query])[0]
+    if qv is None or not index.comparable(qv):
         ranked = _ranked(index.bm25(query))
+        top = ranked[0][1] if ranked else 1.0
+        ranked = [(i, s / top) for i, s in ranked]
     else:
-        qv = query_vector if query_vector is not None else builtin_embed([query])[0]
         semantic = _ranked(index.semantic(qv))
         if mode == "semantic":
-            ranked = semantic
+            ranked = [(i, min(s, 1.0)) for i, s in semantic]
         else:
-            fused: dict[int, float] = {}
-            for ranking in (_ranked(index.bm25(query)), semantic):
-                for rank, (i, _) in enumerate(ranking[:50]):
-                    fused[i] = fused.get(i, 0.0) + 1.0 / (RRF_K + rank + 1)
-            ranked = sorted(fused.items(), key=lambda x: -x[1])
+            ranked = fuse(_ranked(index.bm25(query)), semantic)
     out = []
     for i, score in ranked:
         if len(out) >= top_k:
@@ -228,6 +252,17 @@ def search(
             "cite": len(out) + 1,
         })  # fmt: skip
     return out
+
+
+def fuse(keyword: Sequence[tuple[Any, float]], semantic: Sequence[tuple[Any, float]]) -> list[tuple[Any, float]]:
+    """Reciprocal-rank fusion of the best `FUSED` of two rankings (best first), scored relative to the most possible
+    (1: first in both)."""
+    fused: dict[Any, float] = {}
+    best = 2.0 / (RRF_K + 1)  # first in both rankings
+    for ranking in (keyword, semantic):
+        for rank, (key, _) in enumerate(ranking[:FUSED]):
+            fused[key] = fused.get(key, 0.0) + 1.0 / (RRF_K + rank + 1) / best
+    return sorted(fused.items(), key=lambda x: -x[1])
 
 
 def _ranked(scores: list[float]) -> list[tuple[int, float]]:
@@ -262,13 +297,21 @@ def dump_jsonl(name: str, embedding: dict[str, Any], chunks: Sequence[dict[str, 
     """A knowledge base as JSON lines: a header, then one chunk per line. Built-in vectors are left out (loading
     recomputes them); a provider model's are kept, since recomputing them needs the provider."""
     builtin = (embedding.get("model") or BUILTIN) == BUILTIN
-    lines = [json.dumps({"knowledge_base": name, "embedding": {"model": embedding.get("model") or BUILTIN}})]
-    for c in chunks:
-        row = {k: c.get(k) for k in ("id", "doc_id", "title", "source", "text", "page", "heading")}
-        if not builtin and c.get("vector"):
-            row["vector"] = [round(float(v), 6) for v in c["vector"]]
-        lines.append(json.dumps(row, ensure_ascii=False))
+    lines = [jsonl_header(name, embedding), *(jsonl_row(c, keep_vector=not builtin) for c in chunks)]
     return "\n".join(lines) + "\n"
+
+
+def jsonl_header(name: str, embedding: dict[str, Any]) -> str:
+    """The first line of `dump_jsonl`."""
+    return json.dumps({"knowledge_base": name, "embedding": {"model": embedding.get("model") or BUILTIN}})
+
+
+def jsonl_row(c: dict[str, Any], *, keep_vector: bool) -> str:
+    """One chunk's line of `dump_jsonl`."""
+    row = {k: c.get(k) for k in ("id", "doc_id", "title", "source", "text", "page", "heading")}
+    if keep_vector and c.get("vector"):
+        row["vector"] = [round(float(v), 6) for v in c["vector"]]
+    return json.dumps(row, ensure_ascii=False)
 
 
 def load_jsonl(text: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:

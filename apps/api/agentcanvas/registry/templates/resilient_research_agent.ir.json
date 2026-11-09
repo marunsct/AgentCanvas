@@ -1,0 +1,406 @@
+{
+  "ir_version": "1.1",
+  "id": "tpl_resilient_research_agent",
+  "name": "Resilient research agent",
+  "description": "A research agent for questions that take several sessions: it plans with a to-do list, keeps its findings in long-term memory, shortens long chats, and retries or switches to a backup model when the main one fails. A writer drafts the answer in scratch files and must pass a quality check before it replies.",
+  "state": {
+    "channels": [
+      {
+        "name": "messages",
+        "type": {
+          "type": "array"
+        },
+        "reducer": "add_messages",
+        "storage": "delta"
+      }
+    ]
+  },
+  "context": {
+    "fields": [
+      {
+        "name": "user_id",
+        "type": {
+          "type": "string"
+        },
+        "source": "user",
+        "description": "The person researching: each one has their own saved findings"
+      }
+    ]
+  },
+  "resources": [
+    {
+      "id": "r_main",
+      "type": "model.chat",
+      "name": "main_model",
+      "config": {
+        "model": "anthropic:claude-sonnet-5-5"
+      }
+    },
+    {
+      "id": "r_backup",
+      "type": "model.chat",
+      "name": "backup_model",
+      "config": {
+        "model": "openai:gpt-5.5"
+      }
+    },
+    {
+      "id": "r_fast",
+      "type": "model.chat",
+      "name": "fast_model",
+      "config": {
+        "model": "anthropic:claude-haiku-5-5"
+      }
+    },
+    {
+      "id": "r_wiki",
+      "type": "tool.http",
+      "name": "wiki_search",
+      "config": {
+        "description": "Search Wikipedia. Returns matching article titles with short snippets.",
+        "method": "GET",
+        "url": "https://en.wikipedia.org/w/api.php?action=query&list=search&format=json&srlimit=5&srsearch={{ args.query }}",
+        "args_schema": {
+          "type": "object",
+          "required": [
+            "query"
+          ],
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "What to search for"
+            }
+          }
+        },
+        "allowed_domains": [
+          "en.wikipedia.org"
+        ]
+      }
+    },
+    {
+      "id": "r_memory",
+      "type": "tool.memory",
+      "name": "research_memory",
+      "config": {
+        "space": "research_findings",
+        "scope": "user"
+      }
+    },
+    {
+      "id": "r_fallback",
+      "type": "mw.model_fallback",
+      "name": "use_backup_model",
+      "config": {}
+    },
+    {
+      "id": "r_retry",
+      "type": "mw.model_retry",
+      "name": "retry_model_calls",
+      "config": {
+        "max_retries": 3,
+        "on_failure": "error",
+        "initial_delay": 2.0,
+        "max_delay": 30.0
+      }
+    },
+    {
+      "id": "r_shorten",
+      "type": "mw.summarization",
+      "name": "shorten_long_chats",
+      "config": {
+        "trigger_tokens": 12000,
+        "keep_messages": 20
+      }
+    },
+    {
+      "id": "r_todo",
+      "type": "mw.todo",
+      "name": "todo_list",
+      "config": {}
+    },
+    {
+      "id": "r_limit",
+      "type": "mw.model_call_limit",
+      "name": "call_limit",
+      "config": {
+        "run_limit": 40
+      }
+    },
+    {
+      "id": "r_scratch",
+      "type": "backend.state",
+      "name": "scratch_files",
+      "config": {}
+    },
+    {
+      "id": "r_check",
+      "type": "mw.rubric",
+      "name": "quality_check",
+      "config": {
+        "rubric": "Answers the question that was asked in the first two sentences.\nEvery fact names its source: a Wikipedia article, or a finding saved in an earlier session.\nSays plainly what the research could not establish.\nStays under 400 words.",
+        "max_iterations": 2
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_research",
+      "type": "core.agent",
+      "name": "researcher",
+      "label": "Researcher",
+      "config": {
+        "system_prompt": "You are a careful research assistant for questions that take several sessions to answer.\n\n1. Write a to-do list of the sub-questions before you start, and tick items off as you go.\n2. Check search_memory first: findings saved in earlier sessions with this person are your starting point.\n3. Use wiki_search for anything new. Read the snippets and note which article each fact comes from.\n4. Save each important finding with save_memory under a short key (for example \"hubble:mirror-fix\"), with its source, so the next session can build on it.\n\nWhen the to-do list is done, end with your findings as bullet points, each with its source (a Wikipedia article or \"saved finding\"), and list the open questions you could not settle."
+      }
+    },
+    {
+      "id": "n_write",
+      "type": "agent.deep",
+      "name": "report_writer",
+      "label": "Report writer (Deep Agent)",
+      "config": {
+        "system_prompt": "You turn the researcher's findings into the final answer for the person who asked.\n\nWrite a first draft in /draft.md, read it back, and tighten it. Then reply with the finished answer: two sentences that answer the question, the key points with their sources, and a short \"Still open\" list. Use only facts from the findings; never add facts of your own.",
+        "planning": false
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e_start",
+      "kind": "flow",
+      "source": {
+        "node": "START"
+      },
+      "target": {
+        "node": "n_research"
+      }
+    },
+    {
+      "id": "e_write",
+      "kind": "flow",
+      "source": {
+        "node": "n_research"
+      },
+      "target": {
+        "node": "n_write"
+      }
+    },
+    {
+      "id": "e_end",
+      "kind": "flow",
+      "source": {
+        "node": "n_write"
+      },
+      "target": {
+        "node": "END"
+      }
+    },
+    {
+      "id": "w_research_model",
+      "kind": "wiring",
+      "source": {
+        "node": "r_main"
+      },
+      "target": {
+        "node": "n_research",
+        "port": "model"
+      }
+    },
+    {
+      "id": "w_write_model",
+      "kind": "wiring",
+      "source": {
+        "node": "r_main"
+      },
+      "target": {
+        "node": "n_write",
+        "port": "model"
+      }
+    },
+    {
+      "id": "w_research_memory",
+      "kind": "wiring",
+      "source": {
+        "node": "r_memory"
+      },
+      "target": {
+        "node": "n_research",
+        "port": "tools"
+      },
+      "order": 0
+    },
+    {
+      "id": "w_research_wiki",
+      "kind": "wiring",
+      "source": {
+        "node": "r_wiki"
+      },
+      "target": {
+        "node": "n_research",
+        "port": "tools"
+      },
+      "order": 1
+    },
+    {
+      "id": "w_backup",
+      "kind": "wiring",
+      "source": {
+        "node": "r_backup"
+      },
+      "target": {
+        "node": "r_fallback",
+        "port": "models"
+      },
+      "order": 0
+    },
+    {
+      "id": "w_shorten_model",
+      "kind": "wiring",
+      "source": {
+        "node": "r_fast"
+      },
+      "target": {
+        "node": "r_shorten",
+        "port": "model"
+      }
+    },
+    {
+      "id": "w_check_model",
+      "kind": "wiring",
+      "source": {
+        "node": "r_fast"
+      },
+      "target": {
+        "node": "r_check",
+        "port": "model"
+      }
+    },
+    {
+      "id": "w_research_fallback",
+      "kind": "wiring",
+      "source": {
+        "node": "r_fallback"
+      },
+      "target": {
+        "node": "n_research",
+        "port": "middleware"
+      },
+      "order": 0
+    },
+    {
+      "id": "w_research_retry",
+      "kind": "wiring",
+      "source": {
+        "node": "r_retry"
+      },
+      "target": {
+        "node": "n_research",
+        "port": "middleware"
+      },
+      "order": 1
+    },
+    {
+      "id": "w_research_shorten",
+      "kind": "wiring",
+      "source": {
+        "node": "r_shorten"
+      },
+      "target": {
+        "node": "n_research",
+        "port": "middleware"
+      },
+      "order": 2
+    },
+    {
+      "id": "w_research_todo",
+      "kind": "wiring",
+      "source": {
+        "node": "r_todo"
+      },
+      "target": {
+        "node": "n_research",
+        "port": "middleware"
+      },
+      "order": 3
+    },
+    {
+      "id": "w_research_limit",
+      "kind": "wiring",
+      "source": {
+        "node": "r_limit"
+      },
+      "target": {
+        "node": "n_research",
+        "port": "middleware"
+      },
+      "order": 4
+    },
+    {
+      "id": "w_write_fallback",
+      "kind": "wiring",
+      "source": {
+        "node": "r_fallback"
+      },
+      "target": {
+        "node": "n_write",
+        "port": "middleware"
+      },
+      "order": 0
+    },
+    {
+      "id": "w_write_retry",
+      "kind": "wiring",
+      "source": {
+        "node": "r_retry"
+      },
+      "target": {
+        "node": "n_write",
+        "port": "middleware"
+      },
+      "order": 1
+    },
+    {
+      "id": "w_write_check",
+      "kind": "wiring",
+      "source": {
+        "node": "r_check"
+      },
+      "target": {
+        "node": "n_write",
+        "port": "middleware"
+      },
+      "order": 2
+    },
+    {
+      "id": "w_write_scratch",
+      "kind": "wiring",
+      "source": {
+        "node": "r_scratch"
+      },
+      "target": {
+        "node": "n_write",
+        "port": "backend"
+      }
+    }
+  ],
+  "metadata": {
+    "gallery": {
+      "category": "Research",
+      "tags": [
+        "deep agent",
+        "memory",
+        "backup models",
+        "quality check",
+        "long-running"
+      ],
+      "difficulty": "advanced",
+      "sample_input": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "I'm writing a talk on the Hubble Space Telescope and will come back to this over a few sessions. Start here: how was the flaw in Hubble's main mirror discovered, and how did the 1993 servicing mission fix it?"
+          }
+        ]
+      }
+    }
+  }
+}

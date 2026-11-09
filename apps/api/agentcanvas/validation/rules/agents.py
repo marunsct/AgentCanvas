@@ -5,8 +5,9 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Iterator
 
-from agentcanvas.ir.models import Node, Resource
-from agentcanvas.registry import provider_installed
+from agentcanvas.ir.models import BUDGET_LIMITS, Node, Resource, unenforced_limits
+from agentcanvas.registry import SAMPLING, provider_installed
+from agentcanvas.sampling import refuses
 from agentcanvas.validation.engine import Diagnostic, ValidationContext, error, rule, warning
 
 
@@ -153,6 +154,27 @@ def middleware_stack(ctx: ValidationContext) -> Iterator[Diagnostic]:
 
 
 @rule
+def retry_inside_fallback(ctx: ValidationContext) -> Iterator[Diagnostic]:
+    """W017: "Retry AI calls" connected after "Backup models" and set to carry on when retries run out answers the
+    failure itself (an error message to the agent), so the backup models are never tried. The first add-on
+    connected wraps the ones after it."""
+    for el in [*ctx.wf.nodes, *ctx.wf.resources]:
+        mws = ctx.wf.wired_into(el.id, "middleware")
+        fallback = next((i for i, r in enumerate(mws) if r.type == "mw.model_fallback"), None)
+        if fallback is None:
+            continue
+        for r in mws[fallback + 1 :]:
+            if r.type == "mw.model_retry" and r.config.get("on_failure", "continue") != "error":
+                yield warning(
+                    "W017",
+                    f"'{r.name}' answers the failure itself when its retries run out, so the backup models of "
+                    f"'{mws[fallback].name}' on '{el.name}' are never tried",
+                    node_id=r.id,
+                    hint="set its 'When retries are exhausted' to error, or connect it before the backup models",
+                )
+
+
+@rule
 def deep_agents(ctx: ValidationContext) -> Iterator[Diagnostic]:
     """E032 subagents, E034 permission paths, E036 file mounts, E071 user-scoped folders."""
     has_user = any(f.source == "user" for f in ctx.wf.context.fields)
@@ -215,8 +237,78 @@ def cost_budget_prices(ctx: ValidationContext) -> Iterator[Diagnostic]:
                     "W015",
                     f"{which} has no catalog price, so the USD budget does not count its calls",
                     node_id=r.id,
-                    hint="set price_in_per_mtok / price_out_per_mtok in the model catalog, or use a token budget",
+                    hint="an operator sets its price with AGENTCANVAS_MODEL_PRICES, or use a token budget",
                 )
+
+
+@rule
+def sampling_refused(ctx: ValidationContext) -> Iterator[Diagnostic]:
+    """W020: temperature, top_p or top_k on a model that refuses them (every Claude model, reasoning models such as
+    GPT-5): a run leaves them out, since the provider would answer 400."""
+    for r in ctx.wf.resources:
+        if r.type != "model.chat":
+            continue
+        model = str(r.config.get("model", ""))
+        info = ctx.registry.model(model)
+        set_here = [k for k in SAMPLING if r.config.get(k) is not None]
+        if set_here and ((info is not None and not info.sampling) or refuses(model)):
+            yield warning(
+                "W020",
+                f"'{r.name}': {info.label if info else model} does not take {', '.join(set_here)}, so it is not sent",
+                node_id=r.id,
+                path=f"config.{set_here[0]}",
+                hint="clear it; to steer the answers, say in the prompt how varied or exact they should be",
+            )
+
+
+@rule
+def files_to_blind_model(ctx: ValidationContext) -> Iterator[Diagnostic]:
+    """W025: the workflow has file or image fields (G-5) and an AI step's model cannot see images. The step still
+    runs: a PDF is read as text (layout, tables as pictures and scans are lost), a Word document or text file is
+    read as text, and an image is not shown at all."""
+    from agentcanvas.filecontent import file_fields
+
+    channels = [c.model_dump(mode="json", exclude_defaults=True) for c in ctx.wf.state.channels]
+    for n in ctx.wf.nodes:
+        if n.disabled or n.type not in ("core.llm", "core.agent"):
+            continue
+        shown = file_fields(channels, n.config.get("files"))
+        models = ctx.wf.wired_into(n.id, "model")
+        info = ctx.registry.model(str(models[0].config.get("model", ""))) if models else None
+        if not shown or info is None or info.vision:
+            continue
+        yield warning(
+            "W025",
+            f"'{n.name}' shows {', '.join(shown)} to {info.label}, which cannot see images: images are left out and "
+            "PDFs are read as plain text (layout and pictures are lost)",
+            node_id=n.id,
+            path="config.files",
+            hint="pick a model that takes images, or narrow the step's files setting",
+        )
+
+
+@rule
+def retiring_models(ctx: ValidationContext) -> Iterator[Diagnostic]:
+    """W023: a model (or backup model) the provider stops serving on a known day; after it, every call fails."""
+    from datetime import UTC, datetime
+
+    today = datetime.now(UTC).date()
+    for r in ctx.wf.resources:
+        if r.type != "model.chat":
+            continue
+        for i, model in enumerate([r.config.get("model", ""), *(r.config.get("fallbacks") or [])]):
+            info = ctx.registry.model(str(model))
+            if info is None or info.retires is None:
+                continue
+            when = info.retires.isoformat()
+            said = f"was retired on {when}" if info.retires <= today else f"retires on {when}"
+            yield warning(
+                "W023",
+                f"'{r.name}': {info.label} {said}; calls to it fail from that day",
+                node_id=r.id,
+                path="config.model" if i == 0 else f"config.fallbacks[{i - 1}]",
+                hint="pick its successor from the list (the provider names one)",
+            )
 
 
 @rule
@@ -236,3 +328,53 @@ def backup_models(ctx: ValidationContext) -> Iterator[Diagnostic]:
                     hint="pick a model from another provider, so an outage of one does not stop both",
                 )
             seen.add(str(model))
+
+
+@rule
+def cheapest_of_models(ctx: ValidationContext) -> Iterator[Diagnostic]:
+    """W024: a model block's `cheapest_of` list (G-8) only chooses among models a run can use and compare."""
+    for r in ctx.wf.resources:
+        if r.type != "model.chat":
+            continue
+        listed = r.config.get("cheapest_of")
+        if not isinstance(listed, list):
+            continue
+        seen: set[str] = set()
+        for i, model in enumerate(str(m) for m in listed):
+            where = {"node_id": r.id, "path": f"config.cheapest_of[{i}]"}
+            info, provider = ctx.registry.model(model), ctx.registry.provider(model.partition(":")[0])
+            if model in seen:
+                yield warning("W024", f"{model} is listed twice in the cheapest-of list of '{r.name}'", **where)
+            elif provider is not None and provider.local:
+                yield warning(
+                    "W024",
+                    f"{model} is a local model, which a run never picks by price (its server may be down)",
+                    hint=f"list it among the backup models of '{r.name}' instead",
+                    **where,
+                )
+            elif info is None or info.price_in_per_mtok is None or info.price_out_per_mtok is None:
+                yield warning(
+                    "W024",
+                    f"{model} has no catalog price, so it is chosen only when no priced model in the list qualifies",
+                    hint="an operator sets its price with AGENTCANVAS_MODEL_PRICES",
+                    **where,
+                )
+            seen.add(model)
+
+
+@rule
+def budget_not_exported(ctx: ValidationContext) -> Iterator[Diagnostic]:
+    """W026: budget limits an export of the workflow does not enforce: every limit in a flow framework's code (the
+    AgentCanvas runner enforces them, and the exported code has none), the conversation, day and month limits in a
+    LangGraph project (its service checks each run on its own)."""
+    langgraph = ctx.wf.framework == "langchain"
+    found = unenforced_limits(ctx.wf, langgraph)
+    if found:
+        what = ", ".join(BUDGET_LIMITS[f] for f in found)
+        where = "a LangGraph export" if langgraph else f"an export to {ctx.wf.framework}"
+        yield warning(
+            "W026",
+            f"the budget's limits on {what} stop runs on AgentCanvas only: {where} does not enforce them",
+            path="settings.budget",
+            hint="set a spending cap at the model provider before running the export elsewhere (GAPS.md lists it)",
+        )

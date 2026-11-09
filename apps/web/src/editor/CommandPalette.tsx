@@ -5,6 +5,8 @@ import { useNodeTypes } from "../api/queries";
 import { addElement } from "../canvas/Canvas";
 import { useRun } from "../run/runStore";
 import { useEditor } from "./store";
+import { useCopilot } from "../copilot/copilot";
+import { can } from "../api/session";
 import { useUi } from "./ui";
 
 interface Item {
@@ -14,7 +16,7 @@ interface Item {
   run: () => void;
 }
 
-export function CommandPalette({ onRun }: { onRun: () => void }) {
+export function CommandPalette({ onRun, onCopilot }: { onRun: () => void; onCopilot: () => void }) {
   const open = useUi((s) => s.paletteOpen);
   const at = useUi((s) => s.paletteAt);
   const close = useUi((s) => s.closePalette);
@@ -34,6 +36,7 @@ export function CommandPalette({ onRun }: { onRun: () => void }) {
     if (at) return add; // double-click: only "add here"
     const actions: Item[] = [
       { id: "run", label: "Run workflow", hint: "action", run: onRun },
+      { id: "copilot", label: "Open the Copilot", hint: "assistant", run: onCopilot },
       { id: "tidy", label: "Tidy up layout", hint: "action", run: () => void st.tidy?.() },
       { id: "group", label: "Convert selection to subgraph", hint: "Ctrl/⌘+G", run: () => void st.group?.() },
       { id: "undo", label: "Undo", hint: "Ctrl/⌘+Z", run: st.undo },
@@ -48,12 +51,19 @@ export function CommandPalette({ onRun }: { onRun: () => void }) {
       id: `go:${n.id}`, label: `Go to ${n.label || n.name}`, hint: n.type, run: () => st.focusNode?.(n.id),
     }));
     return [...actions, ...add, ...go];
-  }, [types, wf, selected, at, onRun, navigate]);
+  }, [types, wf, selected, at, onRun, onCopilot, navigate]);
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    return needle ? items.filter((i) => `${i.label} ${i.hint}`.toLowerCase().includes(needle)) : items;
-  }, [items, q]);
+    if (!needle) return items;
+    const found = items.filter((i) => `${i.label} ${i.hint}`.toLowerCase().includes(needle));
+    // anything typed can go to the Copilot as a question or a request (last, so commands win)
+    const ask: Item = {
+      id: "ask", label: `Ask the Copilot: ${q.trim()}`, hint: "assistant",
+      run: () => { onCopilot(); useCopilot.getState().askFor(q.trim(), can("builder") ? "build" : "ask"); },
+    };
+    return at ? found : [...found, ask];
+  }, [items, q, at, onCopilot]);
 
   useEffect(() => {
     if (open) {
@@ -64,6 +74,7 @@ export function CommandPalette({ onRun }: { onRun: () => void }) {
   }, [open]);
 
   if (!open) return null;
+  const shown = filtered.slice(0, 12); // the cursor stays on these: Enter used to run a match below them, unseen
   const choose = (i: Item | undefined) => {
     if (!i) return;
     close();
@@ -73,17 +84,19 @@ export function CommandPalette({ onRun }: { onRun: () => void }) {
     <div className="palette-overlay" onMouseDown={close}>
       <div className="command-palette" role="dialog" aria-label="Command palette" onMouseDown={(e) => e.stopPropagation()}>
         <input ref={input} value={q} placeholder={at ? "Add a widget here…" : "Type a command or widget…"}
-          aria-label="Search commands"
+          aria-label="Search commands" role="combobox" aria-expanded aria-controls="palette-options"
+          aria-activedescendant={shown[cursor] ? `palette-${shown[cursor].id}` : undefined}
           onChange={(e) => { setQ(e.target.value); setCursor(0); }}
           onKeyDown={(e) => {
             if (e.key === "Escape") close();
-            if (e.key === "ArrowDown") { e.preventDefault(); setCursor((c) => Math.min(c + 1, filtered.length - 1)); }
+            if (e.key === "ArrowDown") { e.preventDefault(); setCursor((c) => Math.max(0, Math.min(c + 1, shown.length - 1))); }
             if (e.key === "ArrowUp") { e.preventDefault(); setCursor((c) => Math.max(c - 1, 0)); }
-            if (e.key === "Enter") choose(filtered[cursor]);
+            if (e.key === "Enter" && !e.nativeEvent.isComposing) choose(shown[cursor]);
           }} />
-        <ul>
-          {filtered.slice(0, 12).map((i, k) => (
-            <li key={i.id} className={k === cursor ? "active" : ""} onMouseEnter={() => setCursor(k)} onClick={() => choose(i)}>
+        <ul id="palette-options" role="listbox" aria-label="Commands">
+          {shown.map((i, k) => (
+            <li key={i.id} id={`palette-${i.id}`} role="option" aria-selected={k === cursor} className={k === cursor ? "active" : ""}
+              onMouseEnter={() => setCursor(k)} onClick={() => choose(i)}>
               {i.label} <small className="muted">{i.hint}</small>
             </li>
           ))}

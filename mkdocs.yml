@@ -24,7 +24,7 @@ nav:
       - Beginner's guide: user-guide/beginner-guide.md
       - Getting started: user-guide/getting-started.md
       - Template gallery: user-guide/templates.md
-      - Coming from Langflow, Flowise or n8n: user-guide/switching.md
+      - Coming from OpenAI Agent Builder, Flowise, Langflow or n8n: user-guide/switching.md
       - Core concepts: user-guide/concepts.md
       - Models and API keys: user-guide/models.md
       - Building on the canvas: user-guide/canvas.md
@@ -39,6 +39,7 @@ nav:
       - Publish and integrate: user-guide/publish.md
       - Connect to other agents and tools: user-guide/agents-and-connectors.md
       - Export and deploy: user-guide/export.md
+      - Settings and moving around: user-guide/settings.md
       - Organisations, roles and policies: user-guide/accounts.md
       - Deploy and operate: user-guide/deploy.md
       - FAQ: user-guide/faq.md
@@ -56,6 +57,7 @@ nav:
       - Competitive roadmap: agent-canvas-spec/16-competitive-roadmap.md
       - Framework coverage review: agent-canvas-spec/17-framework-coverage-review.md
       - Identity and tenancy plan: agent-canvas-spec/18-identity-and-tenancy-plan.md
+      - Threat model: agent-canvas-spec/19-threat-model.md
       - Deep review v0.6: agent-canvas-spec/14-deep-review-v0.6.md
       - History:
           - Improvement plan: agent-canvas-spec/10-improvement-plan.md
@@ -77,6 +79,7 @@ nav:
       - Security checklist: agent-canvas-spec/build-guide/10-security-checklist.md
       - Troubleshooting FAQ: agent-canvas-spec/build-guide/11-troubleshooting-faq.md
       - Traceability: agent-canvas-spec/build-guide/12-traceability.md
+      - Copilot real-model evaluation: agent-canvas-spec/build-guide/14-copilot-evaluation.md
       - Sprint plan & execution log: agent-canvas-spec/build-guide/13-sprint-plan.md
       - Spikes:
           - SP-2 LangSmith sandbox: agent-canvas-spec/build-guide/spikes/SP-2-langsmith-sandbox.md

@@ -15,10 +15,19 @@ from pathlib import Path
 from typing import Any
 
 from agentcanvas.adapters.google_adk.codegen import ADK_VERSION, LITELLM_VERSION
-from agentcanvas.adapters.langchain.packager import _dist, _exportable_cases, _secret_names, _version, package_name
+from agentcanvas.adapters.langchain.packager import (
+    _dist,
+    _exportable_cases,
+    _secret_names,
+    _version,
+    gaps_md,
+    package_name,
+)
 from agentcanvas.adapters.openai_agents.packager import model_specs
 from agentcanvas.errors import InvalidInput
 from agentcanvas.ir.models import Workflow
+from agentcanvas.tomltext import toml_string
+from agentcanvas.validation.analysis import refuse_plain_secrets
 from agentcanvas.workspace import bundle
 
 API_ROOT = Path(__file__).parents[2]  # the `agentcanvas` package directory
@@ -34,7 +43,7 @@ def _pyproject(wf: Workflow, pkg: str, version: str, extra: list[str]) -> str:
     return f'''[project]
 name = "{pkg.replace("_", "-")}"
 version = "{version}"
-description = {json.dumps(f"{wf.name} — a Google ADK workflow exported from AgentCanvas")}
+description = {toml_string(f"{wf.name} — a Google ADK workflow exported from AgentCanvas")}
 requires-python = ">=3.12,<3.15"
 dependencies = [
 {deps}]
@@ -82,7 +91,8 @@ uv run python -m {pkg} '{{"thread_id": "t1", "resume": {{"approved": true}}}}'
 
 Each model block reaches its provider through LiteLLM over the OpenAI chat-completions API (any provider with such
 an endpoint, local servers included). Override the model or address per block with the variables in the last
-column. Backup models and the answer cache of the canvas are not exported for ADK workflows.
+column. Backup models and the answer cache of the canvas are not exported for ADK workflows: `GAPS.md` lists the
+blocks that use them, and the steps whose retry or time limit does not apply.
 
 | Block | Model | Address | Key variable | Overrides |
 |---|---|---|---|---|
@@ -330,6 +340,7 @@ def package(
     version: str = "0.0.0",
 ) -> tuple[str, bytes]:
     """(file name, zip bytes) of the standalone project for `wf`, whose generated workflow is `source`."""
+    refuse_plain_secrets(wf)
     pkg = package_name(wf.name)
     root = f"{pkg.replace('_', '-')}-google-adk"
     models = model_specs(wf)
@@ -345,6 +356,7 @@ def package(
     keys = sorted({m["key_env"] for m in models.values()} | _secret_names(wf.model_dump(mode="json")))
     files: dict[str, str | bytes] = {
         "pyproject.toml": _pyproject(wf, pkg, version, found.requirements if found else []),
+        "GAPS.md": gaps_md(wf, "a Google ADK workflow"),
         "README.md": _readme(wf, pkg, models),
         ".env.example": "".join(f"{k}=\n" for k in keys),
         ".gitignore": ".venv/\n__pycache__/\n.env\n.runs/\n",

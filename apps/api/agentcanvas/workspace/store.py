@@ -11,6 +11,7 @@ import hashlib
 import json
 import re
 import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -22,6 +23,10 @@ WORKFLOW_CODE_DIRS = ("scripts", "tools", "nodes")
 _KEY = re.compile(r"^[a-z][a-z0-9_]{0,62}$")
 HIDDEN = {".git", "__pycache__", ".venv", ".agentcanvas", ".ruff_cache"}
 TEXT_SUFFIXES = {".py", ".json", ".md", ".txt", ".toml", ".yaml", ".yml", ".jinja", ".j2", ".gitignore"}
+
+
+REVISION_TTL_S = 1.0
+_REVISIONS: dict[Path, tuple[float, str]] = {}  # workspace root -> (when, revision), see `Workspace.revision`
 
 
 class WorkspaceError(ValueError):
@@ -134,15 +139,21 @@ class Workspace:
             raise WorkspaceError(f"'{rel}' is larger than {MAX_FILE_BYTES} bytes")
         return p.read_text(errors="replace")
 
-    def write(self, rel: str, text: str) -> FileInfo:
+    def check(self, rel: str, text: str) -> Path:
+        """The file's path, when `text` may be saved there: an editable text file of an allowed size."""
         p = self.resolve(rel)
         if p.suffix not in TEXT_SUFFIXES and p.name not in TEXT_SUFFIXES:
             raise WorkspaceError(f"'{p.suffix or p.name}' files cannot be edited here")
         if len(text.encode()) > MAX_FILE_BYTES:
             raise WorkspaceError(f"files are limited to {MAX_FILE_BYTES} bytes")
+        return p
+
+    def write(self, rel: str, text: str, message: str | None = None) -> FileInfo:
+        """Save a file as one commit; `message` says who changed it and why (default "edit <path>")."""
+        p = self.check(rel, text)
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(text)
-        self._commit(f"edit {p.relative_to(self.root).as_posix()}", p)
+        self._commit(message or f"edit {p.relative_to(self.root).as_posix()}", p)
         st = p.stat()
         return FileInfo(p.relative_to(self.root).as_posix(), st.st_size, st.st_mtime)
 
@@ -153,8 +164,34 @@ class Workspace:
         p.unlink()
         self._commit(f"delete {p.relative_to(self.root).as_posix()}", p)
 
+    def move(self, rel: str, to: str) -> FileInfo:
+        """Rename or move a file inside the workspace (never over another file)."""
+        src, dst = self.resolve(rel), self.resolve(to)
+        if not src.is_file():
+            raise FileNotFoundError(rel)
+        if dst.exists():
+            raise WorkspaceError(f"'{to}' already exists")
+        if dst.suffix not in TEXT_SUFFIXES and dst.name not in TEXT_SUFFIXES:
+            raise WorkspaceError(f"'{dst.suffix or dst.name}' files cannot be edited here")
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        src.rename(dst)
+        self._commit(f"move {src.relative_to(self.root).as_posix()} to {dst.relative_to(self.root).as_posix()}")
+        st = dst.stat()
+        return FileInfo(dst.relative_to(self.root).as_posix(), st.st_size, st.st_mtime)
+
     def revision(self) -> str:
-        """Changes whenever workspace code changes (graphs built from old code are rebuilt)."""
+        """Changes whenever workspace code changes (graphs built from old code are rebuilt). Walking the folders
+        costs a stat per file and every workflow read asks, so the answer is kept for a second: a change made
+        here (every one commits) is seen at once, one made outside it within the second (FR-CN-01 allows 2 s)."""
+        now = time.monotonic()
+        kept = _REVISIONS.get(self.root)
+        if kept is not None and now - kept[0] < REVISION_TTL_S:
+            return kept[1]
+        rev = self._walk()
+        _REVISIONS[self.root] = (now, rev)
+        return rev
+
+    def _walk(self) -> str:
         h = hashlib.sha256()
         for d in (*CODE_DIRS, WORKFLOWS_DIR):
             base = self.root / d
@@ -165,13 +202,16 @@ class Workspace:
                         h.update(f"{p}:{st.st_mtime_ns}:{st.st_size}".encode())
         return h.hexdigest()[:16]
 
-    def lint(self, rel: str) -> list[dict[str, Any]]:
-        """ruff diagnostics for a Python file (M5-T2): [{line, column, end_line, end_column, code, message}]."""
+    def lint(self, rel: str, text: str | None = None) -> list[dict[str, Any]]:
+        """ruff diagnostics for a Python file (M5-T2): [{line, column, end_line, end_column, code, message}]. With
+        `text`, that content is checked as if saved at `rel` (a proposed file not written yet)."""
         p = self.resolve(rel)
         if p.suffix != ".py":
             return []
+        target = ["--stdin-filename", str(p), "-"] if text is not None else [str(p)]
         proc = subprocess.run(
-            ["ruff", "check", "--output-format=json", "--no-cache", "--isolated", "--select", "E,F,W,B", str(p)],
+            ["ruff", "check", "--output-format=json", "--no-cache", "--isolated", "--select", "E,F,W,B", *target],
+            input=text,
             capture_output=True,
             text=True,
             check=False,
@@ -210,5 +250,6 @@ class Workspace:
 
     def _commit(self, message: str, path: Path | None = None) -> None:
         """Best effort: every save is a commit (history, diffs and restore come in Sprint 8)."""
+        _REVISIONS.pop(self.root, None)  # the code changed: the next revision walks again
         self._git("add", "-A", str(path.relative_to(self.root)) if path else ".")
         self._git("commit", "-q", "-m", message, "--allow-empty")

@@ -40,7 +40,7 @@ export function FrameworkBadges() {
   const { data: frameworks = [] } = useFrameworks();
   const { data: agents = [] } = useAgentFrameworks();
   const fits = useMemo(
-    () => (wf ? portability(wf, frameworks, new Set(agents.map((a) => a.id))) : []), [wf, frameworks, agents],
+    () => (wf ? portability(wf, frameworks, new Set(agents.filter((a) => !a.hosted).map((a) => a.id))) : []), [wf, frameworks, agents],
   );
   const [open, setOpen] = useState<{ left: number } | null>(null);
   if (!wf || fits.length === 0) return null;
@@ -103,11 +103,16 @@ export function EnginePicker({ node }: { node: IRNode }) {
             {others.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
           </optgroup>
         )}
-        {agentChoices.length > 0 && (
+        {agentChoices.some((a) => !a.hosted) && (
           <optgroup label="Agent frameworks (generated as that framework's own code)">
-            {agentChoices.map((a) => (
+            {agentChoices.filter((a) => !a.hosted).map((a) => (
               <option key={a.id} value={a.id}>{a.label}{a.installed ? "" : " (not installed here)"}</option>
             ))}
+          </optgroup>
+        )}
+        {agentChoices.some((a) => a.hosted) && (
+          <optgroup label="Agent platforms (exported as files for the platform; runs here as the workflow's agent)">
+            {agentChoices.filter((a) => a.hosted).map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}
           </optgroup>
         )}
       </select>
@@ -134,16 +139,24 @@ export function DesignedAgent({ node }: { node: IRNode }) {
   const exportBlocked = (data?.export_problems.length ?? 0) > 0;
   const download = () => {
     setExportError(null);
-    apiDownload(`/workflows/${workflowId}/agents/${node.id}/export.zip`, `${node.name}-${fw.id}.zip`)
+    apiDownload(`/workflows/${workflowId}/agents/${node.id}/export.zip`, `${node.name}-${fw.hosted ? "managed-agents" : fw.id}.zip`)
       .catch((e: unknown) => setExportError(e instanceof ApiError ? e.message : String(e)));
   };
   return (
     <section className="designed-agent" aria-label="designed agent">
-      <p className="muted">
-        Runs as an agent built with <b>{fw.label}</b> ({fw.packages.join(", ")}). Its model calls still go through this
-        workflow&apos;s model, so runs are traced and costed as usual.
-        {!fw.installed && " This server does not have it installed, so runs here will fail until it is."}
-      </p>
+      {fw.hosted ? (
+        <p className="muted" data-testid="hosted-note">
+          Runs here as this workflow&apos;s own agent. <b>Export</b> writes it for <b>{fw.label}</b>: the agent, its
+          environment and skills as files the <code>ant</code> CLI applies (<code>ant apply</code>), with a session
+          runner, <code>make doctor</code> and tests.
+        </p>
+      ) : (
+        <p className="muted">
+          Runs as an agent built with <b>{fw.label}</b> ({fw.packages.join(", ")}). Its model calls still go through this
+          workflow&apos;s model, so runs are traced and costed as usual.
+          {!fw.installed && " This server does not have it installed, so runs here will fail until it is."}
+        </p>
+      )}
       {fw.own_env && (
         <p className="muted" data-testid="part-note">
           {fw.label}&apos;s packages clash with LangGraph&apos;s, so this agent runs as a <b>part</b>: in an environment of
@@ -159,17 +172,24 @@ export function DesignedAgent({ node }: { node: IRNode }) {
       {code.error && <p className="error">{code.error instanceof ApiError ? code.error.message : String(code.error)}</p>}
       <div className="row gap">
         <button type="button" aria-expanded={showCode} onClick={() => setShowCode((v) => !v)}>
-          {showCode ? "Hide" : "View"} {fw.label} code
+          {showCode ? "Hide" : "View"} {fw.hosted ? `${data?.file ?? "agent"} file` : `${fw.label} code`}
         </button>
         <button type="button" disabled={!data || exportBlocked} onClick={download}
-          title={exportBlocked ? data?.export_problems.join("\n") : "A runnable project with pinned packages, a README and tests"}>
-          Export as {fw.label} project
+          title={exportBlocked ? data?.export_problems.join("\n")
+            : fw.hosted ? "Files for `ant apply`, a session runner, make doctor and tests" : "A runnable project with pinned packages, a README and tests"}>
+          {fw.hosted ? `Export for ${fw.label} (ant apply)` : `Export as ${fw.label} project`}
         </button>
       </div>
       {exportBlocked && data && data.problems.length === 0 && (
         <ul className="diag-list">
           {data.export_problems.map((p) => <li key={p} className="warning">{p}</li>)}
         </ul>
+      )}
+      {fw.hosted && data && (data.gaps ?? []).length > 0 && (
+        <details className="export-gaps small" data-testid="hosted-gaps">
+          <summary>What does not carry over to {fw.label} ({data.gaps?.length})</summary>
+          <ul>{(data.gaps ?? []).map((g) => <li key={g.text} className={g.blocks ? "warning" : ""}>{g.text}</li>)}</ul>
+        </details>
       )}
       {exportError && <p className="error">{exportError}</p>}
       {showCode && (code.isFetching && !data ? <p className="muted">Generating…</p> : data && (

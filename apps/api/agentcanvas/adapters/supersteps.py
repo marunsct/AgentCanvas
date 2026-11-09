@@ -135,8 +135,35 @@ class Paused:
         return cls(**json.loads(text))
 
 
+REMOVE_ALL = "__remove_all__"  # LangGraph's REMOVE_ALL_MESSAGES
+
+
+def _same(o: Any, mid: Any) -> bool:
+    return mid is not None and isinstance(o, dict) and o.get("id") == mid
+
+
+def add_messages(old: Any, new: Any) -> list[Any]:
+    """LangGraph's `add_messages` on JSON messages: a message whose `id` is already there replaces it, a
+    `{"type": "remove", "id": ...}` takes that message out (the id `__remove_all__`: every message), anything
+    else is appended."""
+    out = list(old or [])
+    for m in new if isinstance(new, list) else [new]:
+        mid = m.get("id") if isinstance(m, dict) else None
+        if isinstance(m, dict) and m.get("type") == "remove":
+            out = [] if mid == REMOVE_ALL else [o for o in out if not _same(o, mid)]
+            continue
+        at = next((i for i, o in enumerate(out) if _same(o, mid)), None)
+        if at is None:
+            out.append(m)
+        else:
+            out[at] = m
+    return out
+
+
 def reduce(reducer: str, old: Any, new: Any) -> Any:
-    if reducer in ("append", "add_messages"):
+    if reducer == "add_messages":
+        return add_messages(old, new)
+    if reducer == "append":
         return [*(old or []), *(new if isinstance(new, list) else [new])]
     if reducer == "sum":
         return (old or 0) + (new or 0)

@@ -13,11 +13,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.deps import CurrentUser, current_user, get_session
 from agentcanvas.db.models import Evaluator, WorkflowRow
+from agentcanvas.db.repositories import ProjectRepo, WorkflowRepo
 from agentcanvas.errors import Conflict, InvalidInput, NotFound
-from agentcanvas.evaluation import DEFAULT_THRESHOLD, Kind, Observation, Score, check_config, score, spec_of
+from agentcanvas.evaluation import (
+    DEFAULT_THRESHOLD,
+    KINDS,
+    ONLY_IN_EXPERIMENTS,
+    Kind,
+    Observation,
+    Score,
+    check_config,
+    kind_schema,
+    score,
+    spec_of,
+)
 from agentcanvas.ids import new_id
 from agentcanvas.ir.models import Workflow
-from agentcanvas.services import gates
+from agentcanvas.services import gates, model_defaults
 from agentcanvas.services.experiments import scorers
 from agentcanvas.services.projects import PROJECT_OF
 
@@ -79,6 +91,16 @@ async def _check_parts(session: AsyncSession, wf_id: str, name: str, kind: str, 
             raise InvalidInput(f"composite evaluator: '{part}' is a {e.kind} evaluator; combine plain ones")
 
 
+async def _with_judge(session: AsyncSession, wf_id: str, kind: str, config: dict[str, Any]) -> dict[str, Any]:
+    """A judge saved without a model gets the project's judge model now (Settings > Models), so its scores keep
+    saying which model gave them."""
+    if kind not in ("llm_judge", "pairwise") or config.get("model"):
+        return config
+    row = await WorkflowRepo(session).require(wf_id)
+    project = await ProjectRepo(session).require(row.project_id)
+    return {**config, "model": model_defaults.require(project.settings, "judge")}
+
+
 async def _get(session: AsyncSession, evaluator_id: str) -> Evaluator:
     e = await session.get(Evaluator, evaluator_id)
     if e is None:
@@ -94,6 +116,31 @@ async def _commit(session: AsyncSession, name: str) -> None:
         raise Conflict(f"this workflow already has an evaluator named '{name}'") from None
 
 
+class EvaluatorKindOut(BaseModel):
+    kind: str
+    label: str
+    description: str
+    config_schema: dict[str, Any] = Field(description="JSON Schema of the kind's config, for a form")
+    default_threshold: float
+    experiments_only: bool
+
+
+@router.get("/evaluator-kinds", response_model=list[EvaluatorKindOut])
+async def evaluator_kinds() -> list[EvaluatorKindOut]:
+    """Every kind of evaluator with its form: label, what it checks, the schema of its config, its pass mark."""
+    return [
+        EvaluatorKindOut(
+            kind=k,
+            label=label,
+            description=what,
+            config_schema=kind_schema(k),
+            default_threshold=DEFAULT_THRESHOLD.get(k, 1.0),
+            experiments_only=k in ONLY_IN_EXPERIMENTS,
+        )
+        for k, (label, what) in KINDS.items()
+    ]
+
+
 @router.get("/workflows/{wf_id}/evaluators", response_model=list[EvaluatorOut])
 async def list_evaluators(wf_id: str, session: AsyncSession = Depends(get_session)) -> list[EvaluatorOut]:
     return [_out(e) for e in await siblings(session, wf_id)]
@@ -106,7 +153,7 @@ async def create_evaluator(
     session: AsyncSession = Depends(get_session),
     user: CurrentUser = Depends(current_user),
 ) -> EvaluatorOut:
-    config = check_config(body.kind, body.config)
+    config = check_config(body.kind, await _with_judge(session, wf_id, body.kind, body.config))
     await _check_parts(session, wf_id, body.name, body.kind, config)
     e = Evaluator(
         id=new_id("evl"), workflow_id=wf_id, name=body.name, kind=body.kind, config=config,
@@ -125,7 +172,7 @@ async def update_evaluator(
     if body.name is not None:
         e.name = body.name
     if body.config is not None:
-        config = check_config(e.kind, body.config)
+        config = check_config(e.kind, await _with_judge(session, e.workflow_id, e.kind, body.config))
         await _check_parts(session, e.workflow_id, e.name, e.kind, config)
         e.config = config
     if "threshold" in body.model_fields_set:

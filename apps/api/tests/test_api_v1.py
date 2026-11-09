@@ -40,7 +40,7 @@ async def test_default_project_is_seeded(api_client):
 
 async def test_create_empty_workflow(api_client):
     wf = await create(api_client)
-    assert wf["id"].startswith("wf_") and wf["version"] == 1 and wf["ir"]["ir_version"] == "1.2"
+    assert wf["id"].startswith("wf_") and wf["version"] == 1 and wf["ir"]["ir_version"] == "1.3"
     assert wf["diagnostics"] == []
     r = await api_client.get(f"/v1/workflows/{wf['id']}")
     assert r.headers["ETag"] == '"1"' and r.json()["ir_hash"] == wf["ir_hash"]
@@ -206,3 +206,13 @@ def test_migrations_upgrade_and_downgrade(tmp_path):
     run_alembic(url, "upgrade", "head")
     run_alembic(url, "downgrade", "base")
     run_alembic(url, "upgrade", "head")
+
+
+async def test_scim_and_group_roles_need_openid_connect_sign_in(api_client):
+    """G-13: in dev mode (no sign-in, everyone admin) there is nobody to provision and no token to map groups from."""
+    assert (await api_client.get("/v1/org/scim")).json()["available"] is False
+    assert (await api_client.post("/v1/org/scim/token")).status_code == 409
+    r = await api_client.get("/scim/v2/Users", headers={"Authorization": "Bearer scim_anything"})
+    assert r.status_code == 403 and r.headers["content-type"].startswith("application/scim+json")
+    r = await api_client.put("/v1/org/settings", json={"sso_groups": {"roles": {"eng": "admin"}}})
+    assert r.status_code == 409

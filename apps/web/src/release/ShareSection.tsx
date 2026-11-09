@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { apiFetch } from "../api/client";
 import type { DeploymentOut, ShareOut } from "../api/generated";
 import { embedSnippet } from "../share/share";
+import { confirmDialog } from "../ui/dialog";
 
 async function copy(text: string, done: (msg: string) => void) {
   try {
@@ -56,7 +57,7 @@ export function ShareSection({ deployment }: { deployment: DeploymentOut }) {
   });
   const id = `share-${deployment.id}`;
   const data = share.data;
-  const url = data ? `${location.origin}${data.path}` : "";
+  const url = data?.path ? `${location.origin}${data.path}` : ""; // no path until the link is first saved
   const error = (share.error ?? save.error ?? regenerate.error) as Error | null;
   return (
     <details className="connect share-box small" data-testid={`share-${deployment.environment}`}>
@@ -89,7 +90,18 @@ export function ShareSection({ deployment }: { deployment: DeploymentOut }) {
               : "Only these sites (and this app) can show the chat page in a frame. The link itself still works for anyone."}
             {" "}Use https://example.com, or https://*.example.com for all its subdomains.
           </p>
-          <p className="muted">
+          {data.inputs.length > 1 && (
+            <>
+              <label htmlFor={`${id}-input`}>Messages go to</label>
+              <select id={`${id}-input`} value={data.input_field ?? ""} disabled={save.isPending}
+                      onChange={(e) => save.mutate({ input_field: e.target.value })}>
+                {/* "" lets the server pick, and keeps picking if a later version renames the inputs */}
+                <option value="">Picked from the workflow's inputs</option>
+                {data.inputs.map((f) => <option key={f} value={f}>{f}</option>)}
+              </select>
+            </>
+          )}
+          <p className="muted" data-testid="share-input">
             {data.input.field
               ? <>Messages go to the input <code className="inline">{data.input.field}</code>{data.input.chat ? " (as a chat message)" : ""}.</>
               : "This workflow has no text input, so the chat page cannot send it messages."}
@@ -100,20 +112,20 @@ export function ShareSection({ deployment }: { deployment: DeploymentOut }) {
               frame_origins: sites.split("\n").map((s) => s.trim()).filter(Boolean),
             })}>Save</button>
           </div>
-          {data.enabled && (
+          {data.enabled && data.token && (
             <>
               <p id={`${id}-link`} className="connect-label">Link</p>
               <code className="mono" aria-labelledby={`${id}-link`} data-testid="share-link">{url}</code>
               <div className="row gap">
                 <button type="button" className="small" onClick={() => void copy(url, setNote)}>Copy link</button>
                 <a className="small" href={url} target="_blank" rel="noopener noreferrer">Open the page</a>
-                <button type="button" className="small" disabled={regenerate.isPending} onClick={() => {
-                  if (window.confirm("Make a new link? The current link and its conversations stop working.")) regenerate.mutate();
+                <button type="button" className="small" disabled={regenerate.isPending} onClick={async () => {
+                  if (await confirmDialog({ title: "Make a new link?", body: "The current link and its conversations stop working.", confirm: "Make a new link", danger: true })) regenerate.mutate();
                 }}>New link</button>
               </div>
               <p id={`${id}-embed`} className="connect-label">Chat widget: paste before &lt;/body&gt; on your site</p>
               <pre className="json small" aria-labelledby={`${id}-embed`} data-testid="share-embed">{embedSnippet(location.origin, data.token)}</pre>
-              <button type="button" className="small" onClick={() => void copy(embedSnippet(location.origin, data.token), setNote)}>Copy snippet</button>
+              <button type="button" className="small" onClick={() => void copy(embedSnippet(location.origin, data.token ?? ""), setNote)}>Copy snippet</button>
             </>
           )}
           {note && <p className="muted" role="status">{note}</p>}

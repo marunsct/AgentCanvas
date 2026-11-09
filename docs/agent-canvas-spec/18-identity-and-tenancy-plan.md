@@ -8,7 +8,7 @@
 > document describes the platform's internals, Matura's plan supersedes it (its control plane is called
 > `maturad`, not `accounts`).
 
-> **Status: proposed, waiting for the owner's approval.** Nothing here is built yet. Decision record:
+> **Status: built** in v0.27.0–v0.28.0 (sign-in through Matura, workspaces, row-level security, the audit sink); kept as the design record. Decision record:
 > [ADR 0019](../adr/0019-identity-and-tenancy-platform.md). Planned against `main` at v0.22.0 (`2e10fff`, after S31).
 
 ## 1. Short answer

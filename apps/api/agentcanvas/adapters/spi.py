@@ -157,6 +157,27 @@ class ModelService(Protocol):
         {"name", "description", "parameters" (JSON schema)}. Returns {"content": str, "tool_calls": [...]}."""
         ...
 
+    def stream(
+        self,
+        resources: Any,
+        model: str,
+        messages: list[dict[str, Any]],
+        usage: dict[str, int] | None = None,
+        config: dict[str, Any] | None = None,
+    ) -> AsyncIterator[str]:
+        """A chat answer as it is generated, piece by piece (the Playground). Same messages as `chat`, no tools.
+        Resource name: "copilot"."""
+        ...
+
+    def tool_spec(self, tool: Any) -> dict[str, Any]:
+        """A workspace tool (as `Resources.tool` returns it) as `chat` takes tools: {"name", "description",
+        "parameters"} (the Playground's tools)."""
+        ...
+
+    async def call_tool(self, tool: Any, args: dict[str, Any]) -> str:
+        """Run a workspace tool with the model's arguments; its result as text."""
+        ...
+
 
 def supports(adapter: Any, ability: str) -> bool:
     m = getattr(adapter, "manifest", None)

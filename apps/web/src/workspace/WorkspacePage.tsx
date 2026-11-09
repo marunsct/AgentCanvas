@@ -9,11 +9,12 @@ import { apiFetch } from "../api/client";
 import { PROJECT_ID } from "../api/queries";
 import { CodeEditor, type EditorApi, type LintItem } from "./CodeEditor";
 import { CodeHelp } from "./CodeHelp";
+import { FileTree } from "./FileTree";
 import { KIND_LABEL, starter } from "./starters";
-import { SecretsPanel } from "./SecretsPanel";
 import { QueryStatus } from "../ui/QueryStatus";
-import { ThemeSwitcher } from "../theme/ThemeSwitcher";
 import type { FileOut, FileContent, FilesOut } from "../api/generated";
+import { confirmDialog, promptDialog, toast } from "../ui/dialog";
+import { PageHeader } from "../ui/PageHeader";
 
 
 
@@ -77,45 +78,59 @@ export function WorkspacePage() {
       setParams({ file: path });
     },
   });
-  const openPolicy = () => {
+  const openPolicy = async () => {
+    if (!(await leave())) return;
     if (files.data?.files.some((f) => f.path === POLICY)) setParams({ file: POLICY });
     else create.mutate({ path: POLICY, content: POLICY_TEMPLATE });
+  };
+  const move = useMutation({
+    mutationFn: ({ path, to }: { path: string; to: string }) =>
+      apiFetch<FileOut>(`${base()}/files-move`, { method: "POST", json: { path, to } }),
+    onSuccess: (out) => {
+      toast(`Moved to ${out.path}`);
+      setParams({ file: out.path });
+      void qc.invalidateQueries({ queryKey: ["files", PROJECT_ID] });
+      void qc.invalidateQueries({ queryKey: ["workspace-catalog"] });
+    },
+  });
+  const askMove = async () => {
+    if (!selected || !(await leave())) return;
+    const to = (await promptDialog({
+      title: "Rename or move the file", confirm: "Move",
+      body: "Steps and tools that use it by its old path stop finding it until you update them.",
+      input: { label: "New path", value: selected, required: true },
+    }))?.trim();
+    if (to && to !== selected) move.mutate({ path: selected, to });
   };
   const remove = useMutation({
     mutationFn: (path: string) => apiFetch(`${base()}/files/${enc(path)}`, { method: "DELETE" }),
     onSuccess: () => { setParams({}); void qc.invalidateQueries({ queryKey: ["files", PROJECT_ID] }); },
   });
   const dirty = draft !== null && draft !== file.data?.content;
+  // leaving a file with unsaved changes (another file, a new one, or closing the tab) asks first
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
+  const leave = async () => !dirty || await confirmDialog({
+    title: `Discard your changes to ${selected}?`, body: "They are not saved yet.", confirm: "Discard changes",
+    cancel: "Keep editing", danger: true,
+  });
+  const open = async (path: string) => { if (path !== selected && await leave()) setParams({ file: path }); };
   const doSave = () => { if (selected && draft !== null) save.mutate({ path: selected, content: draft }); };
-  const newFile = (path: string) => create.mutate({ path, content: starter(path) });
+  const newFile = async (path: string) => { if (await leave()) create.mutate({ path, content: starter(path) }); };
   const prefix = folder ? `${folder}/` : "";
-  const fileButton = (f: FileOut) => (
-    <li key={f.path}>
-      <button type="button" className={f.path === selected ? "active" : ""} onClick={() => setParams({ file: f.path })} title={f.path}>
-        {prefix && f.path.startsWith(prefix) ? f.path.slice(prefix.length) : f.path}
-      </button>
-    </li>
-  );
 
   return (
     <div className="page workspace-page">
-      <header className="topbar">
-        <Link to="/" className="brand">AgentCanvas</Link>
-        {workflowId ? (
-          <>
-            <span className="crumb">/ <Link to={`/workflows/${workflowId}`}>{workflow.data?.name ?? "workflow"}</Link> / Workspace</span>
-            <Link to={`/workflows/${workflowId}`} className="back-link" data-testid="back-to-workflow">
-              ← Back to {workflow.data?.name ?? "the workflow"}
-            </Link>
-          </>
-        ) : (
-          <><span className="crumb">/ Workspace</span><Link to="/" className="back-link" data-testid="back-home">← Back to workflows</Link></>
-        )}
-        <span className="spacer" /><ThemeSwitcher />
-      </header>
+      <PageHeader title="Workspace"
+        crumbs={workflowId ? [{ to: "/", label: "Workflows" }, { to: `/workflows/${workflowId}`, label: workflow.data?.name ?? "Workflow", testId: "back-to-workflow" }] : undefined}
+        description={workflowId ? "This workflow's own code (scripts, tools, custom blocks), next to the project's shared code." : "The project's code: scripts, tools, custom blocks and event handlers that workflows use."} />
       <div className="workspace-layout">
         <aside aria-label="workspace files">
-          <form className="row gap" onSubmit={(e) => { e.preventDefault(); if (newPath.trim()) newFile(newPath.trim()); }}>
+          <form className="row gap new-file" onSubmit={(e) => { e.preventDefault(); if (newPath.trim()) void newFile(newPath.trim()); }}>
             <input placeholder={`${prefix}scripts/new_step.py`} value={newPath} onChange={(e) => setNewPath(e.target.value)} aria-label="new file path" />
             <button type="submit">New file</button>
           </form>
@@ -126,17 +141,18 @@ export function WorkspacePage() {
             ))}
           </div>
           {create.error && <p className="error-text small">{(create.error as Error).message}</p>}
-          <button type="button" className="link" onClick={openPolicy}>Sandbox policy</button>
           <QueryStatus q={files} what="workspace files" />
           {folder && (
             <>
               <h4 className="tree-head">This workflow's code <span className="muted small">{folder}/</span></h4>
-              <ul className="file-tree" aria-label="this workflow's files">{own.map(fileButton)}</ul>
+              <FileTree label="this workflow's files" files={own} strip={prefix} selected={selected} onOpen={(path) => void open(path)} />
               <h4 className="tree-head">Shared code <span className="muted small">every workflow can use it</span></h4>
             </>
           )}
-          <ul className="file-tree" aria-label={folder ? "shared files" : "workspace files"}>{shared.map(fileButton)}</ul>
-          <SecretsPanel />
+          <FileTree label={folder ? "shared files" : "workspace files"} files={shared} selected={selected} onOpen={(path) => void open(path)} />
+          <p className="muted small secrets-moved">API keys and passwords for this code are under <Link to="/settings/secrets" data-testid="secrets-link">Settings › Secrets</Link>.
+            What it may reach is the sandbox policy: <Link to="/settings/sandbox">Settings › Sandbox</Link>, or
+            {" "}<button type="button" className="link" onClick={() => void openPolicy()} aria-label="Open the sandbox policy as a file">sandbox.json</button> as a file.</p>
         </aside>
         <section aria-label="editor">
           {selected && !file.data && <QueryStatus q={file} what={selected} />}
@@ -146,7 +162,8 @@ export function WorkspacePage() {
                 <code>{selected}</code>{dirty && <span className="badge warn">unsaved</span>}
                 <span className="spacer" />
                 <button type="button" className="primary" onClick={doSave} disabled={!dirty || save.isPending}>Save</button>
-                <button type="button" className="danger" onClick={() => { if (window.confirm(`Delete ${selected}?`)) remove.mutate(selected); }}>
+                <button type="button" onClick={() => void askMove()} disabled={move.isPending}>Rename / move…</button>
+                <button type="button" className="danger" onClick={async () => { if (await confirmDialog({ title: `Delete ${selected}?`, confirm: "Delete", danger: true })) remove.mutate(selected); }}>
                   Delete
                 </button>
               </div>
@@ -156,6 +173,8 @@ export function WorkspacePage() {
                 {diagnostics.length === 0 && <li className="muted">{selected.endsWith(".py") ? "ruff: no problems" : "no problems"}</li>}
               </ul>
               {save.error && <p className="error-text">{(save.error as Error).message}</p>}
+              {remove.error && <p className="error-text" role="alert">Could not delete {selected}: {(remove.error as Error).message}</p>}
+              {move.error && <p className="error-text" role="alert">Could not move {selected}: {(move.error as Error).message}</p>}
               {selected.endsWith(".py") && (
                 <CodeHelp workflowId={workflowId} path={selected} content={draft ?? file.data.content} diagnostics={diagnostics}
                   selection={() => editorApi.current?.selection() ?? ""} onAccept={(code) => editorApi.current?.setText(code)} />

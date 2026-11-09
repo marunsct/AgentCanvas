@@ -4,15 +4,17 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
 import { Link } from "react-router";
 import { apiFetch } from "../api/client";
-import type { ChunkOut, DocumentOut, KnowledgeBaseOut, SearchOut } from "../api/generated";
-import { PROJECT_ID } from "../api/queries";
+import type { ChunkOut, DocumentOut, KnowledgeBaseOut, RecrawlResult, SearchOut } from "../api/generated";
+import { PROJECT_ID, useEmbeddingModels } from "../api/queries";
 import { can } from "../api/session";
+import { ModelSelect } from "../ui/ModelSelect";
 import { QueryStatus } from "../ui/QueryStatus";
-import { ThemeSwitcher } from "../theme/ThemeSwitcher";
 import {
-  ACCEPT, blockSnippet, checkFiles, chunkingLabel, citation, embeddingLabel, MODES, type Mode, NAME_PATTERN, STRATEGIES,
-  suggestName,
+  ACCEPT, blockSnippet, checkFiles, chunkingLabel, citation, crawlSummary, embeddingLabel, MODES, type Mode, NAME_PATTERN,
+  RECRAWL_CHOICES, STRATEGIES, suggestName,
 } from "./knowledge";
+import { confirmDialog } from "../ui/dialog";
+import { PageHeader } from "../ui/PageHeader";
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -42,12 +44,8 @@ export function KnowledgePage() {
 
   return (
     <div className="page">
-      <header className="topbar"><Link to="/" className="brand">AgentCanvas</Link><span className="crumb">/ Knowledge</span><span className="spacer" /><ThemeSwitcher /></header>
-      <h2>Knowledge</h2>
-      <p className="muted">
-        Documents your workflows can search. Add files, web pages or text, then use a <strong>Search knowledge</strong> block
-        to find the passages that answer a question, with citations.
-      </p>
+      <PageHeader title="Knowledge" description={<>Documents your workflows can search. Add files, web pages or text, then use a <strong>Search knowledge</strong> block
+        to find the passages that answer a question, with citations.</>} />
       <QueryStatus q={kbs} what="knowledge bases" />
       {builder && (
         <div className="row gap wrap kb-create">
@@ -95,6 +93,7 @@ function KnowledgeBase({ kb, builder, onChange, onDeleted }: {
   const [url, setUrl] = useState("");
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
+  const [sitemap, setSitemap] = useState("");
   const [refused, setRefused] = useState<string[]>([]);
   const [adding, setAdding] = useState(kb.documents === 0);
   const done = () => { onChange(); void qc.invalidateQueries({ queryKey: ["knowledge", "docs", kb.id] }); };
@@ -110,6 +109,10 @@ function KnowledgeBase({ kb, builder, onChange, onDeleted }: {
     mutationFn: () => apiFetch<DocumentOut>(`${base}/documents/url`, { method: "POST", json: { url } }),
     onSuccess: () => { setUrl(""); done(); },
   });
+  const addSitemap = useMutation({
+    mutationFn: () => apiFetch<RecrawlResult>(`${base}/documents/sitemap`, { method: "POST", json: { url: sitemap } }),
+    onSuccess: () => { setSitemap(""); done(); },
+  });
   const addText = useMutation({
     mutationFn: () => apiFetch<DocumentOut>(`${base}/documents/text`, { method: "POST", json: { title, text } }),
     onSuccess: () => { setTitle(""); setText(""); done(); },
@@ -120,11 +123,18 @@ function KnowledgeBase({ kb, builder, onChange, onDeleted }: {
   });
   const reindex = useMutation({ mutationFn: () => apiFetch(`${base}/reindex`, { method: "POST" }), onSuccess: done });
   const settings = useMutation({
-    mutationFn: (chunking: Record<string, unknown>) => apiFetch(base, { method: "PATCH", json: { chunking } }),
+    mutationFn: (patch: { chunking?: Record<string, unknown>; embedding?: { model: string } }) =>
+      apiFetch(base, { method: "PATCH", json: patch }),
     onSuccess: done,
   });
+  const embedders = useEmbeddingModels();
+  const [editing, setEditing] = useState(false);
+  const about = useMutation({
+    mutationFn: (patch: { name: string; description: string }) => apiFetch(base, { method: "PATCH", json: patch }),
+    onSuccess: () => { setEditing(false); onChange(); },
+  });
   const drop = useMutation({ mutationFn: () => apiFetch(base, { method: "DELETE" }), onSuccess: onDeleted });
-  const failure = [upload, addUrl, addText, remove, reindex, settings, drop].find((m) => m.isError)?.error;
+  const failure = [upload, addUrl, addSitemap, addText, remove, reindex, settings, about, drop].find((m) => m.isError)?.error;
 
   const pick = (list: FileList | null) => {
     const files = Array.from(list ?? []);
@@ -139,20 +149,23 @@ function KnowledgeBase({ kb, builder, onChange, onDeleted }: {
         <h3 className="kb-title">{kb.name}</h3>
         <span className="muted small" data-testid="kb-counts">{kb.documents} documents · {kb.chunks} chunks</span>
         <span className="spacer" />
+        {builder && !editing && <button type="button" onClick={() => setEditing(true)}>Rename…</button>}
         {builder && (
           <button type="button" className="danger"
-            onClick={() => { if (window.confirm(`Delete the knowledge base ${kb.name} and its documents?`)) drop.mutate(); }}>
+            onClick={async () => { if (await confirmDialog({ title: `Delete the knowledge base ${kb.name}?`, body: "Its documents and their search index are deleted too.", confirm: "Delete", danger: true })) drop.mutate(); }}>
             Delete
           </button>
         )}
       </div>
-      {kb.description && <p className="muted">{kb.description}</p>}
+      {editing ? (
+        <AboutForm kb={kb} saving={about.isPending} onSave={(patch) => about.mutate(patch)} onCancel={() => setEditing(false)} />
+      ) : kb.description && <p className="muted">{kb.description}</p>}
       <p className="small muted">
         Embeddings: {embeddingLabel(kb)} · Chunks: {chunkingLabel(kb)} · In a workflow: <code>{blockSnippet(kb.name)}</code>
       </p>
       {kb.stale && (
         <div className="callout warn" role="status" data-testid="kb-stale">
-          The settings changed since the documents were split and embedded.{" "}
+          The settings changed since the documents were split and embedded: searches match keywords only until you reindex.{" "}
           {builder && <button type="button" onClick={() => reindex.mutate()} disabled={reindex.isPending}>{reindex.isPending ? "Reindexing…" : "Reindex"}</button>}
         </div>
       )}
@@ -178,6 +191,16 @@ function KnowledgeBase({ kb, builder, onChange, onDeleted }: {
                 <button type="submit" disabled={!url || addUrl.isPending}>Add page</button>
               </div>
             </form>
+            <form className="column gap" onSubmit={(e) => { e.preventDefault(); if (sitemap) addSitemap.mutate(); }}>
+              <span>Add every page of a sitemap</span>
+              <div className="row gap">
+                <input aria-label="sitemap address" placeholder="https://…/sitemap.xml" value={sitemap}
+                  onChange={(e) => setSitemap(e.target.value)} />
+                <button type="submit" disabled={!sitemap || addSitemap.isPending}>
+                  {addSitemap.isPending ? "Reading pages…" : "Add pages"}
+                </button>
+              </div>
+            </form>
             <form className="column gap" onSubmit={(e) => { e.preventDefault(); if (title && text) addText.mutate(); }}>
               <span>Paste text</span>
               <input aria-label="text title" placeholder="Title" value={title} onChange={(e) => setTitle(e.target.value)} />
@@ -188,19 +211,27 @@ function KnowledgeBase({ kb, builder, onChange, onDeleted }: {
           <div className="row gap wrap small">
             <span>Split documents</span>
             <select aria-label="chunking strategy" value={kb.chunking.strategy}
-              onChange={(e) => settings.mutate({ ...kb.chunking, strategy: e.target.value })}>
+              onChange={(e) => settings.mutate({ chunking: { ...kb.chunking, strategy: e.target.value } })}>
               {STRATEGIES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
             </select>
             <span>about</span>
             <select aria-label="chunk size" value={size}
-              onChange={(e) => settings.mutate({ ...kb.chunking, size: Number(e.target.value) })}>
+              onChange={(e) => settings.mutate({ chunking: { ...kb.chunking, size: Number(e.target.value) } })}>
               {[200, 400, 800, 1200, 2000].map((n) => <option key={n} value={n}>{n}</option>)}
               {![200, 400, 800, 1200, 2000].includes(size) && <option value={size}>{size}</option>}
             </select>
             <span>characters each</span>
           </div>
+          <div className="row gap wrap small">
+            <span>Embed with</span>
+            <ModelSelect label="embedding model" options={embedders.data} loading={embedders.isPending}
+              value={String(kb.embedding.model ?? "builtin")} onChange={(model) => settings.mutate({ embedding: { model } })} />
+            <Link className="small" to="/settings/models">Set up more models…</Link>
+          </div>
         </details>
       )}
+
+      <Recrawl kb={kb} base={base} builder={builder} onChange={done} />
 
       <QueryStatus q={docs} what="documents" />
       <table className="memory-table">
@@ -208,12 +239,88 @@ function KnowledgeBase({ kb, builder, onChange, onDeleted }: {
         <tbody>
           {docs.data?.map((d) => (
             <DocumentRow key={d.id} doc={d} base={base} open={open === d.id} builder={builder}
-              onToggle={() => setOpen(open === d.id ? null : d.id)} onRemove={() => remove.mutate(d.id)} />
+              onToggle={() => setOpen(open === d.id ? null : d.id)} onRemove={async () => {
+                if (await confirmDialog({ title: `Remove ${d.name}?`, body: "Its passages are taken out of the search index.", confirm: "Remove", danger: true })) remove.mutate(d.id);
+              }} />
           ))}
         </tbody>
       </table>
     </section>
   );
+}
+
+/** Keep a knowledge base's web pages and sitemaps up to date: how often they are fetched again, and now. */
+function Recrawl({ kb, base, builder, onChange }: { kb: KnowledgeBaseOut; base: string; builder: boolean; onChange: () => void }) {
+  const hours = kb.recrawl.every_hours ?? null;
+  const last = kb.recrawl.last ?? null;
+  const set = useMutation({
+    mutationFn: (every_hours: number | null) => apiFetch(`${base}/recrawl`, { method: "PUT", json: { every_hours } }),
+    onSuccess: onChange,
+  });
+  const now = useMutation({ mutationFn: () => apiFetch<RecrawlResult>(`${base}/recrawl`, { method: "POST" }), onSuccess: onChange });
+  if (hours === null && !last && (!builder || kb.documents === 0)) return null;
+  const error = set.error ?? now.error;
+  const named = RECRAWL_CHOICES.find((c) => c.hours === hours)?.label ?? `Every ${hours} hours`;
+  return (
+    <div className="row gap wrap small kb-recrawl" data-testid="kb-recrawl">
+      <span>Fetch web pages again</span>
+      {builder ? (
+        <select aria-label="re-crawl interval" value={hours ?? ""} disabled={set.isPending}
+          onChange={(e) => set.mutate(e.target.value ? Number(e.target.value) : null)}>
+          {RECRAWL_CHOICES.map((c) => <option key={c.label} value={c.hours ?? ""}>{c.label}</option>)}
+          {hours !== null && !RECRAWL_CHOICES.some((c) => c.hours === hours) && <option value={hours}>{named}</option>}
+        </select>
+      ) : <strong>{named}</strong>}
+      {builder && <button type="button" onClick={() => now.mutate()} disabled={now.isPending}>{now.isPending ? "Fetching…" : "Fetch now"}</button>}
+      <span className="muted" data-testid="kb-crawl-last">
+        {last ? `Last: ${crawlSummary(last)}` : crawlSummary(null)}
+      </span>
+      {kb.recrawl.sitemaps.length > 0 && <span className="muted">Sitemaps: {kb.recrawl.sitemaps.join(", ")}</span>}
+      {error != null && <span className="error-box" role="alert">{errorText(error)}</span>}
+    </div>
+  );
+}
+
+/** The name and description. A Search knowledge block finds the knowledge base by name, so a rename says so. */
+function AboutForm({ kb, saving, onSave, onCancel }: {
+  kb: KnowledgeBaseOut; saving: boolean; onSave: (patch: { name: string; description: string }) => void; onCancel: () => void;
+}) {
+  const [name, setName] = useState(kb.name);
+  const [description, setDescription] = useState(kb.description);
+  const next = suggestName(name);
+  return (
+    <form className="column gap kb-about" aria-label="name and description"
+      onSubmit={(e) => { e.preventDefault(); if (NAME_PATTERN.test(next)) onSave({ name: next, description: description.trim() }); }}>
+      <label className="column gap">
+        <span>Name</span>
+        <input aria-label="knowledge base name" value={name} onChange={(e) => setName(e.target.value)} />
+      </label>
+      {next !== kb.name && NAME_PATTERN.test(next) && (
+        <span className="muted small" data-testid="kb-rename-hint">
+          Saved as {next}. Search knowledge blocks that name {kb.name} need the new name.
+        </span>
+      )}
+      <label className="column gap">
+        <span>Description</span>
+        <textarea aria-label="knowledge base description" rows={2} maxLength={2000} value={description}
+          onChange={(e) => setDescription(e.target.value)} />
+      </label>
+      <div className="row gap">
+        <button type="submit" className="primary" disabled={!NAME_PATTERN.test(next) || saving}>Save</button>
+        <button type="button" onClick={onCancel}>Cancel</button>
+      </div>
+    </form>
+  );
+}
+
+/** A web page's host, or null when the stored address is not an http(s) URL (`new URL` threw: the error page). */
+function hostOf(url: string): string | null {
+  try {
+    const u = new URL(url);
+    return u.protocol === "http:" || u.protocol === "https:" ? u.hostname : null;
+  } catch {
+    return null;
+  }
 }
 
 function DocumentRow({ doc, base, open, builder, onToggle, onRemove }: {
@@ -224,11 +331,14 @@ function DocumentRow({ doc, base, open, builder, onToggle, onRemove }: {
     queryFn: () => apiFetch<ChunkOut[]>(`${base}/documents/${doc.id}/chunks`),
     enabled: open,
   });
+  const host = doc.url ? hostOf(doc.url) : null;
   return (
     <>
       <tr data-testid="kb-document">
         <td><button type="button" className="link" aria-expanded={open} onClick={onToggle}>{doc.name}</button></td>
-        <td className="muted small">{doc.url ? <a href={doc.url} target="_blank" rel="noreferrer">{new URL(doc.url).hostname}</a> : doc.source}</td>
+        <td className="muted small">
+          {host ? <a href={doc.url!} target="_blank" rel="noreferrer">{host}</a> : doc.url || doc.source}
+        </td>
         <td>{doc.chunks}</td>
         <td>{builder && <button type="button" aria-label={`remove ${doc.name}`} onClick={onRemove}>Remove</button>}</td>
       </tr>

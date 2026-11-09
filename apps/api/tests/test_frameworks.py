@@ -182,7 +182,7 @@ def test_engine_is_left_out_of_the_json_when_unset():
     wf = Workflow.model_validate({"id": "wf_x", "name": "x", "ir_version": "1.1", "nodes": [
         {"id": "n_a", "type": "core.set", "name": "a", "config": {"values": {"x": "1"}}}]})  # fmt: skip
     dumped = wf.model_dump(mode="json")
-    assert dumped["ir_version"] == "1.2" and "engine" not in dumped["nodes"][0]
+    assert dumped["ir_version"] == "1.3" and "engine" not in dumped["nodes"][0]
     with_engine = Workflow.model_validate({**dumped, "nodes": [{**dumped["nodes"][0], "engine": "echo"}]})
     assert with_engine.model_dump(mode="json")["nodes"][0]["engine"] == "echo"
 
@@ -198,3 +198,25 @@ def test_per_workflow_scripts_go_to_the_sandbox():
     script_node(import_path="scripts.shout:run", resources=res)
     assert calls == ["flows.wf_abc.scripts.shout:run", "scripts.shout:run"]
     assert is_script_path("flows.wf_abc.scripts.x:run") and not is_script_path("flows.wf_abc.tools.x:look")
+
+
+async def test_echo_keeps_a_pause_when_its_continuation_fails(two):
+    """R-4: Echo dropped the paused state before running the continuation, so a continuation that failed left
+    "nothing to resume on this conversation" and the question could not be answered again."""
+    wf = (await two.post(P, json={"name": "Echo pause"})).json()
+    ir = {**wf["ir"], "framework": "echo",
+          "state": {"channels": [{"name": "who"}, {"name": "ok", "type": {"type": "object"}}]},
+          "nodes": [{"id": "n_ok", "type": "core.approval", "name": "check", "config": {"show": "who", "output": "ok"}},
+                    {"id": "n_bad", "type": "core.script", "name": "bad",
+                     "config": {"import_path": "scripts.missing:run"}}],
+          "edges": [{"id": "e1", "kind": "flow", "source": {"node": "START"}, "target": {"node": "n_ok"}},
+                    {"id": "e2", "kind": "flow", "source": {"node": "n_ok"}, "target": {"node": "n_bad"}},
+                    {"id": "e3", "kind": "flow", "source": {"node": "n_bad"}, "target": {"node": "END"}}]}  # fmt: skip
+    r = await two.put(f"/v1/workflows/{wf['id']}", json={"ir": ir}, headers={"If-Match": str(wf["version"])})
+    assert r.status_code == 200, r.text
+    run = await two.post(f"/v1/workflows/{wf['id']}/runs/stream", json={"input": {"who": "Ada"}, "thread_id": "th_ep"})
+    assert events(run.text)[-1]["status"] == "interrupted"
+    for _ in range(2):  # answering again after a failure reaches the continuation again
+        r = await two.post("/v1/threads/th_ep/resume", json={"value": {"approved": True}})
+        last = events(r.text)[-1]
+        assert last["type"] == "RUN_ERROR" and "nothing to resume" not in last["message"], last

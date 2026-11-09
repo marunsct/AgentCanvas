@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from collections.abc import Iterator
 from functools import cache
 
@@ -12,18 +11,10 @@ from jsonschema import Draft202012Validator
 
 from agentcanvas.expr import ExpressionError, check_condition
 from agentcanvas.ir.models import SECRET_NAME
-from agentcanvas.validation.analysis import iter_formatted, iter_strings
-from agentcanvas.validation.engine import Diagnostic, ValidationContext, error, rule
+from agentcanvas.validation.analysis import SECRET_PATTERNS, iter_formatted, iter_strings, plain_secrets
+from agentcanvas.validation.engine import Diagnostic, ValidationContext, error, rule, warning
 
 _jinja = SandboxedEnvironment()
-SECRET_PATTERNS = [
-    re.compile(r"\bsk-(?:ant-|proj-)?[A-Za-z0-9_\-]{20,}"),  # OpenAI / Anthropic style keys
-    re.compile(r"\bAKIA[0-9A-Z]{16}\b"),  # AWS access key id
-    re.compile(r"\bgh[pousr]_[A-Za-z0-9]{36,}\b"),  # GitHub tokens
-    re.compile(r"\bxox[abprs]-[A-Za-z0-9-]{10,}"),  # Slack tokens
-    re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
-    re.compile(r"\bAIza[0-9A-Za-z_\-]{35}\b"),  # Google API key
-]
 
 
 @cache
@@ -113,6 +104,22 @@ def no_secret_literals(ctx: ValidationContext) -> Iterator[Diagnostic]:
                     path=path,
                     hint='store it as a project secret and reference it as {"$secret": "NAME"}',
                 )
+
+
+@rule
+def plain_text_keys(ctx: ValidationContext) -> Iterator[Diagnostic]:
+    """W021: a header or environment value that looks like a key, typed in: runs work, exports refuse it."""
+    for el in [*ctx.wf.nodes, *ctx.wf.resources]:
+        for key, name in plain_secrets(el.config):
+            what = "header" if key == "headers" else "environment variable"
+            yield warning(
+                "W021",
+                f"'{el.name}': the {what} {name} is typed in as plain text; an export would carry it, so exports "
+                "refuse it",
+                node_id=el.id,
+                path=f"config.{key}.{name}",
+                hint='store it as a project secret and reference it as {"$secret": "NAME"}',
+            )
 
 
 def _secret_refs(value: object, path: str = "config") -> Iterator[tuple[str, object]]:

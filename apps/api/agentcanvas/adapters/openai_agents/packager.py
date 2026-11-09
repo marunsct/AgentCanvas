@@ -24,7 +24,9 @@ from agentcanvas.adapters.langchain.packager import (
 )
 from agentcanvas.adapters.openai_agents.codegen import SDK_VERSION
 from agentcanvas.errors import InvalidInput
-from agentcanvas.ir.models import Workflow
+from agentcanvas.ir.models import Workflow, budget_gap
+from agentcanvas.tomltext import toml_string
+from agentcanvas.validation.analysis import refuse_plain_secrets
 from agentcanvas.workspace import bundle
 
 API_ROOT = Path(__file__).parents[2]  # the `agentcanvas` package directory
@@ -62,7 +64,7 @@ def _pyproject(wf: Workflow, pkg: str, version: str, extra: list[str]) -> str:
     return f'''[project]
 name = "{pkg.replace("_", "-")}"
 version = "{version}"
-description = {json.dumps(f"{wf.name} — an OpenAI Agents SDK flow exported from AgentCanvas")}
+description = {toml_string(f"{wf.name} — an OpenAI Agents SDK flow exported from AgentCanvas")}
 requires-python = ">=3.12,<3.15"
 dependencies = [
 {deps}]
@@ -359,6 +361,7 @@ def package(
     version: str = "0.0.0",
 ) -> tuple[str, bytes]:
     """(file name, zip bytes) of the standalone project for `wf`, whose generated flow is `source`."""
+    refuse_plain_secrets(wf)
     pkg = package_name(wf.name)
     root = f"{pkg.replace('_', '-')}-openai-agents"
     models = model_specs(wf)
@@ -387,6 +390,8 @@ def package(
         "tests/test_flow.py": TESTS.format(pkg=pkg),
         "tests/test_cases.json": json.dumps(_exportable_cases(wf, test_cases or []), indent=2) + "\n",
     }
+    if gap := budget_gap(wf, "an OpenAI Agents SDK flow"):  # the AgentCanvas runner enforces it; the flow does not
+        files["GAPS.md"] = f"# What runs differently in an OpenAI Agents SDK flow\n\n- {gap}\n"
     for rel in RUNTIME_FILES:
         files[f"src/agentcanvas/{rel}"] = (API_ROOT / rel).read_bytes()
     for rel in found.files if found else []:

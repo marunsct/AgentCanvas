@@ -39,7 +39,7 @@
 
 > **v0.2 delta:** persistence, Data Studio and self-improvement scope is sequenced into these phases in [10-improvement-plan.md §3](./10-improvement-plan.md#3-updated-delivery-sequencing-delta-to-doc-06). Add ~2 engineers (data modelling/codegen, persistence/data plane) and ~0.5 ML engineer (learning loops) to the team below.
 
-> **v0.4 delta:** multi-framework ordering and staffing now follow [doc 12 Part D](./12-multi-framework-technical-spec.md#part-d--detailed-delivery-plan) (source-verified).
+> **v0.4 delta:** multi-framework ordering and staffing now follow [doc 12 Part D](./12-multi-framework-technical-spec.md#part-d-detailed-delivery-plan) (source-verified).
 
 > **v0.3 delta:** framework-agnostic foundations (Core IR/dialect split, Adapter SPI, canonical events, import-boundary CI — ≈15 % of R1 effort) are built in Phases 0–1; black-box framework interop ships with GA; full adapters for OpenAI Agents SDK → Google ADK → Microsoft Agent Framework → CrewAI / Pydantic AI / LlamaIndex / Mastra follow in Phase 3+. See [doc 11 §5](./11-framework-agnostic-plan.md#5-phased-plan-to-extend-support).
 

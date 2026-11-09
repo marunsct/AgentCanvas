@@ -121,6 +121,11 @@ async def test_runs_are_added_by_hand(app, api_client, reviewers):
         url = f"/v1/annotation-queues/{aq['id']}/items"
         added = await api_client.post(url, json={"run_ids": [run["run_id"], run["run_id"]]})
         assert added.status_code == 200 and [i["reason"] for i in added.json()] == ["manual"]
+        review = {"scores": {"helpful": 4, "on topic": 2}}
+        r = await api_client.post(f"/v1/annotation-items/{added.json()[0]['id']}/annotations", json=review)
+        assert r.status_code == 200, r.text
+        [again] = (await api_client.post(url, json={"run_ids": [run["run_id"]]})).json()  # E-12: said 0 reviews
+        assert again["reviews"] == 1 and again["reviewed_by_me"]
         assert (await api_client.post(url, json={"run_ids": ["run_nope"]})).status_code == 404
         assert (await api_client.delete(f"/v1/annotation-items/{added.json()[0]['id']}")).status_code == 403
         assert (await api_client.patch(f"/v1/annotation-queues/{aq['id']}", json={"name": "x"})).status_code == 403
@@ -130,10 +135,39 @@ async def test_runs_are_added_by_hand(app, api_client, reviewers):
         f"/v1/annotation-queues/{aq['id']}", json={"rules": {"failed": True}, "instructions": "be kind"}
     )
     assert patched.json()["rules"]["failed"] and patched.json()["instructions"] == "be kind"
-    [item] = (await api_client.get(f"/v1/annotation-queues/{aq['id']}/items")).json()
+    [item] = (await api_client.get(f"/v1/annotation-queues/{aq['id']}/items", params={"status": "all"})).json()
     assert (await api_client.delete(f"/v1/annotation-items/{item['id']}")).status_code == 204
     assert (await api_client.delete(f"/v1/annotation-queues/{aq['id']}")).status_code == 204
     assert (await api_client.get(f"/v1/workflows/{wf}/annotation-queues")).json() == []
+
+
+async def test_a_correction_the_dataset_refuses_saves_no_review_either(app, api_client, reviewers):
+    """C-12: the review was committed before the example was checked; a 422 then left a review the reviewer was
+    told had failed."""
+    wf, dep, key, _ = await deployed(api_client)
+    aq = await queue(api_client, wf)
+    run = await call(app, api_client, dep, key)
+    [item] = (
+        await api_client.post(f"/v1/annotation-queues/{aq['id']}/items", json={"run_ids": [run["run_id"]]})
+    ).json()
+    ds = await new_dataset(api_client, wf)
+    cur = (await api_client.get(f"/v1/workflows/{wf}")).json()
+    ir = cur["ir"]
+    ir["state"]["channels"][0]["name"] = "person"  # the run's input `who` is no longer an input of the workflow
+    ir["nodes"][0]["config"]["values"]["out"] = "Hello {{ state.person }}"
+    r = await api_client.put(f"/v1/workflows/{wf}", json={"ir": ir}, headers={"If-Match": str(cur["version"])})
+    assert r.status_code == 200, r.text
+    act_as(app, "usr_rev1")
+    try:
+        url = f"/v1/annotation-items/{item['id']}/annotations"
+        fix = {"dataset_id": ds["id"], "reference": {"out": "Hello Ada"}}
+        refused = await api_client.post(url, json={"scores": {"helpful": 2, "on topic": 2}, "add_to_dataset": fix})
+        assert refused.status_code == 422 and "'who' is not an input" in refused.json()["detail"], refused.text
+        detail = (await api_client.get(f"/v1/annotation-items/{item['id']}")).json()
+        assert detail["annotations"] == [] and not detail["reviewed_by_me"]
+    finally:
+        app.dependency_overrides.pop(current_user)
+    assert (await api_client.get(f"/v1/datasets/{ds['id']}")).json()["items"] == []
 
 
 async def test_queues_are_org_scoped(app, api_client, org_b):  # noqa: F811

@@ -23,7 +23,7 @@ export interface CanvasData extends Record<string, unknown> {
   preview?: string; // tail of the streamed tokens (M4-T3)
   metrics?: string; // "1.2k tok · $0.003 · 850 ms" for the last run (M4-T11)
   pinned?: boolean; // debug runs replay a pinned output (M4-T9)
-  diff?: "added" | "changed"; // compared with a saved version (M6-T1)
+  diff?: "added" | "changed" | "removed"; // compared with a saved version (M6-T1), or a proposal's preview
   blast?: { effects: string[]; ungated: boolean }; // blast-radius overlay (FR-X-02)
   framework?: FrameworkBadge; // agents from other frameworks, remote (A2A) and MCP agents (S16)
 }
@@ -34,7 +34,7 @@ export interface FlowExtras {
   output?: Record<string, string>;
   metrics?: Record<string, NodeMetrics>;
   pins?: Record<string, unknown>;
-  diff?: { added: string[]; changed: string[] } | null;
+  diff?: { added: string[]; changed: string[]; removed?: string[] } | null;
   blast?: Record<string, { effects: string[]; ungated: boolean }> | null;
 }
 
@@ -46,8 +46,18 @@ export const PORT_COLORS: Record<string, string> = {
 const COL_W = 260;
 const ROW_H = 130;
 
+/** The last autoPositions() answer: it is O(nodes × edges), and the canvas recomputes ~8 times a second while streaming. */
+let lastAuto: { nodes: WF["nodes"]; edges: WF["edges"]; resources: WF["resources"]; out: Layout } | null = null;
+
 /** Default positions for elements without a saved layout: columns by distance from START. */
 function autoPositions(wf: WF): Layout {
+  if (lastAuto && lastAuto.nodes === wf.nodes && lastAuto.edges === wf.edges && lastAuto.resources === wf.resources) return lastAuto.out;
+  const out = computeAutoPositions(wf);
+  lastAuto = { nodes: wf.nodes, edges: wf.edges, resources: wf.resources, out };
+  return out;
+}
+
+function computeAutoPositions(wf: WF): Layout {
   const depth = new Map<string, number>([["START", 0]]);
   const flow = wf.edges.filter((e) => e.kind === "flow");
   for (let changed = true, guard = 0; changed && guard < wf.nodes.length + 2; guard++) {
@@ -72,8 +82,10 @@ function autoPositions(wf: WF): Layout {
   place("START", 0);
   wf.nodes.forEach((n) => place(n.id, depth.get(n.id) ?? 1));
   place("END", depth.get("END") ?? maxDepth + 1);
+  const consumers = new Map<string, string>(); // resource id -> the first node it is wired into
+  for (const e of wf.edges) if (e.kind === "wiring" && !consumers.has(e.source.node)) consumers.set(e.source.node, e.target.node);
   wf.resources.forEach((r, i) => {
-    const consumer = wf.edges.find((e) => e.kind === "wiring" && e.source.node === r.id)?.target.node;
+    const consumer = consumers.get(r.id);
     const base = consumer ? out[consumer] : undefined;
     out[r.id] = base ? { x: base.x - 40 + (i % 3) * 30, y: base.y + ROW_H * 1.6 + (i % 2) * 50 } : { x: i * 200, y: ROW_H * 4 };
   });
@@ -93,6 +105,7 @@ export function irToFlow(
   const bp = new Set(extras.breakpoints ?? []);
   const added = new Set(extras.diff?.added ?? []);
   const changed = new Set(extras.diff?.changed ?? []);
+  const removed = new Set(extras.diff?.removed ?? []);
   const auto = autoPositions(wf);
   const placed = (id: string) => layout[id] ?? auto[id] ?? { x: 0, y: 0 };
   // START/END without a saved position sit left/right of whatever the user placed, never on top of it
@@ -104,7 +117,14 @@ export function irToFlow(
     return id === "START" ? { x: Math.min(...xs) - 240, y } : { x: Math.max(...xs) + 300, y };
   };
   const pos = (id: string) => (id === "START" || id === "END" ? terminalPos(id) : placed(id));
-  const count = (id: string, sev: string) => diagnostics.filter((d) => d.node_id === id && d.severity === sev).length;
+  const counts = new Map<string, { error: number; warning: number }>(); // diagnostics by element, counted once
+  for (const d of diagnostics) {
+    if (!d.node_id || (d.severity !== "error" && d.severity !== "warning")) continue;
+    const c = counts.get(d.node_id) ?? { error: 0, warning: 0 };
+    c[d.severity] += 1;
+    counts.set(d.node_id, c);
+  }
+  const resources = new Map(wf.resources.map((r) => [r.id, r]));
 
   const element = (el: IRNode | IRResource, kind: "node" | "resource"): Node<CanvasData> => {
     const manifest = manifests.get(el.type);
@@ -116,12 +136,12 @@ export function irToFlow(
       data: {
         kind, manifest, type: el.type, name: el.name, label: el.label || manifest?.label || el.name,
         routes: kind === "node" && manifest?.dynamic_outputs === "routes" ? routesOf(el as IRNode) : undefined,
-        errors: count(el.id, "error"), warnings: count(el.id, "warning"), status: status[el.id] ?? "idle",
+        errors: counts.get(el.id)?.error ?? 0, warnings: counts.get(el.id)?.warning ?? 0, status: status[el.id] ?? "idle",
         disabled: kind === "node" && Boolean((el as IRNode).disabled),
         breakpoint: bp.has(el.id), highlight: hl.has(el.id), pinned: Boolean(extras.pins?.[el.id]),
         preview: extras.output?.[el.id] ? extras.output[el.id].slice(-120) : undefined,
         metrics: extras.metrics?.[el.id] ? formatMetrics(extras.metrics[el.id]) || undefined : undefined,
-        diff: added.has(el.id) ? "added" : changed.has(el.id) ? "changed" : undefined,
+        diff: added.has(el.id) ? "added" : changed.has(el.id) ? "changed" : removed.has(el.id) ? "removed" : undefined,
         blast: extras.blast?.[el.id],
         framework: kind === "node" ? frameworkBadge(el.type, (el as IRNode).config) : undefined,
       },
@@ -137,12 +157,12 @@ export function irToFlow(
 
   const edges: Edge[] = wf.edges.map((e) => {
     if (e.kind === "wiring") {
-      const src = wf.resources.find((r) => r.id === e.source.node);
+      const src = resources.get(e.source.node);
       const out = outputPort(manifests.get(src?.type ?? ""), e.source.port);
       const color = PORT_COLORS[out?.type ?? ""] ?? "#8b5cf6";
       return {
         id: e.id, source: e.source.node, target: e.target.node, sourceHandle: out?.name ?? e.source.port ?? null,
-        targetHandle: e.target.port ?? null, className: "edge-wiring", data: { kind: "wiring" },
+        targetHandle: e.target.port ?? null, className: `edge-wiring${removed.has(e.id) ? " edge-removed" : ""}`, data: { kind: "wiring" },
         style: { stroke: color, strokeDasharray: "5 4", strokeWidth: 1.5 },
       };
     }
@@ -151,9 +171,19 @@ export function irToFlow(
     const active = status[e.source.node] === "ok" && ["running", "ok", "interrupted"].includes(status[e.target.node] ?? "");
     return {
       id: e.id, source: e.source.node, target: e.target.node, sourceHandle: e.source.port ?? "next", targetHandle: "in",
-      label: route, className: "edge-flow", animated: active, data: { kind: e.kind },
+      label: route, className: `edge-flow${removed.has(e.id) ? " edge-removed" : ""}`, animated: active, data: { kind: e.kind },
       style: { strokeWidth: 2, stroke: active ? "#22c55e" : "var(--flow)" },
     };
   });
   return { nodes, edges };
+}
+
+/** Equal for the canvas: the same values, with arrays and plain objects compared by their contents. */
+export function sameData(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (Array.isArray(a) && Array.isArray(b)) return a.length === b.length && a.every((x, i) => sameData(x, b[i]));
+  if (!a || !b || typeof a !== "object" || typeof b !== "object" || Array.isArray(a) || Array.isArray(b)) return false;
+  if (Object.getPrototypeOf(a) !== Object.prototype || Object.getPrototypeOf(b) !== Object.prototype) return false;
+  const ka = Object.keys(a), kb = Object.keys(b);
+  return ka.length === kb.length && ka.every((k) => sameData((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]));
 }

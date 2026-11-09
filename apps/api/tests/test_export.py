@@ -8,6 +8,7 @@ import os
 import subprocess
 import sys
 import zipfile
+from typing import Any
 
 from test_versions import HIGH_CASE, new_triage
 
@@ -44,6 +45,21 @@ def test_package_metadata(triage):
     assert "OPENAI_API_KEY=" in env and "ANTHROPIC_API_KEY=" in env and "CRM_TOKEN=" in env
 
 
+def test_the_image_builds_from_the_same_bytes_every_time(triage):
+    """Base images by version and digest, and the packages from uv.lock when the project has one (X-7)."""
+    import re
+
+    files = deploykit.files(triage, deploykit.facts(triage, "triage", "1.0.0"), deploykit.TARGETS["server"])
+    images = re.findall(r"^FROM (\S+)", files["Dockerfile"], re.M) + re.findall(r"--from=(\S+)", files["Dockerfile"])
+    images += re.findall(r"^\s+image: (\S+)", files["deploy/server/docker-compose.yml"], re.M)
+    pinned = re.compile(r"^[\w./-]+:v?\d+\.\d+[\w.-]*@sha256:[0-9a-f]{64}$")  # a patch release: 16.15, 3.12.16
+    assert [i for i in images if not pinned.match(i) and i != "triage:latest"] == [] and len(images) == 5
+    assert "COPY pyproject.toml uv.lock* ./" in files["Dockerfile"]
+    assert "uv sync --no-dev --no-install-project $([ -f uv.lock ] && echo --locked)" in files["Dockerfile"]
+    setup = files["Makefile"].split("\nsetup:")[1].split("\n\n")[0]
+    assert "uv lock" in setup
+
+
 def test_names_and_labels_cannot_inject_code(triage):
     """Free text lands in comments and docstrings of generated code: a line break must not end them."""
     import ast
@@ -68,6 +84,46 @@ def test_names_and_labels_cannot_inject_code(triage):
         readme = z.read(next(n for n in z.namelist() if n.endswith("README.md"))).decode()
     assert doc == 'Triage """x import os; os.system(\'id\')  # (exported from AgentCanvas).'
     assert readme.splitlines()[0] == '# Triage """x import os; os.system(\'id\')  #'
+
+
+def test_a_resource_named_like_a_helper_keeps_its_name():
+    """A tool named `<router>_route` or `<map>_fan_out` stayed a tool: the generated helpers have names no block can
+    have, so the agent is not handed the router's function in its place (X-3)."""
+    import ast
+
+    from agentcanvas.adapters.langchain.codegen import generate
+
+    def flow(src, dst, port=None):
+        return {"id": f"e_{src}_{dst}", "kind": "flow", "source": {"node": src, "port": port}, "target": {"node": dst}}
+
+    wf = Workflow.model_validate({
+        "id": "wf_names", "name": "Names",
+        "state": {"channels": [{"name": "messages", "type": {"type": "array"}, "reducer": "add_messages"},
+                               {"name": "q", "type": {"type": "string"}},
+                               {"name": "items", "type": {"type": "array"}, "default": []}]},
+        "resources": [
+            {"id": "r_model", "type": "model.chat", "name": "model", "config": {"model": "openai:gpt-5.5"}},
+            *({"id": rid, "type": "tool.python", "name": name, "config": {"import_path": "examples.tools:send_reply"}}
+              for rid, name in (("r_r", "pick_route"), ("r_m", "each_fan_out"))),
+        ],
+        "nodes": [
+            {"id": "n_pick", "type": "core.router", "name": "pick",
+             "config": {"cases": [{"when": 'state.q == "a"', "route": "a"}], "default": "default"}},
+            {"id": "n_each", "type": "core.map", "name": "each",
+             "config": {"items": "items", "item": "q", "carry": []}},
+            {"id": "n_agent", "type": "core.agent", "name": "agent", "config": {"system_prompt": "x"}},
+        ],
+        "edges": [
+            flow("START", "n_pick"), flow("n_pick", "n_each", "route:a"), flow("n_pick", "END", "route:default"),
+            flow("n_each", "n_agent", "each"), flow("n_each", "END", "empty"), flow("n_agent", "END"),
+            *({"id": f"w_{r}", "kind": "wiring", "source": {"node": r}, "target": {"node": "n_agent", "port": port}}
+              for r, port in (("r_model", "model"), ("r_r", "tools"), ("r_m", "tools"))),
+        ],
+    })  # fmt: skip
+    build = next(f for f in ast.parse(generate(wf)).body if isinstance(f, ast.FunctionDef) and f.name == "build_graph")
+    assigned = [t.id for s in build.body if isinstance(s, ast.Assign) for t in s.targets if isinstance(t, ast.Name)]
+    assert len(assigned) == len(set(assigned)), assigned
+    assert {"pick_route", "each_fan_out"} <= set(assigned)
 
 
 async def test_export_zip_runs_its_own_tests(app, api_client, tmp_path):
@@ -180,6 +236,105 @@ async def test_deploy_kit_for_every_target(api_client, tmp_path):
     assert "API_KEYS=\n" not in (tmp_path / "local/triage/.env").read_text()
 
 
+async def test_the_deploy_kit_stops_a_run_at_the_workflow_budget():
+    """settings.budget was dropped by the export: the service now gets the per-run limits (kit.json) and a callback
+    that counts each reply's tokens and prices them from the vendored catalog, as the AgentCanvas runner does."""
+    import pytest
+    from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
+    from langchain_core.messages import AIMessage
+
+    from agentcanvas.adapters.langchain.packager import RUNTIME_FILES
+    from agentcanvas.adapters.langchain.spend import BudgetExceeded, SpendLimit, call_price
+
+    assert "adapters/langchain/spend.py" in RUNTIME_FILES
+    template = (deploykit.KIT_DIR / "app.py.tmpl").read_text()
+    assert "SpendLimit(BUDGET)" in template and "budget_exceeded" in template
+
+    def model(tokens: int) -> GenericFakeChatModel:
+        usage = {"input_tokens": tokens, "output_tokens": 100, "total_tokens": tokens + 100}
+        replies = iter([AIMessage(content="ok", usage_metadata=usage)] * 5)  # type: ignore[arg-type]
+        return GenericFakeChatModel(messages=replies, metadata={"ac_model": "anthropic:claude-opus-5-5"})
+
+    spend = SpendLimit({"max_tokens": 2500})
+    await model(1000).ainvoke("hi", config={"callbacks": [spend]})
+    await model(1000).ainvoke("hi", config={"callbacks": [spend]})
+    assert spend.tokens == 2200 and spend.over is None
+    with pytest.raises(BudgetExceeded, match=r"3300 of 2500"):
+        await model(1000).ainvoke("hi", config={"callbacks": [spend]})
+    with pytest.raises(BudgetExceeded):  # no later call starts
+        await model(10).ainvoke("hi", config={"callbacks": [spend]})
+    costly = SpendLimit({"max_cost_usd": 1.0})
+    await model(100_000).ainvoke("hi", config={"callbacks": [costly]})  # $0.40 + $0.002 on Opus 5.5
+    assert costly.cost == pytest.approx(call_price("anthropic:claude-opus-5-5", {"input_tokens": 100_000,
+                                                                               "output_tokens": 100}))  # fmt: skip
+    with pytest.raises(BudgetExceeded, match="USD for this run"):
+        for _ in range(3):
+            await model(100_000).ainvoke("hi", config={"callbacks": [costly]})
+    assert call_price("anthropic:claude-haiku-5-5", {"input_tokens": 200_000, "output_tokens": 0}) == pytest.approx(
+        0.1
+    )  # the long-context tier, as runner.price
+
+    wf = Workflow.model_validate(
+        {
+            **_budget_workflow(),
+            "settings": {
+                "budget": {
+                    "max_tokens": 50,
+                    "max_cost_usd": 0.5,
+                    "max_seconds": 30,
+                    "thread_max_tokens": 9,
+                    "daily_max_cost_usd": 3,
+                }
+            },
+        }
+    )
+    kit = json.loads(deploykit.kit_json(wf, deploykit.facts(wf, "b", "1.0.0"), deploykit.TARGETS["local"]))
+    assert kit["budget"] == {"max_tokens": 50, "max_cost_usd": 0.5, "max_seconds": 30}
+
+
+def _budget_workflow() -> dict:
+    return {"id": "wf_b", "name": "B", "state": {"channels": [{"name": "out", "default": ""}]},
+            "nodes": [{"id": "n1", "type": "core.set", "name": "s", "config": {"values": {"out": "x"}}}],
+            "edges": [{"id": "e1", "kind": "flow", "source": {"node": "START"}, "target": {"node": "n1"}},
+                      {"id": "e2", "kind": "flow", "source": {"node": "n1"}, "target": {"node": "END"}}]}  # fmt: skip
+
+
+def test_budget_limits_an_export_does_not_enforce_are_listed_and_warned_about():
+    """Every export dropped settings.budget without a word: GAPS.md lists the limits it does not enforce (all of
+    them in a flow or bridge, the conversation/day/month ones in a LangGraph project) and the editor warns (W026)."""
+    import pytest
+    from test_export_secrets import PACKAGERS, _workflow
+
+    from agentcanvas.services import github
+    from agentcanvas.validation import validate
+
+    base = _workflow({}).model_dump(mode="json")
+    budget = {"max_cost_usd": 0.5, "daily_max_cost_usd": 3}
+    wf = Workflow.model_validate({**base, "settings": {"budget": budget}})
+    for name, pack in PACKAGERS.items():
+        out: Any = pack(wf)
+        out = next(x for x in out if isinstance(x, bytes | dict)) if isinstance(out, tuple) else out
+        files = github.files_of(out) if isinstance(out, bytes) else {k.split("/", 1)[-1]: v for k, v in out.items()}
+        gaps: Any = files.get("GAPS.md", b"")
+        gaps = gaps if isinstance(gaps, str) else gaps.decode()
+        assert "cost per day (3)" in gaps, name
+        assert ("cost per run (0.5)" in gaps) == (name != "langgraph"), name  # the LangGraph service enforces it
+    plain = Workflow.model_validate(base)
+    assert not [d for d in validate(plain) if d.code == "W026"]
+    from agentcanvas.adapters.langchain import packager
+
+    _, zipped = packager.package(plain, source="")
+    assert "GAPS.md" not in github.files_of(zipped)  # nothing to list: no file
+    [w] = [d for d in validate(wf) if d.code == "W026"]
+    assert "cost per day" in w.message and "cost per run" not in w.message and "LangGraph" in w.message
+    crew = Workflow.model_validate({**base, "framework": "crewai", "settings": {"budget": {"max_seconds": 9}}})
+    [w] = [d for d in validate(crew) if d.code == "W026"]
+    assert "time per run" in w.message and "crewai" in w.message
+    with pytest.raises(StopIteration):
+        next(d for d in validate(Workflow.model_validate({**base, "settings": {"budget": {"max_tokens": 9}}}))
+             if d.code == "W026")  # fmt: skip
+
+
 GUARD_SCRIPT = """
 import asyncio
 
@@ -233,3 +388,44 @@ def test_exported_safety_blocks_run(tmp_path):
         capture_output=True, text=True, timeout=120, check=False,
     )  # fmt: skip
     assert proc.returncode == 0 and "guarded ok" in proc.stdout, proc.stdout[-2000:] + proc.stderr[-3000:]
+
+
+def test_the_generated_smoke_test_stands_in_for_mcp_servers_that_cannot_be_reached():
+    """A template's app connector has a placeholder address: the exported project's own test must still build."""
+    from pathlib import Path
+
+    from agentcanvas.adapters import get_adapter
+    from agentcanvas.ir.models import Workflow
+    from agentcanvas.registry import default_registry
+
+    path = Path(__file__).resolve().parents[1] / "agentcanvas" / "registry" / "templates" / "agent_network.ir.json"
+    wf = Workflow.model_validate(json.loads(path.read_text()))
+    _, data = get_adapter(wf.framework).package(wf, default_registry(), target="local", version="1.0.0")
+    zf = zipfile.ZipFile(io.BytesIO(data))
+    smoke = next(zf.read(n).decode() for n in zf.namelist() if n.endswith("tests/test_smoke.py"))
+    assert 'MCP_SERVERS = ["issue_tracker", "log_analyst"]' in smoke
+    assert '"tool": "ping"' in smoke
+
+
+def test_the_smoke_input_uses_what_a_channel_says_about_its_values():
+    """An exported service is tried with an example input: a made-up string would not parse as a date."""
+    from agentcanvas.adapters.langchain import deploykit
+    from agentcanvas.ir.models import Workflow
+
+    wf = Workflow.model_validate({
+        "id": "wf_x", "name": "X",
+        "state": {"channels": [
+            {"name": "day", "io": "in", "type": {"type": "string", "examples": ["2026-10-01"]}},
+            {"name": "mode", "io": "in", "type": {"type": "string", "enum": ["fast", "slow"]}},
+            {"name": "limit", "io": "in", "type": {"type": "integer", "default": 5}},
+            {"name": "note", "io": "in", "description": "a free note"},
+            {"name": "out", "io": "out"},
+        ]},
+        "nodes": [], "edges": [],
+    })  # fmt: skip
+    assert deploykit._example(wf, []) == {
+        "day": "2026-10-01",
+        "mode": "fast",
+        "limit": 5,
+        "note": "An example a free note",
+    }

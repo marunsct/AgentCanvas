@@ -12,14 +12,14 @@
 | Build guide | [docs/agent-canvas-spec/build-guide/README.md](docs/agent-canvas-spec/build-guide/README.md) |
 | Sprint plan & execution log | [docs/agent-canvas-spec/build-guide/13-sprint-plan.md](docs/agent-canvas-spec/build-guide/13-sprint-plan.md) |
 | Architecture decisions | [docs/adr/](docs/adr/README.md) |
-| Release notes | [CHANGELOG.md](CHANGELOG.md) — code at **v0.28.x**; no release has been tagged yet (tags are the owner's call) |
+| Release notes | [CHANGELOG.md](CHANGELOG.md) — code at **v0.32.3** plus the unreleased hardening and product passes; no release has been tagged yet (tags are the owner's call) |
 | Progress (done / pending) | [PROGRESS.md](PROGRESS.md) |
 | Handover (continue in a new session or as a new person) | [HANDOVER.md](HANDOVER.md) |
 
 ## Repository layout
 
 ```
-apps/api/        Python 3.12 — FastAPI control plane + runner, IR, validator, node library, compiler
+apps/api/        Python 3.12–3.14 (the image runs 3.14) — FastAPI control plane + runner, IR, validator, node library, compiler
 apps/web/        React 19 + TypeScript — canvas (React Flow), inspector, run panel
 packages/        shared artifacts (IR JSON Schema for the web app)
 infra/           Dockerfiles, nginx, compose.prod.yml, Helm chart (helm/agentcanvas), dev docker-compose, reference DDL
@@ -31,6 +31,9 @@ docs/            specification, build guide, ADRs
 ```bash
 make docker-up    # Postgres (pgvector) + migrations + API + web app on http://localhost:7777
 ```
+
+The image carries every framework (several GB); `FRAMEWORKS=none WITH_MASTRA=false make docker-up` builds a small one with LangGraph and
+the OpenAI Agents SDK only.
 
 Open http://localhost:7777 and choose your model on the first-run screen: Claude, GPT, Gemini, Mistral, Groq,
 DeepSeek, Grok, any OpenAI-compatible API, or a local model with Ollama, LM Studio, vLLM or llama.cpp. See
@@ -121,7 +124,7 @@ The project is executed sprint by sprint: see [PROGRESS.md](PROGRESS.md) for wha
 | S21: Design any agent (v0.13.0) | ✅ done: an AI agent block designed as a native agent in nine frameworks, with its code and a native export |
 | S22: Whole flows, preview (v0.14.0) | ✅ done: export a whole workflow to LangGraph, WayFlow or OpenAI Agents through Agent Spec, with a gaps report |
 | Milestone review after S20–S22 | ✅ done (#27): 19 fixes |
-| S23: Ship to users (v0.15.0) | ✅ done: share a deployment as a public chat page or a website widget, four safety blocks with eval cases, a gallery of 25 templates |
+| S23: Ship to users (v0.15.0) | ✅ done: share a deployment as a public chat page or a website widget, four safety blocks with eval cases, a gallery of 25 templates (36 now, beginner to advanced) |
 | S24: Knowledge Studio (v0.16.0) | ✅ done: knowledge bases from files, web pages and text; hybrid search with citations; the Search knowledge block; retrieval evals |
 | S25: OpenAI Agents SDK flows (v0.17.0) | ✅ done: workflows run and export as OpenAI Agents SDK code (agents, tools, approvals, typed answers); convert and compare in one experiment |
 | S26: Model gateway and cost controls (v0.18.0) | ✅ done: backup models when a provider fails, an answer cache, day and month budgets with cost alerts, spending in the editor |
@@ -136,3 +139,6 @@ The project is executed sprint by sprint: see [PROGRESS.md](PROGRESS.md) for wha
 | v0.26.1–v0.26.3: review after the roadmap (40 fixes), framework setup in Docker | ✅ done (#41–#43) |
 | v0.27.0–v0.28.0: sign-in through Matura, workspaces, row-level security, audit sink | ✅ done (#49, #50) |
 | v0.28.1–v0.29.0: fixes from the deep review of 2026-10-18 | ✅ done (#51, #52) |
+| v0.29.1–v0.32.3: sandbox service, share-link framing, parallel branches, keyboard canvas, session state | ✅ done |
+| Hardening passes (unreleased): local CI, exports, sweeps for access, secrets, chaos and hostile input | ✅ done ([HARDENING.md](HARDENING.md)) |
+| Product pass (unreleased, [PLAN.md](PLAN.md)): one app shell, Settings, Runs, the Copilot on Deep Agents (behind a switch), forms instead of JSON on the Evaluation page, sandbox egress enforced | 🚧 in progress |

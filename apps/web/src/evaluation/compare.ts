@@ -69,23 +69,10 @@ export function compare(
 export const fmt = (v: number | null | undefined, digits = 2) => (v == null ? "—" : v.toFixed(digits));
 export const pct = (v: number | null | undefined) => (v == null ? "—" : `${Math.round(v * 100)}%`);
 
-/** Starting configs for each evaluator kind. */
-export const KIND_CONFIG: Record<string, unknown> = {
-  exact: {},
-  regex: { channel: "out", pattern: "" },
-  json_schema: { channel: "out", schema: { type: "object" } },
-  llm_judge: { model: "anthropic:claude-haiku-4-5", rubric: "Is the answer correct and polite?" },
-  trajectory: { mode: "strict" },
-  code: { function: "scripts.evals:check" },
-  composite: { evaluators: [], mode: "weighted", weights: {} },
-  pairwise: { model: "anthropic:claude-haiku-4-5", rubric: "Which answer is more helpful and correct?" },
-  retrieval: { channel: "passages", k: 3, metric: "recall", match_by: "source" },
-};
-
 /** Convert and compare (S25): one target per installed framework the experiment does not run on yet. */
-export function frameworksToCompare<T extends { framework: string; version: string; overrides: string; label: string }>(
-  frameworks: { id: string }[], own: string, targets: T[],
-): { framework: string; version: string; overrides: string; label: string }[] {
+export function frameworksToCompare<T extends { framework: string }>(
+  frameworks: { id: string }[], own: string, targets: T[], blank: () => Omit<T, "framework">,
+): T[] {
   const covered = new Set(targets.map((t) => t.framework || own));
-  return frameworks.filter((f) => !covered.has(f.id)).map((f) => ({ framework: f.id, version: "", overrides: "", label: "" }));
+  return frameworks.filter((f) => !covered.has(f.id)).map((f) => ({ ...blank(), framework: f.id }) as T);
 }

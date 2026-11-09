@@ -48,6 +48,28 @@ def test_markdown_headings_are_parsed_in_linear_time():
     ]
 
 
+def test_html_without_end_tags_keeps_its_body():
+    """I-5: <head> without </head> (valid HTML5; minifiers drop it) or a <nav> never closed hid the whole page."""
+    title, text = kn.html_text("<html><head><title>Leave</title><meta charset=utf-8><body><h1>Leave</h1><p>25 days")
+    assert title == "Leave" and text == "# Leave\n\n25 days"
+    assert kn.html_text("<head><title>T</title><p>Body text")[1] == "Body text"  # no <body> tag either
+    page = "<body><header><nav><a>Home</a><a>About</a></header><main><p>Carry over 5 days.</p></main><footer>(c)"
+    assert kn.html_text(page)[1] == "Carry over 5 days."
+    assert kn.html_text("<div><nav>menu</nav><p>a<p>b</div><svg><path/><text>x</text></svg>c")[1] == "a\n\nb\n\nc"
+
+
+def test_markdown_headings_inside_code_fences_are_code():
+    """I-11: a `# comment` in a fenced shell or Python block started a new section and cut the code in two."""
+    text = (
+        "# Install\n\nRun:\n\n```bash\n# update first\napt update\n```\n\nThen:\n\n"
+        "~~~~\n# not a heading\n~~~ still code\n~~~~\n\n## Use\n\nCall it.\n\n```\n```python\n# code\n```"
+    )
+    md = ks.chunk_text(text, strategy="markdown", size=2000)
+    assert [c["heading"] for c in md] == ["Install", "Use"]
+    assert "# update first\napt update" in md[0]["text"] and "# not a heading\n~~~ still code" in md[0]["text"]
+    assert "# code" in md[1]["text"]
+
+
 def test_word_zip_bombs_are_refused_before_parsing(monkeypatch):
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
@@ -93,6 +115,143 @@ def test_search_modes_scores_and_citations():
     ]
     with pytest.raises(ValueError, match="unknown search mode"):
         ks.search(index, "x", mode="fuzzy")
+
+
+def test_scores_are_on_one_scale_in_every_mode():
+    """E-3: hybrid scores were reciprocal-rank sums (at most 0.033), so a minimum score of 0.1 found nothing; BM25
+    scores had no upper bound."""
+    index = _index()
+    for mode in ks.MODES:
+        found = ks.search(index, "lost laptop", mode=mode)
+        assert found and all(0 < r["score"] <= 1 for r in found), (mode, found)
+        assert ks.search(index, "lost laptop", mode=mode, min_score=0.1)[0]["id"] == "laptops", mode
+    assert ks.search(index, "lost laptop", mode="keyword")[0]["score"] == 1.0  # the best match
+    assert ks.search(index, "lost laptop", mode="hybrid")[0]["score"] == 1.0  # first in both rankings
+
+
+def test_vectors_of_another_model_are_not_compared():
+    """E-2: a 1536-d query zipped with 512-d chunk vectors gave noise; such a search is by keywords instead."""
+    index = _index()
+    other = [0.03] * 1536
+    for mode in ("semantic", "hybrid"):
+        assert ks.search(index, "lost laptop", mode=mode, query_vector=other) == ks.search(
+            index, "lost laptop", mode="keyword"
+        )
+    with pytest.raises(ValueError):
+        ks.cosine([1.0, 0.0], [1.0, 0.0, 0.0])
+
+
+async def test_a_stale_knowledge_base_is_searched_by_keywords_until_it_is_reindexed(app):
+    """E-2: after a change of embedding model the old vectors were compared with a query embedded by the new model,
+    and the export shipped them under the new model's name."""
+    calls: list[list[str]] = []
+
+    async def provider(texts):
+        calls.append(list(texts))
+        return [[float(len(t) % 7), 1.0, 0.5] for t in texts]
+
+    def factory(spec, secrets):
+        return kn.builtin_embed if (spec.get("model") or ks.BUILTIN) == ks.BUILTIN else provider
+
+    async with app.state.db.sessionmaker() as s:
+        svc = kn.KnowledgeService(s, embedder=factory)
+        kb = await svc.create("prj_default", "stale-test")
+        for title, text in (("Leave", "Everyone gets 25 vacation days."), ("IT", "Report a lost laptop to IT.")):
+            await svc.add(kb.id, title=title, text=text)
+        kb = await svc.update(kb.id, embedding=kn.Embedding(model="fake:embed-3"))
+        assert kb.stale
+        for mode in ks.MODES:
+            found = await svc.search(kb, "lost laptop", mode=mode)
+            assert [r["title"] for r in found] == ["IT"]
+            assert found == await svc.search(kb, "lost laptop", mode="keyword")
+        assert calls == []  # the query is not embedded with a model the vectors did not come from
+        assert '"vector"' not in await svc.export(kb)
+        kb = await svc.reindex(kb.id)
+        assert not kb.stale and '"vector"' in await svc.export(kb)
+        calls.clear()
+        await svc.search(kb, "lost laptop", mode="semantic")
+        assert calls == [["lost laptop"]]
+
+
+async def test_an_export_reads_the_database_in_batches_and_caches_nothing(app, monkeypatch):
+    """I-6: an export built the whole in-memory index (every vector a list of Python floats) and cached it, and
+    the cache held up to 16 such bases however big they were."""
+    from array import array
+
+    async def provider(texts):
+        return [[0.25, float(len(t) % 5), 1.0] for t in texts]
+
+    def factory(spec, secrets):
+        return kn.builtin_embed if (spec.get("model") or ks.BUILTIN) == ks.BUILTIN else provider
+
+    monkeypatch.setattr(kn, "EXPORT_BATCH", 2)
+    async with app.state.db.sessionmaker() as s:
+        svc = kn.KnowledgeService(s, embedder=factory)
+        kb = await svc.create("prj_default", "export-batches", embedding=kn.Embedding(model="fake:embed-3"))
+        for i in range(5):
+            await svc.add(kb.id, title=f"Doc {i}", text=f"# Doc {i}\n\nPolicy number {i} says something.")
+        kb = await svc.get(kb.id)
+        kn.forget(kb.id)
+        exported = await svc.export(kb)
+        assert kb.id not in kn._INDEX  # one-off: not kept in memory
+        header, chunks = ks.load_jsonl(exported)
+        assert header["embedding"]["model"] == "fake:embed-3" and len(chunks) == 5
+        index = await svc.index(kb)
+        assert exported == ks.dump_jsonl(kb.name, kb.embedding, index.chunks)  # the same file as from the index
+        assert all(isinstance(c["vector"], array) for c in index.chunks)  # float32, not lists of floats
+        assert [c["title"] for c in index.chunks] == [f"Doc {i}" for i in range(5)]
+
+        monkeypatch.setattr(kn, "INDEX_CACHE_BYTES", 100)  # bigger than the cache may hold: built, not kept
+        kn.forget(kb.id)
+        assert len((await svc.index(kb)).chunks) == 5 and kb.id not in kn._INDEX
+
+
+async def test_an_in_process_search_ranks_off_the_event_loop_with_lengths_computed_once(app, monkeypatch):
+    """I-16: ranking every chunk ran on the event loop, and each query recomputed every chunk vector's length."""
+    import threading
+
+    index = ks.Index([{"id": "a", "text": "x", "vector": [3.0, 4.0]}, {"id": "b", "text": "y", "vector": None}])
+    assert index.norms == [5.0, 0.0]
+    assert index.semantic([3.0, 4.0]) == [pytest.approx(1.0), 0.0]
+
+    threads: list[str] = []
+    real = ks.search
+
+    def spy(*args, **kwargs):
+        threads.append(threading.current_thread().name)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(ks, "search", spy)
+    async with app.state.db.sessionmaker() as s:
+        svc = kn.KnowledgeService(s)
+        kb = await svc.create("prj_default", "threads")
+        await svc.add(kb.id, title="Leave", text="Everyone gets 25 vacation days.")
+        if await svc.pgvector() is not None:
+            pytest.skip("searched by Postgres")
+        assert (await svc.search(await svc.get(kb.id), "vacation"))[0]["title"] == "Leave"
+    assert threads and threads[0] != threading.main_thread().name
+
+
+async def test_a_file_is_embedded_with_the_title_it_is_cited_by(app):
+    """E-12: a PDF or Word file was embedded with its metadata title but searched and cited by its file name, so
+    its vectors changed on the next reindex."""
+    import docx
+
+    d = docx.Document()
+    d.core_properties.title = "Microsoft Word - final v7"
+    d.add_paragraph("Book flights through the travel portal at least two weeks ahead.")
+    buf = io.BytesIO()
+    d.save(buf)
+    async with app.state.db.sessionmaker() as s:
+        svc = kn.KnowledgeService(s)
+        kb = await svc.create("prj_default", "titles")
+        await svc.add_file(kb.id, "travel.docx", buf.getvalue())
+        before = {c["id"]: c["vector"] for c in (await svc.index(await svc.get(kb.id))).chunks}
+        [found] = await svc.search(await svc.get(kb.id), "travel portal", top_k=1)
+        assert found["title"] == "travel"
+        await svc.reindex(kb.id)
+        after = {c["id"]: c["vector"] for c in (await svc.index(await svc.get(kb.id))).chunks}
+        assert before == after
 
 
 def test_retrieval_metrics():
@@ -177,6 +336,23 @@ async def new_kb(api, name: str = "docs", **body) -> dict:
     return r.json()
 
 
+async def test_a_project_sets_the_chunking_new_knowledge_bases_start_with(api_client):
+    d = f"{P}/knowledge-defaults"
+    assert (await api_client.get(d)).json() == {"chunking": {"strategy": "markdown", "size": 800, "overlap": 100}}
+    fixed = {"strategy": "fixed", "size": 300, "overlap": 30}
+    assert (await api_client.put(d, json={"chunking": fixed})).json() == {"chunking": fixed}
+    assert (await api_client.get(d)).json() == {"chunking": fixed}
+    assert (await new_kb(api_client, "own"))["chunking"] == fixed  # a new one starts with the project's
+    explicit = {"strategy": "sentences", "size": 500, "overlap": 0}
+    assert (await new_kb(api_client, "named", chunking=explicit))["chunking"] == explicit  # one that says wins
+    sizes = {"own": 300, "named": 500}
+    assert {k["name"]: k["chunking"]["size"] for k in (await api_client.get(f"{P}/knowledge")).json()} == sizes
+    later = {"strategy": "paragraphs", "size": 1000, "overlap": 0}
+    assert (await api_client.put(d, json={"chunking": later})).status_code == 200
+    assert {k["name"]: k["chunking"]["size"] for k in (await api_client.get(f"{P}/knowledge")).json()} == sizes
+    assert (await api_client.put(d, json={"chunking": {"strategy": "fixed", "size": 5}})).status_code == 422
+
+
 async def test_concurrent_changes_each_bump_the_version(app, api_client):
     """Two changes made from stale copies both count: `version` is bumped in SQL, so no search cache keeps an index
     one of them made stale."""
@@ -242,6 +418,26 @@ async def test_knowledge_base_lifecycle(api_client):
     assert [x["name"] for x in listed] == ["docs"] and listed[0]["documents"] == 3
     assert (await api_client.delete(k)).status_code == 204
     assert (await api_client.get(k)).status_code == 404
+
+
+async def test_an_upload_with_one_bad_file_adds_none_of_them(api_client):
+    """C-8: files that fail late (the same text twice, unreadable) leave nothing behind, so a retry works."""
+    kb = await new_kb(api_client)
+    k = f"/v1/knowledge/{kb['id']}"
+    leave = ("files", ("leave.md", b"# Leave\n\nEveryone gets 25 vacation days a year.", "text/markdown"))
+    pension = ("files", ("pension.md", b"# Pension\n\nThe plan matches 5 percent.", "text/markdown"))
+    copy = ("files", ("copy.md", b"# Leave\n\nEveryone gets 25 vacation days a year.", "text/markdown"))
+    twice = await api_client.post(f"{k}/documents", files=[leave, pension, copy])
+    assert twice.status_code == 409, twice.text
+    unreadable = await api_client.post(
+        f"{k}/documents", files=[leave, ("files", ("x.exe", b"MZ", "application/octet-stream"))]
+    )
+    assert unreadable.status_code == 422, unreadable.text
+    assert (await api_client.get(f"{k}/documents")).json() == []
+    assert (await api_client.get(k)).json()["version"] == kb["version"]
+    retry = await api_client.post(f"{k}/documents", files=[leave, pension])
+    assert retry.status_code == 201 and [d["name"] for d in retry.json()] == ["leave.md", "pension.md"]
+    assert (await api_client.get(k)).json()["documents"] == 2
 
 
 async def test_web_pages_are_fetched_safely(app, api_client):
@@ -372,6 +568,10 @@ def test_retrieval_evaluator():
     assert asyncio.run(run({"match_by": "source"}, {"relevant": ["https://x.example/sick"]})).score == 1.0
     assert asyncio.run(run({"match_by": "text", "metric": "mrr"}, {"relevant": ["call in"]})).score == 0.5
     assert asyncio.run(run({"match_by": "id"}, {"relevant": "c2"})).score == 1.0
+    # I-7: the reference was lower-cased and the passage id was not, so a mixed-case id never matched
+    mixed = Observation(output={"passages": [{"id": "Doc-7#C2", "text": "x"}]}, reference={"relevant": ["Doc-7#C2"]})
+    got = asyncio.run(score(Spec(name="r", kind="retrieval", config={"match_by": "id"}), mixed))
+    assert got.score == 1.0
     none = asyncio.run(run({}, {}))
     assert none.score is None and "reference.relevant" in none.comment
     assert asyncio.run(run({"channel": "other"})).score == 0.0

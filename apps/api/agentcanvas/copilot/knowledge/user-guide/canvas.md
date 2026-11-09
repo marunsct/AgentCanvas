@@ -12,7 +12,7 @@
 | **Side panel** (right) | **Inspector** (settings of the selection, or the Workflow panel when nothing is selected), **Run**, **Tests**, **Versions**, **Code**. |
 | **Dock** (bottom) | **Problems**, **Timeline**, **Explain**. |
 
-**Themes.** The switch at the right of the top bar on every page picks **Light**, **Medium** (a softer dimmed slate), **Dark**, or **System** (follows your computer). Your choice is remembered in this browser.
+**Themes.** The menu under your initial at the right of the top bar picks **Light**, **Medium** (a softer dimmed slate), **Dark**, or **System** (follows your computer). Your choice is kept in this browser and, when you are signed in, with your account, so it follows you to other browsers.
 
 ## Add and connect steps
 
@@ -35,12 +35,36 @@ conflict instead of overwriting it.
 
 Click an empty spot on the canvas to open the **Workflow** panel. There you set the name, description,
 recursion limit (the maximum number of steps per run), **durability** (how eagerly checkpoints are written:
-*exit* fastest, *async* default, *sync* for workflows with side effects), a **budget**, and the **state
-channels** (see [Core concepts](concepts.md#state-and-channels)). **+ Channel** adds one.
+*exit* fastest, *async* default, *sync* for workflows with side effects), **Defaults for every block** (retries,
+timeout and cache that a block uses unless it sets its own under Runtime policies; only LangChain flows apply
+them), **Hide these fields from traces** (comma-separated field names whose values never reach a trace), a
+**budget**, and the **state channels** (see [Core concepts](concepts.md#state-and-channels)). **+ Channel** adds one.
+
+### File and image fields
+
+Pick **file** or **image** as a channel's type for something a person attaches: a screenshot, a photo, a PDF, a
+Word document or a text file. *image* takes pictures only (PNG, JPEG, GIF, WebP); *file* takes any of them. In the
+Workflow JSON it is an ordinary JSON Schema, `{"type": "object", "format": "file"}` (an image field adds
+`"contentMediaType": "image/*"`), so workflows from before file fields open unchanged.
+
+A file field holds a reference to the file, never the file itself:
+`{"kind": "file", "id": "fil_…", "name": "invoice.pdf", "media_type": "application/pdf", "size": 48213}`. The file
+stays on the server, in the project. Upload one with `POST /v1/projects/{project_id}/uploads` (multipart field `file`)
+and put the answer in the run's input. A caller with a deployment key uploads with
+`POST /v1/deployments/{id}/files` (multipart field `file`, `Authorization: Bearer <key>`) and puts the answer in the run's
+input the same way; the file input's types and the size limit apply. A caller may instead send the bytes inline as
+`{"kind": "file", "name": "a.png", "data": "<base64>"}`, which the server stores before the run starts, so
+conversations keep only the reference.
+
+- A file is at most 10 MB (`AGENTCANVAS_MAX_UPLOAD_MB`). Its type is read from its content, not from its name: a
+  `.png` that is really a web page is kept as plain text. Other kinds of file (archives, programs) are refused.
+- Files are kept as long as conversations: one that no run has used for the organisation's conversation retention
+  (90 days by default, Settings › Organisation) is deleted, and all of them go with their project.
+- Changing a published input field to a file is a breaking change: callers that sent text must send a file now.
 
 ### Budgets
 
-A budget stops a run that spends too much: maximum tokens, cost (USD, from catalog prices) or seconds per run,
+A budget stops a run that spends too much: maximum tokens, cost (USD, from model prices: the catalog prices the Claude and OpenAI models, an operator adds others with `AGENTCANVAS_MODEL_PRICES`) or seconds per run,
 and maximum tokens or cost per thread (all runs of a conversation together).
 
 A workflow can also have a **day** and a **month** budget in USD: all its runs together, per UTC day and calendar
@@ -53,14 +77,30 @@ Prometheus rules in `infra/observability/alerts.yaml` turn it into a ticket).
 
 **Spending** under the budget shows what the workflow's runs spent today and this month, against the budgets, with
 the number of runs, model answers taken from the cache and calls a backup model answered (see
-[Models](models.md#backup-models-and-reusing-answers)). Runs still going count once they finish, so runs started
-together can go a little over a day or month budget.
+[Models](models.md#backup-models-and-reusing-answers)). Runs still going count what they have spent so far, on
+every server, and each run looks at the others' spending after every model call: runs going together can pass a day
+or month budget by no more than one model call each.
 
 ## Structure: subgraphs and frames
 
 - **⧉ Subgraph** (or ⌘G) turns the selected steps into one *Subgraph* step with its own state. Input channels
   are copied in and output channels copied back. Double-click to work inside it.
 - **▭ Frame** draws a labelled box around the selected steps. It is purely visual.
+
+## Who else is here
+
+When someone else has the same workflow open, round avatars with their initials appear in the top bar (hover for the
+name and the block they are selecting; click to jump to that block), and a small coloured badge marks the block each
+person has selected on the canvas. The same person in two tabs counts once. Viewers show up too.
+
+Presence only tells you who is here: there is no live co-editing. Edits are still saved one batch at a time against
+the version you loaded, and if someone else saved first the editor reloads the latest version and puts your edits on
+top, as before. When another person's tab reports a newer version than yours, a notice says *Ada saved a newer
+version (v7; you have v6)* with an **Update** button, so you see their change before you make a conflicting one.
+
+Presence needs no setup: each open editor sends a heartbeat every ten seconds and listens on a small event stream,
+and a tab that closes or stops beating disappears after 30 seconds. It works across several API servers because the
+state is kept in the database.
 
 ## Problems
 
@@ -79,4 +119,4 @@ replaces every risky tool with a recorder so you can run the whole workflow safe
 
 The **Code** tab shows the LangGraph Python program generated from the canvas. Each block is tagged with the card
 it came from (`# ── @canvas-node … ──`). It is read-only: change the canvas and the code follows. To take the code
-away, use **Export** (see [Publish and integrate](publish.md#export-as-a-python-project)).
+away, use **Export** (see [Export and deploy](export.md#export)).

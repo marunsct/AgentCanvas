@@ -68,6 +68,39 @@ async def test_a_gate_blocks_a_regression_and_reuses_evaluations(api_client):
     assert (await api_client.delete(f"/v1/workflows/{wf}/gates/prod")).status_code == 404
 
 
+async def test_a_gate_fails_when_examples_went_unscored(api_client):
+    """I-2: the mean left unscored examples out, so a gate passed with 1 of 3 examples scored; the summary did not
+    say how many went unscored."""
+    wf = await make_greeter(api_client)
+    ds = await new_dataset(api_client, wf)
+    examples = [*EXAMPLES, {"input": {"who": "Cy"}}]  # no reference: the exact evaluator cannot score it
+    assert (await api_client.post(f"/v1/datasets/{ds['id']}/examples", json={"examples": examples})).status_code == 200
+    body = {"name": "exact", "kind": "exact", "config": {}}
+    assert (await api_client.post(f"/v1/workflows/{wf}/evaluators", json=body)).status_code == 201
+    assert (await api_client.put(f"/v1/workflows/{wf}/gates/prod", json={"dataset_id": ds["id"]})).status_code == 200
+    refused = await api_client.post(f"/v1/workflows/{wf}/publish", json={})
+    assert refused.status_code == 422, refused.text
+    assert check(refused.json())["items"] == ["exact: mean 1.0 (needs 1); 1 of 3 example(s) unscored"]
+    [exp] = (await api_client.get(f"/v1/workflows/{wf}/experiments")).json()
+    [ev] = exp["summary"][0]["evaluators"]
+    assert (ev["scored"], ev["unscored"], ev["mean"]) == (2, 1, 1.0)
+
+
+async def test_a_gate_never_reuses_a_simulated_user_experiment(app, api_client):
+    """I-14: a simulated-user experiment of the same workflow, dataset and workspace measures conversations, not the
+    examples as the gate runs them; it was reused as the gate's evaluation."""
+    from sqlalchemy import update
+
+    from agentcanvas.db.models import Experiment
+
+    wf, _ = await gated(api_client)
+    assert (await api_client.post(f"/v1/workflows/{wf}/publish", json={})).status_code == 200
+    async with app.state.db.sessionmaker() as s, s.begin():
+        await s.execute(update(Experiment).values(simulation={"model": "x:y", "persona": "p", "goal": "g"}))
+    assert (await api_client.post(f"/v1/workflows/{wf}/publish", json={})).status_code == 200
+    assert len((await api_client.get(f"/v1/workflows/{wf}/experiments")).json()) == 2  # it ran a fresh evaluation
+
+
 async def test_default_thresholds_come_from_the_evaluators(api_client):
     wf, _ = await gated(api_client)
     await set_greeting(api_client, wf, "Hey")
@@ -143,6 +176,28 @@ async def test_examples_that_cannot_run_fail_the_gate(app, api_client, monkeypat
     refused = await api_client.post(f"/v1/workflows/{wf}/publish", json={})
     assert refused.status_code == 422, refused.text
     assert check(refused.json())["items"][0] == "exact: mean 0.5 (needs 1)"  # the run that never started scores 0
+
+
+async def test_an_evaluation_that_times_out_is_stopped_too(app, api_client, monkeypatch):
+    """C-6: the gate fails on its timeout, and the experiment (and its model spend) stops with it."""
+    import asyncio
+
+    from agentcanvas.services import gates
+
+    wf, _ = await gated(api_client)
+    monkeypatch.setattr(gates, "GATE_TIMEOUT_S", 0.3)
+    stuck = asyncio.Event()
+
+    async def hangs(*_args, **_kwargs):
+        await stuck.wait()  # a model call that never answers
+
+    monkeypatch.setattr(app.state.runner, "start", hangs)
+    refused = await api_client.post(f"/v1/workflows/{wf}/publish", json={})
+    assert refused.status_code == 422, refused.text
+    assert "did not finish" in check(refused.json())["detail"]
+    [exp] = (await api_client.get(f"/v1/workflows/{wf}/experiments")).json()
+    assert exp["status"] == "cancelled", exp
+    assert not app.state.experiments.tasks
 
 
 async def test_a_draft_changed_during_the_evaluation_is_not_published(api_client, monkeypatch):

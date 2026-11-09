@@ -27,20 +27,30 @@ export function TriggersSection({ wfId }: { wfId: string }) {
       setError((e as Error).message);
     }
   };
-  const toggle = async (t: TriggerOut) => {
-    await apiFetch(`/triggers/${t.id}`, { method: "PATCH", json: { enabled: !t.enabled } });
-    void qc.invalidateQueries({ queryKey: key });
+  // a failure is shown, not dropped (these were fire and forget)
+  const act = async (call: () => Promise<unknown>) => {
+    setError(null);
+    try {
+      await call();
+      void qc.invalidateQueries({ queryKey: key });
+    } catch (e) {
+      setError((e as Error).message);
+    }
   };
-  const remove = async (t: TriggerOut) => {
-    await apiFetch(`/triggers/${t.id}`, { method: "DELETE" });
-    void qc.invalidateQueries({ queryKey: key });
+  const toggle = (t: TriggerOut) => act(() => apiFetch(`/triggers/${t.id}`, { method: "PATCH", json: { enabled: !t.enabled } }));
+  const remove = (t: TriggerOut) => {
+    if (!window.confirm(`Delete this ${t.kind} trigger? ${t.kind === "webhook" ? "Calls to its address" : "Its schedule"} will no longer start runs.`)) return;
+    return act(() => apiFetch(`/triggers/${t.id}`, { method: "DELETE" }));
   };
   return (
     <section aria-label="triggers">
       <h4>Triggers <small className="muted">{published ? `run ${published.environment} v${published.semver}` : "run the draft"}</small></h4>
       <div className="row gap">
         <button type="button" className="small" onClick={() => void create("webhook")}>+ Webhook</button>
-        <input className="mono" value={schedule} onChange={(e) => setSchedule(e.target.value)} aria-label="cron schedule" />
+        {/* the server runs schedules in UTC: 0 9 * * * is 09:00 UTC, not 09:00 here */}
+        <input className="mono" value={schedule} onChange={(e) => setSchedule(e.target.value)} aria-label="cron schedule (UTC)"
+          title="Minute hour day month weekday, in UTC" />
+        <span className="small muted">UTC</span>
         <button type="button" className="small" onClick={() => void create("cron")}>+ Cron</button>
       </div>
       <label className="small">Cron input (JSON)
@@ -59,12 +69,15 @@ export function TriggersSection({ wfId }: { wfId: string }) {
         {(triggers.data ?? []).map((t) => (
           <li key={t.id} data-testid={`trigger-${t.kind}`}>
             <div className="row gap">
-              <b>{t.kind}</b> {t.kind === "cron" ? <code>{String(t.config.schedule)}</code> : <code className="small">{t.url}</code>}
+              <b>{t.kind}</b> {t.kind === "cron"
+                ? <><code>{String(t.config.schedule)}</code> <span className="small muted">UTC</span></>
+                : <code className="small">{t.url}</code>}
               {!t.enabled && <span className="badge warn">off</span>}
               <span className="spacer" />
               <button type="button" className="small" onClick={() => void toggle(t)}>{t.enabled ? "Disable" : "Enable"}</button>
               <button type="button" className="link small" aria-label={`delete trigger ${t.id}`} onClick={() => void remove(t)}>✕</button>
             </div>
+            {(t.warnings ?? []).map((w) => <p key={w} className="small warn-text" role="note">⚠ {w}</p>)}
           </li>
         ))}
       </ul>

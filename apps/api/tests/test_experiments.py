@@ -118,6 +118,63 @@ async def test_cancel(app, api_client):
     assert await ExperimentJob(app.state.db, app.state.runner).tick(later) == []  # never taken over
 
 
+async def test_a_target_that_no_longer_parses_ends_the_experiment(app, api_client):
+    """E-11: the targets were parsed outside any error handling, so the experiment stayed `running` and every
+    instance took it over and crashed the same way, every few seconds."""
+    from sqlalchemy import update
+
+    from agentcanvas.db.models import Experiment
+
+    wf, ds = await setup(api_client)
+    launch = app.state.experiments.launch
+    app.state.experiments.launch = lambda exp_id: None
+    exp = (await api_client.post(f"/v1/workflows/{wf}/experiments", json={"dataset_id": ds["id"]})).json()
+    app.state.experiments.launch = launch
+    async with app.state.db.sessionmaker() as s:
+        row = await s.get(Experiment, exp["id"])
+        assert row is not None
+        broken = [{**t, "ir": {**t["ir"], "nodes": "not a list"}} for t in row.targets]
+        await s.execute(update(Experiment).where(Experiment.id == exp["id"]).values(targets=broken))
+        await s.commit()
+    await ExperimentJob(app.state.db, app.state.runner)._run(exp["id"])
+    ended = (await api_client.get(f"/v1/experiments/{exp['id']}")).json()
+    assert ended["status"] == "error" and "not valid" in ended["error"]
+
+
+async def test_judge_calls_are_counted_in_an_experiment(app, api_client, monkeypatch):
+    """E-11: an experiment's cost left out its AI judges entirely."""
+    from agentcanvas.services import experiments, online
+
+    real = experiments.scorers
+
+    def patched(runner, wf, usage=None):
+        async def complete(system: str, prompt: str, model: str) -> str:
+            if usage is not None:
+                usage.setdefault(model, {}).update(input_tokens=1000, output_tokens=100)
+            return '{"score": 1, "reasoning": "fine"}'
+
+        return {**real(runner, wf, usage), "complete": complete}
+
+    monkeypatch.setattr(experiments, "scorers", patched)
+    wf, ds = await setup(api_client)
+    body = {"name": "polite", "kind": "llm_judge", "config": {"model": "anthropic:claude-haiku-4-5", "rubric": "ok?"}}
+    judge = (await api_client.post(f"/v1/workflows/{wf}/evaluators", json=body)).json()
+
+    async def experiment() -> dict:
+        body = {"dataset_id": ds["id"], "evaluator_ids": [judge["id"]]}
+        r = await api_client.post(f"/v1/workflows/{wf}/experiments", json=body)
+        [target] = (await finished(app, api_client, r.json()["id"]))["summary"]
+        return target
+
+    monkeypatch.setattr(online, "price", lambda m, i, o: None)  # a judge model the catalog has no price for
+    unpriced = await experiment()  # said so, not counted as free in silence
+    assert unpriced["judge_cost_usd"] == 0 and unpriced["judge_unpriced"] == ["anthropic:claude-haiku-4-5"]
+    monkeypatch.setattr(online, "price", lambda m, i, o: (i + 5 * o) / 1e6)
+    priced = await experiment()
+    assert priced["judge_cost_usd"] == 0.0045 and priced["judge_unpriced"] == []  # 3 calls of 1000 in, 100 out
+    assert priced["cost_usd"] == 0.0  # kept apart from the runs' own cost
+
+
 async def test_another_instance_takes_over_an_experiment(app, api_client):
     """An instance that stops (drained or lost) leaves its experiment; another one finishes it (FR-X-10)."""
     wf, ds = await setup(api_client)

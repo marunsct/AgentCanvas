@@ -7,6 +7,7 @@ the IR — can resolve `scripts.`/`tools.`/`nodes.` imports from the right works
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +31,9 @@ class ProjectRegistry:
         self._catalogs: dict[str, tuple[str, Catalog, Registry]] = {}
         self.secrets: dict[str, dict[str, str]] = {}  # project id -> {name: value}, filled by the secrets service
         self.knowledge: Any = None  # services.knowledge.Searcher (S24), set at startup
+        # project id -> its answer cache; set at startup to the database's, so replicas share it (G-8)
+        self.answer_cache: Callable[[str], Any] | None = None
+        self.files: Any = None  # services.files.FileStore (G-5), set at startup
 
     def workspace(self, project_id: str) -> Workspace:
         if not _SAFE.match(project_id):
@@ -52,6 +56,10 @@ class ProjectRegistry:
             )
             if self.knowledge is not None:
                 self._resources[project_id].knowledge = self.knowledge.for_project(project_id)
+            if self.answer_cache is not None:
+                self._resources[project_id].answers = self.answer_cache(project_id)
+            if self.files is not None:
+                self._resources[project_id].files = self.files.for_project(project_id)
         return self._resources[project_id]
 
     async def aclose(self) -> None:
@@ -60,6 +68,17 @@ class ProjectRegistry:
             runner = getattr(res, "script_runner", None)
             if runner is not None and hasattr(runner, "aclose"):
                 await runner.aclose()
+
+    async def forget(self, project_id: str) -> None:
+        """A deleted project: close its sandbox and drop what is cached for it."""
+        res = self._resources.pop(project_id, None)
+        runner = getattr(res, "script_runner", None)
+        if runner is not None and hasattr(runner, "aclose"):
+            await runner.aclose()
+        self._catalogs.pop(project_id, None)
+        self.secrets.pop(project_id, None)
+        for wf_id in [w for w, p in PROJECT_OF.items() if p == project_id]:
+            PROJECT_OF.pop(wf_id, None)
 
     def has_handlers(self, project_id: str) -> bool:
         """True when the project's workspace has event handler code (without creating the workspace)."""

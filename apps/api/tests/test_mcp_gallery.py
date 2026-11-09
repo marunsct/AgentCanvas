@@ -37,3 +37,16 @@ async def test_the_gallery_is_served(api_client):
     out = (await api_client.get("/v1/mcp-connectors")).json()
     by_id = {c["id"]: c for c in out}
     assert by_id["github"]["local"] is False and by_id["filesystem"]["local"] is True
+
+
+def test_sign_in_only_connectors_are_set_up_to_sign_in():
+    """G-7: a remote app that accepts only an interactive sign-in carries the `oauth` setting (the Connect button works
+    from it) and needs no secret; no other connector has it."""
+    connectors = load_gallery()["connectors"]
+    assert {"linear", "atlassian"} <= {c["id"] for c in connectors if c["auth"] == "oauth"}
+    for c in connectors:
+        if c["auth"] == "oauth" and c["config"].get("transport", "http") == "http":
+            assert c["config"]["oauth"] == {"identity": "starter"} and c["secrets"] == [], c["id"]
+            assert "cannot do yet" not in c["setup"], c["id"]
+        else:
+            assert "oauth" not in c["config"], c["id"]

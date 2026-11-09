@@ -45,6 +45,21 @@ test("filter the gallery by category, search it, and open a template in the edit
   await expect(page.locator(".problems")).not.toContainText("E0");
 });
 
+test("filter by level; an advanced template adds its kit, says so, and opens with its tests", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel("template level").selectOption("advanced");
+  await expect(page.getByTestId("template-faq_bot")).toHaveCount(0);
+  const card = page.getByTestId("template-lead_scoring_pro");
+  await expect(card).toContainText("advanced");
+  await expect(page.getByTestId("template-kit-lead_scoring_pro")).toContainText("Also adds 3 workspace files, a dataset of 4 examples");
+  await page.getByLabel("workflow name").fill(`Leads ${Date.now()}`);
+  await card.click();
+  await expect(page).toHaveURL(/\/workflows\/wf_/);
+  await expect(page.getByTestId("toasts")).toContainText(/Also added .*a dataset, 2 evaluators, 2 saved tests/);
+  await expect(page.getByTestId("node-score_lead")).toBeVisible(); // the kit's custom block is on the canvas
+  await expect(page.locator(".problems")).not.toContainText("E0");
+});
+
 test("the gallery fits a phone screen", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");

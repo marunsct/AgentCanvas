@@ -1,0 +1,17 @@
+#!/bin/sh
+# TRUSTED_PROXIES may list several address ranges (space- or comma-separated), e.g. every private range an ingress
+# controller's pods may have. The nginx template needs them twice: as `set_real_ip_from` directives, and as entries
+# of the `geo` block that decides whether X-Forwarded-Proto is believed. Anything but an address range stops the
+# start, rather than nginx trusting it.
+ranges=$(printf '%s' "${TRUSTED_PROXIES:-127.0.0.1/32}" | tr ',' ' ')
+real_ip=""
+geo=""
+for range in $ranges; do
+  case $range in
+    *[!0-9A-Fa-f:./]*|"") echo "TRUSTED_PROXIES: '$range' is not an address range" >&2; exit 1 ;;
+  esac
+  real_ip="${real_ip}set_real_ip_from ${range}; "
+  geo="${geo}${range} 1; "
+done
+export TRUSTED_PROXIES_REAL_IP="${real_ip:-set_real_ip_from 127.0.0.1/32; }"
+export TRUSTED_PROXIES_GEO="${geo:-127.0.0.1/32 1; }"

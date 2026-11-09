@@ -154,6 +154,27 @@ async def test_request_bodies_over_the_limit_are_refused(api_client):
     assert r.status_code == 413
 
 
+async def test_requests_from_the_sandbox_network_are_refused():
+    """Compose puts the API and the sandbox service on one network so the API can call it; workspace code runs
+    there, so a request coming from that network is refused before any route runs (S-3)."""
+    import httpx
+    import pytest
+    from fastapi import FastAPI
+
+    from agentcanvas.api.limits import RefuseClients
+    from agentcanvas.settings import Settings
+
+    inner = FastAPI()
+    inner.get("/v1/x")(lambda: {"ok": True})
+    guarded = RefuseClients(inner, ["10.250.250.0/24"])
+    for client, status in ((("10.250.250.7", 5000), 403), (("10.0.0.9", 5000), 200), (("127.0.0.1", 1), 200)):
+        transport = httpx.ASGITransport(app=guarded, client=client)
+        async with httpx.AsyncClient(transport=transport, base_url="http://api") as c:
+            assert (await c.get("/v1/x")).status_code == status, client
+    with pytest.raises(ValueError):
+        Settings(refuse_clients=["10.250.250.0/33"])
+
+
 def test_a_broken_check_is_reported_not_raised(monkeypatch):
     from test_frameworks import GREETER
 
@@ -191,7 +212,23 @@ def test_a_workflow_from_a_newer_server_gets_a_plain_message():
 
     with pytest.raises(ValidationError, match="newer AgentCanvas"):
         Workflow.model_validate({"id": "w", "name": "x", "ir_version": "9.0"})
-    assert Workflow.model_validate({"id": "w", "name": "x", "ir_version": "1.0"}).ir_version == "1.2"
+    assert Workflow.model_validate({"id": "w", "name": "x", "ir_version": "1.0"}).ir_version == "1.3"
+
+
+def test_the_dead_experimental_flag_is_migrated_away():
+    """IR 1.3 dropped `settings.experimental`: a stored 1.2 document that has it opens, and saves without it."""
+    import pytest
+    from pydantic import ValidationError
+
+    from agentcanvas.ir.models import Workflow
+
+    old = {"id": "w", "name": "x", "ir_version": "1.2", "settings": {"experimental": True, "recursion_limit": 7}}
+    wf = Workflow.model_validate(old)
+    assert wf.ir_version == "1.3" and wf.settings.recursion_limit == 7
+    assert "experimental" not in wf.model_dump(mode="json")["settings"]
+    assert old["settings"]["experimental"] is True  # the caller's document is left as it was
+    with pytest.raises(ValidationError):  # and a current document may not carry it
+        Workflow.model_validate({"id": "w", "name": "x", "ir_version": "1.3", "settings": {"experimental": True}})
 
 
 def test_framework_workers_do_not_inherit_the_servers_secrets(monkeypatch):
@@ -264,8 +301,10 @@ def test_a_production_server_without_an_isolating_sandbox_says_so():
     from agentcanvas.api.main import sandbox_hint
     from agentcanvas.settings import Settings
 
-    assert sandbox_hint(Settings(env="prod", script_execution="subprocess"))
+    hint = sandbox_hint(Settings(env="prod", script_execution="subprocess"))
+    assert hint and "AGENTCANVAS_SCRIPT_EXECUTION=remote" in hint  # the isolating mode the deploy files use
     assert sandbox_hint(Settings(env="staging", script_execution="inprocess"))
+    assert sandbox_hint(Settings(env="prod", script_execution="remote")) is None
     assert sandbox_hint(Settings(env="prod", script_execution="docker")) is None
     assert sandbox_hint(Settings(env="prod", script_execution="langsmith")) is None
     assert sandbox_hint(Settings(env="dev", script_execution="inprocess")) is None

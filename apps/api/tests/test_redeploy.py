@@ -170,3 +170,34 @@ async def test_a_stalled_instance_stops_a_run_another_instance_took_over(app, ap
     row = await run_row(app, run_id)
     assert row.status == "interrupted" and row.error == "swept" and row.handover is True  # untouched
     assert await runner.heartbeat() == []
+
+
+async def test_the_pinned_version_is_the_latest_run_even_within_one_second(app, api_client):
+    """R-11: the version a conversation was on was read by `started_at`, which SQLite keeps to the second, so two
+    runs in one second could pin the older one. Run ids are time-ordered and decide now."""
+    from sqlalchemy import inspect as sa_inspect
+
+    from agentcanvas.db.models import WorkflowVersion
+    from agentcanvas.ids import new_id
+    from agentcanvas.services.redeploy import thread_version
+    from agentcanvas.testing import DemoResources
+
+    app.state.resources_factory = lambda thread_id, wf: DemoResources().with_mocks(HIGH_CASE["mocks"])
+    wf_id = (await new_triage(api_client))["id"]
+    pub = (await api_client.post(f"/v1/workflows/{wf_id}/publish", json={})).json()
+    dep, key, v1 = pub["deployment"]["id"], pub["api_key"], pub["deployment"]["version_id"]
+    res = (await api_client.post(f"/v1/deployments/{dep}/runs/wait", json={"input": {"ticket": "down"}},
+                                 headers=bearer(key))).json()  # fmt: skip
+    cur = (await api_client.get(f"/v1/workflows/{wf_id}")).json()
+    next(n for n in cur["ir"]["nodes"] if n["id"] == "n_ok")["name"] = "lead_approval"  # v2: incompatible
+    await api_client.put(f"/v1/workflows/{wf_id}", json={"ir": cur["ir"]}, headers={"If-Match": str(cur["version"])})
+    v2 = (await api_client.post(f"/v1/workflows/{wf_id}/publish", json={})).json()["deployment"]["version_id"]
+    async with app.state.db.sessionmaker() as s:
+        first = await s.get(Run, res["run_id"])
+        assert first is not None and first.workflow_version_id == v1
+        cols = {c.key: getattr(first, c.key) for c in sa_inspect(Run).mapper.column_attrs}
+        s.add(Run(**{**cols, "id": new_id("run"), "workflow_version_id": v2}))  # same second, a later id
+        await s.commit()
+        current = await s.get(WorkflowVersion, v2)
+        assert current is not None
+        assert (await thread_version(s, res["thread_id"], current)).id == v2  # the latest run's version

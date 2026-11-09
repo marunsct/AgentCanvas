@@ -29,7 +29,7 @@ SKIPPED = {
 }  # fmt: skip
 # path parameters, most specific first: the first one present is the row's target
 TARGETS = ("interrupt_id", "run_id", "thread_id", "trigger_id", "dep_id", "ex_id", "ds_id", "evaluator_id", "exp_id",
-           "oev_id", "item_id", "aq_id", "case_id", "policy_id", "name", "environment", "user_id", "wf_id",
+           "oev_id", "item_id", "aq_id", "case_id", "policy_id", "token_id", "name", "environment", "user_id", "wf_id",
            "project_id")  # fmt: skip
 
 
@@ -76,6 +76,8 @@ async def record(request: Request, response: Response) -> None:
         detail["params"] = params
     if user is None:
         detail["caller"] = "deployment key"
+    elif user.token_id:
+        detail["caller"] = f"personal token {user.token_id}"
     detail.update(extra)
     row = AuditLog(
         org_id=org_id,

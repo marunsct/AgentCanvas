@@ -41,3 +41,18 @@ test("event map, dry run and delivery of a workspace event handler", async ({ pa
   await expect(page.getByTestId("event-result")).toContainText("started run_");
   await expect(page.getByTestId("event-log")).toContainText(type);
 });
+
+test("the event log filters by type", async ({ page }) => {
+  const stamp = Date.now();
+  for (const type of [`e2e${stamp}.kept`, `e2e${stamp}.hidden`]) {
+    expect((await page.request.post("/api/v1/projects/prj_default/events", { data: { type, data: {} } })).ok()).toBeTruthy();
+  }
+  await page.goto("/events");
+  const log = page.getByTestId("event-log");
+  await expect(log).toContainText(`e2e${stamp}.hidden`);
+  await page.getByLabel("filter events by type").selectOption(`e2e${stamp}.kept`);
+  await expect(log).toContainText(`e2e${stamp}.kept`);
+  await expect(log).not.toContainText(`e2e${stamp}.hidden`);
+  await page.getByLabel("filter events by type").selectOption("");
+  await expect(log).toContainText(`e2e${stamp}.hidden`);
+});

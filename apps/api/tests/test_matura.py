@@ -134,6 +134,43 @@ async def test_token_gives_organisation_and_role_and_data_stays_in_its_organisat
     assert me["memberships"] == {ACME: "builder", GLOBEX: "viewer"}
 
 
+async def test_personal_tokens_work_in_matura_mode_within_the_token_organisation(client):
+    """G-13: a token made by a Matura user acts in the organisation it was made in, with the role mirrored there."""
+    ana = as_user(ANA, ACME, "builder")
+    made = await client.post("/v1/projects", json={"name": "Acme bots"}, headers=ana)
+    assert made.status_code == 201, made.text
+    tok = await client.post("/v1/me/tokens", json={"name": "ci", "role": "viewer"}, headers=ana)
+    assert tok.status_code == 201, tok.text
+    h = {"Authorization": f"Bearer {tok.json()['token']}"}
+    me = (await client.get("/v1/me", headers=h)).json()
+    assert me["id"] == ANA and me["org_id"] == ACME and me["role"] == "viewer"
+    assert [p["name"] for p in (await client.get("/v1/projects", headers=h)).json()] == ["Acme bots"]
+    assert (await client.post("/v1/projects", json={"name": "x"}, headers=h)).status_code == 403
+    assert (await client.get("/v1/me", headers={**h, "X-Org-Id": GLOBEX})).status_code == 403
+
+
+async def test_groups_do_not_map_to_roles_in_matura_mode(client):
+    """G-13: roles come from Matura; a groups table (an OIDC-mode setting) is refused, and a groups claim is ignored."""
+    admin = as_user(ANA, ACME, "admin")
+    r = await client.put("/v1/org/settings", json={"sso_groups": {"roles": {"eng": "admin"}}}, headers=admin)
+    assert r.status_code == 409 and "OpenID Connect" in r.json()["detail"]
+    assert (await client.get("/v1/org/settings", headers=admin)).json()["sso_groups_editable"] is False
+    viewer = as_user(BEN, ACME, "viewer", groups=["eng"])
+    assert (await client.get("/v1/me", headers=viewer)).json()["role"] == "viewer"
+
+
+async def test_scim_is_not_available_in_matura_mode(client):
+    """G-13: members and roles are managed in Matura, so no SCIM token can be made and none is accepted."""
+    admin = as_user(ANA, ACME, "admin")
+    assert (await client.get("/v1/org/scim", headers=admin)).json() == {
+        "available": False, "enabled": False, "prefix": None, "created_at": None, "base_path": "/scim/v2",
+    }  # fmt: skip
+    r = await client.post("/v1/org/scim/token", headers=admin)
+    assert r.status_code == 409 and "Matura" in r.json()["detail"]
+    r = await client.get("/scim/v2/Users", headers={"Authorization": "Bearer scim_anything"})
+    assert r.status_code == 403 and r.json()["status"] == "403"
+
+
 async def test_refusals(client):
     no_tenant = {"Authorization": f"Bearer {ISSUER.token(ANA, perms=['canvas.read'])}"}
     r = await client.get("/v1/me", headers=no_tenant)

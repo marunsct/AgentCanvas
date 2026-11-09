@@ -13,11 +13,11 @@ from collections.abc import Callable
 from typing import Any
 
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agentcanvas.db.models import Deployment, WorkflowRow, WorkflowVersion
+from agentcanvas.db.models import Deployment, DeploymentShare, ShareThread, WorkflowRow, WorkflowVersion
 from agentcanvas.errors import InvalidInput, NotFound, Unauthorized
 from agentcanvas.ids import new_id
 from agentcanvas.ir.models import Workflow
@@ -131,6 +131,9 @@ class DeploymentService:
                 if dep is None:
                     raise
         if key is None:
+            if not dep.active:  # unpublished: its old key was meant to be revoked, so it does not come back
+                key = new_key()
+                dep.api_key_hash, dep.key_prefix = hash_key(key), key[:10]
             dep.version_id, dep.active = version.id, True
         await self.s.commit()
         await self.s.refresh(dep)
@@ -144,8 +147,18 @@ class DeploymentService:
         return key
 
     async def unpublish(self, dep_id: str) -> None:
+        """Like the key, the share link is revoked: sharing goes off with a new token and the visitors' conversations
+        end, so publishing again does not bring back an old link or its conversations."""
+        from agentcanvas.services.share import new_token
+
         dep = await self.require(dep_id)
         dep.active = False
+        await self.s.execute(
+            update(DeploymentShare)
+            .where(DeploymentShare.deployment_id == dep_id)
+            .values(enabled=False, token=new_token())
+        )
+        await self.s.execute(delete(ShareThread).where(ShareThread.deployment_id == dep_id))
         await self.s.commit()
 
     async def authenticate(self, dep_id: str, authorization: str | None) -> tuple[Deployment, Workflow]:

@@ -128,7 +128,7 @@ Wire format aligns with **AG-UI** for UI consumers and **OpenTelemetry GenAI sem
 
 ## 3. Concept mapping across frameworks (planning reference)
 
-> **Superseded (2026-09-28):** this indicative table has been replaced by the **source-verified** matrix in [doc 12 §A.4](./12-multi-framework-technical-spec.md#a4-verified-concept-matrix-core-ir--framework) and the per-framework specs in [adapters/](./adapters/). Notable corrections: OpenAI Agents SDK, Google ADK, MAF and Pydantic AI have **native** tool-approval HITL; Google ADK 2.x has a native **graph `Workflow`** engine; MAF workflows are Pregel-style with checkpoint storage; CrewAI Flows have a declarative **`FlowDefinition`**. Kept below for history.
+> **Superseded (2026-09-28):** this indicative table has been replaced by the **source-verified** matrix in [doc 12 §A.4](./12-multi-framework-technical-spec.md#a4-verified-concept-matrix-core-ir-framework) and the per-framework specs in [adapters/](./adapters/). Notable corrections: OpenAI Agents SDK, Google ADK, MAF and Pydantic AI have **native** tool-approval HITL; Google ADK 2.x has a native **graph `Workflow`** engine; MAF workflows are Pregel-style with checkpoint storage; CrewAI Flows have a declarative **`FlowDefinition`**. Kept below for history.
 
 | Core concept | LangChain / LangGraph / Deep Agents (R1) | OpenAI Agents SDK | Google ADK | Microsoft Agent Framework | CrewAI | Pydantic AI |
 |--------------|------------------------------------------|-------------------|------------|---------------------------|--------|-------------|

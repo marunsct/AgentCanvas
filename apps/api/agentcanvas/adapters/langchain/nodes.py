@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import functools
+import hashlib
 import inspect
 import json
 import operator
@@ -55,10 +56,12 @@ from langgraph.runtime import Runtime
 from langgraph.types import CachePolicy, Command, RetryPolicy, Send, TimeoutPolicy, TracePolicy, interrupt
 from typing_extensions import TypedDict
 
+from agentcanvas import filecontent
 from agentcanvas import guardrails as guard
 from agentcanvas import knowledge_search as ks
 from agentcanvas.adapters.langchain.gateway import AnswerCache, GatewayModel
 from agentcanvas.expr import eval_condition, render_template
+from agentcanvas.sampling import without_sampling
 from agentcanvas.workspace.loader import load_attr
 
 MODEL_CACHE_SIZE = 64  # model clients kept per Resources
@@ -83,6 +86,9 @@ def sandboxed_tool(import_path: str, workspace: Path, runner: Any) -> BaseTool:
             result = await runner.exchange(import_path, {"tool_args": args})
         except (TimeoutError, RuntimeError) as exc:  # ScriptError is a RuntimeError: the model sees the failure
             raise ToolException(f"{spec['name']}: {exc}") from None
+        from agentcanvas.sandbox.runners import relay_events
+
+        relay_events(result)
         return result.get("output")
 
     return StructuredTool.from_function(
@@ -315,7 +321,11 @@ def tag_model(model: Any, model_id: str | None, resource: str | None = None) -> 
     return model
 
 
-GATEWAY_KEYS = ("fallbacks", "cache_ttl")  # model block settings of the model gateway (S26), not the client's
+GATEWAY_KEYS = (
+    "fallbacks",
+    "cache_ttl",
+    "cheapest_of",
+)  # model block settings of the gateway (S26, G-8), not the client's
 BACKUP_KEYS = ("temperature", "max_tokens", "timeout")  # settings a block's backup models share with it
 
 # Model providers (the `provider:` prefix of a model id). Kept in step with registry/providers.json (tested).
@@ -359,27 +369,61 @@ def _local(url: str) -> str:
 def chat_model_args(model: str, params: dict[str, Any], secrets: dict[str, str]) -> tuple[str, dict[str, Any]]:
     """The `init_chat_model` id and keyword arguments for a model id and its resolved config."""
     provider, _, name = model.partition(":")
-    params = dict(params)
+    params, _ = without_sampling(model, dict(params))  # W020: the provider would refuse them with a 400
     if provider == "ollama" and not params.get("base_url") and os.environ.get("AGENTCANVAS_LOCAL_MODELS_HOST"):
         params["base_url"] = _local(OLLAMA_URL)
     if provider in OPENAI_COMPATIBLE:
         default = OPENAI_COMPATIBLE[provider]
+        own = not params.get("base_url")  # the provider's own address: its stored key may go there
         base_url = params.get("base_url") or (_local(default) if default else None)
         if not base_url:
             raise ValueError(f"model '{model}' needs a base URL: the server's OpenAI-compatible address, e.g. …/v1")
         params["base_url"] = base_url
         if "api_key" not in params:  # the server's key when one is set; else a placeholder the OpenAI client insists on
             var = OPTIONAL_KEYS.get(provider)
-            params["api_key"] = (var and (secrets.get(var) or os.environ.get(var))) or "not-needed"
+            stored = own and var and (secrets.get(var) or os.environ.get(var))
+            params["api_key"] = stored or "not-needed"  # another address gets a key only when the model names one
         return f"openai:{name}", params
     key = PROVIDER_KEYS.get(provider)
+    if key and "api_key" not in params and params.get("base_url"):
+        # the provider's key, stored for its own API, is not sent to an address the workflow chose (S-4); the SDK
+        # would otherwise read it from the server's environment
+        raise ValueError(
+            f"model '{model}' has its own base URL, so it needs its own key: set its API key to a secret "
+            f'(for example {{"$secret": "{key}"}} to send the project\'s {key} there on purpose)'
+        )
     if key and "api_key" not in params and key in secrets:
         params["api_key"] = secrets[key]
     return model, params
 
 
+# Providers built on the OpenAI SDK, which takes the hosted edition's public-address client (`pinned.py`).
+PINNABLE = ("openai", "azure_openai")
+ADDRESS_HINTS = ("url", "endpoint", "api_base", "host", "client", "proxy")  # config keys that choose where to connect
+
+
+def public_only_args(model_id: str, args: dict[str, Any], what: str) -> dict[str, Any]:
+    """The hosted edition (S-5): a model or embedder connects to public addresses only. An OpenAI SDK client gets
+    the connection-pinned HTTP client; any other provider is refused an address of its own (or a local default,
+    like Ollama's), because its client cannot be pinned."""
+    provider = model_id.partition(":")[0]
+    if provider in PINNABLE:
+        from agentcanvas.adapters.langchain.pinned import public_async_client
+
+        args["http_async_client"] = public_async_client()
+        return args
+    chosen = [k for k in args if any(h in k.lower() for h in ADDRESS_HINTS)]
+    if provider == "ollama" or chosen:
+        raise ValueError(
+            f"{what} '{model_id}': in the hosted edition a model at an address of its own must use an "
+            "OpenAI-compatible provider (openai_compatible:<model> with its base URL), which connects to public "
+            f"addresses only{f' (it sets {chosen[0]})' if chosen else ''}"
+        )
+    return args
+
+
 def knowledge_embedder(
-    spec: dict[str, Any], secrets: dict[str, str]
+    spec: dict[str, Any], secrets: dict[str, str], *, public_only: bool = False
 ) -> Callable[[Sequence[str]], Awaitable[list[list[float]]]]:
     """The embedding function of a knowledge base (S24): the built-in offline embedder, or a provider model
     ("openai:text-embedding-3-small", "ollama:nomic-embed-text", …) through LangChain's `init_embeddings`."""
@@ -403,6 +447,10 @@ def knowledge_embedder(
         else:
             params[k] = v
     model_id, params = chat_model_args(model, params, secrets)
+    if model.partition(":")[0] in OPENAI_COMPATIBLE:  # LM Studio and the like take text, not OpenAI's token ids
+        params.setdefault("check_embedding_ctx_length", False)
+    if public_only:
+        params = public_only_args(model_id, params, "embedding model")
     embeddings = init_embeddings(model_id, **params)
 
     async def provider(texts: Sequence[str]) -> list[list[float]]:
@@ -442,21 +490,39 @@ class Resources:
         self._replays: dict[str, list[dict[str, Any]]] = {}  # tool resource -> recorded calls (FR-X-13 replay)
         # the server's knowledge bases (S24): (name, query, mode=, top_k=, min_score=) -> results; None = files
         self.knowledge: Callable[..., Awaitable[list[dict[str, Any]]]] | None = None
+        # the server's files (G-5): reads a file field's reference; None = the reference carries its bytes or url
+        self.files: filecontent.FileReader | None = None
         self._kb_files: dict[str, tuple[float, ks.Index, Callable[..., Awaitable[list[list[float]]]]]] = {}
+
+    def _key(self, config: dict[str, Any]) -> str:
+        """A cache key for a client built from `config`: its settings and the project's secret values, so a rotated
+        key (a `$secret` reference, or the provider key a model uses implicitly) builds a new client instead of
+        reusing one that holds the old value until the server restarts."""
+        return f"{_config_key(config)}:{self.secrets_fingerprint()}"
+
+    def secrets_fingerprint(self) -> str:
+        """Changes whenever a secret value does (the secrets cache updates the dict in place): clients and graphs
+        built with the old values are rebuilt."""
+        values = json.dumps(sorted(self._secrets.items()))
+        return hashlib.sha256(values.encode()).hexdigest()[:16]
 
     def model(self, name: str, config: dict[str, Any]) -> BaseChatModel:
         if name in self._overrides:
             return tag_model(self._overrides[name], config.get("model"), name)
-        key = f"{name}:{_config_key(config)}"  # an edited model, key or address is a new client
+        key = f"{name}:{self._key(config)}"  # an edited model, address or secret value is a new client
         if key in self._cache:
             self._cache.move_to_end(key)
             return self._cache[key]
         params = {k: self._resolve(v) for k, v in config.items() if k not in ("model", *GATEWAY_KEYS)}
         model_id, args = chat_model_args(config["model"], params, self._secrets)
+        if self.public_only:  # hosted: a model's own address must be public (S-5)
+            args = public_only_args(model_id, args, "model")
         shared = {k: v for k, v in params.items() if k in BACKUP_KEYS}  # backups use their provider's own key
 
         def backup(model: str) -> BaseChatModel:
             backup_id, backup_args = chat_model_args(model, shared, self._secrets)
+            if self.public_only:  # e.g. a local server's default address
+                backup_args = public_only_args(backup_id, backup_args, "backup model")
             return init_chat_model(backup_id, **backup_args)
 
         model = tag_model(init_chat_model(model_id, **args), config["model"])
@@ -511,7 +577,7 @@ class Resources:
 
     def _tool(self, name: str, config: dict[str, Any], type_: str) -> Any:
         if type_ == "mcp.server":
-            key = (name, _config_key(config))
+            key = (name, self._key(config))
             if key not in self._mcp:
                 raise RuntimeError(f"MCP tools of '{name}' are not loaded yet; build the graph with abuild_graph()")
             return self._mcp[key]
@@ -550,7 +616,7 @@ class Resources:
         cached = self._kb_files.get(name)
         if cached is None or cached[0] != mtime:
             header, chunks = ks.load_jsonl(path.read_text(encoding="utf-8"))
-            embed = knowledge_embedder(header.get("embedding") or {}, self._secrets)
+            embed = knowledge_embedder(header.get("embedding") or {}, self._secrets, public_only=self.public_only)
             cached = self._kb_files[name] = (mtime, ks.Index(chunks), embed)
         return cached[1], cached[2]
 
@@ -564,7 +630,9 @@ class Resources:
         """A copy whose named chat models answer with scripted replies (debug "mock mode", M4-T9), and whose named
         tool resources answer with recorded outputs (FR-X-13 replay) instead of being called.
 
-        A model reply is text or {"content": ..., "tool_calls": [{"name", "args"}]}; the last reply repeats. A tool
+        A model reply is text or {"content": ..., "tool_calls": [{"name", "args"}]}. Replies follow the conversation
+        (`MockChatModel`): its n-th answer is reply n and the last one repeats, so every Ask AI step, which starts a
+        conversation of its own, gets the first reply; steps scripted differently need their own model. A tool
         recording is {"tool", "args", "output" | "error"} (see `ReplayQueue`)."""
         from langchain_core.messages import AIMessage
 
@@ -579,11 +647,8 @@ class Resources:
                 return AIMessage(content=str(reply.get("content", "")), tool_calls=calls)
             return AIMessage(content=str(reply))
 
-        clone = Resources(
-            {**self._overrides}, self._secrets, self._http_transport, self.workspace, self.script_runner, self.registry
-        )
-        clone._mcp = self._mcp
-        clone.public_only = self.public_only
+        clone = copy.copy(self)  # the server's knowledge bases, files and answer cache too, like `with_dry_run`
+        clone._overrides = {**self._overrides}
         clone._replays = {**self._replays}
         for name, replies in mocks.items():
             if replies and all(is_tool_recording(r) for r in replies):
@@ -596,11 +661,13 @@ class Resources:
         """Discover an MCP server's tools (network I/O, so it happens before the synchronous graph build)."""
         if name in self._replays:  # replayed: the recorded tools stand in, the server is not contacted
             return replay_stubs(name, ReplayQueue(self._replays[name]))
-        key = (name, _config_key(config))
+        key = (name, self._key(config))
         if refresh or key not in self._mcp:
+            for old in [k for k in self._mcp if k[0] == name and k != key]:  # its tools under an older key or config
+                del self._mcp[old]
             target = self._overrides.get(name)
             if target is None:
-                target = mcp_target(config, self._resolve)
+                target = mcp_target(config, self._resolve, public_only=self.public_only)
                 if self.public_only and config.get("transport", "http") != "stdio":
                     parts = urlsplit(config["url"])  # e.g. never the cloud metadata address
                     await _public_address(parts.hostname or "", parts.port or (443 if parts.scheme == "https" else 80))
@@ -743,16 +810,34 @@ def _config_key(config: dict[str, Any]) -> str:
     return json.dumps(config, sort_keys=True, default=str)
 
 
-def mcp_target(config: dict[str, Any], resolve: Callable[[Any], Any] = lambda v: v) -> Any:
+# Set by the server (`services/oauth.install`): signs an app connector's requests with the connection of whoever the
+# run acts for (G-7). None outside the server: a connector that asks for it cannot run there.
+OAUTH_AUTH: Callable[[str, str], Any] | None = None
+# Tests only: the HTTP client factory the MCP client uses for http connectors (reaches an in-process ASGI server)
+MCP_CLIENT_FACTORY: Callable[..., Any] | None = None
+
+
+def mcp_target(config: dict[str, Any], resolve: Callable[[Any], Any] = lambda v: v, public_only: bool = False) -> Any:
     """FastMCP transport for an `mcp.server` resource. Strings are never passed through: a string naming a file
-    would launch it (langchain.mcp rejects that too); stdio is explicit and admin-gated (E042)."""
+    would launch it (langchain.mcp rejects that too); stdio is explicit and admin-gated (E042). `public_only`
+    (the hosted edition): connections go to public addresses only, checked as they are made (S-5)."""
     from fastmcp.client.transports import StdioTransport, StreamableHttpTransport
 
     if config.get("transport", "http") == "stdio":
         env = {k: str(resolve(v)) for k, v in (config.get("env") or {}).items()}
         return StdioTransport(command=config["command"], args=list(config.get("args") or []), env=env or None)
     headers = {k: str(resolve(v)) for k, v in (config.get("headers") or {}).items()}
-    return StreamableHttpTransport(config["url"], headers=headers or None)
+    auth: Any = None
+    if oauth := config.get("oauth"):  # the connection of the person (or service) the run acts for, looked up per call
+        if OAUTH_AUTH is None:
+            raise RuntimeError("this app connector signs in with OAuth, which only the AgentCanvas server supports")
+        auth = OAUTH_AUTH(config["url"], oauth.get("identity", "starter"))
+    factory = MCP_CLIENT_FACTORY
+    if public_only:
+        from agentcanvas.adapters.langchain.pinned import public_mcp_client_factory
+
+        factory = public_mcp_client_factory
+    return StreamableHttpTransport(config["url"], headers=headers or None, auth=auth, httpx_client_factory=factory)
 
 
 async def mcp_tools(target: Any) -> list[BaseTool]:
@@ -786,8 +871,9 @@ async def _public_address(host: str, port: int) -> str:
     metadata, 169.254.169.254), reserved or multicast address (S7). The caller connects to this very address, so
     a second DNS answer cannot point the request elsewhere (rebinding)."""
     import asyncio
-    import ipaddress
     import socket
+
+    from agentcanvas.security.addresses import is_public
 
     try:
         infos = await asyncio.get_running_loop().getaddrinfo(host, port, type=socket.SOCK_STREAM)
@@ -795,7 +881,7 @@ async def _public_address(host: str, port: int) -> str:
         raise ToolException(f"cannot resolve '{host}': {exc}") from None
     addresses = [str(info[4][0]) for info in infos]
     for a in addresses:
-        if not ipaddress.ip_address(a.split("%")[0]).is_global:
+        if not is_public(a):  # NAT64 and other IPv6 forms of a private IPv4 address too (RT-15)
             raise ToolException(f"'{host}' resolves to a private or internal address ({a}); refused")
     return addresses[0]
 
@@ -828,7 +914,7 @@ def http_tool(
             extensions["sni_hostname"] = parts.hostname  # TLS still checks the certificate of the name
             url = parts._replace(netloc=f"[{ip}]:{port}" if ":" in ip else f"{ip}:{port}").geturl()
         async with httpx.AsyncClient(timeout=config.get("timeout", 20), transport=transport) as client:
-            r = await client.request(
+            request = client.build_request(
                 method,
                 url,
                 headers=headers,
@@ -836,7 +922,16 @@ def http_tool(
                 json=args if send == "json" else None,
                 extensions=extensions or None,
             )  # redirects are not followed: a redirect cannot leave the allowed domains
-        text = r.text[:limit]
+            r = await client.send(request, stream=True)
+            try:  # only what the model may see is read: a huge answer never sits in memory whole (RT-8)
+                body = bytearray()
+                async for chunk in r.aiter_bytes():
+                    body += chunk
+                    if len(body) >= limit * 4:  # a character is at most 4 bytes
+                        break
+            finally:
+                await r.aclose()
+        text = bytes(body).decode(r.encoding or "utf-8", errors="replace")[:limit]
         if r.status_code >= 400:
             raise ToolException(f"HTTP {r.status_code} from {parts.hostname}: {text[:500]}")
         return text
@@ -1027,6 +1122,17 @@ def keyword_rank(items: list[Any], query: str, limit: int) -> list[Any]:
     return [i for score, _, i in sorted(scored, key=lambda t: (-t[0], t[1])) if score > 0][:limit]
 
 
+async def recall(store: Any, namespace: tuple[str, ...], query: str, limit: int) -> list[Any]:
+    """The `limit` memories of a namespace that best match `query`: by meaning with `top_k` when the store has a
+    semantic index (F-7), else the namespace's first 1000 ranked by shared words. An empty query returns the most
+    recent ones."""
+    q = query.strip()
+    if getattr(store, "index_config", None) is not None:
+        return list(await store.asearch(namespace, query=q or None, limit=limit))
+    items = await store.asearch(namespace, limit=1000 if q else limit)
+    return keyword_rank(items, q, limit) if q else items
+
+
 def memory_node(
     *,
     op: str,
@@ -1051,10 +1157,7 @@ def memory_node(
         ns = namespace(runtime)
         if op == "recall":
             q = render_template(query, state).strip() if query else ""
-            indexed = getattr(store, "index_config", None) is not None
-            items = await store.asearch(ns, query=q or None, limit=top_k if indexed or not q else 1000)
-            if q and not indexed:
-                items = keyword_rank(items, q, top_k)
+            items = await recall(store, ns, q, top_k)
             return {output: [{"key": i.key, **i.value} for i in items]} if output else {}
         k = render_template(key or "", state).strip()
         if not k:
@@ -1083,7 +1186,7 @@ def memory_tools(*, space: str, scope: str, workflow_id: str, user_key: str | No
 
     async def search_memory(query: str) -> str:
         store, ns = _ctx()
-        items = keyword_rank(await store.asearch(ns, limit=1000), query, 5)
+        items = await recall(store, ns, query, 5)
         return json.dumps([{"key": i.key, **i.value} for i in items], default=str) if items else "nothing found"
 
     async def save_memory(key: str, text: str) -> str:
@@ -1187,15 +1290,63 @@ def deep_agent_node(
 
 
 # ------------------------------------------------------------------ nodes ----
-def llm_node(*, model: BaseChatModel, prompt: str, output: str) -> Callable:
-    """One model call: render prompt from state, write the text answer to `output`."""
+file_fields = filecontent.file_fields  # which state fields hold files (also used by the code generator)
+
+
+def llm_node(
+    *,
+    model: BaseChatModel,
+    prompt: str,
+    output: str,
+    files: Sequence[str] = (),
+    read_file: filecontent.FileReader | None = None,
+) -> Callable:
+    """One model call: render prompt from state, write the text answer to `output`. The file fields in `files`
+    (G-5) are shown to the model with the prompt: images and PDFs as content blocks when it can see, text otherwise."""
 
     async def run(state: Any) -> dict:
         text = render_template(prompt, state)
-        reply = await model.ainvoke([HumanMessage(text)])
+        blocks = await filecontent.attachment_blocks(state, files, read_file, filecontent.model_id_of(model))
+        message = HumanMessage(content=[{"type": "text", "text": text}, *blocks]) if blocks else HumanMessage(text)
+        reply = await model.ainvoke([message])
         return {output: reply.content}
 
     return run
+
+
+def files_middleware(names: Sequence[str], read_file: filecontent.FileReader | None = None) -> AgentMiddleware:
+    """Shows the file fields `names` of the workflow's state to an agent's model (G-5): the newest person message
+    gets the files as content blocks for each model call, without writing them to the conversation, so state and
+    checkpoints keep only the references."""
+    from typing import NotRequired
+
+    from langchain.agents.middleware.types import OmitFromOutput
+
+    fields = {
+        n: NotRequired[Annotated[Any, OmitFromOutput]] for n in names
+    }  # read from the workflow, never written back
+    FileState = TypedDict("FileState", fields, total=False)  # type: ignore[operator]
+
+    class Files(AgentMiddleware):
+        state_schema = FileState  # type: ignore[assignment]
+
+        async def awrap_model_call(self, request: Any, handler: Any) -> Any:
+            blocks = await filecontent.attachment_blocks(
+                request.state, names, read_file, filecontent.model_id_of(request.model)
+            )
+            last = next(
+                (i for i in range(len(request.messages) - 1, -1, -1) if request.messages[i].type == "human"), None
+            )
+            if not blocks or last is None:
+                return await handler(request)
+            human = request.messages[last]
+            text = human.content if isinstance(human.content, list) else [{"type": "text", "text": human.text}]
+            shown = HumanMessage(content=[*text, *blocks], id=human.id)
+            return await handler(
+                request.override(messages=[*request.messages[:last], shown, *request.messages[last + 1 :]])
+            )
+
+    return Files()
 
 
 def agent_node(
@@ -1207,15 +1358,20 @@ def agent_node(
     approve_tools: list[str] | None = None,
     middleware: Sequence[AgentMiddleware] = (),
     response_format: dict[str, Any] | None = None,
+    files: Sequence[str] = (),
+    read_file: filecontent.FileReader | None = None,
 ):
     """A tool-using agent (LangChain create_agent). Returns a compiled subgraph.
 
     The subgraph reads/writes the parent's `messages` channel, so the workflow
     state must contain a `messages` channel with reducer `add_messages`. With a
     `response_format` it also writes `structured_response`. Wired middleware runs in edge order,
-    the tool-approval middleware last.
+    the tool-approval middleware last. The file fields in `files` (G-5) are shown to the model with the newest
+    person message.
     """
     stack = list(middleware)
+    if files:
+        stack.insert(0, files_middleware(files, read_file))
     if approve_tools:
         stack.append(HumanInTheLoopMiddleware(interrupt_on=_hitl(approve_tools)))
     return create_agent(

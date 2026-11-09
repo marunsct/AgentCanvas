@@ -224,9 +224,17 @@
       "what": "The cost limit cannot count this model, because its price is unknown.",
       "fix": "Use a token limit instead, or a model with a known price."
     },
+    "W024": {
+      "what": "A model in \u201cUse the cheapest of\u201d is listed twice, is a local model (a run never picks those by price), or has no known price (it is chosen only when no priced model qualifies).",
+      "fix": "Remove the repeat, move a local model to the backup models, or ask your operator to set the price."
+    },
     "W016": {
       "what": "This backup model is already tried before it, so it adds nothing when the model fails.",
       "fix": "Pick a backup model from another provider."
+    },
+    "W017": {
+      "what": "\u201cRetry AI calls\u201d comes after \u201cBackup models\u201d and is set to carry on when its retries run out, so it answers the failure itself and the backup models are never tried.",
+      "fix": "Select the retry add-on and set \u201cWhen retries are exhausted\u201d to error, or connect it before the backup models."
     },
     "W018": {
       "what": "Something inside this group of steps needs attention.",
@@ -235,6 +243,30 @@
     "W019": {
       "what": "A safety check is set to only flag problems, but its verdict is not saved anywhere, so no later step can act on it.",
       "fix": "Select the safety block and pick a field in \u201cSave yes/no in\u201d, then branch on it with a \u201cChoose a path\u201d step (e.g. state.flagged == true). Or set \u201cWhen it fails\u201d to stop."
+    },
+    "W020": {
+      "what": "This model does not take a temperature (or top_p, top_k), so the setting is left out.",
+      "fix": "Clear the setting. To make answers more varied or more exact, say so in the prompt."
+    },
+    "P008": {
+      "what": "This workflow has file or image fields, but the framework it is set to run on does not show them to an AI model. The file is carried along as plain data and no step reads it.",
+      "fix": "Run the workflow on LangChain (Framework in the workflow settings), where Ask AI and AI Agent steps show the files to their model."
+    },
+    "W025": {
+      "what": "This step is shown a file or image field, but its model cannot see images. Images are left out and a PDF is read as plain text, so layout, tables and scans are lost.",
+      "fix": "Pick a model that takes images, or limit the step to the fields it needs under “Files to show the AI”."
+    },
+    "W026": {
+      "what": "The workflow’s budget stops runs on AgentCanvas, but an export of this workflow does not enforce some of its limits: the exported code runs past them.",
+      "fix": "Keep the limit for runs on AgentCanvas. Before running the export elsewhere, set a spending cap at the model provider, or check the limits the message names in your own code (GAPS.md lists them)."
+    },
+    "W021": {
+      "what": "A header or environment value that looks like a key is typed in as plain text. Runs work, but an export would write it into the code, so exports refuse it.",
+      "fix": "Store it as a project secret (Workspace \u2192 Secrets) and pick it from the list instead."
+    },
+    "W023": {
+      "what": "The provider stops serving this model on the day shown; after it, every call to it fails.",
+      "fix": "Pick a newer model from the list before that day (the provider names a successor)."
     },
     "W095": {
       "what": "This goes against a recommended organisation rule.",

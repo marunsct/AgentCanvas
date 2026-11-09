@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import defer
 from sqlalchemy.orm.exc import StaleDataError
 
 from agentcanvas.db.models import (
@@ -22,11 +23,14 @@ from agentcanvas.db.models import (
     InterruptTask,
     KnowledgeBase,
     Membership,
+    OAuthConnection,
     OnlineEvaluator,
     Organization,
     OrgPolicy,
+    PersonalToken,
     Project,
     Run,
+    RunSearch,
     Thread,
     Trigger,
     WorkflowRow,
@@ -35,6 +39,7 @@ from agentcanvas.errors import Conflict, NotFound
 from agentcanvas.ids import new_id
 
 DEV_ORG, DEV_USER, DEV_PROJECT = "org_default", "usr_dev", "prj_default"
+USED_EVERY = timedelta(minutes=1)  # how often choosing an organisation is written down (`UserRepo.used`)
 
 
 async def seed_dev(session: AsyncSession) -> None:
@@ -106,17 +111,26 @@ class UserRepo:
     async def memberships(self, user_id: str, accepted_only: bool = True) -> dict[str, str]:
         """org id -> role; the default organisation (the one used last) first."""
         q = select(Membership.org_id, Membership.role).where(Membership.user_id == user_id)
+        q = q.where(Membership.suspended.is_(False))  # SCIM `active: false`: not there until reactivated
         if accepted_only:
             q = q.where(Membership.accepted.is_(True))
         q = q.order_by(Membership.last_used_at.desc().nulls_last(), Membership.org_id)
         return {org: role for org, role in (await self.s.execute(q)).all()}
 
     async def used(self, user_id: str, org_id: str) -> None:
-        """Remember the organisation a user just chose: it is their default from now on."""
+        """Remember the organisation a user just chose: it is their default from now on. At most once a minute
+        per organisation: two clients (or tabs) acting in different organisations would otherwise write on every
+        request; the default is then the one chosen last, to within the minute."""
+        now = datetime.now(UTC)
+        last = await self.s.scalar(
+            select(Membership.last_used_at).where(Membership.user_id == user_id, Membership.org_id == org_id)
+        )
+        if last is not None and last > now - USED_EVERY:
+            return
         await self.s.execute(
             update(Membership)
             .where(Membership.user_id == user_id, Membership.org_id == org_id)
-            .values(last_used_at=datetime.now(UTC))
+            .values(last_used_at=now)
         )
         await self.s.commit()
 
@@ -214,12 +228,59 @@ class MemberRepo:
         await self.s.commit()
         return user, role
 
+    async def assign(self, org_id: str, user_id: str, role: str) -> str | None:
+        """Give an existing user this role in the organisation (joining it if need be, without an invitation to
+        accept: an identity provider's group put them there). Returns the role they had, None when they were not a
+        member. Raises `Conflict` rather than leave the organisation without a signed-in admin."""
+        await self._lock(org_id)
+        m = await self.s.get(Membership, (org_id, user_id))
+        before = m.role if m is not None and m.accepted else None
+        if m is None:
+            self.s.add(Membership(org_id=org_id, user_id=user_id, role=role, accepted=True))
+        elif m.role != role or not m.accepted:
+            m.role, m.accepted = role, True
+        else:
+            await self.s.commit()  # nothing to change: release the lock
+            return before
+        await self._keep_an_admin(org_id)
+        await self.s.commit()
+        return before
+
+    async def change_role(self, org_id: str, user_id: str, role: str) -> None:
+        """Change an existing member's role, whatever else is true of the membership. `Conflict` rather than leave
+        the organisation without a signed-in admin."""
+        await self._lock(org_id)
+        m = await self.s.get(Membership, (org_id, user_id))
+        if m is None:
+            raise NotFound(f"user '{user_id}' is not a member")
+        m.role = role
+        await self._keep_an_admin(org_id)
+        await self.s.commit()
+
+    async def set_suspended(self, org_id: str, user_id: str, suspended: bool) -> None:
+        """Suspend or reactivate a membership (SCIM `active`). `Conflict` rather than suspend the last admin."""
+        await self._lock(org_id)
+        m = await self.s.get(Membership, (org_id, user_id))
+        if m is None:
+            raise NotFound(f"user '{user_id}' is not a member")
+        m.suspended = suspended
+        await self._keep_an_admin(org_id)
+        await self.s.commit()
+
     async def remove(self, org_id: str, user_id: str) -> None:
+        """Remove a membership with what the person kept in this organisation: their API tokens and their app connector
+        sign-ins (suspending keeps them: a suspended member's tokens and runs are refused until reactivated)."""
         await self._lock(org_id)
         m = await self.s.get(Membership, (org_id, user_id))
         if m is None:
             raise NotFound(f"user '{user_id}' is not a member")
         await self.s.delete(m)
+        await self.s.execute(
+            delete(PersonalToken).where(PersonalToken.org_id == org_id, PersonalToken.user_id == user_id)
+        )
+        await self.s.execute(
+            delete(OAuthConnection).where(OAuthConnection.org_id == org_id, OAuthConnection.owner == user_id)
+        )
         await self._keep_an_admin(org_id)
         await self.s.commit()
 
@@ -239,6 +300,7 @@ class MemberRepo:
             .select_from(Membership)
             .join(AppUser, AppUser.id == Membership.user_id)
             .where(Membership.org_id == org_id, Membership.role == "admin", Membership.accepted.is_(True))
+            .where(Membership.suspended.is_(False))
             .where(~AppUser.oidc_subject.startswith("pending:"))
         )
         if not await self.s.scalar(q):
@@ -265,6 +327,8 @@ class AuditRepo:
         target: str | None = None,
         before: int | None = None,
         limit: int = 100,
+        since: datetime | None = None,
+        until: datetime | None = None,
     ) -> list[tuple[AuditLog, str | None]]:
         q = (
             select(AuditLog, AppUser.email)
@@ -275,8 +339,12 @@ class AuditRepo:
             q = q.where(AuditLog.action == action)
         if actor_id:
             q = q.where(AuditLog.actor_id == actor_id)
+        if since is not None:
+            q = q.where(AuditLog.created_at >= since)
+        if until is not None:
+            q = q.where(AuditLog.created_at < until)
         if target:
-            q = q.where(AuditLog.target.contains(target))
+            q = q.where(AuditLog.target.contains(target, autoescape=True))  # `%` and `_` are characters here
         if before:
             q = q.where(AuditLog.id < before)
         rows = await self.s.execute(q.order_by(AuditLog.id.desc()).limit(limit))
@@ -353,8 +421,10 @@ class ProjectRepo:
         await self.s.refresh(p)
         return p
 
-    async def require(self, project_id: str) -> Project:
-        p = await self.s.get(Project, project_id)
+    async def require(self, project_id: str, *, lock: bool = False) -> Project:
+        """The project (404 if missing). `lock`: read it afresh and hold its row until the commit (SELECT ... FOR
+        UPDATE on Postgres), for a read-modify-write of `settings` that must not lose a concurrent one's change."""
+        p = await self.s.get(Project, project_id, with_for_update=lock or None, populate_existing=lock)
         if p is None:
             raise NotFound(f"project '{project_id}' not found")
         return p
@@ -430,12 +500,24 @@ class WorkflowRepo:
         await self.s.refresh(row)
         return row
 
-    async def save_ir(self, wf_id: str, ir: dict[str, Any], ir_hash: str, name: str, expected_version: int) -> int:
-        """Optimistic locking: only the writer that saw `expected_version` wins (HTTP 409 otherwise)."""
+    async def save_ir(
+        self,
+        wf_id: str,
+        ir: dict[str, Any],
+        ir_hash: str,
+        name: str,
+        expected_version: int,
+        layout: dict[str, Any] | None = None,
+    ) -> int:
+        """Optimistic locking: only the writer that saw `expected_version` wins (HTTP 409 otherwise). `layout`, when
+        given, is written in the same statement (a restored version: never its IR without its layout)."""
+        values: dict[str, Any] = {"draft_ir": ir, "ir_hash": ir_hash, "name": name, "version": WorkflowRow.version + 1}
+        if layout is not None:
+            values["layout"] = layout
         result = await self.s.execute(
             update(WorkflowRow)
             .where(WorkflowRow.id == wf_id, WorkflowRow.version == expected_version)
-            .values(draft_ir=ir, ir_hash=ir_hash, name=name, version=WorkflowRow.version + 1)
+            .values(**values)
             .returning(WorkflowRow.version)
         )
         new_version = result.scalar_one_or_none()
@@ -456,9 +538,14 @@ class WorkflowRepo:
         await self.s.commit()
 
 
+# a run as lists show it: without its recording (every model reply and tool output), context and events (F-2)
+LIGHT_RUN = (defer(Run.recording), defer(Run.context), defer(Run.events))
+
+
 async def delete_thread_rows(session: AsyncSession, thread_id: str) -> None:
     """A conversation's control rows: its decisions, runs and the thread itself. Explicit, because SQLite (the
     local edition) does not enforce the ON DELETE CASCADE the schema declares."""
     await session.execute(delete(InterruptTask).where(InterruptTask.thread_id == thread_id))
+    await session.execute(delete(RunSearch).where(RunSearch.thread_id == thread_id))
     await session.execute(delete(Run).where(Run.thread_id == thread_id))
     await session.execute(delete(Thread).where(Thread.id == thread_id))

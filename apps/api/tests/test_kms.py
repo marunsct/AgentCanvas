@@ -19,15 +19,15 @@ async def read(app, keyring: Keyring) -> dict[str, str]:
 
 
 async def test_secrets_use_the_organisation_data_key(app, api_client):
-    assert (await api_client.put(f"{P}/secrets/API_TOKEN", json={"value": "tok-1"})).status_code == 204
+    assert (await api_client.put(f"{P}/secrets/API_TOKEN", json={"value": "token-1"})).status_code == 204
     async with app.state.db.sessionmaker() as s:
         row = await s.scalar(select(Secret).where(Secret.name == "API_TOKEN"))
         key = await s.get(OrgDataKey, "org_default")
     assert row is not None and row.org_key and key is not None
-    assert key.master_key_id == app.state.keyring.current.id and b"tok-1" not in row.ciphertext
+    assert key.master_key_id == app.state.keyring.current.id and b"token-1" not in row.ciphertext
     with pytest.raises(Exception):  # noqa: B017 - the old single key cannot read it
         _fernet(app.state.settings.secret_key).decrypt(row.ciphertext)
-    assert (await read(app, Keyring.from_settings(app.state.settings)))["API_TOKEN"] == "tok-1"  # a fresh process
+    assert (await read(app, Keyring.from_settings(app.state.settings)))["API_TOKEN"] == "token-1"  # a fresh process
 
 
 async def test_legacy_secrets_stay_readable_and_move_to_the_data_key(app):
@@ -46,19 +46,48 @@ async def test_legacy_secrets_stay_readable_and_move_to_the_data_key(app):
 
 async def test_rotating_the_master_key_rewraps_without_downtime(app, api_client):
     app.state.keyring = Keyring(OLD, legacy_secret_key=app.state.settings.secret_key)
-    await api_client.put(f"{P}/secrets/API_TOKEN", json={"value": "tok-2"})
+    await api_client.put(f"{P}/secrets/API_TOKEN", json={"value": "token-2"})
 
     rolling = Keyring(NEW, [OLD], app.state.settings.secret_key)  # deployed with both keys: still reads
-    assert (await read(app, rolling))["API_TOKEN"] == "tok-2"
+    assert (await read(app, rolling))["API_TOKEN"] == "token-2"
     async with app.state.db.sessionmaker() as s:
         assert await rolling.rewrap(s) == 1
         assert await rolling.rewrap(s) == 0
         key = await s.get(OrgDataKey, "org_default")
         assert key is not None and key.master_key_id == NEW.id and key.rotated_at is not None
 
-    assert (await read(app, Keyring(NEW)))["API_TOKEN"] == "tok-2"  # old key dropped
-    with pytest.raises(RuntimeError, match="neither"):
-        await read(app, Keyring(OLD))
+    assert (await read(app, Keyring(NEW)))["API_TOKEN"] == "token-2"  # old key dropped
+    async with app.state.db.sessionmaker() as s:
+        svc = SecretService(s, Keyring(OLD))
+        assert await svc.values("prj_default") == {}
+    assert "neither" in svc.key_errors["org_default"] and svc.unreadable == {"prj_default"}
+
+
+async def test_an_organisation_whose_data_key_is_unreadable_does_not_stop_the_others(app, api_client):
+    """OP-3: e.g. AGENTCANVAS_SECRET_KEY rotated while AGENTCANVAS_KMS_KEY is empty. Startup's sync must not fail: the
+    other organisations' secrets load, and that organisation's projects are tried again on the next sync."""
+    from agentcanvas.db.models import Organization, Project
+    from agentcanvas.services.secrets import SecretCache
+
+    app.state.keyring = Keyring(OLD, legacy_secret_key=app.state.settings.secret_key)
+    async with app.state.db.sessionmaker() as s:
+        s.add(Organization(id="org_b", name="B"))
+        await s.flush()
+        s.add(Project(id="prj_b", org_id="org_b", name="B"))
+        await s.commit()
+        await SecretService(s, app.state.keyring).put("prj_b", "B_TOKEN", "token-b", None)
+    app.state.keyring = Keyring(NEW, legacy_secret_key=app.state.settings.secret_key)  # OLD is gone
+    assert (await api_client.put(f"{P}/secrets/API_TOKEN", json={"value": "token-a"})).status_code == 204
+
+    cache: dict[str, dict[str, str]] = {}
+    keys = {"now": app.state.keyring}
+    secrets = SecretCache(app.state.db, lambda: keys["now"], cache)
+    await secrets.sync()  # does not raise
+    assert cache["prj_default"] == {"API_TOKEN": "token-a"}
+    assert "prj_b" not in secrets.versions  # not marked as read
+    keys["now"] = Keyring(NEW, [OLD], app.state.settings.secret_key)  # the old key is back as a previous key
+    await secrets.sync()
+    assert cache["prj_b"] == {"B_TOKEN": "token-b"}
 
 
 def test_cloud_master_keys():
@@ -78,3 +107,30 @@ def test_cloud_master_keys():
         master_key("vault:x", "dev")
     with pytest.raises(ValueError, match="32 characters"):
         LocalKey("short")
+
+
+def test_staging_and_production_warn_when_the_master_key_is_derived_from_the_secret_key():
+    from agentcanvas.api.main import kms_hint
+    from agentcanvas.settings import Settings
+
+    assert "AGENTCANVAS_KMS_PREVIOUS_KEYS" in (kms_hint(Settings(env="prod")) or "")
+    assert kms_hint(Settings(env="staging"))
+    assert kms_hint(Settings(env="prod", kms_key="file:/run/secrets/master.key")) is None
+    assert kms_hint(Settings(env="dev")) is None
+
+
+async def test_the_old_secret_key_in_a_file_keeps_secrets_readable_after_the_secret_key_changes(app, tmp_path):
+    """The procedure in docs/user-guide/deploy.md (Rotating AGENTCANVAS_SECRET_KEY)."""
+    from agentcanvas.settings import Settings
+
+    old_sk, new_sk = "o" * 64, "n" * 64
+    before = Keyring.from_settings(Settings(secret_key=old_sk))
+    async with app.state.db.sessionmaker() as s:
+        await SecretService(s, before).put("prj_default", "API_TOKEN", "token-x", None)
+    (tmp_path / "old-secret-key").write_text(old_sk + "\n")
+    previous = [f"file:{tmp_path / 'old-secret-key'}"]
+    after = Keyring.from_settings(Settings(secret_key=new_sk, kms_previous_keys=previous))
+    assert (await read(app, after))["API_TOKEN"] == "token-x"
+    async with app.state.db.sessionmaker() as s:
+        assert await after.rewrap(s) == 1
+    assert (await read(app, Keyring.from_settings(Settings(secret_key=new_sk))))["API_TOKEN"] == "token-x"

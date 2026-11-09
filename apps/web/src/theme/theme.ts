@@ -1,5 +1,7 @@
-/** Colour themes: light, medium (a dimmed slate) and dark, or follow the system. Kept in this browser only. */
+/** Colour themes: light, medium (a dimmed slate) and dark, or follow the system. Kept in this browser and, when
+ * signed in, with the person (api/preferences.ts). */
 import { create } from "zustand";
+import { savePreference } from "../api/preferences";
 
 export type Theme = "system" | "light" | "medium" | "dark";
 export const THEMES: { id: Theme; label: string }[] = [
@@ -40,6 +42,7 @@ export const useTheme = create<ThemeState>((set) => ({
     try { localStorage.setItem(KEY, theme); } catch { /* not remembered, still applied */ }
     applyTheme(theme);
     set({ theme });
+    savePreference({ theme });
   },
 }));
 

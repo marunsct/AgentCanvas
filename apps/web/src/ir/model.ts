@@ -12,7 +12,7 @@ export type Settings = G.WorkflowSettings;
 
 /** A workflow with every collection present (the server always sends full documents). */
 export interface WF {
-  ir_version: "1.0" | "1.1" | "1.2";
+  ir_version: "1.0" | "1.1" | "1.2" | "1.3";
   id: string;
   name: string;
   description: string;
@@ -29,7 +29,7 @@ export interface WF {
 
 export function normalize(w: G.Workflow): WF {
   return {
-    ir_version: w.ir_version ?? "1.2",
+    ir_version: w.ir_version ?? "1.3",
     id: w.id,
     name: w.name,
     description: w.description ?? "",
@@ -72,6 +72,16 @@ export function uniqueName(base: string, taken: Iterable<string>): string {
   const used = new Set(taken);
   if (!used.has(slug) && !SPECIAL.has(slug.toUpperCase())) return slug;
   for (let i = 2; ; i++) if (!used.has(`${slug}_${i}`)) return `${slug}_${i}`;
+}
+
+const IDENT = /^[a-z][a-z0-9_]{0,62}$/; // names become Python identifiers (the server's rule)
+
+/** Why `name` cannot be used, or null: not an identifier, reserved, or `taken` already (`what` names the kind). */
+export function nameProblem(name: string, taken: Iterable<string>, what = "block"): string | null {
+  if (!IDENT.test(name)) return "Use lowercase letters, digits and _, starting with a letter (at most 63).";
+  if (SPECIAL.has(name.toUpperCase())) return `“${name}” is reserved.`;
+  if (new Set(taken).has(name)) return `Another ${what} is already called “${name}”.`;
+  return null;
 }
 
 export function allNames(wf: WF): string[] {

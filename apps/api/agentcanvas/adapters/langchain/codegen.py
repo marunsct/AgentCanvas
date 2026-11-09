@@ -17,6 +17,7 @@ from jinja2 import Environment, FileSystemLoader, StrictUndefined
 from agentcanvas import designs, guardrails
 from agentcanvas.adapters.langchain.plan import lower
 from agentcanvas.errors import WorkflowHasErrors
+from agentcanvas.filecontent import file_fields
 from agentcanvas.ir.models import Workflow
 from agentcanvas.registry import Registry
 from agentcanvas.validation import has_errors, validate
@@ -67,6 +68,7 @@ def generate(wf: Workflow, *, format_code: bool = True, registry: Registry | Non
         sub_fn=_sub_fn,
         sub_prefix=_sub_prefix,
         agent_frameworks=designs.AGENT_FRAMEWORKS,
+        file_fields=file_fields,
         pii_types=list(guardrails.PII_TYPES),
         moderation_categories=list(guardrails.MODERATION_CATEGORIES),
     )

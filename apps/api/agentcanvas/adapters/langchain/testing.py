@@ -89,15 +89,7 @@ class DemoChatModel(BaseChatModel):
     def _generate(
         self, messages: list[BaseMessage], stop: list[str] | None = None, run_manager: Any = None, **kwargs: Any
     ) -> ChatResult:
-        reply = self._reply(messages)
-        # approximate usage (characters / 4) so the demo shows tokens per node like a real provider would
-        tokens_in = max(1, sum(len(str(m.content)) for m in messages) // 4)
-        tokens_out = max(1, (len(str(reply.content)) + len(str(reply.tool_calls))) // 4)
-        reply.usage_metadata = {
-            "input_tokens": tokens_in,
-            "output_tokens": tokens_out,
-            "total_tokens": tokens_in + tokens_out,
-        }
+        reply = _with_usage(self._reply(messages), messages)
         return ChatResult(generations=[ChatGeneration(message=reply)])
 
     def _reply(self, messages: list[BaseMessage]) -> AIMessage:
@@ -145,8 +137,7 @@ class DemoCopilotModel(BaseChatModel):
         super().__init__(**{"disable_streaming": True, **kwargs})
 
     def bind_tools(self, tools: Sequence[Any], **kwargs: Any) -> DemoCopilotModel:  # type: ignore[override]
-        names = [t["function"]["name"] if "function" in t else t.get("name", "") for t in tools]
-        return DemoCopilotModel(tool_names=names)
+        return DemoCopilotModel(tool_names=[_tool_name(t) for t in tools])
 
     def _generate(
         self, messages: list[BaseMessage], stop: list[str] | None = None, run_manager: Any = None, **kwargs: Any
@@ -155,15 +146,37 @@ class DemoCopilotModel(BaseChatModel):
         system = next((str(m.content) for m in messages if m.type == "system"), "")
         if "write Python code for AgentCanvas" in system:  # code help in the Workspace editor (S17)
             reply = AIMessage(content=_demo_code_help(_last_human(messages)))
+        elif any(isinstance(m, ToolMessage) and m.tool_call_id == "demo_copilot_file" for m in messages[last + 1 :]):
+            reply = AIMessage(content="I wrote scripts/demo_trim.py, which trims the text (demo Copilot).")
         elif any(isinstance(m, ToolMessage) for m in messages[last + 1 :]):
             reply = AIMessage(content="I proposed a Greet step that writes a friendly greeting (demo Copilot).")
+        elif "propose_file" in self.tool_names and "script" in _last_human(messages).lower():
+            args = {"path": "scripts/demo_trim.py", "content": _DEMO_SCRIPT, "summary": "A script that trims the text"}
+            reply = AIMessage(content="Plan: one script file.", tool_calls=[
+                {"name": "propose_file", "args": args, "id": "demo_copilot_file"}])  # fmt: skip
         elif "propose_changes" in self.tool_names and "build" in _last_human(messages).lower():
             args = {"summary": "Add a Greet step", "commands": _DEMO_GREETER}
             reply = AIMessage(content="Plan: one Ask AI step.", tool_calls=[
                 {"name": "propose_changes", "args": args, "id": "demo_copilot_1"}])  # fmt: skip
         else:
             reply = AIMessage(content="This is the demo Copilot (no model key configured). Ask me to build something.")
-        return ChatResult(generations=[ChatGeneration(message=reply)])
+        return ChatResult(generations=[ChatGeneration(message=_with_usage(reply, messages))])
+
+
+_DEMO_SCRIPT = (
+    '"""Trim the text (written by the demo Copilot)."""\n\n\n'
+    "def run(state: dict) -> dict:\n"
+    '    return {"text": str(state.get("text") or "").strip()}\n'
+)
+
+
+def _with_usage(reply: AIMessage, messages: list[BaseMessage]) -> AIMessage:
+    """Approximate usage (characters / 4), so the demo shows tokens (and cost) like a real provider would."""
+    tokens_in = max(1, sum(len(str(m.content)) for m in messages) // 4)
+    tokens_out = max(1, (len(str(reply.content)) + len(str(reply.tool_calls))) // 4)
+    total = tokens_in + tokens_out
+    reply.usage_metadata = {"input_tokens": tokens_in, "output_tokens": tokens_out, "total_tokens": total}
+    return reply
 
 
 def _demo_code_help(asked: str) -> str:
@@ -177,6 +190,13 @@ def _demo_code_help(asked: str) -> str:
     )
     code = current if asked.startswith("Fix") else f"{current.rstrip()}\n\n\n{helper}"
     return f"I added a small helper (demo Copilot: no model key configured).\n\n```python\n{code.strip()}\n```"
+
+
+def _tool_name(tool: Any) -> str:
+    """A bound tool's name: a tool object (the Deep Agents engine) or an OpenAI-style dict (the loop)."""
+    if isinstance(tool, dict):
+        return tool["function"]["name"] if "function" in tool else str(tool.get("name", ""))
+    return str(getattr(tool, "name", ""))
 
 
 def _last_human(messages: list[BaseMessage]) -> str:

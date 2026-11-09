@@ -11,9 +11,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.adapters import framework_adapter
-from agentcanvas.api.deps import CurrentUser, current_user, get_session, if_match
+from agentcanvas.api.deps import CurrentUser, attachment, current_user, get_session, if_match
 from agentcanvas.api.v1.runs import _context
 from agentcanvas.api.v1.workflows import WorkflowOut, _out, service
+from agentcanvas.api.v1.workspace import _off_loop
 from agentcanvas.db.models import Run, TestCase, Thread, WorkflowVersion
 from agentcanvas.db.repositories import WorkflowRepo
 from agentcanvas.errors import Conflict, InvalidInput, NotFound, WorkflowHasErrors
@@ -37,6 +38,14 @@ class VersionIn(BaseModel):
     bump: Bump = "minor"
 
 
+class CopilotChange(BaseModel):
+    summary: str
+    accepted_by: str
+    accepted_by_email: str | None = None
+    accepted_at: datetime
+    changes: int = Field(description="how many of the proposal's changes were kept")
+
+
 class VersionOut(BaseModel):
     id: str
     semver: str
@@ -45,6 +54,9 @@ class VersionOut(BaseModel):
     workspace_commit: str | None
     created_by: str | None
     created_at: datetime
+    copilot_changes: list[CopilotChange] = Field(
+        default_factory=list, description="the Copilot proposals accepted since the version before, and by whom"
+    )
 
 
 class VersionDetail(VersionOut):
@@ -64,7 +76,8 @@ def _version(v: WorkflowVersion) -> VersionOut:
 
 async def workspace_commit(request: Request, session: AsyncSession, wf_id: str) -> str | None:
     row = await WorkflowRepo(session).require(wf_id)
-    return request.app.state.projects.workspace(row.project_id).head()
+    ws = request.app.state.projects.workspace(row.project_id)
+    return await _off_loop(ws, ws.head)  # in turn with saves: never a commit half made
 
 
 @router.post("/workflows/{wf_id}/versions", response_model=VersionOut, status_code=201)
@@ -80,7 +93,11 @@ async def create_version(
     v, _ = await VersionService(session).create(
         wf_id, message=body.message, bump=body.bump, workspace_commit=commit, created_by=user.id
     )
-    return _version(v)
+    out = _version(v)
+    from agentcanvas.api.v1.gitsync import sync_after_version
+
+    await sync_after_version(request, session, wf_id, v, "version")  # G-14: a pull request, when the link asks for one
+    return out
 
 
 @router.get("/workflows/{wf_id}/versions", response_model=list[VersionOut])
@@ -111,8 +128,7 @@ async def restore_version(
 ) -> WorkflowOut:
     """Replace the draft by a version (an ordinary edit: the version itself never changes)."""
     v = await VersionService(session).get(wf_id, ref)
-    await svc.replace(wf_id, {**v.ir, "id": wf_id}, version)
-    await svc.repo.save_layout(wf_id, v.layout or {})
+    await svc.replace(wf_id, {**v.ir, "id": wf_id}, version, layout=v.layout or {})  # one write: both or neither
     return _out(await svc.get(wf_id), response)
 
 
@@ -188,9 +204,7 @@ async def export_zip(
     """The workflow (draft, or `?version=`) as a deployable project of its framework (or `?framework=`), with the
     deploy kit for `target` when it is a LangGraph service (M6-T2/T3, S16)."""
     _, name, data = await _export(request, session, svc, wf_id, version, target, framework)
-    return Response(
-        data, media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{name}"'}
-    )
+    return Response(data, media_type="application/zip", headers=attachment(name))
 
 
 async def _export(
@@ -426,11 +440,15 @@ async def get_contract(
 
     wf = await VersionService(session).workflow_at(wf_id, version or "draft")
     out = ContractOut(**contract(wf).model_dump())
-    deps = (await session.scalars(select(Deployment).where(Deployment.workflow_id == wf_id, Deployment.active))).all()
-    for d in deps:
-        v = await session.get(WorkflowVersion, d.version_id)
-        out.surfaces.append(Surface(kind="http", detail=f"{d.environment} v{v.semver if v else '?'}: "
-                                    f"POST /v1/deployments/{d.id}/runs/wait|stream (Bearer key)"))  # fmt: skip
+    deps = (
+        select(Deployment.id, Deployment.environment, WorkflowVersion.semver)
+        .outerjoin(WorkflowVersion, WorkflowVersion.id == Deployment.version_id)
+        .where(Deployment.workflow_id == wf_id, Deployment.active)
+        .order_by(Deployment.environment)
+    )  # with their versions in one query
+    for dep_id, environment, semver in (await session.execute(deps)).all():
+        out.surfaces.append(Surface(kind="http", detail=f"{environment} v{semver or '?'}: "
+                                    f"POST /v1/deployments/{dep_id}/runs/wait|stream (Bearer key)"))  # fmt: skip
     for t in (await session.scalars(select(Trigger).where(Trigger.workflow_id == wf_id, Trigger.enabled))).all():
         detail = f"POST /v1/hooks/{t.id} (HMAC signed)" if t.kind == "webhook" else f"cron {t.config.get('schedule')}"
         out.surfaces.append(Surface(kind=t.kind, detail=detail))

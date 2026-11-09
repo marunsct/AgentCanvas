@@ -15,9 +15,10 @@ from typing import Any
 
 from agentcanvas import designs
 from agentcanvas.adapters.langchain.codegen import doc_line, one_line
-from agentcanvas.ir.models import Node, Workflow
+from agentcanvas.ir.models import Node, Resource, Workflow
+from agentcanvas.sampling import without_sampling
 
-SDK_VERSION = "0.23.1"
+SDK_VERSION = "0.24.0"
 RUNTIME_IMPORT = "from agentcanvas.adapters.openai_agents import runtime as rt"
 STEP_TYPES = {
     "core.set", "core.router", "core.join", "core.approval", "core.human_input", "core.script", "core.llm",
@@ -29,16 +30,7 @@ _TAKEN = {"rt", "Agent", "ModelSettings", "BaseModel", "Field", "Any", "Literal"
 
 def _lit(value: Any) -> str:
     """A Python literal for a JSON value (strings with line breaks as triple-quoted text when that reads better)."""
-    if (
-        isinstance(value, str)
-        and "\n" in value
-        and '"""' not in value
-        and "\\" not in value
-        and "\r" not in value
-        and value[-1:] != '"'
-    ):
-        return '"""' + value + '"""'
-    return _py(value)
+    return designs.literal(value) if isinstance(value, str) else _py(value)
 
 
 def _py(value: Any) -> str:
@@ -53,6 +45,13 @@ def _py(value: Any) -> str:
     if isinstance(value, dict):
         return "{" + ", ".join(f"{_py(k)}: {_py(v)}" for k, v in value.items()) + "}"
     return repr(value)
+
+
+def model_settings(m: Resource) -> dict[str, Any]:
+    """A model block's temperature and max_tokens, without the sampling settings its model refuses (W020): the
+    provider would answer them with a 400."""
+    found = {k: m.config[k] for k in ("temperature", "max_tokens") if m.config.get(k) is not None}
+    return without_sampling(str(m.config.get("model", "")), found)[0]
 
 
 def _camel(name: str) -> str:
@@ -119,7 +118,7 @@ def _model(wf: Workflow, n: Node) -> tuple[str, str]:
     if not models:
         return "", ""
     m = models[0]
-    settings = [f"{k}={_py(m.config[k])}" for k in ("temperature", "max_tokens") if m.config.get(k) is not None]
+    settings = [f"{k}={_py(v)}" for k, v in model_settings(m).items()]
     return f"run.model({_py(m.name)})", (f"ModelSettings({', '.join(settings)})" if settings else "")
 
 

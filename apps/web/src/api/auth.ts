@@ -57,15 +57,30 @@ export function signInEnabled(): boolean {
   return manager !== null;
 }
 
-/** Renew the token without leaving the page (hidden iframe or refresh token); true when it worked. */
-export async function renew(): Promise<boolean> {
-  if (!manager) return false;
-  try {
-    user = await manager.signinSilent();
-    return !!user && !user.expired;
-  } catch {
-    return false;
-  }
+/** Whether the token we hold has expired, so a call would only earn a 401 (false in dev mode / before sign-in). */
+export function tokenExpired(): boolean {
+  return !!manager && !!user && user.expired === true;
+}
+
+let renewing: Promise<boolean> | null = null;
+
+/** Renew the token without leaving the page (hidden iframe or refresh token); true when it worked. Single-flight:
+ * many calls answered 401 at once share one renewal, because presenting the same refresh token twice can make the
+ * identity provider revoke the whole token family and force a full sign-in. */
+export function renew(): Promise<boolean> {
+  const m = manager;
+  if (!m) return Promise.resolve(false);
+  renewing ??= (async () => {
+    try {
+      user = await m.signinSilent();
+      return !!user && !user.expired;
+    } catch {
+      return false;
+    } finally {
+      renewing = null;
+    }
+  })();
+  return renewing;
 }
 
 const LAST_REDIRECT = "agentcanvas.signin.redirected_at";

@@ -26,6 +26,7 @@ spec:
       automountServiceAccountToken: false
       securityContext:
         {{- include "agentcanvas.podSecurity" . | nindent 8 }}
+      {{- include "agentcanvas.spread" (dict "root" . "component" "sandbox") | nindent 6 }}
       containers:
         - name: sandbox
           image: {{ include "agentcanvas.image" (dict "root" . "component" "api") }}
@@ -34,6 +35,9 @@ spec:
           ports:
             - { name: http, containerPort: 8090 }
           env:
+            # one call at a time per pod, and after each nothing it started or wrote is left (S-2); scale with replicas
+            - name: AGENTCANVAS_SANDBOX_SWEEP
+              value: "1"
             - name: AGENTCANVAS_SANDBOX_TOKEN
               valueFrom:
                 secretKeyRef:
@@ -55,6 +59,15 @@ spec:
       volumes:
         - name: tmp
           emptyDir: { sizeLimit: 512Mi }
+      {{- with .Values.sandbox.nodeSelector }}
+      nodeSelector: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.sandbox.tolerations }}
+      tolerations: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.sandbox.affinity }}
+      affinity: {{ toYaml . | nindent 8 }}
+      {{- end }}
 ---
 apiVersion: v1
 kind: Service
@@ -88,6 +101,119 @@ spec:
               {{- include "agentcanvas.selector" (dict "root" . "component" "api") | nindent 14 }}
       ports:
         - { port: 8090 }
+  {{- if .Values.sandbox.egress.enabled }}
+  # only the egress proxy, which decides which hosts, per project. No DNS: the API gives the sandbox the proxy's
+  # address (AGENTCANVAS_EGRESS_PROXY_RESOLVE), and names the code looks up could carry data out through the
+  # cluster's resolver
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "agentcanvas.selector" (dict "root" . "component" "egress") | nindent 14 }}
+      ports:
+        - { port: 3128 }
+  {{- else }}
   egress: []   # workspace code has no network at all
+  {{- end }}
+{{- end }}
+{{- if .Values.sandbox.egress.enabled }}
+---
+# The sandbox's way out (sandbox.json egress): admits the hosts each call's project lists, signed by the API; refuses
+# names that resolve to private addresses. Its NetworkPolicy lets only sandbox pods in, and out only to public ranges.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}-egress
+  labels:
+    {{- include "agentcanvas.labels" . | nindent 4 }}
+    app.kubernetes.io/component: egress
+spec:
+  replicas: {{ .Values.sandbox.egress.replicas }}
+  selector:
+    matchLabels:
+      {{- include "agentcanvas.selector" (dict "root" . "component" "egress") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "agentcanvas.labels" . | nindent 8 }}
+        app.kubernetes.io/component: egress
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      automountServiceAccountToken: false
+      securityContext:
+        {{- include "agentcanvas.podSecurity" . | nindent 8 }}
+      {{- include "agentcanvas.spread" (dict "root" . "component" "egress") | nindent 6 }}
+      containers:
+        - name: egress
+          image: {{ include "agentcanvas.image" (dict "root" . "component" "api") }}
+          imagePullPolicy: {{ .Values.image.api.pullPolicy }}
+          command: ["python", "-m", "agentcanvas.sandbox.egress", "--port", "3128"]
+          ports:
+            - { name: proxy, containerPort: 3128 }
+          env:
+            - name: AGENTCANVAS_EGRESS_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "agentcanvas.secret" . }}
+                  key: AGENTCANVAS_EGRESS_SECRET
+          readinessProbe:
+            tcpSocket: { port: proxy }
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket: { port: proxy }
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.sandbox.egress.resources | nindent 12 }}
+          securityContext:
+            {{- include "agentcanvas.containerSecurity" . | nindent 12 }}
+            readOnlyRootFilesystem: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}-egress
+  labels:
+    {{- include "agentcanvas.labels" . | nindent 4 }}
+    app.kubernetes.io/component: egress
+spec:
+  selector:
+    {{- include "agentcanvas.selector" (dict "root" . "component" "egress") | nindent 4 }}
+  ports:
+    - { name: proxy, port: 3128, targetPort: proxy }
+{{- if .Values.networkPolicy.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $name }}-egress
+  labels:
+    {{- include "agentcanvas.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "agentcanvas.selector" (dict "root" . "component" "egress") | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "agentcanvas.selector" (dict "root" . "component" "sandbox") | nindent 14 }}
+      ports:
+        - { port: 3128 }
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: {{ toJson .Values.sandbox.egress.deniedCidrs }}
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels: { k8s-app: kube-dns }
+      ports:
+        - { port: 53, protocol: UDP }
+        - { port: 53, protocol: TCP }
+{{- end }}
 {{- end }}
 {{- end }}

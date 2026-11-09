@@ -18,7 +18,7 @@ from agentcanvas.adapters.langchain.gateway import AnswerCache, GatewayModel
 from agentcanvas.adapters.langchain.nodes import Resources, tag_model
 from agentcanvas.ir.models import Budget, Workflow
 from agentcanvas.registry import default_registry
-from agentcanvas.runtime.runner import BudgetExceeded, SpendTally, Spent, check_budget, periods
+from agentcanvas.runtime.runner import BudgetExceeded, Spent, check_budget, periods
 from agentcanvas.testing import DemoChatModel, scripted
 from agentcanvas.validation import validate
 
@@ -182,7 +182,7 @@ def test_backups_share_the_block_settings_but_not_its_key_or_address():
     assert model.cache_ttl == 30 and model.answers is res.answers
     assert model.metadata["ac_resource"] == "m" and "ac_resource" not in (model.models[0].metadata or {})
     backup = model.models[1]
-    assert backup.temperature == 0.2 and backup.max_tokens == 50
+    assert backup.temperature is None and backup.max_tokens == 50  # shared, less what Claude refuses (W020)
     assert backup.anthropic_api_key.get_secret_value() == "anthropic-key"
     assert "127.0.0.1" not in str(getattr(backup, "anthropic_api_url", ""))
     assert res.model("m", config) is model  # built once per config
@@ -220,27 +220,6 @@ def test_day_and_month_budgets_stop_runs():
     assert Budget(alert_at=[0.9, 0.5]).alerts() == [0.5, 0.9, 1.0] and Budget().alerts() == [0.8, 1.0]
     with pytest.raises(ValueError):
         Budget(alert_at=[80])
-
-
-def test_concurrent_runs_count_each_others_spending():
-    """Runs going at once each read the same spending from the database (a run's cost is saved when it ends); the
-    in-process tally adds what the workflow's other runs spent, so together they stop at the limit."""
-    t = SpendTally()
-    assert t.start("wf", "r1") == 0.0
-    t.add("wf", "r1", 0.4)
-    assert t.start("wf", "r2") == pytest.approx(0.4)  # r1 is going: its 0.4 is not in the database yet
-    t.add("wf", "r2", 0.3)
-    t.add("wf", "r1", 0.2)
-    assert t.others("wf", "r2", 0.3) == pytest.approx({"day": 0.2, "month": 0.2})
-    assert t.others("wf", "r1", 0.6) == pytest.approx({"day": 0.3, "month": 0.3})
-    budget = Budget(daily_max_cost_usd=1.0)
-    with pytest.raises(BudgetExceeded, match="this day"):  # 0.4 carried + 0.2 since + 0.3 + 0.1 of its own
-        check_budget(budget, {"input_tokens": 0, "output_tokens": 0, "cost_usd": 0.4}, Spent(day_cost=0.6))
-    t.finish("wf", "r1")  # its cost is saved: runs starting now read it from the database
-    assert t.start("wf", "r3") == pytest.approx(0.3) and t.start("other", "r4") == 0.0
-    t.finish("wf", "r2")
-    t.finish("wf", "r3")
-    assert t.running == {"other": {"r4": 0.0}} and set(t.marks) == {"r4"}
 
 
 def test_periods_are_utc_days_and_months():
@@ -296,7 +275,8 @@ async def test_a_provider_outage_fails_over(app, api_client, demo_backups, frame
     """S26 exit: a provider outage fails over (on the canvas's own framework and on the SDK)."""
     res = Resources(secrets={"OPENAI_API_KEY": "k"})
     app.state.resources_factory = lambda thread_id, wf: res
-    config = {"model": "openai:gpt-5-mini", "base_url": DOWN, "timeout": 5, "fallbacks": ["anthropic:claude-haiku-4-5"]}
+    config = {"model": "openai:gpt-5-mini", "base_url": DOWN, "api_key": {"$secret": "OPENAI_API_KEY"}, "timeout": 5,
+              "fallbacks": ["anthropic:claude-haiku-4-5"]}  # fmt: skip
     wf = await _make(api_client, _llm_ir(config, framework=framework))
     evs = await _run(api_client, wf)
     fin = evs[-1]
@@ -418,3 +398,27 @@ def test_exports_carry_the_gateway():
 def test_scripted_overrides_skip_the_gateway():
     res = Resources(overrides={"m": scripted("hi")})
     assert not isinstance(res.model("m", {"model": "openai:gpt-5-mini", "fallbacks": ["x:y"]}), GatewayModel)
+
+
+def test_a_rotated_key_builds_a_new_model_client(monkeypatch):
+    """R-3: model clients were cached by the secret's name, so after rotating a leaked key runs kept using the old
+    value until 64 other configs evicted it or the server restarted."""
+    from langchain_core.language_models.fake_chat_models import FakeListChatModel
+
+    from agentcanvas.adapters.langchain.nodes import Resources
+
+    built: list[str | None] = []
+
+    def init(model_id, **kw):
+        built.append(kw.get("api_key"))
+        return FakeListChatModel(responses=["ok"])
+
+    monkeypatch.setattr(nodes, "init_chat_model", init)
+    secrets = {"OPENAI_API_KEY": "sk-old-123456"}
+    res = Resources(secrets=secrets)
+    res.model("m", {"model": "openai:gpt-5.5"})
+    res.model("m", {"model": "openai:gpt-5.5"})
+    assert built == ["sk-old-123456"]  # reused while nothing changed
+    secrets["OPENAI_API_KEY"] = "sk-new-654321"  # the secrets cache updates this dict in place
+    res.model("m", {"model": "openai:gpt-5.5"})
+    assert built[-1] == "sk-new-654321"

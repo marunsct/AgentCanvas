@@ -105,6 +105,35 @@ async def test_org_header_must_name_a_membership(client):
     assert r.status_code == 403
 
 
+async def test_two_clients_in_different_organisations_do_not_write_on_every_request(app, client):
+    """F-4: a request naming another organisation than the default made it the default, a write and a commit on
+    every request of two clients (or tabs) that alternate."""
+    from test_efficiency import statements
+
+    from agentcanvas.db.models import Membership, Organization
+    from agentcanvas.db.repositories import UserRepo
+
+    alice = bearer(token())
+    assert (await client.get("/v1/me", headers=alice)).status_code == 200
+    async with app.state.db.sessionmaker() as s:
+        alice_id = (await UserRepo(s).by_subject("oidc:alice-sub")).id  # type: ignore[union-attr]
+        s.add(Organization(id="org_b", name="Org B"))
+        await s.flush()
+        s.add(Membership(org_id="org_b", user_id=alice_id, role="admin"))
+        await s.commit()
+    default = (await client.get("/v1/me", headers=alice)).json()["org_id"]
+    other = "org_b" if default == "org_default" else "org_default"
+    assert (await client.get("/v1/me", headers={**alice, "X-Org-Id": other})).json()["org_id"] == other
+    assert (await client.get("/v1/me", headers=alice)).json()["org_id"] == other  # a switch is remembered
+    with statements(app) as seen:
+        for _ in range(5):
+            for org in (default, other):
+                r = await client.get("/v1/me", headers={**alice, "X-Org-Id": org})
+                assert r.json()["org_id"] == org
+    writes = [x for x in seen if x.startswith("UPDATE membership")]
+    assert len(writes) == 1, writes  # the first switch back; then at most once a minute per organisation
+
+
 async def test_public_routes_need_no_sign_in(client):
     cfg = (await client.get("/v1/auth/config")).json()
     assert cfg == {"mode": "oidc", "issuer": ISSUER, "client_id": "spa",
@@ -125,7 +154,13 @@ def test_dev_mode_is_refused_in_production():
     with pytest.raises(RuntimeError, match="SECRET_KEY"):  # S11: the development key never reaches production
         check_auth_settings(Settings(env="prod", **oidc))
     strong = "k" * 64
-    check_auth_settings(Settings(env="prod", secret_key=strong, **oidc))
+    with pytest.raises(RuntimeError, match="SCRIPT_EXECUTION=inprocess"):  # S-8: code as the API's own user
+        check_auth_settings(Settings(env="prod", secret_key=strong, **oidc))
+    with pytest.raises(RuntimeError, match="SCRIPT_EXECUTION=subprocess"):
+        check_auth_settings(Settings(env="staging", secret_key=strong, script_execution="subprocess", **oidc))
+    check_auth_settings(Settings(env="prod", secret_key=strong, script_execution="remote", sandbox_url="http://s",
+                                 sandbox_token="t" * 32, **oidc))  # fmt: skip
+    check_auth_settings(Settings(env="prod", secret_key=strong, allow_unisolated_scripts=True, **oidc))
     with pytest.raises(RuntimeError, match="SCRIPT_EXECUTION"):  # S2: hosted runs scripts in the sandbox only
         check_auth_settings(Settings(edition="hosted", secret_key=strong, **oidc))
     check_auth_settings(Settings(edition="hosted", secret_key=strong, script_execution="docker", **oidc))
@@ -154,6 +189,8 @@ async def test_seeded_dev_user_has_no_rights_with_sign_in_on(client):
 # routes reachable without signing in (S15); deployment and webhook routes check their own credentials
 PUBLIC = {
     ("GET", "/v1/auth/config"), ("GET", "/healthz"), ("GET", "/readyz"),
+    # G-7: our OAuth client metadata document, fetched by authorization servers (404 unless a public https URL is set)
+    ("GET", "/v1/oauth/client-metadata.json"),
     # S15: A2A clients read the card before they authenticate; the MCP GET only says "POST" (405)
     ("GET", "/v1/deployments/{dep_id}/a2a/.well-known/agent-card.json"),
     ("GET", "/v1/deployments/{dep_id}/a2a/.well-known/agent.json"),
@@ -163,10 +200,13 @@ PUBLIC = {
     ("POST", "/v1/share/{token}/runs/stream"),
     ("POST", "/v1/share/{token}/threads/{thread_id}/resume"),
     ("POST", "/v1/share/{token}/runs/{run_id}/feedback"),
+    ("POST", "/v1/share/{token}/files"),
+    ("GET", "/v1/share/{token}/conversation"),
+    ("DELETE", "/v1/share/{token}/conversation"),
 }  # fmt: skip
 OWN_CREDENTIALS = (
     "/v1/deployments/{dep_id}/runs/", "/v1/deployments/{dep_id}/threads/", "/v1/hooks/",
-    "/v1/deployments/{dep_id}/mcp", "/v1/deployments/{dep_id}/a2a",
+    "/v1/deployments/{dep_id}/mcp", "/v1/deployments/{dep_id}/a2a", "/v1/deployments/{dep_id}/files",
 )  # fmt: skip
 
 
@@ -191,7 +231,9 @@ async def test_every_other_route_needs_sign_in(app, client):
 async def test_api_docs_are_off_in_production(settings):
     from agentcanvas.api.main import create_app
 
-    prod = create_app(settings.model_copy(update={"env": "prod", "secret_key": "k" * 64}))
+    prod = create_app(
+        settings.model_copy(update={"env": "prod", "secret_key": "k" * 64, "allow_unisolated_scripts": True})
+    )
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=prod), base_url="http://test") as c:
         for path in ("/docs", "/redoc", "/openapi.json"):
             assert (await c.get(path)).status_code == 404, path
@@ -245,3 +287,94 @@ async def test_joining_another_organisation_needs_acceptance(app, client):
     assert (await client.get("/v1/me/invitations", headers=bob)).json() == []
     assert set((await client.get("/v1/me", headers=bob)).json()["memberships"]) == {"org_b"}
     assert (await client.post("/v1/me/invitations/org_default/accept", headers=bob)).status_code == 404
+
+
+async def test_unknown_key_ids_do_not_make_the_server_fetch_keys_for_every_request(settings):
+    """Tokens are checked before anyone is signed in, so a stranger can send as many as they like. A key id the issuer
+    does not list must not turn each of them into a fetch of the issuer's key set (PyJWKClient's refresh cooldown)."""
+    import http.server
+    import threading
+
+    hits: list[str] = []
+    body = json.dumps({"keys": [SIGNING_JWK]}).encode()
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            hits.append(self.path)
+            self.send_response(200)
+            self.send_header("content-type", "application/json")
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        auth = Authenticator(
+            settings.model_copy(update={"oidc_jwks_url": f"http://127.0.0.1:{server.server_address[1]}/keys"})
+        )
+        now = int(time.time())
+        claims = {"iss": ISSUER, "aud": AUDIENCE, "sub": "x", "iat": now, "exp": now + 300}
+        for i in range(60):
+            forged = jwt.encode(claims, OTHER_KEY, algorithm="RS256", headers={"kid": f"random-{i}"})
+            with pytest.raises(Exception, match="signing key"):
+                await auth.verify(forged)
+        assert len(hits) <= 2, f"{len(hits)} fetches of the issuer's keys for 60 tokens with unknown key ids"
+        assert (await auth.verify(token())).subject == "alice-sub"  # the real key still works
+    finally:
+        server.shutdown()
+
+
+def _b64(obj) -> str:
+    import base64
+
+    raw = obj if isinstance(obj, bytes) else json.dumps(obj).encode()
+    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
+
+
+def _forged_tokens() -> dict[str, str]:
+    import hashlib
+    import hmac
+
+    from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+
+    now = int(time.time())
+    good = {"iss": ISSUER, "aud": AUDIENCE, "sub": "mallory", "email": "alice@example.com", "email_verified": True,
+            "iat": now, "exp": now + 300}  # fmt: skip
+    header = {"kid": "k1"}
+
+    def rs256(claims: dict, key=SIGNING_KEY) -> str:
+        return jwt.encode(claims, key, "RS256", header)
+
+    def without(name: str) -> dict:
+        return {k: v for k, v in good.items() if k != name}
+
+    # the classic algorithm confusion: HS256, "signed" with the issuer's public key as the secret (PyJWT will not
+    # create one, so it is made by hand)
+    public_pem = SIGNING_KEY.public_key().public_bytes(Encoding.PEM, PublicFormat.SubjectPublicKeyInfo)
+    signing_input = f"{_b64({'alg': 'HS256', 'typ': 'JWT', 'kid': 'k1'})}.{_b64(good)}".encode()
+    mac = hmac.new(public_pem, signing_input, hashlib.sha256).digest()
+    return {
+        "alg none": f"{_b64({'alg': 'none', 'typ': 'JWT', 'kid': 'k1'})}.{_b64(good)}.",
+        "HS256 with the public key": f"{signing_input.decode()}.{_b64(mac)}",
+        "no expiry": rs256(without("exp")),
+        "not yet valid": rs256({**good, "nbf": now + 3600}),
+        "issued in the future": rs256({**good, "iat": now + 3600}),
+        "no audience": rs256(without("aud")),
+        "audience list without ours": rs256({**good, "aud": ["a", "b"]}),
+        "no subject": rs256(without("sub")),
+        "empty subject": rs256({**good, "sub": ""}),
+        "blank subject": rs256({**good, "sub": "  "}),
+        "huge token": rs256({**good, "pad": "A" * 200_000}, OTHER_KEY),
+        "garbage header": "!!!.e30.sig",
+        "five parts": "a.b.c.d.e",
+        "empty parts": "..",
+    }
+
+
+@pytest.mark.parametrize("what", list(_forged_tokens()))
+async def test_forged_and_malformed_tokens_are_401(client, what):
+    r = await client.get("/v1/projects", headers=bearer(_forged_tokens()[what]))
+    assert r.status_code == 401, (what, r.status_code, r.text[:200])

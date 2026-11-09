@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from agentcanvas.ir.models import Node, Workflow
+from agentcanvas.sampling import without_sampling
 
 
 @dataclass(frozen=True)
@@ -46,23 +47,24 @@ class AgentFramework:
 AGENT_FRAMEWORKS: dict[str, AgentFramework] = {
     f.id: f
     for f in [
-        AgentFramework("openai_agents", "OpenAI Agents SDK", ("openai-agents==0.23.1",), "agents", "openai"),
-        AgentFramework("crewai", "CrewAI", ("crewai==1.15.25",), "crewai", "openai", own_env=True),
-        AgentFramework("google_adk", "Google ADK", ("google-adk==2.11.0", "litellm==1.104.2"), "google.adk", "openai",
+        AgentFramework("openai_agents", "OpenAI Agents SDK", ("openai-agents==0.24.0",), "agents", "openai"),
+        AgentFramework("crewai", "CrewAI", ("crewai==1.15.33",), "crewai", "openai", own_env=True),
+        AgentFramework("google_adk", "Google ADK", ("google-adk==2.13.0", "litellm==1.105.7"), "google.adk", "openai",
                        own_env=True),
-        AgentFramework("pydantic_ai", "Pydantic AI", ("pydantic-ai-slim[openai]==2.54.0",), "pydantic_ai", "openai"),
-        AgentFramework("agno", "Agno", ("agno==3.1.1", "openai==2.54.0"), "agno", "openai", own_env=True),
-        AgentFramework("strands", "Strands Agents", ("strands-agents[openai]==1.58.1",), "strands", "openai",
+        AgentFramework("pydantic_ai", "Pydantic AI", ("pydantic-ai-slim[openai]==2.63.0",), "pydantic_ai", "openai"),
+        AgentFramework("agno", "Agno", ("agno==3.1.11", "openai==2.54.0"), "agno", "openai", own_env=True),
+        AgentFramework("strands", "Strands Agents", ("strands-agents[openai]==1.62.0",), "strands", "openai",
                        own_env=True),
         AgentFramework(
-            "llamaindex", "LlamaIndex", ("llama-index-core==0.14.25", "llama-index-llms-openai-like==0.8.1"),
+            "llamaindex", "LlamaIndex",
+            ("llama-index-core==0.14.25", "llama-index-workflows==2.25.0", "llama-index-llms-openai-like==0.8.1"),
             "llama_index.core", "openai", own_env=True,
         ),
         AgentFramework(
             "microsoft_agent_framework", "Microsoft Agent Framework",
-            ("agent-framework-core==1.20.0", "agent-framework-openai==1.16.0"), "agent_framework", "openai",
+            ("agent-framework-core==1.23.0", "agent-framework-openai==1.17.0"), "agent_framework", "openai",
         ),
-        AgentFramework("claude_agent_sdk", "Claude Agent SDK", ("claude-agent-sdk==0.2.164",), "claude_agent_sdk",
+        AgentFramework("claude_agent_sdk", "Claude Agent SDK", ("claude-agent-sdk==0.2.174",), "claude_agent_sdk",
                        "anthropic"),
     ]
 }  # fmt: skip
@@ -185,7 +187,9 @@ def design_for(wf: Workflow, node: Node) -> AgentDesign:
     model = None
     for r in wired.get("model", [])[:1]:
         provider, _, name = str(r.config.get("model", "")).partition(":")
-        model = ModelChoice(r.name, provider, name, r.config.get("base_url"), r.config.get("temperature"),
+        # W020: no temperature for a model that refuses it (the provider would answer with a 400)
+        kept, _ = without_sampling(str(r.config.get("model", "")), {"temperature": r.config.get("temperature")})
+        model = ModelChoice(r.name, provider, name, r.config.get("base_url"), kept.get("temperature"),
                             r.config.get("max_tokens"))  # fmt: skip
     tools = [ToolChoice(r.name, r.type, dict(r.config)) for r in wired.get("tools", []) if r.type in TOOL_TYPES]
     cfg = node.config
@@ -245,9 +249,20 @@ def article(label: str) -> str:
     return "an" if label[:1] in "AEIOU" else "a"
 
 
-def _string(text: str) -> str:
-    """A readable Python literal for `text` (triple quotes for multi-line text)."""
-    if "\n" in text and '"""' not in text and "\\" not in text and not text.endswith('"'):
+def literal(text: str) -> str:
+    """A Python string literal that reads back as exactly `text`, for every code generator: triple quotes for
+    multi-line text when nothing in it would change on the way back (a backslash escape, a `\\r` the tokenizer turns
+    into `\\n`, a quote that ends it, a control character), else one double-quoted line.
+
+    Triple-quoted text keeps its lines as they are, so it belongs at module level or in code that is never
+    re-indented: a generator that indents a body line by line must use the one-line form there."""
+    if (
+        "\n" in text
+        and '"""' not in text
+        and "\\" not in text
+        and not text.endswith('"')
+        and text.replace("\n", "").replace("\t", "").isprintable()
+    ):
         return '"""' + text + '"""'
     return json.dumps(text, ensure_ascii=False)
 
@@ -315,16 +330,16 @@ def output_models(schema: dict[str, Any], name: str = "Answer") -> str:
         required = set(obj.get("required") or [])
         lines = [f"class {cls}(BaseModel):"]
         if obj.get("description"):
-            lines.append(f"    {_string(str(obj['description']))}")
+            lines.append(f"    {literal(str(obj['description']))}")
             lines.append("")
         for fname, prop in obj["properties"].items():
             hint = type_of(prop, cls, fname)
             desc = prop.get("description")
             if fname in required:
-                value = f" = Field(description={_string(str(desc))})" if desc else ""
+                value = f" = Field(description={literal(str(desc))})" if desc else ""
             else:
                 hint += " | None"
-                value = f" = Field(default=None, description={_string(str(desc))})" if desc else " = None"
+                value = f" = Field(default=None, description={literal(str(desc))})" if desc else " = None"
             lines.append(f"    {fname}: {hint}{value}")
         if len(lines) == 1:
             lines.append("    pass")
@@ -370,7 +385,7 @@ def generate(framework: str, design: AgentDesign) -> str:
         *(["", *code.after_imports] if code.after_imports else []),
         "",
         f"NAME = {json.dumps(design.name)}",
-        f"INSTRUCTIONS = {_string(design.instructions)}",
+        f"INSTRUCTIONS = {literal(design.instructions)}",
         f"MODEL = {json.dumps(m.name)}",
         f"BASE_URL = {json.dumps(base_url)}",
         f"API_KEY_ENV = {json.dumps(m.key_env)}",

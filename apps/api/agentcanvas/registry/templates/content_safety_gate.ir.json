@@ -1,0 +1,518 @@
+{
+  "ir_version": "1.1",
+  "id": "tpl_content_safety_gate",
+  "name": "Content safety gate",
+  "description": "Checks a review or forum post for harmful content, turns it into a short structured summary and checks the summary fits the page before it is marked ready to publish. Anything that fails is held for a moderator.",
+  "state": {
+    "channels": [
+      {
+        "name": "messages",
+        "type": {
+          "type": "array"
+        },
+        "reducer": "add_messages",
+        "io": "in",
+        "description": "The post, as the newest message"
+      },
+      {
+        "name": "flagged",
+        "type": {
+          "type": "boolean"
+        },
+        "io": "private",
+        "description": "True when the post contains harmful content"
+      },
+      {
+        "name": "moderation_report",
+        "type": {
+          "type": "object"
+        },
+        "io": "out",
+        "description": "What the harmful-content check found, and why"
+      },
+      {
+        "name": "structured_response",
+        "type": {
+          "type": "object"
+        },
+        "io": "private",
+        "description": "The summary the writer produced"
+      },
+      {
+        "name": "format_failed",
+        "type": {
+          "type": "boolean"
+        },
+        "io": "private",
+        "description": "True when the summary does not fit the page's format"
+      },
+      {
+        "name": "format_report",
+        "type": {
+          "type": "object"
+        },
+        "io": "out",
+        "description": "What was wrong with the summary's format"
+      },
+      {
+        "name": "listing",
+        "type": {
+          "type": "object"
+        },
+        "io": "out",
+        "description": "The checked summary, ready for the page"
+      },
+      {
+        "name": "status",
+        "io": "out",
+        "description": "ready to publish | held for a moderator"
+      }
+    ]
+  },
+  "resources": [
+    {
+      "id": "r_fast",
+      "type": "model.chat",
+      "name": "fast_model",
+      "config": {
+        "model": "anthropic:claude-haiku-5-5"
+      }
+    },
+    {
+      "id": "r_smart",
+      "type": "model.chat",
+      "name": "smart_model",
+      "config": {
+        "model": "anthropic:claude-sonnet-5-5"
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_moderate",
+      "type": "guard.moderation",
+      "name": "check_harmful_content",
+      "label": "Check for harmful content",
+      "config": {
+        "input": "messages",
+        "on_fail": "flag",
+        "flag_output": "flagged",
+        "report_output": "moderation_report",
+        "threshold": 0.5
+      }
+    },
+    {
+      "id": "n_safe",
+      "type": "core.router",
+      "name": "route_safety",
+      "label": "Safe to publish?",
+      "config": {
+        "cases": [
+          {
+            "when": "state.flagged == true",
+            "route": "harmful"
+          }
+        ],
+        "default": "safe"
+      }
+    },
+    {
+      "id": "n_summarise",
+      "type": "core.agent",
+      "name": "summarise_post",
+      "label": "Write the summary",
+      "config": {
+        "system_prompt": "You turn a customer review or forum post into a short summary for the community page. Keep the author's meaning and their words where you can; never add facts, prices or claims they did not make. Leave out names, email addresses and phone numbers. Headline: at most 80 characters. Summary: two or three sentences, at most 400 characters. Topics: up to five, two or three words each. Give a rating only if the author gave one.",
+        "response_format": {
+          "title": "PostSummary",
+          "type": "object",
+          "required": [
+            "headline",
+            "summary",
+            "sentiment",
+            "topics"
+          ],
+          "properties": {
+            "headline": {
+              "type": "string",
+              "description": "A short headline, at most 80 characters"
+            },
+            "summary": {
+              "type": "string",
+              "description": "Two or three sentences, at most 400 characters"
+            },
+            "sentiment": {
+              "type": "string",
+              "enum": [
+                "positive",
+                "mixed",
+                "negative"
+              ]
+            },
+            "rating": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5,
+              "description": "The star rating the author gave, if they gave one"
+            },
+            "topics": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Up to five short topics, e.g. battery life"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "n_format",
+      "type": "guard.schema",
+      "name": "check_summary_format",
+      "label": "Check the output format",
+      "config": {
+        "input": "structured_response",
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "headline",
+            "summary",
+            "sentiment",
+            "topics"
+          ],
+          "properties": {
+            "headline": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "summary": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 400
+            },
+            "sentiment": {
+              "type": "string",
+              "enum": [
+                "positive",
+                "mixed",
+                "negative"
+              ]
+            },
+            "rating": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5
+            },
+            "topics": {
+              "type": "array",
+              "maxItems": 5,
+              "items": {
+                "type": "string",
+                "maxLength": 40
+              }
+            }
+          }
+        },
+        "repair": true,
+        "on_fail": "flag",
+        "flag_output": "format_failed",
+        "report_output": "format_report",
+        "output": "listing"
+      }
+    },
+    {
+      "id": "n_fits",
+      "type": "core.router",
+      "name": "route_format",
+      "label": "Fits the page?",
+      "config": {
+        "cases": [
+          {
+            "when": "state.format_failed == true",
+            "route": "does_not_fit"
+          }
+        ],
+        "default": "fits"
+      }
+    },
+    {
+      "id": "n_ready",
+      "type": "core.set",
+      "name": "mark_ready",
+      "label": "Mark ready to publish",
+      "config": {
+        "values": {
+          "status": "ready to publish"
+        }
+      }
+    },
+    {
+      "id": "n_hold",
+      "type": "core.set",
+      "name": "hold_for_moderator",
+      "label": "Hold for a moderator",
+      "config": {
+        "values": {
+          "status": "held for a moderator"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e_start",
+      "kind": "flow",
+      "source": {
+        "node": "START"
+      },
+      "target": {
+        "node": "n_moderate"
+      }
+    },
+    {
+      "id": "e_checked",
+      "kind": "flow",
+      "source": {
+        "node": "n_moderate"
+      },
+      "target": {
+        "node": "n_safe"
+      }
+    },
+    {
+      "id": "e_safe",
+      "kind": "flow",
+      "source": {
+        "node": "n_safe",
+        "port": "route:safe"
+      },
+      "target": {
+        "node": "n_summarise"
+      }
+    },
+    {
+      "id": "e_harmful",
+      "kind": "flow",
+      "source": {
+        "node": "n_safe",
+        "port": "route:harmful"
+      },
+      "target": {
+        "node": "n_hold"
+      }
+    },
+    {
+      "id": "e_written",
+      "kind": "flow",
+      "source": {
+        "node": "n_summarise"
+      },
+      "target": {
+        "node": "n_format"
+      }
+    },
+    {
+      "id": "e_format",
+      "kind": "flow",
+      "source": {
+        "node": "n_format"
+      },
+      "target": {
+        "node": "n_fits"
+      }
+    },
+    {
+      "id": "e_fits",
+      "kind": "flow",
+      "source": {
+        "node": "n_fits",
+        "port": "route:fits"
+      },
+      "target": {
+        "node": "n_ready"
+      }
+    },
+    {
+      "id": "e_bad_format",
+      "kind": "flow",
+      "source": {
+        "node": "n_fits",
+        "port": "route:does_not_fit"
+      },
+      "target": {
+        "node": "n_hold"
+      }
+    },
+    {
+      "id": "e_ready_end",
+      "kind": "flow",
+      "source": {
+        "node": "n_ready"
+      },
+      "target": {
+        "node": "END"
+      }
+    },
+    {
+      "id": "e_hold_end",
+      "kind": "flow",
+      "source": {
+        "node": "n_hold"
+      },
+      "target": {
+        "node": "END"
+      }
+    },
+    {
+      "id": "w_moderate",
+      "kind": "wiring",
+      "source": {
+        "node": "r_fast"
+      },
+      "target": {
+        "node": "n_moderate",
+        "port": "model"
+      }
+    },
+    {
+      "id": "w_summarise",
+      "kind": "wiring",
+      "source": {
+        "node": "r_smart"
+      },
+      "target": {
+        "node": "n_summarise",
+        "port": "model"
+      }
+    },
+    {
+      "id": "w_repair",
+      "kind": "wiring",
+      "source": {
+        "node": "r_fast"
+      },
+      "target": {
+        "node": "n_format",
+        "port": "model"
+      }
+    }
+  ],
+  "metadata": {
+    "gallery": {
+      "category": "Operations",
+      "tags": [
+        "moderation",
+        "structured output",
+        "output format",
+        "user content"
+      ],
+      "difficulty": "intermediate",
+      "sample_input": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "Took the Trailhead 2 tent on a rainy week in the Lake District. It stayed dry through two storms and pitches in ten minutes once you've done it twice. The zips snag a bit and it's heavy for solo hikes. Four stars from me."
+          }
+        ]
+      }
+    },
+    "kit": {
+      "tests": [
+        {
+          "name": "a threat is held for a moderator",
+          "input": {
+            "messages": [
+              {
+                "role": "user",
+                "content": "The seller never refunded me. I know where you live and I'm going to kill you."
+              }
+            ]
+          },
+          "mocks": {
+            "fast_model": [
+              "{\"categories\": {\"violence\": 0.95, \"harassment\": 0.9}, \"reason\": \"a threat to kill the seller\"}"
+            ]
+          },
+          "expect": {
+            "status": "success",
+            "channels": {
+              "status": "held for a moderator"
+            },
+            "route": [
+              "n_moderate",
+              "n_safe",
+              "n_hold"
+            ]
+          }
+        },
+        {
+          "name": "an ordinary review is ready to publish",
+          "input": {
+            "messages": [
+              {
+                "role": "user",
+                "content": "Took the Trailhead 2 tent on a rainy week in the Lake District. It stayed dry through two storms and pitches in ten minutes once you've done it twice. The zips snag a bit and it's heavy for solo hikes. Four stars from me."
+              }
+            ]
+          },
+          "mocks": {
+            "fast_model": [
+              "{\"categories\": {\"violence\": 0.0, \"hate\": 0.0, \"harassment\": 0.0, \"self_harm\": 0.0, \"sexual\": 0.0, \"illegal\": 0.0}, \"reason\": \"an ordinary product review\"}"
+            ],
+            "smart_model": [
+              {
+                "content": "",
+                "tool_calls": [
+                  {
+                    "name": "PostSummary",
+                    "args": {
+                      "headline": "Stays dry in storms, a little heavy for solo hikes",
+                      "summary": "The Trailhead 2 kept its owner dry through two storms and pitches quickly with practice. The zips snag and it is heavy for one person.",
+                      "sentiment": "mixed",
+                      "rating": 4,
+                      "topics": [
+                        "waterproofing",
+                        "setup",
+                        "weight",
+                        "zips"
+                      ]
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "expect": {
+            "status": "success",
+            "channels": {
+              "status": "ready to publish",
+              "listing": {
+                "headline": "Stays dry in storms, a little heavy for solo hikes",
+                "summary": "The Trailhead 2 kept its owner dry through two storms and pitches quickly with practice. The zips snag and it is heavy for one person.",
+                "sentiment": "mixed",
+                "rating": 4,
+                "topics": [
+                  "waterproofing",
+                  "setup",
+                  "weight",
+                  "zips"
+                ]
+              }
+            },
+            "route": [
+              "n_moderate",
+              "n_safe",
+              "n_summarise",
+              "n_format",
+              "n_fits",
+              "n_ready"
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

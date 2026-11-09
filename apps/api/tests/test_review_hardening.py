@@ -243,7 +243,7 @@ async def test_unexpected_errors_and_values_the_database_refuses_answer_as_probl
     """A bug is a problem document with the request id (not a text page); a value Postgres cannot store (a NUL
     character in an id or name, a number out of range) is the client's 422, not a 500."""
     import httpx
-    from sqlalchemy.exc import DataError
+    from sqlalchemy.exc import DataError, IntegrityError
 
     async def boom():
         raise RuntimeError("secret internals")
@@ -251,8 +251,12 @@ async def test_unexpected_errors_and_values_the_database_refuses_answer_as_probl
     async def refused():
         raise DataError("INSERT INTO t VALUES (:x)", {"x": "\x00"}, Exception("NUL"))
 
+    async def raced():
+        raise IntegrityError("INSERT INTO t VALUES (:x)", {"x": 1}, Exception("UNIQUE constraint failed: t.x"))
+
     app.add_api_route("/v1/_test/boom", boom)
     app.add_api_route("/v1/_test/refused", refused)
+    app.add_api_route("/v1/_test/raced", raced)
     transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         r = await client.get("/v1/_test/boom", headers={"x-request-id": "req_quote_me"})
@@ -261,6 +265,8 @@ async def test_unexpected_errors_and_values_the_database_refuses_answer_as_probl
         assert "secret internals" not in r.text
         r = await client.get("/v1/_test/refused")
         assert r.status_code == 422 and "INSERT" not in r.text and r.json()["title"] == "Invalid input"
+        r = await client.get("/v1/_test/raced")  # a uniqueness met by a race the code did not expect: retry, not 500
+        assert r.status_code == 409 and "UNIQUE" not in r.text and r.json()["title"] == "Conflict"
 
 
 def test_worker_folders_of_dead_servers_are_swept_and_live_ones_kept(tmp_path, monkeypatch):

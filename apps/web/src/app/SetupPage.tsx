@@ -1,16 +1,14 @@
 /** First-run setup: the model new workflows use (any provider, hosted or local), its API key and a connection test. */
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { useNavigate } from "react-router";
 import { apiFetch } from "../api/client";
 import { PROJECT_ID, useModelProviders, useModels, useSetup } from "../api/queries";
 import { can } from "../api/session";
 import type { SetupOut } from "../api/types";
 import { QueryStatus } from "../ui/QueryStatus";
-import { CopilotSettings } from "../copilot/CopilotSettings";
-import { TraceExportSettings } from "../observability/TraceExportSettings";
+import { toast } from "../ui/dialog";
 import { providerHint } from "../inspector/widgets";
-import { ThemeSwitcher } from "../theme/ThemeSwitcher";
 
 interface TestResult { ok: boolean; reply?: string | null; error?: string | null }
 interface ServerModels { ok: boolean; models: string[]; error?: string | null }
@@ -60,7 +58,13 @@ export function SetupPage() {
     }),
     onSuccess: (r) => { if (r.ok && r.models.length && !r.models.includes(model.trim())) setModel(r.models[0]); },
   });
-  const done = (out: SetupOut) => { qc.setQueryData(["setup", PROJECT_ID], out); void qc.invalidateQueries({ queryKey: ["secrets"] }); navigate("/"); };
+  // the first choice (from the Home banner) goes back home to build; a later change stays in Settings
+  const done = (out: SetupOut) => {
+    const first = !setup.data?.done;
+    qc.setQueryData(["setup", PROJECT_ID], out);
+    void qc.invalidateQueries({ queryKey: ["secrets"] });
+    if (first) navigate("/"); else toast(`New workflows use ${out.default_model?.model ?? "no default model"}`);
+  };
   const save = useMutation({
     mutationFn: () => apiFetch<SetupOut>(`/projects/${PROJECT_ID}/setup`, { method: "PUT", json: body() }),
     onSuccess: done,
@@ -77,11 +81,10 @@ export function SetupPage() {
   const local = (providers.data ?? []).filter((p) => p.local);
 
   return (
-    <div className="page setup">
-      <header className="topbar"><Link to="/" className="brand">AgentCanvas</Link><span className="crumb">/ Set up your model</span><span className="spacer" /><ThemeSwitcher /></header>
-      <h2>Choose the model your workflows use</h2>
+    <section className="settings-card setup" aria-label="Models">
+      <h2>Models</h2>
       <p className="muted">
-        Pick any hosted provider or a model running on your own machine. New workflows from templates will use it, and you can
+        The model this project's workflows use unless a block chooses another. Pick any hosted provider or a model running on your own machine. New workflows from templates will use it, and you can
         still choose another model on any Chat model box on the canvas.
       </p>
       <QueryStatus q={providers} what="model providers" />
@@ -129,15 +132,14 @@ export function SetupPage() {
               {test.isPending ? "Testing…" : "Test connection"}
             </button>
             <button type="submit" className="primary" disabled={!model.trim() || save.isPending}>Save</button>
-            {!setup.data?.done && <button type="button" className="link" onClick={() => skip.mutate()}>Skip for now</button>}
+            {!setup.data?.done && <button type="button" className="link" title="Stop showing “Set up your model” on Workflows; templates keep their own models"
+              onClick={() => skip.mutate()}>Not now, hide the reminder</button>}
           </div>
           {test.data?.ok && <p className="ok-text" data-testid="setup-test">Connected. The model replied: “{test.data.reply}”</p>}
           {test.data && !test.data.ok && <p className="error-text" data-testid="setup-test">Could not reach the model: {test.data.error}</p>}
           {(test.error || save.error || skip.error) && <p className="error-text">{((test.error || save.error || skip.error) as Error).message}</p>}
         </form>
       )}
-      <CopilotSettings />
-      <TraceExportSettings />
-    </div>
+    </section>
   );
 }

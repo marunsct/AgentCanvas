@@ -1,5 +1,5 @@
 import type { Locator, Page } from "@playwright/test";
-import { expect, test } from "./fixtures";
+import { expect, runOutput, test } from "./fixtures";
 
 // Sprint 3 acceptance: build a workflow from an empty canvas with the mouse, see validation, run it, reload it.
 
@@ -67,11 +67,14 @@ test("build, validate, run and reload a workflow from an empty canvas", async ({
   await expect(page.locator(".react-flow__edge")).toHaveCount(3);
   await expect(page.getByText("No problems — the workflow can run.")).toBeVisible({ timeout: 10_000 });
 
-  // run with the demo model
+  // run it: the step finishes and its answer lands in the output (what the model says is not asserted)
   await page.getByRole("tab", { name: "Run" }).click();
   await page.getByLabel("run input").fill('{"question": "What is 2+2?"}');
   await page.getByRole("button", { name: "▶ Run" }).click();
-  await expect(page.getByTestId("run-output")).toContainText("Demo reply", { timeout: 15_000 });
+  const out = await runOutput(page);
+  expect(out.question).toBe("What is 2+2?");
+  const answers = Object.entries(out).filter(([key, value]) => key !== "question" && typeof value === "string" && value.trim() !== "");
+  expect(answers.length, `the Ask AI step wrote no answer: ${JSON.stringify(out)}`).toBeGreaterThan(0);
   await expect(page.getByTestId("node-ask_ai")).toHaveClass(/status-ok/);
 
   // generated code shows the node

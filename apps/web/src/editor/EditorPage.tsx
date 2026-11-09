@@ -2,14 +2,13 @@
 import { ReactFlowProvider } from "@xyflow/react";
 import { useEffect, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router";
-import { useNodeTypes } from "../api/queries";
+import { useInbox, useNodeTypes } from "../api/queries";
 import { Canvas } from "../canvas/Canvas";
 import { Palette } from "../canvas/Palette";
 import { CodePanel } from "../code/CodePanel";
 import { CopilotPanel } from "../copilot/CopilotPanel";
 import { stopCopilotStream, useCopilot } from "../copilot/copilot";
 import { Inspector } from "../inspector/Inspector";
-import { useInbox } from "../inbox/InboxPage";
 import { ProblemsPanel } from "../problems/ProblemsPanel";
 import { TestsPanel } from "../release/TestsPanel";
 import { VersionsPanel } from "../release/VersionsPanel";
@@ -18,12 +17,15 @@ import { RunPanel } from "../run/RunPanel";
 import { useRun } from "../run/runStore";
 import { stopStreaming } from "../run/session";
 import { Timeline } from "../run/Timeline";
+import { RunHistory } from "../run/RunHistory";
 import { ErrorBoundary, QueryStatus } from "../ui/QueryStatus";
 import { Tutor } from "../tutor/Tutor";
 import { CommandPalette } from "./CommandPalette";
 import { runErrorHelp } from "../help/diagnostics";
 import { HelpText } from "../help/HelpText";
 import { FrameworkBadges } from "./Frameworks";
+import { NewerVersionNotice, PresenceBar } from "./PresenceBar";
+import { usePresenceChannel } from "./presence";
 import { MoreMenu } from "./MoreMenu";
 import { HelpDrawer, useFirstVisitHelp } from "../help/HelpDrawer";
 import { useEditor } from "./store";
@@ -31,9 +33,16 @@ import { recallView } from "./viewMemory";
 import { useCan, useMe } from "../api/session";
 import { type DockTab, useUi } from "./ui";
 import { SIMPLE_DOCK, SIMPLE_TABS } from "./simple";
-import { ThemeSwitcher } from "../theme/ThemeSwitcher";
+import { PersonMenu } from "../app/AppShell";
 
 type Tab = "inspect" | "copilot" | "run" | "tests" | "versions" | "code";
+
+/** The topbar's save state: "Saving…", "Saved", or "Not saved" with the reason after the server refused an edit. */
+export function SaveState({ saving, unsaved }: { saving: boolean; unsaved: string | null }) {
+  if (saving) return <span className="save-state saving">Saving…</span>;
+  if (unsaved) return <span className="save-state unsaved" title={unsaved} data-testid="save-state">Not saved</span>;
+  return <span className="save-state" data-testid="save-state">Saved</span>;
+}
 
 export function EditorPage() {
   const canBuild = useCan("builder");
@@ -43,6 +52,7 @@ export function EditorPage() {
   const wf = useEditor((s) => s.wf);
   const notice = useEditor((s) => s.notice);
   const saving = useEditor((s) => s.pending.length > 0 || s.inflight);
+  const unsaved = useEditor((s) => s.unsaved);
   const [tab, setTab] = useState<Tab>("inspect");
   const [error, setError] = useState<string | null>(null);
   const nodeTypes = useNodeTypes();
@@ -64,28 +74,34 @@ export function EditorPage() {
   useEffect(() => { if (copilotRequest) setTab("copilot"); }, [copilotRequest]);
 
   useEffect(() => () => { stopStreaming(); stopCopilotStream(); }, []); // leaving the editor: stop reading streams
+  usePresenceChannel(id); // G-4: tell the others this workflow is open here, and hear who else has it
 
 /* oxlint-disable react-hooks/exhaustive-deps -- runs when the workflow id changes, not on every search-param change */
   useEffect(() => {
     if (!id) return;
+    let current = true; // false once another workflow is opened: its load error or selection is not this one's
+    setError(null); // one failed open used to show "Could not load workflow" for every workflow after it
     stopStreaming(); // the last workflow's run and Copilot streams
     stopCopilotStream();
     useEditor.getState().reset();
+    useUi.getState().setDiff(null); // the last workflow's version comparison coloured this one's nodes
     useRun.getState().setThread(null);
     useRun.setState({ runId: null, running: false });
     useCopilot.setState({ workflowId: null, conversation: null, ghost: null, error: null, busy: false, live: null });
     const sel = recallView(id)?.selected; // back from the Workspace: the block you had selected (S17)
     useEditor.getState().load(id)
       .then(() => {
+        if (!current) return;
         const st = useEditor.getState();
         if (sel && (st.wf?.nodes.some((n) => n.id === sel) || st.wf?.resources.some((r) => r.id === sel))) st.select(sel);
       })
-      .catch((e: Error) => setError(e.message));
+      .catch((e: Error) => { if (current) setError(e.message); });
     const thread = params.get("thread");  // "open this run's timeline", e.g. from an experiment's results
     if (thread) {
       useRun.getState().setThread(thread);
       useUi.getState().setDock("timeline");
     }
+    return () => { current = false; };
   }, [id]);
 /* oxlint-enable react-hooks/exhaustive-deps */
 
@@ -121,11 +137,12 @@ export function EditorPage() {
     <div className="editor">
       <header className="topbar">
         <Link to="/" className="brand">AgentCanvas</Link>
-        <span className="crumb">/ {wf.name}</span>
+        <span className="crumb" title={wf.name}>/ {wf.name}</span>
         {canBuild
-          ? <span className={`save-state${saving ? " saving" : ""}`}>{saving ? "Saving…" : "Saved"}</span>
+          ? <SaveState saving={saving} unsaved={unsaved} />
           : <span className="save-state" data-testid="view-only" title={`your role is ${role}`}>View only</span>}
         <FrameworkBadges />
+        <PresenceBar />
         <span className="spacer" />
         <div className="toolbar-group" role="group" aria-label="Editor mode">
           <button type="button" className={simple ? "active" : ""} aria-pressed={simple} data-testid="simple-toggle"
@@ -134,6 +151,8 @@ export function EditorPage() {
           <button type="button" className={simple ? "" : "active"} aria-pressed={!simple} data-testid="full-toggle"
             onClick={() => useUi.getState().setSimple(false)} title="Every block, panel and tool">Full</button>
         </div>
+        <Link to={`/workflows/${wf.id}/evaluation`} className="inbox-link" data-testid="evaluation-link"
+          title="Datasets, evaluators and experiments: check this workflow's answers before you publish">Evaluate</Link>
         <Link to="/inbox" className="inbox-link" data-testid="inbox-link">
           Inbox{pendingDecisions > 0 && <span className="badge warn">{pendingDecisions}</span>}
         </Link>
@@ -141,7 +160,7 @@ export function EditorPage() {
           <button type="button" onClick={() => useUi.getState().openPalette()} title="Command palette (Ctrl/⌘+K)">⌘K</button>
           <button type="button" onClick={() => void useEditor.getState().tidy?.()} title="Auto-layout (ELK)">Tidy</button>
         </div>
-        {!simple && <MoreMenu wfId={wf.id} blast={blast} />}
+        <MoreMenu wfId={wf.id} blast={blast} simple={simple} />
         <div className="toolbar-group" role="group" aria-label="History">
           <button type="button" onClick={() => useEditor.getState().undo()} title="Undo (Ctrl/⌘+Z)" aria-label="Undo">↶</button>
           <button type="button" onClick={() => useEditor.getState().redo()} title="Redo (Ctrl/⌘+Shift+Z)" aria-label="Redo">↷</button>
@@ -151,8 +170,9 @@ export function EditorPage() {
         <button type="button" onClick={() => setTab("copilot")} data-testid="copilot-button"
           title="Chat with the AI Copilot: describe a workflow, ask questions, get changes to review">✦ Copilot</button>
         <button type="button" className="primary" onClick={() => setTab("run")}>▶ Test</button>
-        <ThemeSwitcher />
+        <PersonMenu />
       </header>
+      <NewerVersionNotice />
       {notice && (
         <div className={`toast ${notice.kind}`} role="status">
           {notice.text}{notice.kind === "error" && <HelpText help={runErrorHelp(notice.text)} className="run-hint" />}
@@ -183,18 +203,19 @@ export function EditorPage() {
       </aside>
       <footer className="dock">
         <nav className="tabs dock-tabs" role="tablist">
-          {(["problems", "timeline", "explain"] as DockTab[]).filter((t) => !simple || SIMPLE_DOCK.has(t)).map((t) => (
+          {(["problems", "timeline", "explain", "runs"] as DockTab[]).filter((t) => !simple || SIMPLE_DOCK.has(t)).map((t) => (
             <button type="button" role="tab" key={t} aria-selected={dock === t} className={dock === t ? "active" : ""}
-              onClick={() => setDock(t)}>{{ problems: "Problems", timeline: "Timeline", explain: "Explain" }[t]}</button>
+              onClick={() => setDock(t)}>{{ problems: "Problems", timeline: "Timeline", explain: "Explain", runs: "History" }[t]}</button>
           ))}
         </nav>
         <ErrorBoundary key={dock} label="This panel">
           {dock === "problems" && <ProblemsPanel />}
           {dock === "timeline" && <Timeline />}
           {dock === "explain" && <ExplainView />}
+          {dock === "runs" && <RunHistory />}
         </ErrorBoundary>
       </footer>
-      <CommandPalette onRun={() => setTab("run")} />
+      <CommandPalette onRun={() => setTab("run")} onCopilot={() => setTab("copilot")} />
       <Tutor />
       <HelpDrawer />
     </div>

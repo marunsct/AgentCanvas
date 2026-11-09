@@ -2,6 +2,8 @@
 import { create } from "zustand";
 import { portalUrl } from "./auth";
 import { apiFetch } from "./client";
+import type { Preferences } from "./generated";
+import { applyPreferences } from "./preferences";
 
 export type Role = "viewer" | "reviewer" | "builder" | "admin";
 const RANK: Record<Role, number> = { viewer: 0, reviewer: 1, builder: 2, admin: 3 };
@@ -14,6 +16,7 @@ export interface Me {
   memberships: Record<string, Role>;
   org_names?: Record<string, string>;
   portal_url?: string | null; // Matura mode: this organisation's page in Matura's portal (TS26)
+  preferences?: Preferences;
 }
 
 // dev-mode default until `loadMe` answers (and in unit tests)
@@ -29,6 +32,7 @@ useMe.subscribe((s) => { ME = s.me; });
 export async function loadMe(): Promise<Me> {
   const me = await apiFetch<Me>("/me");
   useMe.setState({ me, loaded: true });
+  void applyPreferences(me.preferences);
   return me;
 }
 

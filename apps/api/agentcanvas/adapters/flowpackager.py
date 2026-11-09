@@ -17,8 +17,16 @@ from pathlib import Path
 from typing import Any
 
 from agentcanvas.adapters.agno.codegen import AGNO_VERSION, OPENAI_VERSION
-from agentcanvas.adapters.langchain.packager import _dist, _exportable_cases, _secret_names, _version, package_name
-from agentcanvas.adapters.llamaindex.codegen import LLAMA_INDEX_CORE_VERSION, OPENAI_LIKE_VERSION
+from agentcanvas.adapters.langchain.packager import (
+    RESERVED,
+    _dist,
+    _exportable_cases,
+    _secret_names,
+    _version,
+    gaps_md,
+    package_name,
+)
+from agentcanvas.adapters.llamaindex.codegen import LLAMA_INDEX_CORE_VERSION, OPENAI_LIKE_VERSION, WORKFLOWS_VERSION
 from agentcanvas.adapters.microsoft_agent_framework.codegen import (
     AGENT_FRAMEWORK_OPENAI_VERSION,
     AGENT_FRAMEWORK_VERSION,
@@ -28,17 +36,12 @@ from agentcanvas.adapters.pydantic_ai.codegen import PYDANTIC_AI_VERSION
 from agentcanvas.adapters.strands.codegen import STRANDS_VERSION
 from agentcanvas.errors import InvalidInput
 from agentcanvas.ir.models import Workflow
+from agentcanvas.tomltext import toml_string
+from agentcanvas.validation.analysis import refuse_plain_secrets
 from agentcanvas.workspace import bundle
 
 API_ROOT = Path(__file__).parents[1]  # the `agentcanvas` package directory
 PINNED = ["jsonschema", "cel-python", "jinja2"]
-# What an export imports (or its frameworks do) besides the standard library: the flow's own package must not hide
-# one of them on src/, whether or not the server has it installed (`package_name` only sees the server's packages).
-RESERVED = {
-    "agent_framework", "agentcanvas", "agents", "agno", "anyio", "boto3", "botocore", "celpy", "crewai", "google",
-    "httpx", "jinja2", "jsonschema", "llama_index", "mastra", "mcp", "openai", "opentelemetry", "pydantic",
-    "pydantic_ai", "pydantic_core", "pytest", "strands", "tests", "workflows",
-}  # fmt: skip
 
 
 @dataclass
@@ -289,7 +292,11 @@ TARGETS = {
     "llamaindex": Target(
         label="LlamaIndex",
         slug="llamaindex",
-        pins=[f"llama-index-core=={LLAMA_INDEX_CORE_VERSION}", f"llama-index-llms-openai-like=={OPENAI_LIKE_VERSION}"],
+        pins=[
+            f"llama-index-core=={LLAMA_INDEX_CORE_VERSION}",
+            f"llama-index-workflows=={WORKFLOWS_VERSION}",
+            f"llama-index-llms-openai-like=={OPENAI_LIKE_VERSION}",
+        ],
         docs="https://docs.llamaindex.ai/",
         how="a LlamaIndex `FunctionAgent` for each AI block (an `OpenAILike` LLM, tools, an `output_cls` for typed "
         "answers)",
@@ -312,7 +319,7 @@ def _pyproject(wf: Workflow, t: Target, pkg: str, version: str, extra: list[str]
     return f'''[project]
 name = "{pkg.replace("_", "-")}"
 version = "{version}"
-description = {json.dumps(f"{wf.name} — a {t.label} flow exported from AgentCanvas")}
+description = {toml_string(f"{wf.name} — a {t.label} flow exported from AgentCanvas")}
 requires-python = ">=3.12,<3.15"
 dependencies = [
 {deps}]
@@ -361,7 +368,8 @@ uv run python -m {pkg} '{{"thread_id": "t1", "resume": {{"approved": true}}}}'
 
 Each model block reaches its provider over the OpenAI chat-completions API (any provider with such an endpoint,
 local servers included). Override the model or address per block with the variables in the last column. Backup
-models and the answer cache of the canvas are not exported for {t.label} flows.
+models and the answer cache of the canvas are not exported for {t.label} flows: `GAPS.md` lists the blocks that
+use them, and the steps whose retry or time limit does not apply.
 
 | Block | Model | Address | Key variable | Overrides |
 |---|---|---|---|---|
@@ -572,6 +580,7 @@ def package(
     version: str = "0.0.0",
 ) -> tuple[str, bytes]:
     """(file name, zip bytes) of the standalone project for `wf`, whose generated flow for `framework` is `source`."""
+    refuse_plain_secrets(wf)
     t = TARGETS[framework]
     found = bundle.collect(workspace, wf.id, wf.model_dump_json(), source) if workspace is not None else None
     if found is not None and found.missing:
@@ -589,6 +598,7 @@ def package(
     host = HOST.format(models_code=t.models, models=json.dumps(models, indent=4), tools=json.dumps(tools, indent=4))
     files: dict[str, str | bytes] = {
         "pyproject.toml": _pyproject(wf, t, pkg, version, found.requirements if found else []),
+        "GAPS.md": gaps_md(wf, f"a {t.label} flow"),
         "README.md": _readme(wf, t, framework, pkg, models),
         ".env.example": "".join(f"{k}=\n" for k in keys),
         ".gitignore": ".venv/\n__pycache__/\n.env\n.runs/\n",

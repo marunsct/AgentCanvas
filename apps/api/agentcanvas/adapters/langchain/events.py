@@ -14,6 +14,7 @@ from langchain_core.callbacks import BaseCallbackHandler
 from langgraph.errors import GraphBubbleUp
 
 from agentcanvas.ir.models import Workflow
+from agentcanvas.registry import token_counts
 
 
 def node_index(wf: Workflow) -> dict[str, str]:
@@ -86,7 +87,10 @@ def translate(
         text = getattr(chunk, "content", "")
         if text and isinstance(text, str) and getattr(chunk, "type", "") in ("ai", "AIMessageChunk"):
             parent = ns[0].split(":")[0] if ns else meta.get("langgraph_node")
-            yield {"type": "TEXT_MESSAGE_CONTENT", "canvas_node_id": names.get(parent), "delta": text}
+            ev = {"type": "TEXT_MESSAGE_CONTENT", "canvas_node_id": names.get(parent), "delta": text}
+            if ns and (agent := _agent(meta)):  # which agent wrote it: a Planning Agent's helper, for the trajectory
+                ev["agent"] = agent
+            yield ev
     elif kind == "custom":
         if isinstance(data, dict) and "ac_dry_run" in data:  # a stubbed tool recorded a call (FR-X-02)
             yield {"type": "CUSTOM", "name": "ac.dry_run", "value": jsonable(data["ac_dry_run"])}
@@ -103,6 +107,13 @@ def translate(
             yield {"type": "CUSTOM", "name": "ac.custom", "value": jsonable(data)}
 
 
+def _agent(metadata: Any) -> str | None:
+    """The agent a nested call belongs to (LangChain's `lc_agent_name`: an agent's own name, or the name of the
+    helper a Planning Agent handed a task to), for the trajectory view (G-10)."""
+    name = metadata.get("lc_agent_name") if isinstance(metadata, dict) else None
+    return str(name) if name else None
+
+
 class UsageTracker(BaseCallbackHandler):
     """Collects token usage per model call and attributes it to the top-level canvas node (M4-T11).
 
@@ -114,7 +125,7 @@ class UsageTracker(BaseCallbackHandler):
 
     def __init__(self, names: dict[str, str]):
         self.names = names
-        self._calls: dict[UUID, tuple[str | None, str | None]] = {}
+        self._calls: dict[UUID, tuple[str | None, str | None, str | None]] = {}  # node, model, agent
         self._resources: dict[UUID, str] = {}
         self._gateways: set[UUID] = set()  # model gateway runs (S26)
         self._records: list[dict[str, Any]] = []
@@ -129,21 +140,23 @@ class UsageTracker(BaseCallbackHandler):
         model = md.get("ac_model") or (
             f"{md['ls_provider']}:{md['ls_model_name']}" if md.get("ls_provider") and md.get("ls_model_name") else None
         )
-        self._calls[run_id] = (self.names.get(str(node)), model)
+        self._calls[run_id] = (self.names.get(str(node)), model, _agent(md))
         if md.get("ac_gateway"):  # S26: its inner calls report the usage, of the model that answered
             self._gateways.add(run_id)
         if md.get("ac_resource"):
             self._resources[run_id] = str(md["ac_resource"])
 
     def on_llm_end(self, response: Any, *, run_id: UUID, **kw: Any) -> None:
-        node_id, model = self._calls.pop(run_id, (None, None))
+        node_id, model, agent = self._calls.pop(run_id, (None, None, None))
         resource = self._resources.pop(run_id, None)
         message = next((getattr(g, "message", None) for gens in response.generations for g in gens), None)
         if resource and message is not None:
             content = message.content if isinstance(message.content, str) else str(message.content)
             calls = [{"name": c["name"], "args": c.get("args", {})} for c in getattr(message, "tool_calls", []) or []]
             reply = {"content": content, "tool_calls": calls} if calls else content
-            self._replies.append({"resource": resource, "canvas_node_id": node_id, "reply": reply})
+            self._replies.append(
+                {"resource": resource, "canvas_node_id": node_id, "reply": reply, **({"agent": agent} if agent else {})}
+            )
         if run_id in self._gateways:
             self._gateways.discard(run_id)
             note = (getattr(message, "response_metadata", None) or {}).get("ac_gateway") or {}
@@ -153,19 +166,19 @@ class UsageTracker(BaseCallbackHandler):
                      "output_tokens": 0, "cached": bool(note.get("cached")), "failed": note.get("failed") or []}
                 )  # fmt: skip
             return
-        tokens_in = tokens_out = 0
+        counts = {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0}
         for gens in response.generations:
             for g in gens:
-                usage = getattr(getattr(g, "message", None), "usage_metadata", None) or {}
-                tokens_in += int(usage.get("input_tokens") or 0)
-                tokens_out += int(usage.get("output_tokens") or 0)
-        if not (tokens_in or tokens_out):
+                for k, n in token_counts(getattr(getattr(g, "message", None), "usage_metadata", None)).items():
+                    counts[k] += n
+        if not (counts["input_tokens"] or counts["output_tokens"]):
             legacy = (response.llm_output or {}).get("token_usage") or {}
-            tokens_in, tokens_out = int(legacy.get("prompt_tokens") or 0), int(legacy.get("completion_tokens") or 0)
-        if tokens_in or tokens_out:
-            self._records.append(
-                {"canvas_node_id": node_id, "model": model, "input_tokens": tokens_in, "output_tokens": tokens_out}
-            )
+            counts["input_tokens"] = int(legacy.get("prompt_tokens") or 0)
+            counts["output_tokens"] = int(legacy.get("completion_tokens") or 0)
+        if counts["input_tokens"] or counts["output_tokens"]:
+            cached = {k: v for k, v in counts.items() if k.startswith("cache_") and v}  # priced apart (prompt cache)
+            self._records.append({"canvas_node_id": node_id, "model": model, "input_tokens": counts["input_tokens"],
+                                  "output_tokens": counts["output_tokens"], **cached})  # fmt: skip
 
     def on_llm_error(self, error: BaseException, *, run_id: UUID, **kw: Any) -> None:
         self._calls.pop(run_id, None)
@@ -173,14 +186,19 @@ class UsageTracker(BaseCallbackHandler):
         self._resources.pop(run_id, None)
 
     def on_tool_start(self, serialized: Any, input_str: str, *, run_id: UUID, **kw: Any) -> None:
-        resource = (kw.get("metadata") or {}).get("ac_resource")
+        md = kw.get("metadata") or {}
+        resource = md.get("ac_resource")
         if not resource:  # only tool resources (built by `Resources.tool`) are recorded
             return
         inputs = kw.get("inputs")
+        ns = str(md.get("checkpoint_ns") or md.get("langgraph_checkpoint_ns") or "")
+        node = self.names.get(ns.split("|")[0].split(":")[0] or str(md.get("langgraph_node") or ""))
         self._tool_calls[run_id] = {
             "resource": str(resource),
+            **({"canvas_node_id": node} if node else {}),
             "tool": (serialized or {}).get("name") or kw.get("name"),
             "args": jsonable(inputs if isinstance(inputs, dict) else {"input": input_str}),
+            **({"agent": agent} if (agent := _agent(md)) else {}),
         }
 
     def on_tool_end(self, output: Any, *, run_id: UUID, **kw: Any) -> None:
@@ -195,6 +213,12 @@ class UsageTracker(BaseCallbackHandler):
     def drain(self) -> list[dict[str, Any]]:
         out, self._records = self._records, []
         return out
+
+    def records(self) -> Iterator[dict[str, Any]]:
+        """The usage records one at a time, each removed as it is handed out: if the reader stops early (a budget
+        reached at the first one), the rest stay here for `drain`."""
+        while self._records:
+            yield self._records.pop(0)
 
     def drain_replies(self) -> list[dict[str, Any]]:
         out, self._replies = self._replies, []

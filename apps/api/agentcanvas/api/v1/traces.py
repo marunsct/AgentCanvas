@@ -51,7 +51,7 @@ async def put_trace_export(
         raise InvalidInput("Langfuse needs its public and secret keys, each stored as a project secret")
     if body.kind == "otlp" and not body.endpoint:
         raise InvalidInput("enter the OTLP traces URL, e.g. https://collector.example.com/v1/traces")
-    project = await ProjectRepo(session).require(project_id)
+    project = await ProjectRepo(session).require(project_id, lock=True)
     project.settings = {**(project.settings or {}), "trace_export": body.model_dump(exclude_none=True)}
     await session.commit()
     request.app.state.trace_export.forget(project_id)
@@ -62,7 +62,7 @@ async def put_trace_export(
 async def delete_trace_export(
     project_id: str, request: Request, session: AsyncSession = Depends(get_session)
 ) -> TraceExportOut:
-    project = await ProjectRepo(session).require(project_id)
+    project = await ProjectRepo(session).require(project_id, lock=True)
     project.settings = {k: v for k, v in (project.settings or {}).items() if k != "trace_export"}
     await session.commit()
     request.app.state.trace_export.forget(project_id)

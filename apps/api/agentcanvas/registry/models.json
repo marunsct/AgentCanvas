@@ -1,51 +1,301 @@
 [
   {
+    "id": "anthropic:claude-fable-5-1",
+    "label": "Claude Fable 5.1",
+    "provider": "anthropic",
+    "vision": true,
+    "reasoning": true,
+    "context_window": 1000000,
+    "sampling": false,
+    "price_in_per_mtok": 10.0,
+    "price_out_per_mtok": 50.0,
+    "price_cache_read_per_mtok": 0.25,
+    "price_cache_write_per_mtok": 12.5
+  },
+  {
     "id": "anthropic:claude-opus-5-5",
     "label": "Claude Opus 5.5",
     "provider": "anthropic",
     "vision": true,
-    "reasoning": true
+    "reasoning": true,
+    "price_in_per_mtok": 4.0,
+    "price_out_per_mtok": 20.0,
+    "price_cache_read_per_mtok": 0.2,
+    "price_cache_write_per_mtok": 5.0,
+    "context_window": 1000000,
+    "sampling": false
   },
   {
     "id": "anthropic:claude-sonnet-5-5",
     "label": "Claude Sonnet 5.5",
     "provider": "anthropic",
     "vision": true,
-    "reasoning": true
+    "reasoning": true,
+    "price_in_per_mtok": 2.0,
+    "price_out_per_mtok": 10.0,
+    "price_cache_read_per_mtok": 0.2,
+    "price_cache_write_per_mtok": 2.5,
+    "context_window": 1000000,
+    "sampling": false
+  },
+  {
+    "id": "anthropic:claude-haiku-5-5",
+    "label": "Claude Haiku 5.5",
+    "provider": "anthropic",
+    "vision": true,
+    "reasoning": true,
+    "context_window": 1000000,
+    "sampling": false,
+    "price_in_per_mtok": 0.1,
+    "price_out_per_mtok": 0.5,
+    "price_cache_read_per_mtok": 0.01,
+    "price_cache_write_per_mtok": 0.125,
+    "price_above_tokens": 100000,
+    "price_in_above_per_mtok": 0.5,
+    "price_out_above_per_mtok": 2.5
+  },
+  {
+    "id": "anthropic:claude-fable-5",
+    "label": "Claude Fable 5",
+    "provider": "anthropic",
+    "vision": true,
+    "reasoning": true,
+    "context_window": 1000000,
+    "sampling": false,
+    "price_in_per_mtok": 10.0,
+    "price_out_per_mtok": 50.0,
+    "price_cache_read_per_mtok": 1.0,
+    "price_cache_write_per_mtok": 12.5
+  },
+  {
+    "id": "anthropic:claude-opus-5",
+    "label": "Claude Opus 5",
+    "provider": "anthropic",
+    "vision": true,
+    "reasoning": true,
+    "context_window": 1000000,
+    "sampling": false,
+    "price_in_per_mtok": 5.0,
+    "price_out_per_mtok": 25.0,
+    "price_cache_read_per_mtok": 0.5,
+    "price_cache_write_per_mtok": 6.25
+  },
+  {
+    "id": "anthropic:claude-opus-4-8",
+    "label": "Claude Opus 4.8",
+    "provider": "anthropic",
+    "vision": true,
+    "reasoning": true,
+    "context_window": 1000000,
+    "sampling": false,
+    "price_in_per_mtok": 5.0,
+    "price_out_per_mtok": 25.0,
+    "price_cache_read_per_mtok": 0.5,
+    "price_cache_write_per_mtok": 6.25
+  },
+  {
+    "id": "anthropic:claude-opus-4-7",
+    "label": "Claude Opus 4.7",
+    "provider": "anthropic",
+    "vision": true,
+    "reasoning": true,
+    "context_window": 1000000,
+    "sampling": false,
+    "price_in_per_mtok": 5.0,
+    "price_out_per_mtok": 25.0,
+    "price_cache_read_per_mtok": 0.5,
+    "price_cache_write_per_mtok": 6.25
+  },
+  {
+    "id": "anthropic:claude-opus-4-6",
+    "label": "Claude Opus 4.6",
+    "provider": "anthropic",
+    "vision": true,
+    "reasoning": true,
+    "context_window": 1000000,
+    "sampling": false,
+    "price_in_per_mtok": 5.0,
+    "price_out_per_mtok": 25.0,
+    "price_cache_read_per_mtok": 0.5,
+    "price_cache_write_per_mtok": 6.25
+  },
+  {
+    "id": "anthropic:claude-sonnet-5",
+    "label": "Claude Sonnet 5",
+    "provider": "anthropic",
+    "vision": true,
+    "reasoning": true,
+    "context_window": 1000000,
+    "sampling": false,
+    "price_in_per_mtok": 2.0,
+    "price_out_per_mtok": 10.0,
+    "price_cache_read_per_mtok": 0.2,
+    "price_cache_write_per_mtok": 2.5
+  },
+  {
+    "id": "anthropic:claude-sonnet-4-6",
+    "label": "Claude Sonnet 4.6",
+    "provider": "anthropic",
+    "vision": true,
+    "reasoning": true,
+    "context_window": 1000000,
+    "sampling": false,
+    "price_in_per_mtok": 3.0,
+    "price_out_per_mtok": 15.0,
+    "price_cache_read_per_mtok": 0.3,
+    "price_cache_write_per_mtok": 3.75
+  },
+  {
+    "id": "anthropic:claude-sonnet-4-5",
+    "label": "Claude Sonnet 4.5",
+    "provider": "anthropic",
+    "vision": true,
+    "reasoning": true,
+    "context_window": 200000,
+    "price_in_per_mtok": 3.0,
+    "price_out_per_mtok": 15.0,
+    "price_cache_read_per_mtok": 0.3,
+    "price_cache_write_per_mtok": 3.75,
+    "retires": "2026-11-30",
+    "sampling": false
   },
   {
     "id": "anthropic:claude-haiku-4-5",
     "label": "Claude Haiku 4.5",
     "provider": "anthropic",
-    "vision": true
+    "vision": true,
+    "price_in_per_mtok": 1.0,
+    "price_out_per_mtok": 5.0,
+    "price_cache_read_per_mtok": 0.1,
+    "price_cache_write_per_mtok": 1.25,
+    "context_window": 200000,
+    "sampling": false
+  },
+  {
+    "id": "openai:gpt-6-astra",
+    "label": "GPT-6 Astra",
+    "provider": "openai",
+    "vision": true,
+    "reasoning": true,
+    "sampling": false,
+    "price_in_per_mtok": 10.0,
+    "price_out_per_mtok": 50.0
+  },
+  {
+    "id": "openai:gpt-6.1-sol",
+    "label": "GPT-6.1 Sol",
+    "provider": "openai",
+    "vision": true,
+    "reasoning": true,
+    "sampling": false,
+    "price_in_per_mtok": 2.0,
+    "price_out_per_mtok": 10.0
+  },
+  {
+    "id": "openai:gpt-6.1-terra",
+    "label": "GPT-6.1 Terra",
+    "provider": "openai",
+    "vision": true,
+    "reasoning": true,
+    "sampling": false,
+    "price_in_per_mtok": 1.0,
+    "price_out_per_mtok": 5.0
+  },
+  {
+    "id": "openai:gpt-6-luna",
+    "label": "GPT-6 Luna",
+    "provider": "openai",
+    "vision": true,
+    "reasoning": true,
+    "sampling": false,
+    "price_in_per_mtok": 0.1,
+    "price_out_per_mtok": 0.5
   },
   {
     "id": "openai:gpt-5.5",
     "label": "GPT-5.5",
     "provider": "openai",
     "vision": true,
-    "reasoning": true
+    "reasoning": true,
+    "price_in_per_mtok": 5.0,
+    "price_out_per_mtok": 30.0,
+    "price_cache_read_per_mtok": 0.5,
+    "sampling": false
+  },
+  {
+    "id": "openai:gpt-5.6-sol",
+    "label": "GPT-5.6 Sol",
+    "provider": "openai",
+    "price_in_per_mtok": 4.0,
+    "price_out_per_mtok": 20.0,
+    "price_cache_read_per_mtok": 0.4,
+    "price_above_tokens": 272000,
+    "price_in_above_per_mtok": 8.0,
+    "price_out_above_per_mtok": 30.0
+  },
+  {
+    "id": "openai:gpt-5.6-terra",
+    "label": "GPT-5.6 Terra",
+    "provider": "openai",
+    "price_in_per_mtok": 2.0,
+    "price_out_per_mtok": 12.0,
+    "price_cache_read_per_mtok": 0.2,
+    "price_above_tokens": 272000,
+    "price_in_above_per_mtok": 4.0,
+    "price_out_above_per_mtok": 18.0
+  },
+  {
+    "id": "openai:gpt-5.6-luna",
+    "label": "GPT-5.6 Luna",
+    "provider": "openai",
+    "price_in_per_mtok": 0.2,
+    "price_out_per_mtok": 1.2,
+    "price_cache_read_per_mtok": 0.02,
+    "price_above_tokens": 272000,
+    "price_in_above_per_mtok": 0.4,
+    "price_out_above_per_mtok": 1.8
   },
   {
     "id": "openai:gpt-5-mini",
     "label": "GPT-5 mini",
     "provider": "openai",
     "vision": true,
+    "reasoning": true,
+    "price_in_per_mtok": 0.25,
+    "price_out_per_mtok": 2.0,
+    "sampling": false,
+    "retires": "2026-12-11"
+  },
+  {
+    "id": "google_genai:gemini-3.6-flash",
+    "label": "Gemini 3.6 Flash",
+    "provider": "google_genai",
+    "vision": true,
     "reasoning": true
+  },
+  {
+    "id": "google_genai:gemini-3.8-flash",
+    "label": "Gemini 3.8 Flash",
+    "provider": "google_genai",
+    "price_in_per_mtok": 1.5,
+    "price_out_per_mtok": 7.5,
+    "price_cache_read_per_mtok": 0.15
   },
   {
     "id": "google_genai:gemini-2.5-pro",
     "label": "Gemini 2.5 Pro",
     "provider": "google_genai",
     "vision": true,
-    "reasoning": true
+    "reasoning": true,
+    "retires": "2026-12-01"
   },
   {
     "id": "google_genai:gemini-2.5-flash",
     "label": "Gemini 2.5 Flash",
     "provider": "google_genai",
     "vision": true,
-    "reasoning": true
+    "reasoning": true,
+    "retires": "2026-12-01"
   },
   {
     "id": "mistralai:mistral-large-latest",
@@ -63,15 +313,32 @@
     "provider": "groq"
   },
   {
+    "id": "deepseek:deepseek-v4-pro",
+    "label": "DeepSeek V4 Pro",
+    "provider": "deepseek"
+  },
+  {
+    "id": "deepseek:deepseek-flash",
+    "label": "DeepSeek Flash",
+    "provider": "deepseek"
+  },
+  {
     "id": "deepseek:deepseek-chat",
     "label": "DeepSeek Chat",
-    "provider": "deepseek"
+    "provider": "deepseek",
+    "retires": "2026-07-24"
   },
   {
     "id": "deepseek:deepseek-reasoner",
     "label": "DeepSeek Reasoner",
     "provider": "deepseek",
-    "reasoning": true
+    "reasoning": true,
+    "retires": "2026-07-24"
+  },
+  {
+    "id": "xai:grok-4.7",
+    "label": "Grok 4.7",
+    "provider": "xai"
   },
   {
     "id": "xai:grok-4",

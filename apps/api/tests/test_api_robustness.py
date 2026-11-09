@@ -148,3 +148,58 @@ async def test_no_route_answers_hostile_input_with_a_server_error(api_client, ap
 async def test_odd_authorization_headers_never_break_the_server(api_client, junk):
     r = await api_client.get("/v1/projects", headers={"authorization": junk})
     assert r.status_code < 500
+
+
+QUERY_JUNK = [
+    "", "-1", "0", "9" * 40, "1e999", "NaN", "null", "true", "\x00", "A" * 5000, "%00", "../../x", "' OR 1=1 --", "💥",
+    "[]", "{}",
+]  # fmt: skip
+
+
+async def test_no_query_parameter_breaks_a_route(api_client, app):
+    """Every declared query parameter of every GET route gets values of the wrong type, size and kind: a 5xx, an
+    escaped exception or a hang names the call. (Limits, cursors, versions and flags are where paging breaks.)"""
+    spec = app.openapi()
+    wf = (await api_client.post("/v1/projects/prj_default/workflows", json={"name": "Query sweep"})).json()
+    real = {"project_id": "prj_default", "wf_id": wf["id"]}
+    failures: list[str] = []
+    calls = 0
+    for method, path, op in _operations(spec):
+        if method != "GET":
+            continue
+        params = [p["name"] for p in op.get("parameters", []) if p.get("in") == "query"]
+        if not params:
+            continue
+        base = _fill(path, "does_not_exist", real)
+        for name in params:
+            for value in QUERY_JUNK:
+                calls += 1
+                try:
+                    r = await asyncio.wait_for(api_client.get(base, params={name: value}), TIMEOUT_S)
+                except Exception as exc:  # noqa: BLE001 - an escaped exception is the finding
+                    failures.append(f"GET {path} ?{name}={value[:20]!r}: raised {type(exc).__name__}: {exc}")
+                    continue
+                if r.status_code >= 500 and r.status_code != 503:
+                    failures.append(f"GET {path} ?{name}={value[:20]!r}: HTTP {r.status_code} {r.text[:100]}")
+    assert calls > 300, calls  # the sweep really covers the API's query parameters
+    assert not failures, f"{len(failures)} query values broke the API:\n" + "\n".join(sorted(set(failures))[:40])
+
+
+def test_the_api_docs_carry_no_planning_ids(app):
+    """Route docstrings name the plan's work items for the code's readers; /docs and the OpenAPI document do not."""
+    import re
+
+    found: list[str] = []
+
+    def walk(node: object) -> None:
+        if isinstance(node, dict):
+            for k, v in node.items():
+                if k in ("description", "summary") and isinstance(v, str) and re.search(r"\((?:S\d+|M\d+-T\d+)", v):
+                    found.append(v[:80])
+                walk(v)
+        elif isinstance(node, list):
+            for v in node:
+                walk(v)
+
+    walk(app.openapi())
+    assert not found, found

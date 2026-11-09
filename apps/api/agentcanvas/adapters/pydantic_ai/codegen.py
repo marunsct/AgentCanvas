@@ -11,7 +11,7 @@ from agentcanvas.adapters import flowgen
 from agentcanvas.adapters.openai_agents.codegen import _py
 from agentcanvas.ir.models import Workflow
 
-PYDANTIC_AI_VERSION = "2.54.0"
+PYDANTIC_AI_VERSION = "2.63.0"
 RUNTIME_IMPORT = "from agentcanvas.adapters.pydantic_ai import runtime as rt"
 STEP_TYPES = flowgen.STEP_TYPES
 RESOURCE_TYPES = flowgen.RESOURCE_TYPES

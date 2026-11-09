@@ -1,0 +1,102 @@
+{
+  "ir_version": "1.2",
+  "id": "tpl_editorial_crew",
+  "name": "Editorial crew",
+  "description": "A CrewAI crew researches a topic and writes an article, an editor agent polishes it under a house rule, and a person approves (or edits) it before it is marked ready to publish. Runs on CrewAI, which needs CrewAI installed on the server (make crewai).",
+  "framework": "crewai",
+  "state": {
+    "channels": [
+      {"name": "topic", "io": "in", "description": "What the article is about"},
+      {"name": "audience", "io": "in", "description": "Who will read it"},
+      {"name": "draft", "io": "out", "description": "The writer's draft, before editing"},
+      {"name": "article", "io": "out", "description": "The edited article the person reviews"},
+      {"name": "approved", "type": {"type": "boolean"}, "io": "out", "description": "The person's decision"},
+      {"name": "status", "io": "out", "description": "Ready to publish, or sent back"}
+    ]
+  },
+  "resources": [
+    {"id": "r_model", "type": "model.chat", "name": "model", "config": {"model": "openai:gpt-5.5"}}
+  ],
+  "nodes": [
+    {
+      "id": "n_crew", "type": "crewai.crew", "name": "research_and_write", "label": "Research and write",
+      "config": {
+        "agents": [
+          {
+            "name": "researcher", "role": "Researcher",
+            "goal": "Find the facts {{ state.audience }} need to understand {{ state.topic }}",
+            "backstory": "You check every fact before you pass it on, and you say plainly when something is uncertain."
+          },
+          {
+            "name": "writer", "role": "Feature writer",
+            "goal": "Write a clear, engaging article about {{ state.topic }} for {{ state.audience }}",
+            "backstory": "You write for busy readers: short sentences, concrete examples, no jargon."
+          }
+        ],
+        "tasks": [
+          {
+            "description": "Gather the key facts about {{ state.topic }} for {{ state.audience }}: what it is, why it matters now, and two concrete examples.",
+            "expected_output": "Six to eight bullet points, each one fact with where it comes from",
+            "agent": "researcher"
+          },
+          {
+            "description": "Write an article of about 600 words about {{ state.topic }} for {{ state.audience }}, using only the researched facts.",
+            "expected_output": "A headline, then the article in Markdown with two or three short sections",
+            "agent": "writer"
+          }
+        ],
+        "process": "sequential",
+        "output": "draft"
+      }
+    },
+    {
+      "id": "n_edit", "type": "crewai.task", "name": "edit_article", "label": "Edit the article",
+      "config": {
+        "role": "Editor",
+        "goal": "Make the article accurate, tight and easy to read for {{ state.audience }}",
+        "backstory": "You edit for a careful publication. You cut what does not help the reader and keep the writer's voice.",
+        "description": "Edit this draft for {{ state.audience }}. Fix errors, cut repetition, make the headline specific, and remove any claim the draft does not support.\n\nDraft:\n{{ state.draft }}",
+        "expected_output": "The edited article in Markdown, headline first",
+        "guardrail": "The article starts with a headline, stays under 800 words, and contains no placeholder text such as [TODO] or [source].",
+        "guardrail_max_retries": 2,
+        "output": "article"
+      }
+    },
+    {
+      "id": "n_review", "type": "core.approval", "name": "review", "label": "Approve before publishing",
+      "config": {"show": "article", "output": "approved"}
+    },
+    {
+      "id": "n_gate", "type": "core.router", "name": "approved_gate", "label": "Approved?",
+      "config": {"cases": [{"when": "state.approved == true", "route": "yes"}], "default": "no"}
+    },
+    {
+      "id": "n_ready", "type": "core.set", "name": "mark_ready", "label": "Mark ready to publish",
+      "config": {"values": {"status": "ready to publish"}}
+    },
+    {
+      "id": "n_back", "type": "core.set", "name": "send_back", "label": "Send back to the writers",
+      "config": {"values": {"status": "sent back for changes"}}
+    }
+  ],
+  "edges": [
+    {"id": "e0", "kind": "flow", "source": {"node": "START"}, "target": {"node": "n_crew"}},
+    {"id": "e1", "kind": "flow", "source": {"node": "n_crew"}, "target": {"node": "n_edit"}},
+    {"id": "e2", "kind": "flow", "source": {"node": "n_edit"}, "target": {"node": "n_review"}},
+    {"id": "e3", "kind": "flow", "source": {"node": "n_review"}, "target": {"node": "n_gate"}},
+    {"id": "e4", "kind": "flow", "source": {"node": "n_gate", "port": "route:yes"}, "target": {"node": "n_ready"}},
+    {"id": "e5", "kind": "flow", "source": {"node": "n_gate", "port": "route:no"}, "target": {"node": "n_back"}},
+    {"id": "e6", "kind": "flow", "source": {"node": "n_ready"}, "target": {"node": "END"}},
+    {"id": "e7", "kind": "flow", "source": {"node": "n_back"}, "target": {"node": "END"}},
+    {"id": "w1", "kind": "wiring", "source": {"node": "r_model"}, "target": {"node": "n_crew", "port": "model"}},
+    {"id": "w2", "kind": "wiring", "source": {"node": "r_model"}, "target": {"node": "n_edit", "port": "model"}}
+  ],
+  "metadata": {
+    "gallery": {
+      "category": "Content",
+      "tags": ["CrewAI", "crew", "guardrail", "human approval", "articles"],
+      "difficulty": "advanced",
+      "sample_input": {"topic": "Heat pumps for older homes", "audience": "homeowners on a budget"}
+    }
+  }
+}

@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from jsonschema import Draft202012Validator
-from sqlalchemy import or_, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.exc import IntegrityError
 
 from agentcanvas.db.models import EventDedup, EventLog, WorkflowRow
@@ -27,7 +27,7 @@ from agentcanvas.log import get_logger
 from agentcanvas.runtime.types import ResumeSpec
 
 log = get_logger(__name__)
-MAX_DEPTH = 5  # emit -> handler -> emit … stops here
+MAX_DEPTH = 5  # emit -> handler -> emit (or a run it starts, which emits) … stops here
 HANDLER_TIMEOUT_S = 30.0
 
 
@@ -122,6 +122,7 @@ class EventService:
     ) -> HandlerResult:
         res = HandlerResult(handler=h["import_path"], matched=True)
         variables = {"event": event}
+        claimed: str | None = None
         try:
             if h.get("filter") and not bool(eval_expression(h["filter"], variables)):
                 return HandlerResult(handler=h["import_path"], matched=False, skipped="filter")
@@ -130,9 +131,12 @@ class EventService:
                 if not await self._first_delivery(project_id, h["import_path"], value, event["id"]):
                     res.skipped = "duplicate"
                     return res
+                claimed = value
             res.actions = await asyncio.wait_for(self._call(project_id, h["import_path"], event), HANDLER_TIMEOUT_S)
         except (ExpressionError, TimeoutError, Exception) as exc:  # noqa: BLE001 - report, never crash delivery
             res.error = f"{type(exc).__name__}: {exc}"
+            if claimed is not None:  # it did not run to the end: the same event delivered again may (R-10)
+                await self._release(project_id, h["import_path"], claimed)
         return res
 
     async def _call(self, project_id: str, import_path: str, event: dict[str, Any]) -> list[dict[str, Any]]:
@@ -158,9 +162,17 @@ class EventService:
             except IntegrityError:
                 return False
 
+    async def _release(self, project_id: str, handler: str, value: str) -> None:
+        async with self.db.sessionmaker() as s:
+            same = (EventDedup.project_id == project_id, EventDedup.handler == handler, EventDedup.value == value)
+            await s.execute(delete(EventDedup).where(*same))
+            await s.commit()
+
     # ------------------------------------------------------------------ actions ----
     async def _perform(self, project_id: str, action: dict[str, Any], user_id: str | None, depth: int) -> list[str]:
         kind = action.get("action")
+        if kind in ("start_workflow", "resume") and depth >= MAX_DEPTH:  # its run's events would be one level deeper
+            raise InvalidInput(f"events led to runs more than {MAX_DEPTH} levels deep")
         if kind == "start_workflow":
             wf = await self._workflow(project_id, str(action["workflow"]))
             context = {f.name: user_id for f in wf.context.fields if f.source == "user" and user_id}
@@ -171,6 +183,7 @@ class EventService:
                 user_id=user_id,
                 context=context,
                 origin="event",
+                event_depth=depth + 1,
             )
             return [h.run_id]
         if kind == "resume":
@@ -197,7 +210,7 @@ class EventService:
             PROJECT_OF[row.id] = project_id  # the run's lifecycle events reach this project's handlers
             h = await self.runner.start(
                 Workflow.model_validate(ir), thread_id=thread_id, resume=ResumeSpec(action.get("value")),
-                user_id=user_id, origin="event", **target,
+                user_id=user_id, origin="event", event_depth=depth + 1, **target,
             )  # fmt: skip
             return [h.run_id]
         if kind == "emit":
@@ -243,8 +256,11 @@ class EventService:
             "thread_id": h.thread_id,
             "run_id": h.run_id,
         }
+        depth = getattr(h, "event_depth", 0)  # a run a handler started: its events count as deeper (RT-6)
         for e in h.emitted:  # domain events are delivered whoever started the run
-            await self.dispatch(project_id, str(e["ac_event"]), dict(e.get("data") or {}), source="run", quiet=True)
+            await self.dispatch(
+                project_id, str(e["ac_event"]), dict(e.get("data") or {}), source="run", quiet=True, depth=depth
+            )
         if h.origin == "event":
             return  # a handler reacting to "its own" run would loop forever
         lifecycle = {"success": "run.completed", "error": "run.failed", "cancelled": "run.cancelled"}.get(status)

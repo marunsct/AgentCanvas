@@ -2,12 +2,11 @@
  * publishing refuses them. Everyone can read them; admins add, switch off and delete. */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link } from "react-router";
 import { apiFetch } from "../api/client";
 import { maturaMode } from "../api/auth";
 import { can, orgPortalUrl } from "../api/session";
 import { QueryStatus } from "../ui/QueryStatus";
-import { ThemeSwitcher } from "../theme/ThemeSwitcher";
+import { confirmDialog, toast } from "../ui/dialog";
 
 type Scope = "node" | "resource" | "workflow";
 interface PolicyIn {
@@ -36,14 +35,15 @@ export function PoliciesPage() {
   const qc = useQueryClient();
   const policies = useQuery({ queryKey: ["policies"], queryFn: () => apiFetch<Policy[]>("/org/policies") });
   const [draft, setDraft] = useState<PolicyIn>(EMPTY);
+  const [editing, setEditing] = useState<string | null>(null); // the policy the form edits; null = a new one
   const done = () => void qc.invalidateQueries({ queryKey: ["policies"] });
   const create = useMutation({
     mutationFn: (body: PolicyIn) => apiFetch<Policy>("/org/policies", { method: "POST", json: body }),
     onSuccess: () => { setDraft(EMPTY); done(); },
   });
   const update = useMutation({
-    mutationFn: ({ id, ...body }: Policy) => apiFetch<Policy>(`/org/policies/${id}`, { method: "PUT", json: body }),
-    onSuccess: done,
+    mutationFn: ({ id, ...body }: PolicyIn & { id: string }) => apiFetch<Policy>(`/org/policies/${id}`, { method: "PUT", json: body }),
+    onSuccess: (_, sent) => { if (sent.id === editing) { setEditing(null); setDraft(EMPTY); toast(`Saved ${sent.name}`); } done(); },
   });
   const remove = useMutation({
     mutationFn: (id: string) => apiFetch(`/org/policies/${id}`, { method: "DELETE" }),
@@ -54,8 +54,9 @@ export function PoliciesPage() {
   const edit = (patch: Partial<PolicyIn>) => setDraft((d) => ({ ...d, ...patch }));
   const portal = orgPortalUrl();
   return (
-    <div className="page">
-      <header className="topbar"><Link to="/" className="brand">AgentCanvas</Link><span className="crumb">/ Policies</span><span className="spacer" /><ThemeSwitcher /></header>
+    <section className="settings-card policies">
+      <h2>Policies</h2>
+      <p className="muted small">Rules every workflow in this organisation is checked against before it runs or is published.</p>
       {maturaMode() && (
         <p className="muted" data-testid="org-settings-in-matura">
           Sign-in, single sign-on, security and member settings of this organisation are in Matura
@@ -69,7 +70,8 @@ export function PoliciesPage() {
         <code>models</code>, <code>tools</code>), <code>resource</code>, <code>workflow</code>, <code>env</code>.
       </p>
       {admin && (
-        <form className="policy-form" onSubmit={(e) => { e.preventDefault(); create.mutate(draft); }}>
+        <form className="policy-form" aria-label={editing ? "Edit policy" : "New policy"}
+          onSubmit={(e) => { e.preventDefault(); if (editing) update.mutate({ ...draft, id: editing }); else create.mutate(draft); }}>
           <div className="row gap small">
             Start from:
             {EXAMPLES.map((x) => <button key={x.name} type="button" className="link small" onClick={() => setDraft(x)}>{x.name}</button>)}
@@ -89,13 +91,16 @@ export function PoliciesPage() {
           <input required placeholder="require (CEL)" aria-label="require" value={draft.require} onChange={(e) => edit({ require: e.target.value })} />
           <input placeholder="What it means (shown with every breach)" aria-label="description" value={draft.description}
             onChange={(e) => edit({ description: e.target.value })} />
-          <div><button type="submit" className="primary" disabled={create.isPending}>Add policy</button></div>
+          <div className="row gap">
+            <button type="submit" className="primary" disabled={create.isPending || update.isPending}>{editing ? "Save policy" : "Add policy"}</button>
+            {editing && <button type="button" onClick={() => { setEditing(null); setDraft(EMPTY); }}>Cancel</button>}
+          </div>
         </form>
       )}
       {error && <p className="error-text" role="alert">{error.message}</p>}
       <QueryStatus q={policies} what="policies" />
       {policies.data?.length === 0 && <p className="muted">No policies yet.</p>}
-      <table className="members" data-testid="policies">
+      <table className="table policies" data-testid="policies">
         <tbody>
           {(policies.data ?? []).map((p) => (
             <tr key={p.id}>
@@ -110,13 +115,18 @@ export function PoliciesPage() {
                       onClick={() => update.mutate({ ...p, enabled: !p.enabled })}>{p.enabled ? "Switch off" : "Switch on"}</button>
                   : !p.enabled && <span className="muted small">off</span>}
               </td>
-              <td>{admin && (
-                <button type="button" className="link small" onClick={() => { if (window.confirm(`Delete policy ${p.name}?`)) remove.mutate(p.id); }}>Delete</button>
-              )}</td>
+              <td className="row gap">{admin && (<>
+                <button type="button" className="link small" onClick={() => {
+                  const { id: _id, created_at: _at, ...body } = p;
+                  setDraft(body);
+                  setEditing(p.id);
+                }}>Edit</button>
+                <button type="button" className="link small" onClick={async () => { if (await confirmDialog({ title: `Delete the policy ${p.name}?`, confirm: "Delete", danger: true })) remove.mutate(p.id); }}>Delete</button>
+              </>)}</td>
             </tr>
           ))}
         </tbody>
       </table>
-    </div>
+    </section>
   );
 }

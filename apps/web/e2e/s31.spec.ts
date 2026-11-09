@@ -52,7 +52,13 @@ test("Simple mode shows the beginner blocks and panels; Push to GitHub needs a t
   await page.getByTestId("simple-toggle").click();
   await expect(page.getByTestId("palette-core.subgraph")).toHaveCount(0);
   await expect(page.getByTestId("palette-core.llm")).toBeVisible();
-  await expect(page.getByRole("tab", { name: "Versions" })).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: "Tests" })).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: "Versions" })).toBeVisible(); // it hides blocks, not publishing
+  await expect(page.getByTestId("evaluation-link")).toBeVisible();
+  await page.getByTestId("more-menu").click();
+  await expect(page.getByTestId("workspace-link")).toBeVisible();
+  await expect(page.getByRole("menuitemcheckbox", { name: /Blast radius/ })).toHaveCount(0);
+  await page.keyboard.press("Escape");
   await expect(page.getByTestId("simple-note")).toBeVisible();
   await page.reload(); // remembered in this browser
   await expect(page.getByTestId("simple-toggle")).toHaveAttribute("aria-pressed", "true");

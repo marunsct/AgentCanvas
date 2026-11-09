@@ -136,7 +136,9 @@ class CrewAIAdapter:
         return get_adapter("langchain").new_resources(resources_class=resources_class, **kw)
 
     def embedder(self, spec: dict[str, Any], secrets: dict[str, str]) -> Any:
-        return ac.knowledge_embedder(spec, secrets)
+        from agentcanvas.settings import get_settings
+
+        return ac.knowledge_embedder(spec, secrets, public_only=get_settings().edition == "hosted")
 
     def script(self, resources: Any, import_path: str) -> Any:
         return ac.script_node(import_path=import_path, resources=resources)

@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import functools
 import hashlib
 import json
 import re
 from collections.abc import Callable
 from typing import Any
+from urllib.parse import quote, quote_plus
 
 from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy import delete, select, update
@@ -44,6 +46,9 @@ class SecretService:
     def __init__(self, session: AsyncSession, keyring: Keyring):
         self.s = session
         self.keys = keyring
+        # after `values`: organisations whose data key could not be unwrapped (org id -> why), and their projects
+        self.key_errors: dict[str, str] = {}
+        self.unreadable: set[str] = set()
 
     async def names(self, project_id: str) -> list[Secret]:
         q = select(Secret).where(Secret.project_id == project_id).order_by(Secret.name)
@@ -52,8 +57,8 @@ class SecretService:
     async def put(self, project_id: str, name: str, value: str, user_id: str | None) -> None:
         if not NAME.match(name):
             raise InvalidInput("secret names are UPPER_SNAKE_CASE, e.g. OPENAI_API_KEY")
-        if not value:
-            raise InvalidInput("a secret needs a value")
+        if len(value) < MIN_SECRET:  # it could not be masked where a run's output shows it
+            raise InvalidInput(f"a secret needs at least {MIN_SECRET} characters, so outputs can hide it")
         f = await self.keys.fernet(self.s, await _org_of(self.s, project_id))
         token = f.encrypt(value.encode())
         row = await self.s.scalar(select(Secret).where(Secret.project_id == project_id, Secret.name == name))
@@ -89,7 +94,15 @@ class SecretService:
             q = q.where(Secret.project_id == project_id)
         out: dict[str, dict[str, str]] = {}
         for row, org_id in (await self.s.execute(q)).all():
-            f = await self.keys.fernet(self.s, org_id) if row.org_key else self.keys.legacy
+            if org_id in self.key_errors:
+                self.unreadable.add(row.project_id)
+                continue
+            try:  # one organisation's unreadable data key (a rotated secret key, a KMS outage) is its alone
+                f = await self.keys.fernet(self.s, org_id) if row.org_key else self.keys.legacy
+            except Exception as exc:  # noqa: BLE001 - RuntimeError, InvalidToken or the KMS client's own errors
+                self.key_errors[org_id] = f"{type(exc).__name__}: {exc}"
+                self.unreadable.add(row.project_id)
+                continue
             try:
                 out.setdefault(row.project_id, {})[row.name] = f.decrypt(row.ciphertext).decode()
             except InvalidToken:  # encrypted with another key: unusable, never crash startup
@@ -110,18 +123,34 @@ class SecretCache:
         self.db, self.keyring, self.cache, self.interval_s = db, keyring, cache, interval_s
         self.versions: dict[str, int] = {}
         self._task: asyncio.Task | None = None
+        self._reported: set[str] = set()  # organisations whose unreadable data key was logged
 
     async def sync(self) -> None:
-        """Reload the projects whose secrets changed since they were read (every project at startup)."""
+        """Reload the projects whose secrets changed since they were read (every project at startup). A project
+        whose organisation's data key cannot be unwrapped is left as it was and tried again on the next sync."""
         async with self.db.sessionmaker() as s:
             rows = (await s.execute(select(Project.id, Project.secrets_version))).all()
             versions: dict[str, int] = {project_id: version for project_id, version in rows}
             stale = [p for p, v in versions.items() if self.versions.get(p) != v]
             if not stale:
                 return
-            values = await SecretService(s, self.keyring()).values(stale[0] if len(stale) == 1 else None)
+            svc = SecretService(s, self.keyring())
+            values = await svc.values(stale[0] if len(stale) == 1 else None)
+        self._report(svc)
         for project_id in stale:
-            self._set(project_id, versions[project_id], values.get(project_id, {}))
+            if project_id not in svc.unreadable:
+                self._set(project_id, versions[project_id], values.get(project_id, {}))
+
+    def _report(self, svc: SecretService) -> None:
+        for org_id, why in svc.key_errors.items():
+            if org_id not in self._reported:
+                self._reported.add(org_id)
+                log.error(
+                    "secret.org_key_unreadable", org_id=org_id, error=why,
+                    hint="the master key that wrapped this organisation's data key is not AGENTCANVAS_KMS_KEY or in "
+                    "AGENTCANVAS_KMS_PREVIOUS_KEYS (with AGENTCANVAS_KMS_KEY empty it is derived from "
+                    "AGENTCANVAS_SECRET_KEY): its secrets stay unavailable until that key is back",
+                )  # fmt: skip
 
     def start(self) -> None:
         self._task = asyncio.create_task(self._loop(), name="secrets")
@@ -146,8 +175,11 @@ class SecretCache:
             version = await s.scalar(select(Project.secrets_version).where(Project.id == project_id))
             if version is None or self.versions.get(project_id) == version:
                 return
-            values = (await SecretService(s, self.keyring()).values(project_id)).get(project_id, {})
-        self._set(project_id, version, values)
+            svc = SecretService(s, self.keyring())
+            values = (await svc.values(project_id)).get(project_id, {})
+        self._report(svc)
+        if project_id not in svc.unreadable:
+            self._set(project_id, version, values)
 
     def _set(self, project_id: str, version: int, values: dict[str, str]) -> None:
         current = self.cache.setdefault(project_id, {})
@@ -177,20 +209,44 @@ async def migrate_legacy(session: AsyncSession, keyring: Keyring) -> int:
 def hide_secrets(payload: Any, secrets: dict[str, str]) -> Any:
     """`payload` with every secret value (6+ characters) masked: state a run wrote can hold a value a tool or
     script read, and thread state, history and explanations return it (S12)."""
-    return hide_values(payload, sorted((v for v in secrets.values() if len(v) >= 6), key=len, reverse=True))
+    return hide_values(payload, [v for v in secrets.values() if len(v) >= MIN_SECRET])
+
+
+MIN_SECRET = 6  # shorter values cannot be masked in outputs without masking ordinary text too
+
+
+@functools.lru_cache(maxsize=4096)
+def encoded_forms(value: str) -> tuple[str, ...]:
+    """A secret as it may appear in an output: as is, base64 (standard and URL-safe, with or without padding),
+    URL-encoded, and JSON-escaped. A provider's error can echo a key in any of these (S-9)."""
+    raw = value.encode()
+    forms = {
+        value, base64.b64encode(raw).decode(), base64.b64encode(raw).decode().rstrip("="),
+        base64.urlsafe_b64encode(raw).decode().rstrip("="), quote(value, safe=""), quote_plus(value),
+        json.dumps(value)[1:-1],
+    }  # fmt: skip
+    return tuple(sorted((f for f in forms if len(f) >= MIN_SECRET), key=len, reverse=True))
+
+
+def _all_forms(values: list[str]) -> list[str]:
+    return sorted({f for v in values for f in encoded_forms(v)}, key=len, reverse=True)
 
 
 def hide_values(payload: Any, values: list[str]) -> Any:
-    """`payload` as JSON values with each of `values` (longest first) masked inside its strings. Masking the
-    strings, not the JSON text, also finds values with characters JSON escapes (quotes, backslashes, newlines)."""
+    """`payload` as JSON values with each of `values` (longest first, and their encoded forms) masked inside its
+    strings. Masking the strings, not the JSON text, also finds values with characters JSON escapes."""
     if not values:
         return payload
-    plain = json.loads(json.dumps(payload, default=str))
+    values = _all_forms(values)
+    text = json.dumps(payload, default=str, ensure_ascii=False)
+    if not any(v in text for v in values):  # the usual case (a token, a step event): one pass, no copy (F-1)
+        return payload
+    plain = json.loads(text)
     masked = mask_strings(plain, values)
     return payload if masked == plain else masked
 
 
 def redact(text: str, values: list[str]) -> str:
-    for v in values:
+    for v in _all_forms(values):
         text = text.replace(v, "***")
     return text

@@ -40,10 +40,11 @@ describe("evaluation helpers", () => {
 
 describe("frameworksToCompare", () => {
   const fws = [{ id: "langchain" }, { id: "openai_agents" }, { id: "echo" }];
-  const t = (framework = "") => ({ framework, version: "", overrides: "", label: "" });
+  const t = (framework = "") => ({ framework, version: "", changes: [], label: "" });
+  const blank = () => ({ version: "", changes: [], label: "" });
   it("adds one target per framework not yet covered, the workflow's own counting as covered", () => {
-    expect(frameworksToCompare(fws, "langchain", [t()]).map((x) => x.framework)).toEqual(["openai_agents", "echo"]);
-    expect(frameworksToCompare(fws, "langchain", [t(), t("echo")]).map((x) => x.framework)).toEqual(["openai_agents"]);
-    expect(frameworksToCompare(fws, "openai_agents", [t(), t("langchain"), t("echo")])).toEqual([]);
+    expect(frameworksToCompare(fws, "langchain", [t()], blank).map((x) => x.framework)).toEqual(["openai_agents", "echo"]);
+    expect(frameworksToCompare(fws, "langchain", [t(), t("echo")], blank).map((x) => x.framework)).toEqual(["openai_agents"]);
+    expect(frameworksToCompare(fws, "openai_agents", [t(), t("langchain"), t("echo")], blank)).toEqual([]);
   });
 });

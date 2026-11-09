@@ -1,9 +1,19 @@
 /** The Copilot panel (S14): chat about the open workflow; its changes appear on the canvas to accept or reject. */
-import { type FormEvent, useEffect, useRef, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import { Link } from "react-router";
 import { can, useCan, useMe } from "../api/session";
 import { useEditor } from "../editor/store";
-import { type Brief, type Mode, toolLabel, useCopilot } from "./copilot";
+import { useQuery } from "@tanstack/react-query";
+import { History } from "lucide-react";
+import { apiFetch } from "../api/client";
+import { useModels } from "../api/queries";
+import type { ModelOption, CopilotThreadOut, GuidePageRef } from "../api/generated";
+import { confirmDialog } from "../ui/dialog";
+import { Markdown, slug } from "../ui/Markdown";
+import { Menu } from "../ui/Menu";
+import { useFollowBottom } from "../ui/useFollowBottom";
+import { billedTokens, type Brief, type ChatMessage, type Conversation, type Mode, type Proposal, type Selection, type Todo, toolLabel, useCopilot } from "./copilot";
+import { describe, preview } from "./review";
 
 const STARTERS = [
   "Build a workflow that classifies support emails and drafts a reply",
@@ -29,14 +39,143 @@ function BriefCard({ brief }: { brief: Brief }) {
   );
 }
 
+/** The person's earlier conversations about this workflow: reopen one, or delete it. */
+function Threads({ workflowId, current, busy }: { workflowId: string | null; current: string | null; busy: boolean }) {
+  const threads = useQuery({
+    queryKey: ["copilot-threads", workflowId, current],
+    queryFn: () => apiFetch<CopilotThreadOut[]>(`/workflows/${workflowId}/copilot/threads`),
+    enabled: Boolean(workflowId),
+  });
+  const others = (threads.data ?? []).filter((t) => !t.open);
+  return (
+    <Menu label={<><History size={14} aria-hidden /> History</>} testId="copilot-history" title="Earlier conversations about this workflow">
+      {(close) => (
+        <>
+          <p className="menu-heading">Earlier conversations</p>
+          {threads.isError && <p className="error-text small">Could not list them: {(threads.error as Error).message}</p>}
+          {threads.data && others.length === 0 && <p className="muted small" style={{ margin: "4px 10px" }}>None yet. New chat keeps this one here.</p>}
+          {others.map((t) => (
+            <div key={t.id} className="thread-row">
+              <button type="button" role="menuitem" disabled={busy} title={t.title ?? "Untitled"}
+                onClick={() => { close(); void useCopilot.getState().openThread(t.id); }}>
+                <span className="thread-title">{t.title ?? "Untitled"}</span>
+                <small className="muted">{new Date(t.updated_at).toLocaleDateString()} · {t.messages} messages</small>
+              </button>
+              <button type="button" className="link small" aria-label={`delete conversation ${t.title ?? ""}`} disabled={busy}
+                onClick={async () => {
+                  close();
+                  if (await confirmDialog({ title: "Delete this conversation?", body: t.title ?? undefined, confirm: "Delete", danger: true })) {
+                    await useCopilot.getState().deleteThread(t.id);
+                    void threads.refetch();
+                  }
+                }}>×</button>
+            </div>
+          ))}
+        </>
+      )}
+    </Menu>
+  );
+}
+
+function Plan({ todos }: { todos: Todo[] }) {
+  const done = todos.filter((t) => t.status === "completed").length;
+  return (
+    <div className="copilot-plan" data-testid="copilot-plan" aria-label="The Copilot's plan">
+      <div className="small muted">Plan · {done} of {todos.length} done</div>
+      <ul>
+        {todos.map((t, i) => (
+          <li key={i} className={t.status}>
+            <span aria-hidden="true">{t.status === "completed" ? "✓" : t.status === "in_progress" ? "▸" : "○"}</span>
+            <span>{t.content}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** The open proposal: each change with a tick box (unticking a step unticks the wires to it), its tests and notes,
+ * and Accept for what is ticked. The canvas shows the ticked changes as they would be. */
+function ProposalCard({ pending, busy, canBuild }: { pending: Proposal; busy: boolean; canBuild: boolean }) {
+  const selection = useCopilot((s) => s.selection);
+  const wf = useEditor((s) => s.wf);
+  const cmds = pending.commands ?? [];
+  const named = wf && cmds.length ? preview(wf, cmds, new Set(cmds.keys())).workflow : null;
+  const files = pending.files ?? [];
+  const sel: Selection = selection ?? { changes: new Set(cmds.keys()), tests: new Set((pending.tests ?? []).keys()), notes: true, files: new Set(files.keys()) };
+  const kept = sel.changes.size + sel.tests.size + sel.files.size + (sel.notes && pending.notes?.length ? 1 : 0);
+  const partial = sel.changes.size < cmds.length || sel.tests.size < (pending.tests?.length ?? 0) || sel.files.size < files.length;
+  const { toggleChange, toggleTest, toggleNotes, toggleFile } = useCopilot.getState();
+  return (
+    <section className="copilot-proposal" data-testid="copilot-proposal" aria-label="Proposed changes">
+      <strong>Proposed: {pending.summary}</strong>
+      {pending.stale
+        ? <p className="warn-text small">{pending.problem ?? "The workflow changed since; ask again."}</p>
+        : <p className="small muted">
+            On the canvas: green is new, amber is changed, red dashed is removed.
+            {pending.errors > 0 && ` It still has ${pending.errors} problem${pending.errors > 1 ? "s" : ""}.`}
+          </p>}
+      {!pending.stale && cmds.length > 0 && named && (
+        <details className="change-list" open={cmds.length <= 8}>
+          <summary className="small">{sel.changes.size} of {cmds.length} change{cmds.length > 1 ? "s" : ""} kept</summary>
+          <ul>
+            {cmds.map((c, i) => (
+              <li key={i}>
+                <label className="row">
+                  <input type="checkbox" checked={sel.changes.has(i)} disabled={busy} onChange={() => toggleChange(i)} />
+                  <span>{describe(c, named)}</span>
+                </label>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+      {Boolean(pending.tests?.length) && (
+        <div className="small" data-testid="copilot-proposal-tests">
+          Saves tests:
+          <ul className="plain">
+            {pending.tests!.map((t, i) => (
+              <li key={i}><label className="row"><input type="checkbox" checked={sel.tests.has(i)} disabled={busy} onChange={() => toggleTest(i)} /> {t.name}</label></li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {files.length > 0 && (
+        <div className="small" data-testid="copilot-proposal-files">
+          Writes workspace code:
+          <ul className="plain files">
+            {files.map((f, i) => (
+              <li key={f.path}>
+                <label className="row"><input type="checkbox" checked={sel.files.has(i)} disabled={busy} onChange={() => toggleFile(i)} />
+                  <code>{f.path}</code> <span className="muted">{f.before == null ? "new" : "changed"}</span></label>
+                <details className="file-preview"><summary className="small">Show the code</summary>
+                  <pre className="json small">{f.content}</pre></details>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {Boolean(pending.notes?.length) && (
+        <label className="row small"><input type="checkbox" checked={sel.notes} disabled={busy} onChange={toggleNotes} />
+          Add to project notes: {pending.notes!.join("; ")}</label>
+      )}
+      <div className="row gap">
+        <button type="button" className="primary" disabled={busy || pending.stale || !canBuild || kept === 0}
+          onClick={() => void useCopilot.getState().accept()}>{partial ? "Accept the ticked changes" : "Accept"}</button>
+        <button type="button" disabled={busy} onClick={() => void useCopilot.getState().reject()}>Reject</button>
+      </div>
+      <p className="small muted">After accepting, Undo (Ctrl/⌘+Z) takes it back in one step.</p>
+    </section>
+  );
+}
+
 export function CopilotPanel() {
   const workflowId = useEditor((s) => s.workflowId);
-  const { conversation, busy, live, error } = useCopilot();
+  const { conversation, busy, live, error, last, cost, asking } = useCopilot();
   const [text, setText] = useState("");
   const canBuild = useCan("builder");
   const email = useMe((s) => s.me.email);
   const [mode, setMode] = useState<Mode>(can("builder") ? "build" : "ask");
-  const end = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (workflowId) void useCopilot.getState().load(workflowId).catch((e: Error) => useCopilot.setState({ error: e.message }));
@@ -48,41 +187,42 @@ export function CopilotPanel() {
     setMode(request.mode === "build" && !can("builder") ? "ask" : request.mode);
     void useCopilot.getState().send(request.text, request.mode === "build" && !can("builder") ? "ask" : request.mode);
   }, [request, conversation, busy]);
-  useEffect(() => { // newer browsers return a promise here: an effect must not return it as its cleanup
-    end.current?.scrollIntoView?.({ block: "end" });
-  }, [conversation?.messages.length, live?.text.length, live?.activity.length]);
+  const { end, onScroll, follow } = useFollowBottom(
+    [conversation?.messages.length, live?.text.length, live?.activity.length, live?.streaming.length, live?.todos.length],
+  );
 
   const submit = (e?: FormEvent) => {
     e?.preventDefault();
     const t = text.trim();
     if (!t) return;
     setText("");
+    follow(); // sending: show the answer as it comes, wherever the log was scrolled
     void useCopilot.getState().send(t, mode);
   };
 
   if (!conversation) return <div className="panel copilot muted" role="status">{error ?? "Loading the Copilot…"}</div>;
   if (!conversation.enabled) return <div className="panel copilot muted">The Copilot is switched off for this project.</div>;
   const pending = conversation.pending;
-  const used = (conversation.usage.input_tokens ?? 0) + (conversation.usage.output_tokens ?? 0);
+  const used = billedTokens(conversation.usage);
 
   return (
     <div className="panel copilot" data-testid="copilot-panel">
       <div className="copilot-head row">
         <span className="copilot-title"><span className="copilot-mark" aria-hidden="true">✦</span>Copilot</span>
-        <span className="model-chip" title={conversation.model.origin ? `${conversation.model.model} (${conversation.model.origin})` : undefined}>
-          {conversation.model.model ?? "No model yet"}
-        </span>
+        <ModelSwitcher workflowId={workflowId ?? ""} model={conversation.model} chosen={conversation.chosen_model ?? null} busy={busy} />
         <span className="spacer" />
-        <button type="button" className="link small" onClick={() => void useCopilot.getState().newChat()} disabled={busy}>New chat</button>
+        <Threads workflowId={workflowId} current={conversation.id} busy={busy} />
+        <button type="button" className="link small" onClick={() => void useCopilot.getState().newChat()} disabled={busy}
+          title="Start a new conversation; this one is kept under History">New chat</button>
       </div>
       {conversation.model.problem && (
         <p className="error-text small" data-testid="copilot-model-problem">
-          {conversation.model.problem} <Link to="/setup">Settings</Link>
+          {conversation.model.problem} <Link to="/settings/copilot">Copilot settings</Link>
         </p>
       )}
       {conversation.brief && <BriefCard brief={conversation.brief} />}
 
-      <div className="copilot-log" aria-live="polite">
+      <div className="copilot-log" aria-live="polite" onScroll={onScroll}>
         {conversation.messages.length === 0 && !live && (
           <div className="copilot-empty">
             <div className="copilot-hero">
@@ -98,7 +238,14 @@ export function CopilotPanel() {
         {conversation.messages.map((m, i) => (
           <div key={i} className={`copilot-turn ${m.role}`}>
             <span className="copilot-avatar" aria-hidden="true">{m.role === "user" ? (email?.[0] ?? "Y").toUpperCase() : "✦"}</span>
-            <div className={`copilot-msg ${m.role}`}>{m.content || (m.proposal_id ? "Proposed changes." : "")}</div>
+            <div className={`copilot-msg ${m.role}`}>
+              {m.role === "assistant"
+                ? <Markdown text={m.content || (m.proposal_id ? "Proposed changes." : "")} />
+                : m.content}
+              {m.stopped && <span className="badge small" title="You stopped this answer">stopped</span>}
+              {m.role === "assistant" && m.sources && m.sources.length > 0 && <Sources sources={m.sources} />}
+              {m.role === "assistant" && m.usage && <AnswerCost m={m} />}
+            </div>
           </div>
         ))}
         {live && (
@@ -114,45 +261,38 @@ export function CopilotPanel() {
                   ))}
                 </div>
               )}
-              {live.text.map((t, i) => <p key={i}>{t}</p>)}
-              <span className="typing" aria-label="Thinking"><i /><i /><i /> Thinking…</span>
+              {live.todos.length > 0 && <Plan todos={live.todos} />}
+              {live.text.map((t, i) => <Markdown key={i} text={t} />)}
+              {live.streaming && <div className="streaming"><Markdown text={live.streaming} /></div>}
+              {!live.streaming && <span className="typing" aria-label="Thinking"><i /><i /><i /> Thinking…</span>}
             </div>
           </div>
         )}
         <div ref={end} />
       </div>
 
-      {pending && (
-        <section className="copilot-proposal" data-testid="copilot-proposal" aria-label="Proposed changes">
-          <strong>Proposed: {pending.summary}</strong>
-          {pending.stale
-            ? <p className="warn-text small">{pending.problem ?? "The workflow changed since; ask again."}</p>
-            : <p className="small muted">
-                Shown on the canvas: {pending.diff?.added.length ?? 0} new, {pending.diff?.changed.length ?? 0} changed
-                {pending.diff?.removed.length ? `, ${pending.diff.removed.length} removed` : ""}.
-                {pending.errors > 0 && ` It still has ${pending.errors} problem${pending.errors > 1 ? "s" : ""}.`}
-              </p>}
-          {Boolean(pending.tests?.length) && (
-            <p className="small" data-testid="copilot-proposal-tests">
-              Saves {pending.tests!.length} test{pending.tests!.length > 1 ? "s" : ""}: {pending.tests!.map((t) => t.name).join(", ")}
-            </p>
-          )}
-          {Boolean(pending.notes?.length) && <p className="small">Adds to project notes: {pending.notes!.join("; ")}</p>}
+      {pending && <ProposalCard pending={pending} busy={busy} canBuild={canBuild} />}
+      {asking && !busy && (
+        <div className="copilot-permission" role="alert" data-testid="copilot-permission">
+          <span>The Copilot wants to test the workflow with real models ({asking.join(", ")}), which uses their keys and costs a little.</span>
           <div className="row gap">
-            <button type="button" className="primary" disabled={busy || pending.stale || !canBuild}
-              onClick={() => void useCopilot.getState().accept()}>Accept</button>
-            <button type="button" disabled={busy} onClick={() => void useCopilot.getState().reject()}>Reject</button>
+            <button type="button" className="primary small" onClick={() => void useCopilot.getState().allowRealRuns()}>Allow in this conversation</button>
+            <button type="button" className="small" onClick={() => useCopilot.setState({ asking: null })}>Not now</button>
           </div>
-          <p className="small muted">After accepting, Undo (Ctrl/⌘+Z) takes it back in one step.</p>
-        </section>
+        </div>
       )}
-      {error && <p className="error-text small" role="alert">{error}</p>}
+      {error && (
+        <div className="copilot-error" role="alert" data-testid="copilot-error">
+          <span>{error}</span>
+          {last && !busy && <button type="button" className="small" onClick={() => void useCopilot.getState().retry()}>Try again</button>}
+        </div>
+      )}
 
       <form className="copilot-input" onSubmit={submit}>
         <textarea aria-label="Message the Copilot" rows={2} value={text} disabled={busy}
           placeholder={mode === "build" ? "What should this workflow do?" : "Ask about this workflow"}
           onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) submit(e); }} />
+          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) submit(e); }} />
         <div className="row gap">
           <div className="segmented" role="radiogroup" aria-label="Copilot mode">
             {(["build", "ask"] as Mode[]).map((m) => (
@@ -164,10 +304,106 @@ export function CopilotPanel() {
             ))}
           </div>
           <span className="spacer" />
-          <span className="small muted" title="tokens used in this conversation">{Math.round((used / conversation.token_cap) * 100)}% used</span>
-          <button type="submit" className="primary" disabled={busy || !text.trim()}>{busy ? "…" : <>Send <span aria-hidden="true">↑</span></>}</button>
+          <span className="small muted" title={`${used.toLocaleString()} tokens of ${conversation.token_cap.toLocaleString()} in this conversation`}>
+            {cost != null && cost > 0 ? `$${cost < 0.01 ? cost.toFixed(4) : cost.toFixed(2)} · ` : ""}{Math.round((used / conversation.token_cap) * 100)}% used</span>
+          {busy
+            ? <button type="button" data-testid="copilot-stop" onClick={() => useCopilot.getState().stop()} title="Stop this answer; what is said so far is kept">■ Stop</button>
+            : <button type="submit" className="primary" disabled={!text.trim()}>Send <span aria-hidden="true">↑</span></button>}
         </div>
       </form>
     </div>
+  );
+}
+
+/** What one answer used, under it: tokens, and dollars when the model's price is known. */
+function AnswerCost({ m }: { m: ChatMessage }) {
+  const tokens = (m.usage?.input_tokens ?? 0) + (m.usage?.output_tokens ?? 0);
+  const usd = m.cost_usd;
+  return (
+    <div className="copilot-cost small muted" data-testid="answer-cost"
+      title={`${(m.usage?.input_tokens ?? 0).toLocaleString()} in${m.usage?.cache_read_tokens ? ` (${m.usage.cache_read_tokens.toLocaleString()} from the cache)` : ""}, ${(m.usage?.output_tokens ?? 0).toLocaleString()} out${m.model ? ` on ${m.model}` : ""}`}>
+      {tokens.toLocaleString()} tokens{usd != null && usd > 0 ? ` · $${usd < 0.01 ? usd.toFixed(4) : usd.toFixed(2)}` : ""}
+    </div>
+  );
+}
+
+/** "From: Guide › Models › Local models": the guide sections an answer read, each opening in the app's guide. */
+function Sources({ sources }: { sources: { page: string; section: string }[] }) {
+  const pages = useQuery({ queryKey: ["guide"], queryFn: () => apiFetch<GuidePageRef[]>("/guide"), staleTime: Infinity });
+  const title = (page: string) => (Array.isArray(pages.data) ? pages.data : []).find((p) => p.page === page)?.title
+    ?? page.replace(/-/g, " ").replace(/^./, (c) => c.toUpperCase());
+  return (
+    <div className="copilot-sources small" data-testid="answer-sources">
+      From:{" "}
+      {sources.map((s, i) => {
+        const top = s.section === title(s.page) || s.section === s.page;
+        return (
+          <span key={i}>{i > 0 && " · "}
+            <Link to={`/guide/${s.page}${top ? "" : `#${slug(s.section)}`}`}>Guide › {title(s.page)}{top ? "" : ` › ${s.section}`}</Link>
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+/** The model of this conversation: the project's choice, or another one for this chat (the server checks the
+ * project's policies and privacy setting). "New chat" goes back to the project's. */
+function ModelSwitcher({ workflowId, model, chosen, busy }: {
+  workflowId: string; model: Conversation["model"]; chosen: string | null; busy: boolean;
+}) {
+  const models = useModels();
+  const label = (models.data ?? []).find((m) => m.id === model.model)?.label
+    ?? model.model?.slice(model.model.indexOf(":") + 1) ?? "No model yet";
+  const title = model.origin ? `${model.model} (${model.origin})` : undefined;
+  if (!can("builder")) return <span className="model-chip" title={title}>{label}</span>;
+  const pick = async (id: string | null) => {
+    try {
+      await apiFetch(`/workflows/${workflowId}/copilot/model`, { method: "PUT", json: { model: id } });
+      await useCopilot.getState().load(workflowId);
+    } catch (e) {
+      useCopilot.setState({ error: `Could not switch the model: ${(e as Error).message}` });
+    }
+  };
+  return (
+    <Menu testId="copilot-model" className="model-switch" align="left" title={title ? `${title}: switch for this chat` : "Choose a model for this chat"}
+      label={<span className="model-chip">{label}{chosen ? " · this chat" : ""} ▾</span>}>
+      {(close) => <ModelChoices workflowId={workflowId} chosen={chosen} busy={busy} close={close} pick={pick} />}
+    </Menu>
+  );
+}
+
+/** The models the chat can switch to: only those set up to answer here (a key, or a local server that lists them),
+ * fetched when the menu opens, and a way to set up more. */
+function ModelChoices({ workflowId, chosen, busy, close, pick }: {
+  workflowId: string; chosen: string | null; busy: boolean; close: () => void; pick: (id: string | null) => Promise<void>;
+}) {
+  const ready = useQuery({
+    queryKey: ["copilot-models", workflowId], staleTime: 30_000,
+    queryFn: () => apiFetch<ModelOption[]>(`/workflows/${workflowId}/copilot/models`),
+  });
+  const choose = (id: string | null) => { close(); void pick(id); };
+  const missing = chosen && ready.data && !ready.data.some((m) => m.id === chosen);
+  return (
+    <>
+      <p className="menu-heading">Model for this chat</p>
+      <button type="button" role="menuitemradio" aria-checked={!chosen} disabled={busy} onClick={() => choose(null)}>The project's choice</button>
+      {ready.isPending && <p className="menu-note muted small" role="status">Checking which models are set up…</p>}
+      {ready.error && <p className="menu-note error-text small">Could not list the models: {(ready.error as Error).message}</p>}
+      {(ready.data ?? []).map((m) => (
+        <button type="button" role="menuitemradio" key={m.id} aria-checked={chosen === m.id} disabled={busy}
+          title={m.id} onClick={() => choose(m.id)}>
+          <span className="model-name">{m.label}</span><span className="muted small">{m.provider}</span>
+        </button>
+      ))}
+      {missing && (
+        <button type="button" role="menuitemradio" aria-checked disabled title={chosen}>
+          <span className="model-name">{chosen.slice(chosen.indexOf(":") + 1)}</span><span className="warn-text small">not set up now</span>
+        </button>
+      )}
+      {ready.data?.length === 0 && <p className="menu-note muted small">No other model is set up yet.</p>}
+      <hr />
+      <Link role="menuitem" to="/settings/models" data-testid="copilot-model-setup" onClick={close}>Set up more models…</Link>
+    </>
   );
 }

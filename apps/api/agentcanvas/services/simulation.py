@@ -28,7 +28,9 @@ SYSTEM = (
 
 
 class Simulation(BaseModel):
-    model: str = Field(description="catalog model that plays the user")
+    model: str | None = Field(
+        None, description="catalog model that plays the user (default: the project's, Settings > Models)"
+    )
     persona: str = Field(min_length=1, max_length=4000, description="who the user is and how they write")
     goal: str = Field(default="", max_length=4000, description="what they want; an example's metadata.goal wins")
     max_turns: int = Field(default=5, ge=1, le=MAX_TURNS, description="user messages at most")
@@ -75,6 +77,8 @@ def _render(transcript: list[dict[str, str]]) -> str:
 async def next_message(sim: Simulation, goal: str, transcript: list[dict[str, str]], complete: Complete) -> str | None:
     """The simulated user's next message, or None when they stop."""
     system = SYSTEM.format(persona=sim.persona, goal=goal or "(none given: act naturally)", stop=sim.stop_phrase)
+    if not sim.model:  # set from the project's default when the experiment is saved
+        raise ValueError("the simulated user has no model")
     reply = (await complete(system, _render(transcript), sim.model)).strip()
     if not reply or reply.rstrip(".!").strip().upper() == sim.stop_phrase.upper():
         return None

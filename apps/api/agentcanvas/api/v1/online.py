@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.deps import CurrentUser, current_user, get_session
 from agentcanvas.db.models import Deployment, EvalAlert, Evaluator, OnlineEvaluator, Run, RunScore
+from agentcanvas.db.repositories import LIGHT_RUN
 from agentcanvas.errors import Conflict, InvalidInput, NotFound
 from agentcanvas.evaluation import ONLY_IN_EXPERIMENTS
 from agentcanvas.ids import new_id
@@ -213,11 +214,7 @@ async def score_summary(
     """Online scores per evaluator, by hour or day, over the last `days` days."""
     await _deployment(session, dep_id)
     since = datetime.now(UTC) - timedelta(days=days)
-    q = select(RunScore.created_at, RunScore.evaluator, RunScore.score, RunScore.passed, RunScore.judge_cost_usd).where(
-        RunScore.deployment_id == dep_id, RunScore.source == "online", RunScore.created_at >= since
-    )
-    rows = [tuple(r) for r in (await session.execute(q.limit(100_000))).all()]
-    return [BucketOut(**b) for b in buckets(rows, 1 if bucket == "hour" else 24)]  # type: ignore[arg-type]
+    return [BucketOut(**b) for b in await buckets(session, dep_id, since, 1 if bucket == "hour" else 24)]
 
 
 @router.get("/deployments/{dep_id}/scored-runs", response_model=list[ScoredRunOut])
@@ -236,7 +233,8 @@ async def scored_runs(
     for r in (await session.scalars(q)).all():
         if r.run_id in by_run or len(by_run) < limit:
             by_run.setdefault(r.run_id, []).append(r)
-    runs = {r.id: r for r in (await session.scalars(select(Run).where(Run.id.in_(list(by_run))))).all()}
+    found = await session.scalars(select(Run).options(*LIGHT_RUN).where(Run.id.in_(list(by_run))))
+    runs = {r.id: r for r in found.all()}
     return [
         ScoredRunOut(
             run_id=rid,

@@ -26,6 +26,7 @@ export interface RunState {
   rubric: RubricRound[]; // grading rounds of this run's agents, live
   error: string | null;
   running: boolean;
+  starting: boolean; // Run or Send was pressed and the run has not started yet (saving the edits, the request)
   breakpoint: boolean;
   runSeq: number; // increments whenever a run ends (timeline/explain/chat refetch)
   highlight: string[]; // node ids emphasised by the timeline/explain views
@@ -51,13 +52,29 @@ const empty = {
 };
 
 export const useRun = create<RunState>((set) => ({
-  threadId: null, runId: null, running: false, runSeq: 0, ...empty,
+  threadId: null, runId: null, running: false, starting: false, runSeq: 0, ...empty,
   reset: () => set({ ...empty }),
   apply: (ev) => set((s) => reduce(s, ev)),
   setHighlight: (highlight) => set({ highlight }),
   setThread: (threadId) => set({ threadId, ...empty }),
   setInput: (input) => set({ input }),
 }));
+
+const WAITING = "(waiting) ";
+
+/** The tab's title while a run in this tab waits for a decision (approval, input), or without the mark again. */
+export function waitingTitle(title: string, waiting: boolean): string {
+  const base = title.startsWith(WAITING) ? title.slice(WAITING.length) : title;
+  return waiting ? WAITING + base : base;
+}
+
+// someone working in another tab sees that the run they started is waiting for them
+if (typeof document !== "undefined") {
+  useRun.subscribe((s) => {
+    const title = waitingTitle(document.title, s.interrupts.length > 0 && !s.running);
+    if (title !== document.title) document.title = title;
+  });
+}
 
 /** Pure reducer (unit-tested): how each canonical event changes the canvas. */
 export function reduce(s: RunState, ev: RunEvent): Partial<RunState> {

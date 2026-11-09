@@ -1,5 +1,5 @@
 import type { Locator, Page } from "@playwright/test";
-import { expect, test } from "./fixtures";
+import { answerDialog, expect, test } from "./fixtures";
 
 // Sprint 7 acceptance (J3 part 1): a Script node backed by a workspace file, edited in the browser, runs.
 
@@ -106,22 +106,25 @@ test("custom node from the workspace appears in the palette and runs", async ({ 
   await expect(page.getByTestId("run-output")).toContainText("Hi, Ada!", { timeout: 10_000 });
 });
 
-test("secrets are write-only in the workspace", async ({ page }) => {
+test("secrets are write-only, and live in Settings", async ({ page }) => {
   const name = `E2E_TOKEN_${Date.now()}`;
   await page.goto("/workspace");
+  await page.getByTestId("secrets-link").click();
+  await expect(page).toHaveURL(/\/settings\/secrets$/);
   await page.getByLabel("secret name").fill(name);
   await page.getByLabel("secret value").fill("s3cr3t-value-e2e");
   await page.getByRole("button", { name: "Save secret" }).click();
   await expect(page.getByRole("region", { name: "secrets" })).toContainText(name);
   await expect(page.locator("body")).not.toContainText("s3cr3t-value-e2e");
   await page.getByRole("button", { name: `delete secret ${name}` }).click();
+  await answerDialog(page);
   await expect(page.getByRole("region", { name: "secrets" })).not.toContainText(name);
 });
 
 test("the sandbox policy is scaffolded and checked", async ({ page }) => {
   await page.request.delete("/api/v1/projects/prj_default/files/sandbox.json"); // fresh
   await page.goto("/workspace");
-  await page.getByRole("button", { name: "Sandbox policy" }).click();
+  await page.getByRole("button", { name: "Open the sandbox policy as a file" }).click();
   await expect(page.getByTestId("code-editor")).toContainText('"egress": []');
   await expect(page.getByTestId("lint")).toContainText("no problems");
   const policy = { egress: [], inject: [{ name: "crm", hosts: ["api.crm.example.com"], headers: { Authorization: "Bearer {{ secret.NOPE_E2E }}" } }] };
@@ -130,4 +133,32 @@ test("the sandbox policy is scaffolded and checked", async ({ page }) => {
   await expect(page.getByTestId("lint")).toContainText("E083"); // the project has no such secret
   await expect(page.getByTestId("lint")).toContainText("W082"); // in-process scripts cannot enforce egress
   await page.request.delete("/api/v1/projects/prj_default/files/sandbox.json");
+});
+
+test("switching files with unsaved changes asks first, and Keep editing keeps them", async ({ page }) => {
+  const stamp = Date.now();
+  for (const name of ["a", "b"]) {
+    await page.request.put(`/api/v1/projects/prj_default/files/scripts/guard_${stamp}_${name}.py`, { data: { content: `x = "${name}"\n` } });
+  }
+  await page.goto(`/workspace?file=scripts/guard_${stamp}_a.py`);
+  await typeCode(page, "# unsaved");
+  await page.getByRole("button", { name: `scripts/guard_${stamp}_b.py` }).click();
+  const dialog = page.getByTestId("dialog");
+  await expect(dialog).toContainText("Discard your changes");
+  await dialog.getByRole("button", { name: "Keep editing" }).click();
+  await expect(page).toHaveURL(new RegExp(`guard_${stamp}_a\\.py`));
+  await expect(page.locator(".cm-content")).toContainText("# unsaved");
+  await page.getByRole("button", { name: `scripts/guard_${stamp}_b.py` }).click();
+  await dialog.getByRole("button", { name: "Discard changes" }).click();
+  await expect(page).toHaveURL(new RegExp(`guard_${stamp}_b\\.py`));
+});
+
+test("a workspace file is renamed in place", async ({ page }) => {
+  const stamp = Date.now();
+  await page.request.put(`/api/v1/projects/prj_default/files/scripts/mv_${stamp}.py`, { data: { content: "x = 1\n" } });
+  await page.goto(`/workspace?file=scripts/mv_${stamp}.py`);
+  await page.getByRole("button", { name: "Rename / move…" }).click();
+  await answerDialog(page, `scripts/moved/mv_${stamp}.py`);
+  await expect(page).toHaveURL(new RegExp(`moved(/|%2F)mv_${stamp}\\.py`));
+  await expect(page.getByRole("button", { name: `scripts/moved/mv_${stamp}.py` })).toBeVisible();
 });

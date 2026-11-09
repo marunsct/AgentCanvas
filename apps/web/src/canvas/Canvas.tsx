@@ -23,10 +23,11 @@ import { QueryStatus } from "../ui/QueryStatus";
 import { type Clip, copySelection, pasteCommands } from "./clipboard";
 import { checkConnection, flowPort, nextOrder } from "./connect";
 import { tidyLayout } from "./layout";
-import { type CanvasData, irToFlow } from "./irToFlow";
+import { type CanvasData, irToFlow, sameData } from "./irToFlow";
 import { Frames, frameSelection } from "./Frames";
 import { NODE_TYPES } from "./nodes";
 import { PortMenu } from "./PortMenu";
+import { promptDialog } from "../ui/dialog";
 
 export const DND_MIME = "application/agentcanvas";
 let clip: Clip | null = null; // in-memory clipboard shared by all canvases in this tab
@@ -137,7 +138,7 @@ export function Canvas() {
 
   // "Frame" (layout only): a labelled box around the selected steps and resources
   useEffect(() => {
-    useEditor.getState().setFrame(() => {
+    useEditor.getState().setFrame(async () => {
       const st = useEditor.getState();
       if (st.drill.length) return;
       const picked = rf.getNodes().filter((n) => n.selected && n.data.kind !== "terminal").map((n) => n.id);
@@ -146,7 +147,7 @@ export function Canvas() {
         st.setNotice({ kind: "info", text: "Select the steps to frame first (Ctrl/⌘-click them or drag a selection box)." });
         return;
       }
-      const label = window.prompt("Frame label", "Group")?.trim();
+      const label = (await promptDialog({ title: "Frame the selected steps", confirm: "Frame", input: { label: "Label", value: "Group", required: true } }))?.trim();
       if (label) frameSelection(chosen, label);
     });
     return () => useEditor.getState().setFrame(null);
@@ -163,6 +164,9 @@ export function Canvas() {
         return {
           ...n, measured: old.measured, width: old.width, height: old.height, dragging: old.dragging,
           selected: Boolean(old.selected) || n.selected,
+          // the same object when nothing in it changed, so the memoised node does not re-render: a status or a
+          // streamed token on one node used to redraw every node
+          data: sameData(old.data, n.data) ? old.data : n.data,
         };
       });
     });
@@ -174,6 +178,13 @@ export function Canvas() {
 
   useEffect(() => {
     setFocusNode((id) => {
+      const edge = rf.getEdge(id);
+      if (edge) { // an arrow (from the Problems dock): select it and show both ends
+        setNodes((ns) => ns.map((n) => (n.selected ? { ...n, selected: false } : n)));
+        setEdges((es) => es.map((e) => ({ ...e, selected: e.id === id })));
+        void rf.fitView({ nodes: [{ id: edge.source }, { id: edge.target }], duration: 300, maxZoom: 1.2 });
+        return;
+      }
       setNodes((ns) => ns.map((n) => ({ ...n, selected: n.id === id }))); // focusing from elsewhere: only this one
       select(id);
       void rf.fitView({ nodes: [{ id }], duration: 300, maxZoom: 1.2 });
@@ -201,6 +212,11 @@ export function Canvas() {
         const ids = rf.getNodes().filter((n) => n.selected).map((n) => n.id);
         clip = copySelection(st.wf, ids, st.layout);
       } else if (e.key.toLowerCase() === "v" && clip && st.wf) {
+        // a subgraph or a Copilot proposal on show is read-only: pasting went into the top level, out of sight
+        if (st.drill.length || useCopilot.getState().ghost) {
+          st.setNotice({ kind: "info", text: "Paste works on the workflow itself: leave the subgraph or the Copilot preview first." });
+          return;
+        }
         const { commands, positions, ids } = pasteCommands(st.wf, clip);
         st.dispatch(commands);
         st.setPositions(positions, true);
@@ -322,6 +338,13 @@ export function Canvas() {
         <div className="blast-status" data-testid="blast-status"><QueryStatus q={blastQuery} what="the blast radius" /></div>
       )}
       {drill.length > 0 && <SubgraphCrumbs />}
+      {diff && !ghost && !readOnly && !drill.length && (
+        // the colours stay after the Versions tab is closed: say what they mean and how to drop them
+        <div className="diff-chip" role="status" data-testid="diff-chip">
+          Comparing with v{diff.against} ·{" "}
+          <button type="button" className="link small" onClick={() => useUi.getState().setDiff(null)}>Clear</button>
+        </div>
+      )}
       {ghost && !drill.length && (
         <div className="ghost-banner" role="status" data-testid="ghost-banner">
           Previewing the Copilot's proposal: green is new, amber is changed.{" "}
@@ -331,7 +354,7 @@ export function Canvas() {
             onClick={() => void useCopilot.getState().reject()}>Reject</button>
         </div>
       )}
-      {wf && wf.nodes.length === 0 && (
+      {wf && wf.nodes.length === 0 && !ghost && ( // not over a Copilot preview of the first steps
         <div className="empty-hint">
           Click the dot on the right of <b>▶ Start</b> to pick your first step, or drag a block from the left.
           <br />New to this? Open <b>❓ Help</b> at the top for a two-minute guide.

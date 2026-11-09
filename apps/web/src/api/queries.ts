@@ -5,7 +5,7 @@ import { maturaMode } from "./auth";
 import { apiFetch } from "./client";
 import { can } from "./session";
 import type { AdapterManifest, AgentFrameworkOut, ModelInfo, NodeManifest, ProviderInfo, SetupOut, TemplateInfo, WorkflowPage } from "./types";
-import type { McpConnector } from "./generated";
+import type { InterruptOut, McpConnector, ModelOption } from "./generated";
 
 /** The project the app works in, chosen at startup (see `chooseProject`); a live binding, so pages read the choice. */
 export let PROJECT_ID = "prj_default";
@@ -51,6 +51,31 @@ export async function chooseProject(): Promise<string> {
   PROJECT_NAME = chosen.name;
   store(PROJECT_KEY, PROJECT_ID);
   return PROJECT_ID;
+}
+
+/** Open a page of another project (a workflow reached from the Inbox, Runs or a link) in that project: remember it
+ * and load the page again. False when that cannot work (storage blocked, or already tried for this page because the
+ * project is not one this session may pick), so the caller says so instead of reloading forever. */
+export function followProject(id: string): boolean {
+  if (id === PROJECT_ID) return false;
+  const marker = `${id} ${location.pathname}`;
+  try {
+    if (sessionStorage.getItem("agentcanvas.followed") === marker) return false;
+    sessionStorage.setItem("agentcanvas.followed", marker);
+  } catch {
+    return false;
+  }
+  store(PROJECT_KEY, id);
+  if (stored(PROJECT_KEY) !== id) return false;
+  location.reload();
+  return true;
+}
+
+/** Work in another project: remembered for next time, and the app starts over in it (pages read the project chosen
+ * at start-up). */
+export function switchProject(id: string): void {
+  store(PROJECT_KEY, id);
+  location.assign("/");
 }
 
 /** Matura mode: work in another workspace (null = all), moving to one of its projects. Restores the previous
@@ -126,6 +151,22 @@ export function useModels() {
   return useQuery({ queryKey: ["models"], queryFn: () => apiFetch<ModelInfo[]>("/models"), staleTime: Infinity });
 }
 
+/** The chat models set up to answer in the current project (a key, or a local server that lists them). */
+export function useChatModels() {
+  return useQuery({
+    queryKey: ["chat-models", PROJECT_ID], staleTime: 30_000,
+    queryFn: () => apiFetch<ModelOption[]>(`/projects/${PROJECT_ID}/chat-models`),
+  });
+}
+
+/** The embedding models a knowledge base can use in the current project: built-in, keyed, or served locally. */
+export function useEmbeddingModels() {
+  return useQuery({
+    queryKey: ["embedding-models", PROJECT_ID], staleTime: 30_000,
+    queryFn: () => apiFetch<ModelOption[]>(`/projects/${PROJECT_ID}/embedding-models`),
+  });
+}
+
 /** Model providers (`provider:` prefixes), where each one's key comes from and whether the server has it installed. */
 export function useModelProviders() {
   return useQuery({ queryKey: ["model-providers"], queryFn: () => apiFetch<ProviderInfo[]>("/model-providers"), staleTime: Infinity });
@@ -148,6 +189,22 @@ export function useTemplates() {
 export function useWorkflows() {
   return useQuery({
     queryKey: ["workflows", PROJECT_ID],
-    queryFn: () => apiFetch<WorkflowPage>(`/projects/${PROJECT_ID}/workflows?limit=200`),
+    queryFn: async (): Promise<WorkflowPage> => { // every page: the home list finds, filters and pages them itself
+      const items: WorkflowPage["items"] = [];
+      let cursor: string | null | undefined;
+      do {
+        const page = await apiFetch<WorkflowPage>(`/projects/${PROJECT_ID}/workflows?limit=200${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`);
+        items.push(...page.items);
+        cursor = page.next_cursor;
+      } while (cursor && items.length < 10_000);
+      return { items, next_cursor: null };
+    },
   });
+}
+
+/** A run waiting for a person (an approval or an answer), in any workflow of the organisation. */
+export type InboxItem = InterruptOut;
+
+export function useInbox() {
+  return useQuery({ queryKey: ["inbox"], queryFn: () => apiFetch<InboxItem[]>("/inbox"), refetchInterval: 5000 });
 }

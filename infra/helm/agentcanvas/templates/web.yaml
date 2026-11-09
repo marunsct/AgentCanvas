@@ -25,6 +25,7 @@ spec:
       {{- end }}
       securityContext:
         {{- include "agentcanvas.podSecurity" . | nindent 8 }}
+      {{- include "agentcanvas.spread" (dict "root" . "component" "web") | nindent 6 }}
       containers:
         - name: web
           image: {{ include "agentcanvas.image" (dict "root" . "component" "web") }}

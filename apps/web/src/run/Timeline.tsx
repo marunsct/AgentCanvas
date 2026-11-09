@@ -1,5 +1,5 @@
 /** Timeline (M4-T5…T7): one tick per checkpoint; inspect state, edit it, or fork a new branch from it. */
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../api/client";
 import { useEditor } from "../editor/store";
@@ -9,6 +9,7 @@ import { editState, forkRun } from "./session";
 import { QueryStatus } from "../ui/QueryStatus";
 import type { ScoreOut } from "../api/generated";
 import { ScoreBadge } from "../evaluation/ScoreBadge";
+import { TrajectoryView } from "./TrajectoryView";
 
 export interface Checkpoint {
   checkpoint_id: string;
@@ -25,19 +26,25 @@ export function Timeline() {
   const wf = useEditor((s) => s.wf);
   const threadId = useRun((s) => s.threadId);
   const runSeq = useRun((s) => s.runSeq);
-  const running = useRun((s) => s.running);
+  const running = useRun((s) => s.running || s.starting); // starting: a fork was pressed and has not begun
   const setHighlight = useRun((s) => s.setHighlight);
   const history = useQuery({
     queryKey: ["history", threadId, runSeq],
     queryFn: () => apiFetch<Checkpoint[]>(`/threads/${threadId}/history?include_values=true&limit=200`),
     enabled: Boolean(threadId),
+    // a run ending (runSeq) refetches: keep the ticks, and the checkpoint being edited, on screen meanwhile
+    placeholderData: (prev, prevQuery) => (prevQuery?.queryKey[1] === threadId ? keepPreviousData(prev) : undefined),
   });
   const ticks = useMemo(() => [...(history.data ?? [])].reverse(), [history.data]);
   const [selected, setSelected] = useState<string | null>(null);
   const index = ticks.findIndex((t) => t.checkpoint_id === selected);
   const cp = index >= 0 ? ticks[index] : undefined;
   const [draft, setDraft] = useState("");
-  useEffect(() => setDraft(cp ? JSON.stringify(cp.values ?? {}, null, 2) : ""), [cp]);
+  const [view, setView] = useState<"checkpoints" | "trajectory">("checkpoints");
+  // keyed on the checkpoint, not the object: a refetch hands back a new one and used to wipe what was being typed
+  const cpId = cp?.checkpoint_id;
+  // oxlint-disable-next-line react-hooks/exhaustive-deps -- cpId stands for cp
+  useEffect(() => setDraft(cp ? JSON.stringify(cp.values ?? {}, null, 2) : ""), [cpId]);
   useEffect(() => () => setHighlight([]), [setHighlight]);
 
   if (!threadId) return <p className="muted pad">Run the workflow to see its timeline.</p>;
@@ -56,9 +63,28 @@ export function Timeline() {
     return Object.keys(out).length ? out : undefined;
   };
 
+  const views = (
+    <div className="toolbar-group" role="group" aria-label="Timeline view">
+      {(["checkpoints", "trajectory"] as const).map((v) => (
+        <button type="button" key={v} className={view === v ? "active" : ""} aria-pressed={view === v} onClick={() => setView(v)}
+          title={v === "trajectory" ? "What each step, agent and helper did, as a tree with times" : "Every saved state: inspect, edit, fork"}>
+          {v === "trajectory" ? "Trajectory" : "Checkpoints"}
+        </button>
+      ))}
+    </div>
+  );
+  if (view === "trajectory") {
+    return (
+      <div className="timeline" data-testid="timeline">
+        <div className="row gap"><ThreadScores threadId={threadId} runSeq={runSeq} /><span className="spacer" />{views}</div>
+        <TrajectoryView threadId={threadId} runSeq={runSeq} onPick={(id) => setHighlight([id])} />
+      </div>
+    );
+  }
+
   return (
     <div className="timeline" data-testid="timeline">
-      <ThreadScores threadId={threadId} runSeq={runSeq} />
+      <div className="row gap"><ThreadScores threadId={threadId} runSeq={runSeq} /><span className="spacer" />{views}</div>
       <div className="ticks" role="listbox" aria-label="checkpoints">
         {ticks.map((t, i) => (
           <button type="button" role="option" key={t.checkpoint_id} aria-selected={t.checkpoint_id === selected}

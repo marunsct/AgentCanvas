@@ -1,6 +1,6 @@
 # 0019 — Identity and tenancy are a reusable platform, AgentCanvas is its first consumer
 
-Status: proposed · Date: 2026-10-11 · Supersedes: [0010](./0010-oidc-single-org-mvp.md) once accepted
+Status: accepted (built in v0.27.0–v0.28.0) · Date: 2026-10-11 · Supersedes: [0010](./0010-oidc-single-org-mvp.md) once accepted
 
 Plan and sprints: [doc 18](../agent-canvas-spec/18-identity-and-tenancy-plan.md).
 

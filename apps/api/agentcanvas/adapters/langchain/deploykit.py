@@ -25,10 +25,11 @@ from agentcanvas.errors import InvalidInput
 from agentcanvas.ir.models import SECRET_NAME, Workflow
 
 KIT_DIR = Path(__file__).with_name("kit")
-PYTHON_IMAGE = "python:3.12-slim"
-UV_IMAGE = "ghcr.io/astral-sh/uv:0.11"
-POSTGRES_IMAGE = "postgres:16-alpine"
-CADDY_IMAGE = "caddy:2-alpine"
+# Base images by version and digest, so a build next month gets the same bytes (bump them together, deliberately)
+PYTHON_IMAGE = "python:3.12.16-slim@sha256:8523d6abeb48ceae0b7240d30c5808fc26cb79c1a635bacdf19cf3baecfbec07"
+UV_IMAGE = "ghcr.io/astral-sh/uv:0.11.33@sha256:77280f2f771df71f90786c314fe1bbc1e023feac652969bbf139c280babf2eb7"
+POSTGRES_IMAGE = "postgres:16.15-alpine@sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab"
+CADDY_IMAGE = "caddy:2.11.7-alpine@sha256:eb4d35b7452d1ab6171fbdbe8d9275b2301dad6dad92115d91e19fb9b24d510f"
 INTERRUPTING = {"core.approval", "core.human_input"}
 AGENTS = {"core.agent", "agent.deep"}
 MEMORY = {"core.memory_recall", "core.memory_remember", "core.memory_forget", "tool.memory", "backend.store"}
@@ -242,6 +243,17 @@ def _example_context(wf: Workflow, cases: list[dict[str, Any]]) -> dict[str, Any
     return out
 
 
+def _hinted(schema: dict[str, Any]) -> Any:
+    """A value the channel's JSON Schema suggests: `examples`, `default`, or the first of `enum`; None if it has none."""
+    if isinstance(schema.get("examples"), list) and schema["examples"]:
+        return schema["examples"][0]
+    if schema.get("default") not in (None, ""):
+        return schema["default"]
+    if isinstance(schema.get("enum"), list) and schema["enum"]:
+        return schema["enum"][0]
+    return None
+
+
 def _example(wf: Workflow, cases: list[dict[str, Any]]) -> dict[str, Any]:
     """An input for `make smoke`: the first saved test case's, or one value per input channel."""
     for c in cases:
@@ -253,7 +265,12 @@ def _example(wf: Workflow, cases: list[dict[str, Any]]) -> dict[str, Any]:
         if (wanted and ch.name not in wanted) or (not wanted and ch.io not in ("in", "inout")):
             continue
         kind = (ch.type or {}).get("type", "string")
-        if ch.reducer == "add_messages":
+        hinted = _hinted(ch.type or {})
+        if (
+            hinted is not None
+        ):  # the channel's own example, default or first allowed value: a made-up string may not parse
+            out[ch.name] = hinted
+        elif ch.reducer == "add_messages":
             out[ch.name] = [{"role": "user", "content": "Hello! What can you do?"}]
         elif kind == "boolean":
             out[ch.name] = True
@@ -343,6 +360,9 @@ def kit_json(wf: Workflow, f: Facts, target: Target) -> str:
             "context_fields": [{"name": c.name, "source": c.source, "required": c.required}
                                for c in wf.context.fields],
             "recursion_limit": s.recursion_limit,
+            # the per-run limits of the workflow budget (the service enforces them; agentcanvas/.../spend.py)
+            "budget": {k: v for k, v in (s.budget.model_dump() if s.budget else {}).items()
+                       if k in ("max_tokens", "max_cost_usd", "max_seconds") and v is not None},
             "error_routes": any(n.policies and n.policies.error_route for n in wf.nodes),
         },
         indent=2,
@@ -417,8 +437,9 @@ COPY --from={UV_IMAGE} /uv /usr/local/bin/uv
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never \\
     PYTHONUNBUFFERED=1 PYTHONPATH=/app/src PATH=/app/.venv/bin:$PATH
 WORKDIR /app
-COPY pyproject.toml ./
-RUN uv sync --no-dev --no-install-project{part_lines}
+# uv.lock (written by `make setup`, `make install` or `uv lock`) pins every package; without it uv resolves afresh
+COPY pyproject.toml uv.lock* ./
+RUN uv sync --no-dev --no-install-project $([ -f uv.lock ] && echo --locked){part_lines}
 COPY src ./src
 COPY workflow.ir.json ./
 RUN useradd --uid 10001 --create-home app && mkdir -p /app/data && chown app /app/data
@@ -461,8 +482,9 @@ help:  ## list the commands
 doctor:  ## check this environment has everything (ARGS=--live also tries each model key)
 \t@python3 src/$(PKG)/checks.py $(ARGS)
 
-setup:  ## create .env with a fresh API key (then fill in the empty values)
+setup:  ## create .env with a fresh API key (then fill in the empty values), and lock the packages (uv.lock)
 \t@python3 src/$(PKG)/checks.py --init
+\tuv lock -q
 
 install:  ## install the service's Python packages (needs uv){parts_install}
 \tuv sync{parts_cmd}

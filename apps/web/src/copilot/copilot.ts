@@ -6,6 +6,15 @@ import type { Command } from "../ir/commands";
 import { normalize, type WF } from "../ir/model";
 import { useEditor } from "../editor/store";
 import { postStream } from "../run/sse";
+import { dependencies, preview, type ReviewDiff, toggle } from "./review";
+
+/** A conversation's or an answer's tokens; `input_tokens` includes what was read from or written to the prompt cache. */
+export type Usage = { input_tokens?: number; output_tokens?: number; cache_read_tokens?: number; cache_write_tokens?: number };
+
+/** The tokens the chat's limit counts: cache reads cost a tenth or less, so they do not use it up (as on the server). */
+export function billedTokens(u: Usage | undefined): number {
+  return (u?.input_tokens ?? 0) - (u?.cache_read_tokens ?? 0) + (u?.output_tokens ?? 0);
+}
 
 export type Mode = "build" | "ask";
 
@@ -23,12 +32,16 @@ export interface ProposalDiff { added: string[]; changed: string[]; removed: str
 
 export interface ProposedTest { name: string; input: Record<string, unknown>; expect?: Record<string, unknown> }
 
+/** A workspace file the Copilot wrote: written (one commit, credited to whoever accepts) only when accepted. */
+export interface ProposedFile { path: string; content: string; before: string | null }
+
 export interface Proposal {
   id: string;
   summary: string;
   commands?: Command[];
   tests?: ProposedTest[];
   notes?: string[];
+  files?: ProposedFile[];
   base_version: number;
   status: "pending" | "accepted" | "rejected" | "superseded";
   errors: number;
@@ -38,9 +51,21 @@ export interface Proposal {
   problem?: string;
 }
 
-export interface ChatMessage { role: "user" | "assistant"; content: string; proposal_id?: string; mode?: Mode }
+export interface ChatMessage {
+  role: "user" | "assistant"; content: string; proposal_id?: string; mode?: Mode; stopped?: boolean;
+  usage?: Usage; cost_usd?: number | null; model?: string; // an answer's own
+  sources?: { page: string; section: string }[]; // the guide sections the answer read
+}
 
 export interface Activity { name: string; ok: boolean; error?: string | null; summary?: string | null }
+
+/** One item of the plan the Copilot keeps while it works (Deep Agents' to-do list). */
+export interface Todo { content: string; status: "pending" | "in_progress" | "completed" }
+
+/** The answer being streamed: finished paragraphs, the one being written, what it did, its plan. */
+export interface Live { text: string[]; streaming: string; activity: Activity[]; todos: Todo[] }
+
+const NO_LIVE: Live = { text: [], streaming: "", activity: [], todos: [] };
 
 export interface Conversation {
   id: string | null;
@@ -49,37 +74,59 @@ export interface Conversation {
   brief: Brief | null;
   proposals: Proposal[];
   pending: Proposal | null;
-  usage: { input_tokens?: number; output_tokens?: number };
+  usage: Usage;
+  cost_usd?: number | null; // the answers' costs, summed (where the model's price is known)
+  chosen_model?: string | null; // a model chosen for this conversation; null: the project's
   token_cap: number;
   model: { model?: string | null; origin?: string | null; problem?: string | null };
 }
 
 type Event =
-  | { type: "start"; model: string; origin: string }
+  | { type: "start"; model: string; origin: string; engine?: string }
   | { type: "text"; text: string }
+  | { type: "text_delta"; text: string }
+  | { type: "todos"; todos: Todo[] }
+  | { type: "permission"; kind: "real_runs"; models: string[] }
   | { type: "tool"; name: string; ok: boolean; error?: string | null; summary?: string | null }
   | { type: "brief"; brief: Brief }
-  | { type: "usage" | "done"; usage: Conversation["usage"]; cap: number }
+  | { type: "usage" | "done"; usage: Conversation["usage"]; cap: number; cost_usd?: number | null }
   | { type: "proposal"; proposal: Proposal }
   | { type: "error"; message: string };
 
 /** What the canvas draws while a proposal is open: the workflow as it would be, with the changes marked. */
-export interface Ghost { workflow: WF; diff: ProposalDiff }
+export interface Ghost { workflow: WF; diff: ReviewDiff }
+
+/** What the person keeps of the open proposal: which changes, which tests, and whether the notes. */
+export interface Selection { changes: Set<number>; tests: Set<number>; notes: boolean; files: Set<number> }
 
 interface CopilotState {
   workflowId: string | null;
   conversation: Conversation | null;
   busy: boolean;
-  live: { text: string[]; activity: Activity[] } | null; // the answer being streamed
+  live: Live | null; // the answer being streamed
   error: string | null;
+  last: { text: string; mode: Mode } | null; // the last message sent, for Retry
+  realRuns: boolean; // the person allowed test runs that call real models, for this conversation
+  asking: string[] | null; // models the Copilot wanted to run for real, waiting for the person's yes
+  allowRealRuns: () => Promise<void>;
+  cost: number | null; // what this conversation has cost, when the model's price is known
   ghost: Ghost | null;
+  selection: Selection | null;
+  toggleChange: (i: number) => void;
+  toggleTest: (i: number) => void;
+  toggleFile: (i: number) => void;
+  toggleNotes: () => void;
   request: { text: string; mode: Mode } | null; // "Ask the Copilot" from elsewhere in the editor (S15)
   askFor: (text: string, mode: Mode) => void;
   load: (workflowId: string) => Promise<void>;
   send: (text: string, mode: Mode) => Promise<void>;
+  stop: () => void;
+  retry: () => Promise<void>;
   accept: () => Promise<void>;
   reject: () => Promise<void>;
   newChat: () => Promise<void>;
+  openThread: (id: string) => Promise<void>;
+  deleteThread: (id: string) => Promise<void>;
 }
 
 const TOOL_LABELS: Record<string, string> = {
@@ -98,12 +145,30 @@ const TOOL_LABELS: Record<string, string> = {
   reproduce_run: "Reran a past run",
   propose_tests: "Proposed tests",
   save_note: "Proposed a note",
+  write_todos: "Updated its plan",
+  task: "Asked a helper",
+  read_file: "Read a file",
+  list_workspace_files: "Looked at the workspace",
+  read_workspace_file: "Read workspace code",
+  propose_file: "Wrote code",
+  list_secrets: "Looked at the secrets",
+  list_knowledge_bases: "Looked at the knowledge bases",
+  export_plan: "Checked what an export needs",
+  read_skill: "Read a how-to",
 };
 export const toolLabel = (name: string) => TOOL_LABELS[name] ?? name;
 
-function ghostOf(p: Proposal | null): Ghost | null {
+function ghostOf(p: Proposal | null, sel?: Selection | null): Ghost | null {
   if (!p || p.status !== "pending" || p.stale || !p.preview || !p.diff) return null;
-  return { workflow: normalize(p.preview), diff: p.diff };
+  const wf = useEditor.getState().wf;
+  if (!wf || !p.commands) return { workflow: normalize(p.preview), diff: { ...p.diff, removed: p.diff.removed ?? [] } };
+  // drawn from the draft as it is now, with the ticked changes, so the canvas shows what Accept would do
+  return preview(wf, p.commands, sel?.changes ?? new Set(p.commands.keys()));
+}
+
+function allOf(p: Proposal | null): Selection | null {
+  if (!p || p.status !== "pending" || p.stale) return null;
+  return { changes: new Set((p.commands ?? []).keys()), tests: new Set((p.tests ?? []).keys()), notes: true, files: new Set((p.files ?? []).keys()) };
 }
 
 /** The Copilot answer being read; leaving the editor stops reading it (the server finishes the turn). */
@@ -120,76 +185,151 @@ export const useCopilot = create<CopilotState>((set, get) => ({
   busy: false,
   live: null,
   error: null,
+  last: null,
+  cost: null,
+  realRuns: false,
+  asking: null,
+  allowRealRuns: async () => {
+    set({ realRuns: true, asking: null });
+    await get().retry();
+  },
   ghost: null,
+  selection: null,
   request: null,
+  toggleChange: (i) => {
+    const { conversation, selection } = get();
+    const p = conversation?.pending;
+    if (!p?.commands || !selection) return;
+    const changes = toggle(selection.changes, i, dependencies(p.commands));
+    const next = { ...selection, changes };
+    set({ selection: next, ghost: ghostOf(p, next) });
+  },
+  toggleTest: (i) => {
+    const selection = get().selection;
+    if (!selection) return;
+    const tests = new Set(selection.tests);
+    if (tests.has(i)) tests.delete(i); else tests.add(i);
+    set({ selection: { ...selection, tests } });
+  },
+  toggleFile: (i) => {
+    const selection = get().selection;
+    if (!selection) return;
+    const files = new Set(selection.files);
+    if (files.has(i)) files.delete(i); else files.add(i);
+    set({ selection: { ...selection, files } });
+  },
+  toggleNotes: () => {
+    const selection = get().selection;
+    if (selection) set({ selection: { ...selection, notes: !selection.notes } });
+  },
   askFor: (text, mode) => set({ request: { text, mode } }),
 
   load: async (workflowId) => {
     const open = useEditor.getState().workflowId;
     if (open && open !== workflowId) return; // a late answer about a workflow the editor has left
-    set({ workflowId, error: null });
+    set({ workflowId, error: null, ...(get().workflowId !== workflowId ? { cost: null, realRuns: false, asking: null } : {}) });
     const conversation = await apiFetch<Conversation>(`/workflows/${workflowId}/copilot`);
     if (get().workflowId !== workflowId) return;
-    set({ conversation, ghost: ghostOf(conversation.pending) });
+    const selection = allOf(conversation.pending);
+    set({ conversation, selection, ghost: ghostOf(conversation.pending, selection), cost: conversation.cost_usd ?? null });
   },
 
   send: async (text, mode) => {
     const { workflowId, busy } = get();
     if (!workflowId || busy || !text.trim()) return;
-    await useEditor.getState().flush(); // the Copilot reads the saved draft
+    set({ busy: true }); // before the flush: a second Send while the edits were saved started a second turn
+    try {
+      await useEditor.getState().flush(); // the Copilot reads the saved draft
+    } catch (e) {
+      set({ busy: false, error: (e as Error).message });
+      return;
+    }
+    if (get().workflowId !== workflowId) return; // another workflow was opened meanwhile
     const conv = get().conversation;
     set({
-      busy: true, error: null, ghost: null, live: { text: [], activity: [] },
+      busy: true, error: null, ghost: null, live: NO_LIVE, last: { text, mode },
       conversation: conv && { ...conv, messages: [...conv.messages, { role: "user", content: text, mode }] },
     });
     const onEvent = (raw: unknown) => {
       if (get().workflowId !== workflowId) return; // the editor moved to another workflow meanwhile
       const e = raw as Event;
-      const live = get().live ?? { text: [], activity: [] };
+      const live = get().live ?? NO_LIVE;
       const c = get().conversation;
       switch (e.type) {
-        case "text": set({ live: { ...live, text: [...live.text, e.text] } }); break;
+        case "text_delta": set({ live: { ...live, streaming: live.streaming + e.text } }); break;
+        case "text": set({ live: { ...live, text: [...live.text, e.text], streaming: "" } }); break;
+        case "todos": set({ live: { ...live, todos: e.todos } }); break;
+        case "permission": set({ asking: e.models }); break;
         case "tool": set({ live: { ...live, activity: [...live.activity, e] } }); break;
         case "brief": if (c) set({ conversation: { ...c, brief: e.brief } }); break;
-        case "usage": case "done": if (c) set({ conversation: { ...c, usage: e.usage } }); break;
-        case "proposal": set({ ghost: ghostOf(e.proposal) }); break;
+        case "usage": case "done": if (c) set({ conversation: { ...c, usage: e.usage }, cost: e.cost_usd ?? get().cost }); break;
+        case "proposal": { const selection = allOf(e.proposal); set({ selection, ghost: ghostOf(e.proposal, selection) }); break; }
         case "error": set({ error: e.message }); break;
       }
     };
     copilotStream?.abort();
     const mine = (copilotStream = new AbortController());
     try {
-      await postStream(`/workflows/${workflowId}/copilot/messages`, { text, mode }, onEvent as never, mine.signal);
+      await postStream(`/workflows/${workflowId}/copilot/messages`, { text, mode, allow_real_runs: get().realRuns }, onEvent as never, mine.signal);
     } catch (e) {
       if (get().workflowId === workflowId && !mine.signal.aborted) set({ error: (e as Error).message });
     } finally {
       if (copilotStream === mine) copilotStream = null;
       if (get().workflowId === workflowId) {
+        // after Stop the server saves the part already said as the connection closes: give it a moment
+        if (mine.signal.aborted) await new Promise((r) => setTimeout(r, 400));
         set({ busy: false, live: null });
         await get().load(workflowId).catch(() => undefined);
       }
     }
   },
 
+  stop: () => {
+    // the server ends the turn (so the model stops spending tokens) and keeps what was said so far, marked as
+    // stopped; the stream then ends by itself and the reload in send() shows it. Closing the stream is the fallback
+    // when the server cannot be asked, or answers from another replica.
+    const workflowId = get().workflowId;
+    if (!workflowId || !copilotStream) return;
+    apiFetch(`/workflows/${workflowId}/copilot/stop`, { method: "POST" })
+      .catch(() => undefined)
+      .finally(stopCopilotStream);
+  },
+
+  retry: async () => {
+    const last = get().last;
+    if (last) await get().send(last.text, last.mode);
+  },
+
   accept: async () => {
-    const { conversation, workflowId } = get();
+    const { conversation, workflowId, selection } = get();
     const p = conversation?.pending;
     if (!p || !workflowId) return;
-    if (p.commands?.length) {
+    const keep = selection ?? allOf(p)!;
+    const commands = (p.commands ?? []).filter((_, i) => keep.changes.has(i));
+    if (commands.length) {
       const editor = useEditor.getState();
       if (editor.workflowId !== workflowId) return;
       await editor.flush(); // earlier edits first, so the version below moves only with these commands
       const before = useEditor.getState().version;
       editor.setNotice(null);
       // edits made since the proposal are fine while the commands still apply; otherwise the edit is refused
-      editor.dispatch(p.commands);
+      editor.dispatch(commands);
       await editor.flush();
       const after = useEditor.getState();
-      // refused (error), not allowed (view only) or lost to someone else's save (conflict): not accepted
-      if (after.notice || after.version === before) return;
+      // refused (error), not allowed (view only: nothing saved) or no longer fitting someone else's save: not
+      // accepted. An info notice is not a failure: after a conflict the edits are saved on the latest version
+      if (after.notice?.kind === "error" || after.version === before) return;
     }
-    set({ ghost: null });
-    await apiFetch(`/workflows/${workflowId}/copilot/proposals/${p.id}`, { method: "POST", json: { status: "accepted" } });
+    set({ ghost: null, selection: null });
+    const sorted = (s: Set<number>) => [...s].sort((a, b) => a - b);
+    try {
+      await apiFetch(`/workflows/${workflowId}/copilot/proposals/${p.id}`, {
+        method: "POST",
+        json: { status: "accepted", commands: sorted(keep.changes), tests: sorted(keep.tests), notes: keep.notes, files: sorted(keep.files) },
+      });
+    } catch (e) {  // e.g. a file the workspace refuses: the proposal stays open
+      set({ error: `Could not accept: ${(e as Error).message}` });
+    }
     await get().load(workflowId);
   },
 
@@ -197,8 +337,23 @@ export const useCopilot = create<CopilotState>((set, get) => ({
     const { conversation, workflowId } = get();
     const p = conversation?.pending;
     if (!p || !workflowId) return;
-    set({ ghost: null });
+    set({ ghost: null, selection: null });
     await apiFetch(`/workflows/${workflowId}/copilot/proposals/${p.id}`, { method: "POST", json: { status: "rejected" } });
+    await get().load(workflowId);
+  },
+
+  openThread: async (id) => {
+    const { workflowId } = get();
+    if (!workflowId) return;
+    await apiFetch(`/workflows/${workflowId}/copilot/threads/${id}/open`, { method: "POST" });
+    set({ ghost: null, selection: null, error: null, cost: null });
+    await get().load(workflowId);
+  },
+
+  deleteThread: async (id) => {
+    const { workflowId } = get();
+    if (!workflowId) return;
+    await apiFetch(`/workflows/${workflowId}/copilot/threads/${id}`, { method: "DELETE" });
     await get().load(workflowId);
   },
 
@@ -206,7 +361,7 @@ export const useCopilot = create<CopilotState>((set, get) => ({
     const { workflowId } = get();
     if (!workflowId) return;
     await apiFetch(`/workflows/${workflowId}/copilot`, { method: "DELETE" });
-    set({ ghost: null, error: null });
+    set({ ghost: null, error: null, cost: null, realRuns: false, asking: null });
     await get().load(workflowId);
   },
 }));

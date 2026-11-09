@@ -72,9 +72,21 @@ def _coerce(cell: str, schema: dict[str, Any]) -> Any:
 
 
 def parse_csv(content: str, wf: Workflow, mapping: Mapping | None) -> list[Example]:
+    # no cell is longer than the file (the module's default is 128 KB); only ever raised, as the limit is global
+    csv.field_size_limit(max(csv.field_size_limit(), len(content) + 1))
+    try:
+        return _parse_csv(content, wf, mapping)
+    except csv.Error as exc:
+        raise InvalidInput(f"not a CSV file: {exc}") from None
+
+
+def _parse_csv(content: str, wf: Workflow, mapping: Mapping | None) -> list[Example]:
     reader = csv.DictReader(io.StringIO(content))
     columns = reader.fieldnames or []
-    fields = contract(wf).input
+    terms = contract(wf)
+    fields = terms.input
+    # a reference is compared with the run's output: typed as the output contract (or its channel) says, else text
+    outputs = {**{ch.name: ch.type for ch in wf.state.channels}, **terms.output}
     if mapping is None:
         mapping = Mapping(
             input={c: c for c in columns if c in fields},
@@ -89,10 +101,11 @@ def parse_csv(content: str, wf: Workflow, mapping: Mapping | None) -> list[Examp
     used = {*mapping.input.values(), *mapping.reference.values(), mapping.split}
     out = []
     for row in reader:
+        reference = {ch: _coerce(row[c], outputs.get(ch, {})) for ch, c in mapping.reference.items() if row.get(c)}
         out.append(
             Example(
                 input={f: _coerce(row[c], fields.get(f, {})) for f, c in mapping.input.items() if row.get(c)},
-                reference={ch: _coerce(row[c], {"type": "any"}) for ch, c in mapping.reference.items() if row.get(c)},
+                reference={ch: v for ch, v in reference.items() if v is not None},  # a "null" cell: no reference
                 split=(row.get(mapping.split) or "") if mapping.split else "",
                 metadata={c: v for c, v in row.items() if c not in used and c is not None and v},
             )
@@ -153,7 +166,7 @@ class DatasetService:
 
     async def version(self, ds_id: str, number: int | None = None) -> DatasetVersion:
         q = select(DatasetVersion).where(DatasetVersion.dataset_id == ds_id)
-        q = q.where(DatasetVersion.number == number) if number else q.order_by(DatasetVersion.number.desc())
+        q = q.where(DatasetVersion.number == number) if number is not None else q.order_by(DatasetVersion.number.desc())
         v = await self.s.scalar(q.limit(1))
         if v is None:
             raise NotFound(f"dataset '{ds_id}' has no version {number}")
@@ -249,6 +262,13 @@ class DatasetService:
                 ex.id = new_id("ex")
             seen.add(ex.id)
         return await self.change(ds_id, lambda _: examples, message, user_id)
+
+    async def check_new(self, ds_id: str, examples: list[Example]) -> None:
+        """What `add` would refuse (422), without adding: for a caller that saves something else first."""
+        ds, latest = await self.get(ds_id), await self.version(ds_id)
+        check(await self._workflow(ds.workflow_id), examples, first=len(latest.examples) + 1)
+        if len(latest.examples) + len(examples) > MAX_EXAMPLES:
+            raise InvalidInput(f"a dataset holds at most {MAX_EXAMPLES} examples")
 
     async def add(self, ds_id: str, examples: list[Example], message: str, user_id: str | None) -> DatasetVersion:
         if not examples:

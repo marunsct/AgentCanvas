@@ -9,7 +9,7 @@ Without one, ADK workflows can still be designed, checked and exported; runs say
 
 It runs exactly like the CrewAI adapter (S27), whose server side it reuses: the canvas models reach ADK through the
 model bridge, tools, knowledge bases and workspace code run on the server when the worker asks, and a paused run is
-kept in memory as JSON.
+kept as JSON with its conversation (`runtime/paused.py`).
 """
 
 from __future__ import annotations

@@ -12,6 +12,7 @@ import { ExportSection } from "./ExportSection";
 import { PublishSection } from "./PublishSection";
 import { TriggersSection } from "./TriggersSection";
 import { QueryStatus } from "../ui/QueryStatus";
+import { confirmDialog } from "../ui/dialog";
 
 export function VersionsPanel() {
   const wf = useEditor((s) => s.wf);
@@ -43,7 +44,7 @@ export function VersionsPanel() {
   };
   const clear = () => { setDiff(null); useUi.getState().setDiff(null); };
   const restore = async (v: VersionOut) => {
-    if (!window.confirm(`Replace the draft with v${v.semver}? (Undo is not available; save a version first.)`)) return;
+    if (!(await confirmDialog({ title: `Replace the draft with v${v.semver}?`, body: "Undo is not available; save a version first.", confirm: "Replace the draft", danger: true }))) return;
     const { flush, version, load } = useEditor.getState();
     await flush();
     await apiFetch(`/workflows/${wf!.id}/versions/${v.id}/restore`, { method: "POST", version: useEditor.getState().version || version });
@@ -62,7 +63,7 @@ export function VersionsPanel() {
       <ExportSection wfId={wf.id} versions={versions.data ?? []} />
       <AgentSpecExport wfId={wf.id} name={wf.name} />
       {downloadError && <p className="error-text small" role="alert">{downloadError}</p>}
-      {diff && (
+      {diff && uiDiff && ( // cleared on the canvas: the summary goes too
         <div className="diff-box" data-testid="diff-summary">
           <div className="row gap"><b>Draft vs v{uiDiff?.against}</b>: {diff.summary}
             <span className="spacer" /><button type="button" className="link small" onClick={clear}>clear</button></div>
@@ -88,6 +89,12 @@ export function VersionsPanel() {
                 ⬇ zip</button>
             </div>
             {v.message && <p className="small">{v.message}</p>}
+            {(v.copilot_changes ?? []).map((c, i) => (
+              <p key={i} className="small muted" data-testid="copilot-credit" title={`accepted ${new Date(c.accepted_at).toLocaleString()}`}>
+                ✦ Copilot (accepted by {c.accepted_by_email ?? c.accepted_by}): {c.summary}
+                {c.changes > 0 && ` · ${c.changes} change${c.changes === 1 ? "" : "s"}`}
+              </p>
+            ))}
           </li>
         ))}
       </ul>

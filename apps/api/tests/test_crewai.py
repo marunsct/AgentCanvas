@@ -373,11 +373,9 @@ def test_crewai_blocks_belong_to_crewai_flows():
 @pytest.mark.parametrize("name", TEMPLATE_SUPPORT)
 async def test_supported_templates_run_on_crewai(app, api_client, name):
     """Every template CrewAI can run does, end to end, with the demo model (like `test_templates` on LangGraph)."""
-    from test_templates import INPUTS
+    from test_templates import demo_resources, template_input
 
-    from agentcanvas.testing import DemoResources
-
-    demo = DemoResources()
+    demo = demo_resources(app)
     app.state.resources_factory = lambda thread_id, wf: demo
     P = "/v1/projects/prj_default"
     if name == "knowledge_qa":
@@ -387,7 +385,7 @@ async def test_supported_templates_run_on_crewai(app, api_client, name):
     ir = {**wf["ir"], "framework": "crewai"}
     r = await api_client.put(f"/v1/workflows/{wf['id']}", json={"ir": ir}, headers={"If-Match": str(wf["version"])})
     assert r.status_code == 200 and not [d for d in r.json()["diagnostics"] if d["severity"] == "error"], r.text
-    text = (await api_client.post(f"/v1/workflows/{wf['id']}/runs/stream", json={"input": INPUTS[name]})).text
+    text = (await api_client.post(f"/v1/workflows/{wf['id']}/runs/stream", json={"input": template_input(name)})).text
     last = [json.loads(ln[6:]) for ln in text.splitlines() if ln.startswith("data: ")][-1]
     assert last["type"] == "RUN_FINISHED", last
 
@@ -430,7 +428,7 @@ def test_export_is_a_crewai_project(tmp_path):
     assert {"src/support/flow.py", "src/support/host.py", "src/tools/orders.py", "README.md", ".env.example",
             "src/agentcanvas/adapters/crewai/runtime.py", "tests/test_flow.py"} <= names  # fmt: skip
     assert not any("langchain" in n for n in names)
-    assert "crewai==1.15.25" in (project / "pyproject.toml").read_text()
+    assert "crewai==1.15.33" in (project / "pyproject.toml").read_text()
     assert (project / ".env.example").read_text() == "OPENAI_API_KEY=\n"
     for py in project.rglob("*.py"):
         compile(py.read_text(), str(py), "exec")

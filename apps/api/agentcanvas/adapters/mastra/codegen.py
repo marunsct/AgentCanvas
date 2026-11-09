@@ -17,14 +17,15 @@ from typing import Any
 from agentcanvas import designs
 from agentcanvas.adapters.flowgen import RESOURCE_TYPES, STEP_TYPES  # noqa: F401 - what a Mastra flow can run
 from agentcanvas.adapters.langchain.codegen import one_line, ts_doc_line
+from agentcanvas.adapters.openai_agents.codegen import model_settings
 from agentcanvas.ir.models import Node, Workflow
 
-MASTRA_VERSION = "1.76.0"
+MASTRA_VERSION = "1.80.0"
 NODE_VERSION = "22.18"  # the first Node.js that runs TypeScript as it is
 PACKAGES = {  # what Mastra flows need from npm, pinned (the worker's environment and exports)
     "@mastra/core": MASTRA_VERSION,
-    "@ai-sdk/openai-compatible": "3.0.67",
-    "zod": "4.6.6",
+    "@ai-sdk/openai-compatible": "3.0.80",
+    "zod": "4.6.7",
     "@marcbachmann/cel-js": "8.0.0",
     "nunjucks": "3.2.4",
     "ajv": "8.20.0",
@@ -121,7 +122,7 @@ def _model(wf: Workflow, n: Node) -> str:
     if not models:
         raise ValueError(f"'{n.name}' needs an AI model")
     m = models[0]
-    settings = {k: m.config[k] for k in ("temperature", "max_tokens") if m.config.get(k) is not None}
+    settings = model_settings(m)
     if "max_tokens" in settings:
         settings["maxTokens"] = settings.pop("max_tokens")
     return f"run.model({_js(m.name)}" + (f", {_js(settings)})" if settings else ")")

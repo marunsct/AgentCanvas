@@ -3,7 +3,7 @@
 import asyncio
 
 import pytest
-from test_publish import make_greeter
+from test_publish import greeter, make_greeter
 
 from agentcanvas.api.deps import CurrentUser, current_user
 from agentcanvas.db.models import AppUser, Membership, Organization, Project
@@ -110,12 +110,19 @@ CHILD_PARAMS = {
     "path": "a file inside {project_id}'s workspace",
     "policy_id": "PolicyRepo.require filters by the caller's organisation",
     "user_id": "member routes act on the caller's organisation only",
+    "connection_id": "/connections: a connection of the caller's own organisation and, but for admins, own owner",
+    "group_id": "/scim/v2: ScimService looks groups up within the organisation of the SCIM token",
+    "token_id": "TokenService.revoke compares the token's organisation (and, for /me, its owner) with the caller's",
     "org_id": "/me/invitations: the caller's own invitations only",
     "target": "a framework name, not a stored object (S22 bridge export)",
     "node_id": "an Agent block inside {wf_id}'s workflow (S21)",
     "proposal_id": "a Copilot proposal looked up within the caller's conversation about {wf_id}",
+    "conv_id": "a Copilot conversation looked up within {wf_id} and the caller's own conversations",
     "doc_id": "a knowledge document looked up within {kb_id}",
+    "file_id": "an uploaded file looked up within {project_id}",
     "token": "a share link's token: public visitor routes, the token is the capability (S23)",
+    "page": "a page of the user guide shipped with the server, the same for every organisation",
+    "session_id": "an editor tab of {wf_id} (G-4): only the caller's own rows of that workflow are removed",
 }
 
 
@@ -127,3 +134,30 @@ def test_every_path_parameter_is_scoped(app):
 
     params = {p for path in app.openapi()["paths"] for p in re.findall(r"\{([^}]+)\}", path)}
     assert params - set(SCOPED_PARAMS) - set(CHILD_PARAMS) == set()
+
+
+async def test_thread_ids_of_another_organisation_tell_nothing(app, api_client, org_b):
+    """A cursor naming another organisation's thread is unknown, like a missing one; a caller-named thread id in use
+    elsewhere gets the same answer whether it is another workflow of the caller's or another organisation's."""
+    wf_id = await make_greeter(api_client)
+    wf = Workflow.model_validate((await api_client.get(f"/v1/workflows/{wf_id}")).json()["ir"])
+    h = await app.state.runner.start(wf, thread_id="support-42", input={"who": "Ada"})
+    await asyncio.wait_for(h.done.wait(), 10)
+    other_wf = await make_greeter(api_client)
+    mine = await api_client.post(f"/v1/workflows/{other_wf}/runs/stream", json={"input": {}, "thread_id": "support-42"})
+
+    act_as_b(app)
+    try:
+        assert (await api_client.get("/v1/threads", params={"cursor": "support-42"})).json() == (
+            await api_client.get("/v1/threads", params={"cursor": "th_missing"})
+        ).json() | {"detail": "unknown cursor 'support-42'"}
+        wf_b = (await api_client.post(f"/v1/projects/{PROJECT_B}/workflows", json={"name": "b"})).json()["id"]
+        r = await api_client.put(f"/v1/workflows/{wf_b}", json={"ir": greeter(wf_b, "Hi")}, headers={"If-Match": "1"})
+        assert r.status_code == 200, r.text
+        theirs = await api_client.post(
+            f"/v1/workflows/{wf_b}/runs/stream", json={"input": {}, "thread_id": "support-42"}
+        )
+        assert theirs.status_code == mine.status_code == 422
+        assert theirs.json() == mine.json()
+    finally:
+        app.dependency_overrides.pop(current_user, None)

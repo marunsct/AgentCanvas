@@ -8,28 +8,37 @@ and `set_brief` records what the workflow is for. Tools never raise to the model
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import json
+import os
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
 from pydantic import ValidationError
 
-from agentcanvas.copilot import docs
+from agentcanvas import designs
+from agentcanvas.copilot import docs, rules, skillbook
 from agentcanvas.copilot.pack import block_summary
 from agentcanvas.copilot.runs import RunAccess
 from agentcanvas.ir.commands import Command, CommandError, apply_batch, parse_commands
 from agentcanvas.ir.models import Workflow
 from agentcanvas.registry import Registry
+from agentcanvas.registry import adapters as adapter_manifests
+from agentcanvas.services.knowledge import used_knowledge_bases
 from agentcanvas.services.testcases import Expect
 from agentcanvas.services.workflows import without_gallery
 from agentcanvas.validation import Diagnostic
 from agentcanvas.validation.help import diagnostic_help
 from agentcanvas.validation.policies import CODES as POLICY_CODES
+from agentcanvas.workspace.store import Workspace, WorkspaceError
 
 MAX_COMMANDS = 80  # per proposal: a whole workflow fits, a runaway loop does not
 MAX_RESULT = 12_000  # characters of one tool result sent back to the model
+MAX_CALLS_PER_REPLY = 8  # tool calls run from one model reply; the rest are refused (a runaway reply runs no more)
+MAX_TEST_RUNS = 6  # run_test and reproduce_run calls per turn: each runs the workflow, which may call models
+TOO_MANY_CALLS = f"not run: one reply runs at most {MAX_CALLS_PER_REPLY} tool calls; send the rest in your next reply"
 
 
 @dataclass
@@ -38,9 +47,15 @@ class Proposal:
     commands: list[dict[str, Any]] = field(default_factory=list)
     tests: list[dict[str, Any]] = field(default_factory=list)  # saved as test cases when accepted (S15)
     notes: list[str] = field(default_factory=list)  # added to the project's Copilot notes when accepted
+    files: list[dict[str, Any]] = field(
+        default_factory=list
+    )  # workspace files {path, content, before}, written when accepted
 
     def __bool__(self) -> bool:
-        return bool(self.commands or self.tests or self.notes)
+        return bool(self.commands or self.tests or self.notes or self.files)
+
+
+KnowledgeLister = Callable[[], Awaitable[list[dict[str, Any]]]]
 
 
 @dataclass
@@ -54,6 +69,12 @@ class ToolContext:
     runs: RunAccess | None = None  # past runs, test runs, reproductions (S15)
     secret_names: list[str] = field(default_factory=list)  # names only, never values
     events: list[dict[str, Any]] = field(default_factory=list)  # brief/proposal updates for the stream
+    allow_real_runs: bool = False  # the person allowed test runs that call real models in this conversation
+    sources: list[dict[str, str]] = field(default_factory=list)  # guide sections this turn read: the answer cites them
+    workspace: Workspace | None = None  # the project's code: read here, changed only through an accepted proposal
+    carried: dict[str, Any] | None = None  # the open proposal this turn started from: its id and what it added
+    knowledge: KnowledgeLister | None = None  # the project's knowledge bases: names, counts, model; never contents
+    test_runs: int = 0  # run_test and reproduce_run calls this turn (each runs the workflow): see MAX_TEST_RUNS
 
 
 @dataclass(frozen=True)
@@ -152,11 +173,18 @@ def carry_pending(ctx: ToolContext, proposals: list[dict[str, Any]]) -> None:
             ctx.workflow, _ = apply_batch(ctx.workflow, parse_commands(commands))
         except (CommandError, ValidationError):
             return
+    tests, notes = list(pending.get("tests") or []), list(pending.get("notes") or [])
+    files = list(pending.get("files") or [])
     ctx.proposal.commands.extend(commands)
-    ctx.proposal.tests.extend(pending.get("tests") or [])
-    ctx.proposal.notes.extend(pending.get("notes") or [])
+    ctx.proposal.tests.extend(tests)
+    ctx.proposal.notes.extend(notes)
+    ctx.proposal.files.extend(files)
     if summary := str(pending.get("summary") or "").strip():
         ctx.proposal.summary.append(summary)
+    ctx.carried = {
+        "id": pending.get("id"), "commands": len(commands), "tests": len(tests), "notes": len(notes),
+        "files": len(files), "summary": summary,
+    }  # fmt: skip
 
 
 async def propose_changes(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
@@ -207,7 +235,11 @@ async def set_brief(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
 # ------------------------------------------------------- S15: debug, test ----
 async def get_problems(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     diags = await ctx.validate(ctx.workflow)
-    return {"ok": True, "problems": _diagnostics(diags, explained=True), "count": len(diags)}
+    return {
+        "ok": True, "problems": _diagnostics(diags, explained=True), "count": len(diags),
+        # judgement calls (FR-COP-04): mention them when reviewing; fix them only when the person agrees
+        "suggestions": rules.suggestions(ctx.workflow),
+    }  # fmt: skip
 
 
 async def list_runs(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
@@ -263,8 +295,12 @@ def unaccepted_risks(saved: Workflow, working: Workflow, registry: Any) -> list[
         m = registry.get(n.type) if registry else None
         runs_code = n.type == "core.script" or (m is not None and "code_exec" in (m.side_effects or []))
         old = old_nodes.get(n.id)
-        if runs_code and (old is None or old.type != n.type or old.config != n.config):
+        changed = old is None or old.type != n.type or old.config != n.config
+        if runs_code and changed:
             out.append(f"the new or changed code step '{n.name}'")
+        elif changed and secret_refs(n.config) and _endpoint(n.config) != _endpoint(old.config if old else {}):
+            # a remote agent step (A2A) with a secret header: a dry run stubs it, but never risk the secret
+            out.append(f"'{n.name}', which sends a secret to a new address")
     for r in resources:
         old = old_resources.get(r.name)
         if old is not None and old.type == r.type and old.config == r.config:
@@ -301,7 +337,27 @@ async def run_test(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(args.get("input"), dict):
         return {"ok": False, "error": 'input must be an object of channel values, e.g. {"question": "..."}'}
     expect = args.get("expect") if isinstance(args.get("expect"), dict) else None
-    return await ctx.runs.test(ctx.workflow, args["input"], mocks=args.get("mocks") or None, expect=expect)
+    given = args.get("mocks")
+    mocks: dict[str, Any] = given if isinstance(given, dict) else {}
+    if not ctx.allow_real_runs and (real := real_models(ctx.workflow, mocks)):
+        # a run that calls real models costs money and time: the person allows it once per conversation
+        ctx.events.append({"type": "permission", "kind": "real_runs", "models": real})
+        return {
+            "ok": False,
+            "error": "the person has not allowed test runs that call real models ("
+            + ", ".join(real)
+            + "); ask them to allow it in the panel, or pass `mocks` with scripted replies "
+            "for these models to test the workflow's logic",
+        }
+    return await ctx.runs.test(ctx.workflow, args["input"], mocks=mocks or None, expect=expect)
+
+
+def real_models(wf: Workflow, mocks: dict[str, Any]) -> list[str]:
+    """The workflow's chat models a test run would call for real (those without scripted replies in `mocks`),
+    subgraphs' included."""
+    return sorted(
+        {str(r.config.get("model") or r.name) for r in _flat(wf)[1] if r.type == "model.chat" and r.name not in mocks}
+    )
 
 
 async def reproduce_run(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
@@ -334,6 +390,10 @@ async def propose_tests(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any
 
 async def search_guide(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     found = docs.search(str(args.get("query") or ""))
+    for hit in found[:2]:  # the best matches, cited under the answer (the guide page and section)
+        source = {"page": hit["page"].removesuffix(".md"), "section": hit["section"]}
+        if source not in ctx.sources and len(ctx.sources) < 4:
+            ctx.sources.append(source)
     return {"ok": True, "results": found} if found else {"ok": True, "results": [], "note": "nothing found"}
 
 
@@ -343,6 +403,148 @@ async def list_models(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
         {"id": p.id, "label": p.label, "key_secret": p.key_env, "local": p.local} for p in ctx.registry.providers()
     ]
     return {"ok": True, "models": models, "providers": providers, "secrets_set": ctx.secret_names}
+
+
+# ------------------------------------------- the project: secrets, knowledge, export ----
+async def list_secrets(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    """The project's secret names, the ones the workflow refers to, and the API key each model needs. Values never
+    reach the Copilot: they are not in its context to begin with."""
+    used = sorted(secret_refs(ctx.workflow.model_dump(mode="json")))
+    keys = []
+    for r in _flat(ctx.workflow)[1]:
+        if r.type != "model.chat" or secret_refs(r.config.get("api_key")):
+            continue  # a key named in the model's settings is one of `used`
+        model = str(r.config.get("model") or "")
+        p = ctx.registry.provider(model.partition(":")[0])
+        if p is None or not p.key_env:
+            continue
+        where = "project secret" if p.key_env in ctx.secret_names else "server" if os.environ.get(p.key_env) else None
+        keys.append({"model": model, "secret": p.key_env, "set": where})
+    return {
+        "ok": True, "secrets": ctx.secret_names, "used_by_workflow": used,
+        "missing": [n for n in used if n not in ctx.secret_names], "model_keys": keys,
+        "note": "names only; the person adds or changes a secret in Settings > Secrets, never in a block's settings",
+    }  # fmt: skip
+
+
+async def list_knowledge_bases(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    if ctx.knowledge is None:
+        return {"ok": False, "error": "knowledge bases are not available here"}
+    bases = await ctx.knowledge()
+    used = sorted(used_knowledge_bases(ctx.workflow.model_dump(mode="json")))
+    names = {b["name"] for b in bases}
+    return {
+        "ok": True, "knowledge_bases": bases, "used_by_workflow": used, "missing": [n for n in used if n not in names],
+        "note": "a stale base searches with old settings until it is reindexed; the person adds documents and "
+        "reindexes on the Knowledge page",
+    }  # fmt: skip
+
+
+async def export_plan(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    """What exporting the workflow (as it would be with your proposal) gives and what it lacks, from the same code as
+    the Export box: the framework's portability, designed agents' export problems, the deploy kit's prerequisites and
+    the knowledge bases the export ships."""
+    from agentcanvas.adapters.langchain import deploykit
+
+    wf = ctx.workflow
+    framework = str(args.get("framework") or wf.framework)
+    target = str(args.get("target") or "local")
+    m = adapter_manifests.manifest(framework)
+    if m is None:
+        known = ", ".join(a.id for a in adapter_manifests.installed())
+        return {"ok": False, "error": f"no installed framework '{framework}'; one of {known}"}
+    if target not in deploykit.TARGETS:
+        return {"ok": False, "error": f"no deploy target '{target}'; one of {', '.join(deploykit.TARGETS)}"}
+    if framework != wf.framework:  # the same workflow written for another framework, as the Export box does
+        wf = wf.model_copy(update={"framework": framework})
+    fit = adapter_manifests.portability(wf, [m])[0]
+    gaps = [f"{b['name']} ({b['type']}): {m.label} cannot run it" for b in fit["blockers"]]
+    gaps += [f"{b['name']} ({b['type']}) is emulated: {b['note'] or 'it behaves differently'}" for b in fit["emulated"]]
+    for n in _flat(wf)[0]:
+        if n.type in designs.DESIGN_TYPES and str(n.engine) in designs.AGENT_FRAMEWORKS:
+            gaps += [f"{n.name}: {p}" for p in designs.export_problems(str(n.engine), designs.design_for(wf, n))]
+    errors = [d for d in await ctx.validate(wf) if d.severity == "error"]
+    out: dict[str, Any] = {
+        "ok": True, "framework": {"id": m.id, "label": m.label, "what": m.description}, "gaps": gaps,
+        "errors": _diagnostics(errors)[:10],
+    }  # fmt: skip
+    if framework == "langchain":  # a LangGraph service with a deploy kit for the target (S16)
+        facts = deploykit.facts(wf, "workflow", "0.0.0")
+        out["targets"] = [{"id": t.id, "label": t.label} for t in deploykit.TARGETS.values()]
+        out["deploy"] = deploykit.prerequisites(facts, deploykit.TARGETS[target])
+    else:
+        out["deploy"] = f"a plain {m.label} project; the deploy kit (Docker, Kubernetes, clouds) is for LangGraph only"
+    if used := sorted(used_knowledge_bases(wf.model_dump(mode="json"))):
+        have = {b["name"] for b in await ctx.knowledge()} if ctx.knowledge else set()
+        out["knowledge"] = [{"name": n, "shipped": n in have} for n in used]  # one the project lacks is left out
+    out["note"] = "the person exports from the Export box; nothing is exported or published here"
+    return out
+
+
+async def read_skill(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    """A skill (`copilot/skills`) for the loop engine, which has no file system: the Deep Agents engine reads the same
+    text from its files. A framework skill carries the framework's facts as of the running manifests."""
+    found = skillbook.skills()
+    name = str(args.get("name") or "").strip()
+    if name not in found:
+        return {"ok": False, "error": f"no skill '{name}'; known: {', '.join(found)}"}
+    return {"ok": True, "skill": found[name]}
+
+
+MAX_READ = 20_000  # characters of a workspace file given to the model
+
+
+def _proposed(ctx: ToolContext, path: str) -> dict[str, Any] | None:
+    return next((f for f in ctx.proposal.files if f["path"] == path), None)
+
+
+async def list_workspace_files(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    if ctx.workspace is None:
+        return {"ok": False, "error": "this project has no workspace"}
+    prefix = str(args.get("prefix") or "").lstrip("/")
+    on_disk = [f.path for f in await asyncio.to_thread(ctx.workspace.list) if f.path.startswith(prefix)]
+    proposed = [f["path"] for f in ctx.proposal.files if f["path"].startswith(prefix) and f["path"] not in on_disk]
+    return {"ok": True, "files": sorted(on_disk + proposed)[:300], "proposed": [f["path"] for f in ctx.proposal.files]}
+
+
+async def read_workspace_file(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    if ctx.workspace is None:
+        return {"ok": False, "error": "this project has no workspace"}
+    path = str(args.get("path") or "").lstrip("/")
+    if (mine := _proposed(ctx, path)) is not None:
+        return {"ok": True, "path": path, "content": mine["content"][:MAX_READ], "note": "as you proposed it"}
+    try:
+        text = await asyncio.to_thread(ctx.workspace.read, path)
+    except FileNotFoundError:
+        return {"ok": False, "error": f"no file '{path}'; list_workspace_files shows what there is"}
+    except WorkspaceError as exc:
+        return {"ok": False, "error": str(exc)}
+    return {"ok": True, "path": path, "content": text[:MAX_READ], "truncated": len(text) > MAX_READ}
+
+
+async def propose_file(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    """A new or changed workspace file, part of the proposal: written (as one commit, credited to the person who
+    accepts) only when the person accepts it."""
+    if ctx.workspace is None:
+        return {"ok": False, "error": "this project has no workspace"}
+    path, content = str(args.get("path") or "").strip().lstrip("/"), args.get("content")
+    if not isinstance(content, str):
+        return {"ok": False, "error": "content must be the whole file, as text"}
+    try:
+        ctx.workspace.check(path, content)
+        before = await asyncio.to_thread(ctx.workspace.read, path)
+    except FileNotFoundError:
+        before = None
+    except WorkspaceError as exc:
+        return {"ok": False, "error": str(exc)}
+    problems = await asyncio.to_thread(ctx.workspace.lint, path, content)
+    ctx.proposal.files = [f for f in ctx.proposal.files if f["path"] != path]  # the latest version of a file wins
+    ctx.proposal.files.append({"path": path, "content": content, "before": before})
+    if summary := " ".join(str(args.get("summary") or "").split()):
+        ctx.proposal.summary.append(summary[:200])
+    found = [f"line {d['line']}: {d['code']} {d['message']}" for d in problems[:20]]
+    note = "fix these problems with another propose_file" if found else "written when the person accepts"
+    return {"ok": True, "path": path, "new": before is None, "problems": found, "note": note}
 
 
 async def save_note(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
@@ -417,7 +619,8 @@ TOOLS: dict[str, Tool] = {
         ),
         Tool(
             "get_problems",
-            "The workflow's validation problems, each with a plain explanation and how to fix it.",
+            "The workflow's validation problems, each with a plain explanation and how to fix it, and best-practice "
+            "suggestions (a router without a default, a model without a backup, thin instructions).",
             {"type": "object", "properties": {}},
             get_problems,
         ),
@@ -444,6 +647,38 @@ TOOLS: dict[str, Tool] = {
             "The AI models and providers this server knows, and which project secrets are set (names only).",
             {"type": "object", "properties": {}},
             list_models,
+        ),
+        Tool(
+            "read_skill",
+            "Read a skill: guidance for a kind of task. `build-for-<framework>` (build-for-crewai, "
+            "build-for-openai-agents, build-for-google-adk, build-for-pydantic-ai-agno, "
+            "build-for-microsoft-agent-framework, build-for-strands-llamaindex, build-for-mastra, "
+            "build-for-claude-agent-sdk) says what that framework runs, emulates or refuses on the canvas; "
+            "others: debug-a-run, human-approval, write-tests, answer-from-documents, model-reliability.",
+            {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]},
+            read_skill,
+        ),
+        Tool(
+            "list_secrets",
+            "The project's secret names (never values), which ones the workflow refers to and which of those are "
+            "missing, and the API key each model needs and whether it is set.",
+            {"type": "object", "properties": {}},
+            list_secrets,
+        ),
+        Tool(
+            "list_knowledge_bases",
+            "The project's knowledge bases: name, description, documents, embedding model, and whether it is stale "
+            "(needs reindexing); and which ones the workflow searches.",
+            {"type": "object", "properties": {}},
+            list_knowledge_bases,
+        ),
+        Tool(
+            "export_plan",
+            "What exporting this workflow would give and lack: for `framework` (default the workflow's), the blocks "
+            "that framework cannot run or only emulates and the validation errors; for LangGraph, what the deploy "
+            "kit for `target` (local, server, kubernetes, cloudrun, aws, azure) needs: keys, hosts, database, tools.",
+            {"type": "object", "properties": {"framework": {"type": "string"}, "target": {"type": "string"}}},
+            export_plan,
         ),
         Tool(
             "run_test",
@@ -485,6 +720,36 @@ TOOLS: dict[str, Tool] = {
             writes=True,
         ),
         Tool(
+            "list_workspace_files",
+            "List the project's workspace files (scripts/, tools/, nodes/, events/, flows/<workflow>/), and those you "
+            "proposed this turn. Optional `prefix`, e.g. 'scripts/'.",
+            {"type": "object", "properties": {"prefix": {"type": "string"}}},
+            list_workspace_files,
+        ),
+        Tool(
+            "read_workspace_file",
+            "Read one workspace file (or your proposed version of it) before changing it.",
+            {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]},
+            read_workspace_file,
+        ),
+        Tool(
+            "propose_file",
+            "Propose a new or changed workspace file (the whole content): a script step's `scripts/x.py` with "
+            "`def run(state: dict) -> dict`, a `@tool` in `tools/`, a custom block in `nodes/`, an event handler in "
+            "`events/`. It is checked with ruff; fix what it reports. Written only when the person accepts.",
+            {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string"},
+                    "content": {"type": "string"},
+                    "summary": {"type": "string", "description": "what the file does, in a few words"},
+                },
+                "required": ["path", "content"],
+            },
+            propose_file,
+            writes=True,
+        ),
+        Tool(
             "save_note",
             "Propose a short note for the project's Copilot notes (a convention or preference to remember).",
             {"type": "object", "properties": {"note": {"type": "string"}}, "required": ["note"]},
@@ -500,6 +765,14 @@ async def run_tool(ctx: ToolContext, name: str, args: dict[str, Any], allowed: l
     tool = TOOLS.get(name)
     if tool is None or name not in allowed:
         return {"ok": False, "error": f"tool '{name}' is not available here"}
+    if name in ("run_test", "reproduce_run"):
+        if ctx.test_runs >= MAX_TEST_RUNS:
+            return {
+                "ok": False,
+                "error": f"this turn already ran the workflow {MAX_TEST_RUNS} times; report what you found, and "
+                "the person can ask you to test more",
+            }
+        ctx.test_runs += 1
     try:
         return await tool.run(ctx, args if isinstance(args, dict) else {})
     except Exception as exc:  # noqa: BLE001 - a tool bug must not end the conversation; the model sees it

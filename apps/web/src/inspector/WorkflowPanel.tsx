@@ -1,10 +1,12 @@
 /** Workflow-level settings shown when nothing is selected. */
 import { useQuery } from "@tanstack/react-query";
+import { type InputHTMLAttributes, useState } from "react";
 import { apiFetch } from "../api/client";
 import type { SpendOut } from "../api/types";
 import { useEditor } from "../editor/store";
 import { FrameworkPicker } from "../editor/Frameworks";
 import { MAX_ALERTS, parseAlertShares } from "./budget";
+import { PolicyFields } from "./PoliciesEditor";
 import { StateDesigner } from "./StateDesigner";
 
 export function WorkflowPanel() {
@@ -41,9 +43,43 @@ export function WorkflowPanel() {
           </select>
         </label>
       </div>
+      <NodeDefaultsEditor />
+      <TraceRedactEditor />
       <BudgetEditor />
       <StateDesigner />
     </div>
+  );
+}
+
+/** `node_defaults`: retries, timeout and cache every block has unless it sets its own (LangGraph's `set_node_defaults`). */
+function NodeDefaultsEditor() {
+  const defaults = useEditor((s) => s.wf?.settings.node_defaults);
+  const dispatch = useEditor((s) => s.dispatch);
+  return (
+    <details className="budget" open={Boolean(defaults && Object.values(defaults).some((v) => v != null))}>
+      <summary>Defaults for every block</summary>
+      <p className="small muted">What a block does when it has no setting of its own under Runtime policies. Only LangChain flows apply them.</p>
+      <PolicyFields p={defaults ?? {}}
+        update={(patch) => dispatch([{ op: "UpdateSettings", patch: { node_defaults: patch } }], { debounceMs: 400 })} />
+    </details>
+  );
+}
+
+const listText = (v: string[] | null | undefined) => (v ?? []).join(", ");
+const textList = (raw: string) => raw.split(",").map((x) => x.trim()).filter(Boolean);
+
+/** `trace_redact`: field names whose values never reach a trace, wherever they appear in a step's input or output. */
+function TraceRedactEditor() {
+  const fields = useEditor((s) => s.wf?.settings.trace_redact);
+  const dispatch = useEditor((s) => s.dispatch);
+  return (
+    <label>
+      Hide these fields from traces
+      <SettingInput placeholder="e.g. email, card_number" aria-label="trace redact fields"
+        title="Comma-separated field names. Their values are replaced by [redacted] in every trace of this workflow."
+        value={fields ?? []} toText={listText} fromText={textList}
+        onText={(raw) => dispatch([{ op: "UpdateSettings", patch: { trace_redact: textList(raw) } }], { debounceMs: 400 })} />
+    </label>
   );
 }
 
@@ -57,6 +93,27 @@ const BUDGET_FIELDS: [key: string, label: string, step: number][] = [
   ["monthly_max_cost_usd", "USD per month (all runs)", 0.01],
 ];
 
+
+/**
+ * A text field for a setting that is saved as it is typed: it keeps what is typed while that is not a valid value yet
+ * ("0.0" on the way to "0.05"), and shows the setting again when it changes elsewhere (undo, redo, the Copilot); an
+ * uncontrolled field kept showing the old value.
+ */
+function SettingInput<T>({ value, toText, fromText, onText, ...rest }: {
+  value: T; toText: (v: T) => string; fromText: (raw: string) => T | undefined; onText: (raw: string) => void;
+} & Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange">) {
+  const [text, setText] = useState(() => toText(value));
+  const [shown, setShown] = useState(value);
+  if (JSON.stringify(value) !== JSON.stringify(shown)) {
+    setShown(value);
+    if (JSON.stringify(fromText(text)) !== JSON.stringify(value)) setText(toText(value));
+  }
+  return <input {...rest} value={text} onChange={(e) => { setText(e.target.value); onText(e.target.value); }} />;
+}
+
+const numberText = (v: number | null | undefined) => (v == null ? "" : String(v));
+const textNumber = (raw: string) => (raw.trim() === "" ? null : Number(raw));
+const sharesText = (v: number[] | null | undefined) => (v ? v.map((x) => Math.round(x * 100)).join(", ") : "");
 
 /** Budgets (FR-X-15): the runner stops a run that goes over; empty = no limit. */
 function BudgetEditor() {
@@ -75,16 +132,16 @@ function BudgetEditor() {
         {BUDGET_FIELDS.map(([key, label, step]) => (
           <label key={key}>
             {label}
-            <input type="number" min={step} step={step} placeholder="no limit" aria-label={`budget ${label}`}
-              defaultValue={budget?.[key] ?? ""} onChange={(e) => set(key, e.target.value)} />
+            <SettingInput type="number" min={step} step={step} placeholder="no limit" aria-label={`budget ${label}`}
+              value={budget?.[key] ?? null} toText={numberText} fromText={textNumber} onText={(raw) => set(key, raw)} />
           </label>
         ))}
         <label>
           Alert at (% of day or month, up to {MAX_ALERTS})
-          <input placeholder="80" aria-label="budget alert at percent" title={`Up to ${MAX_ALERTS} percents, e.g. 50, 80`}
-            defaultValue={alertAt ? alertAt.map((x) => Math.round(x * 100)).join(", ") : ""}
-            onChange={(e) => {
-              const shares = parseAlertShares(e.target.value);
+          <SettingInput placeholder="80" aria-label="budget alert at percent" title={`Up to ${MAX_ALERTS} percents, e.g. 50, 80`}
+            value={alertAt ?? null} toText={sharesText} fromText={parseAlertShares}
+            onText={(raw) => {
+              const shares = parseAlertShares(raw);
               if (shares !== undefined) dispatch([{ op: "UpdateSettings", patch: { budget: { alert_at: shares } } }], { debounceMs: 400 });
             }} />
         </label>

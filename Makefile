@@ -1,5 +1,5 @@
 # AgentCanvas monorepo tasks. Run `make help`.
-.PHONY: help setup crewai framework mastra infra dev-api dev-fake dev-web docker-up docker-down docker-logs ci ci-full hooks test test-api test-web e2e lint fmt schema check docs
+.PHONY: help setup crewai framework mastra infra dev-api dev-fake dev-web docker-up docker-down docker-logs ci ci-full hooks test test-api test-web e2e copilot-evals screenshots lint fmt schema check docs
 
 help:       ## show targets
 	@grep -E '^[a-z-]+:.*## ' Makefile | sed 's/:.*## /\t/'
@@ -9,7 +9,7 @@ setup:      ## install Python and web dependencies
 	cd apps/web && pnpm install
 
 crewai:     ## CrewAI flows (S27): CrewAI in its own Python environment, apps/api/.frameworks/crewai
-	cd apps/api && uv venv --allow-existing .frameworks/crewai && uv pip install --python .frameworks/crewai/bin/python crewai==1.15.25
+	cd apps/api && uv venv --allow-existing --python 3.13 .frameworks/crewai && uv pip install --python .frameworks/crewai/bin/python crewai==1.15.33
 
 framework:  ## mixed flows (S28), ADK (S29), Pydantic AI and Agno (S32), Agent Framework (S33), Strands and LlamaIndex (S35) workflows: a framework in its own environment, e.g. make framework FW=agno
 	cd apps/api && uv venv --allow-existing .frameworks/$(FW) && uv pip install --python .frameworks/$(FW)/bin/python \
@@ -20,8 +20,8 @@ mastra:     ## Mastra workflows (S36): Mastra and its flow runtime from npm, as 
 	cd apps/api && mkdir -p .frameworks/mastra && cp agentcanvas/adapters/mastra/package.json agentcanvas/adapters/mastra/package-lock.json .frameworks/mastra/ \
 	  && npm ci --prefix .frameworks/mastra --no-audit --no-fund --loglevel=error
 
-infra:      ## start local Postgres + Redis (Docker)
-	docker compose -f infra/docker-compose.yml up -d postgres redis
+infra:      ## start local Postgres (Docker; ports on 127.0.0.1 only)
+	docker compose -f infra/docker-compose.yml up -d postgres
 
 dev-api:    ## API with real models (needs provider keys)
 	cd apps/api && uv run uvicorn agentcanvas.api.main:app --reload --port 8000
@@ -55,6 +55,16 @@ test-web:
 e2e:        ## Playwright end-to-end (starts servers itself)
 	cd apps/web && pnpm e2e
 
+MODEL ?= ollama:qwen3
+ENGINE ?= loop
+OUT ?= $(CURDIR)/copilot-evals.json
+copilot-evals: ## the Copilot evaluation, both suites, on this computer: MODEL=ollama:qwen3 (or provider:model; the offline demo Copilot when it cannot be reached) ENGINE=loop|deepagents OUT=report.json
+	cd apps/api && uv run python -m agentcanvas.copilot.evals --model "$(MODEL)" --engine "$(ENGINE)" --suite both --out "$(OUT)" --fallback-to-demo
+
+screenshots: ## retake the pictures in docs/user-guide/img (fake-model server, made-up data)
+	d=$$(mktemp -d) && cd apps/web && DATABASE_URL="sqlite+aiosqlite:///$$d/shots.db" AGENTCANVAS_WORKSPACES_DIR="$$d/ws" \
+	  SCREENSHOTS=1 E2E_PROD=1 npx playwright test e2e/screenshots.spec.ts; rc=$$?; rm -rf "$$d"; exit $$rc
+
 lint:       ## ruff, pyright, import contracts, tsc, oxlint
 	cd apps/api && uv run ruff check . && uv run ruff format --check . && uv run pyright && uv run lint-imports
 	cd apps/web && pnpm typecheck && pnpm lint
@@ -87,4 +97,4 @@ hooks:      ## run lint, types and web tests before every git push (skip once wi
 	@echo "pre-push hook installed"
 
 docs:       ## documentation site on http://localhost:8001 (MkDocs Material)
-	uvx --with mkdocs-material mkdocs serve -a localhost:8001
+	uvx --from mkdocs==1.6.1 --with mkdocs-material==9.8.1 mkdocs serve -a localhost:8001

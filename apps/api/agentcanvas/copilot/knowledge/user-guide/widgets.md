@@ -19,11 +19,18 @@ brackets; it is what the saved workflow and the generated code use, and it never
 | **Planning Agent** (`agent.deep`) | A stronger agent for big, multi-step jobs: it writes a plan, keeps notes in files and can hand work to helper agents (`create_deep_agent`). |
 | **Helper Agent** *(add-on, `agent.subagent`)* | A specialist a Planning Agent can hand a task to with its `task` tool. Fill in **When to use it**. |
 
+**Files and images in AI steps.** When the workflow has [file or image fields](canvas.md#file-and-image-fields), **Ask AI**
+and **AI Agent** show them to the model together with the message: images and PDFs as they are to a model that can see
+them, and **Files to show the AI** limits a step to some of the fields (empty: all). A model that cannot see images gets a
+PDF's text instead (layout, tables and scans are lost), Word documents and text files as text, and a note where an image
+was left out; the editor warns about this (W025). Planning Agents do
+not receive file fields yet.
+
 ## AI models
 
 | Block | What it does |
 |---|---|
-| **AI model** *(add-on, `model.chat`)* | The AI “brain” as `provider:model` from any provider, hosted or local: `anthropic:claude-sonnet-5-5`, `openai:gpt-5.5`, `google_genai:gemini-2.5-flash`, `ollama:llama3.3`, `lmstudio:<model>`… A new AI model block starts as your project's default model from first-run setup. A hint under the field says where its key comes from. Optional temperature, max output tokens, timeout, Base URL, and **API key**: pick a project secret by name, or leave it empty to use the secret named after the provider. One model can power several steps. See [Models and API keys](models.md). |
+| **AI model** *(add-on, `model.chat`)* | The AI “brain” as `provider:model` from any provider, hosted or local: `anthropic:claude-sonnet-5-5`, `openai:gpt-5.5`, `google_genai:gemini-3.6-flash`, `ollama:llama3.3`, `lmstudio:<model>`… A new AI model block starts as your project's default model from first-run setup. A hint under the field says where its key comes from. Optional temperature, max output tokens, timeout, Base URL, and **API key**: pick a project secret by name, or leave it empty to use the secret named after the provider. One model can power several steps. See [Models and API keys](models.md). |
 
 ## Tools
 
@@ -109,7 +116,10 @@ See [Memory](memory.md) for spaces and sharing.
 ## Agent add-ons
 
 Add-ons (middleware) change how an agent's model and tool calls behave. Plug one or more into an agent's
-`middleware` input; the order of the lines is the order they apply.
+`middleware` input; the order of the lines is the order they apply: the first one connected wraps the ones after
+it. So connect **Retry AI calls** before **Backup models** (each attempt can then fall back), or set the retry's
+"When retries are exhausted" to error; otherwise the retry answers the failure itself and the backup models are
+never tried (warning W017).
 
 | Block | What it does |
 |---|---|

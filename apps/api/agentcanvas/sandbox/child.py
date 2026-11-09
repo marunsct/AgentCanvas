@@ -5,8 +5,8 @@ Standard library only (it also runs inside a bare python image):
     python child.py scripts.score:run   < {"state": {...}, "config": {...}|null}   > {"ok": true, "update": {...}}
 
 The working directory is the workspace root. Anything the script prints goes to stderr, so stdout carries only
-the result line. With AC_BLOCK_NETWORK=1 socket connections raise (defense in depth for the subprocess mode;
-the Docker mode has no network interface at all).
+the result line. With AC_BLOCK_NETWORK=1 socket connections raise, except to the egress proxy the payload names
+(defense in depth for the subprocess mode; the Docker mode has no network interface, or only the egress network).
 """
 
 from __future__ import annotations
@@ -22,14 +22,55 @@ import sys
 import traceback
 
 
-def _block_network() -> None:
-    def refuse(*_a, **_k):
-        raise PermissionError("network access is disabled in the script sandbox")
+def _block_network(proxy: str = "") -> None:
+    """No connections, or only to the egress proxy (`host:port`) when the project allows some
+    hosts: HTTP clients reach those through it (HTTPS_PROXY), and the proxy checks the list.
 
-    socket.socket.connect = refuse  # type: ignore[method-assign]
-    socket.socket.connect_ex = refuse  # type: ignore[method-assign]
-    socket.create_connection = refuse  # type: ignore[assignment]
-    socket.getaddrinfo = refuse  # type: ignore[assignment]
+    This is a guard against mistakes, not isolation: code that imports `_socket`, uses ctypes or starts a program
+    goes around it. What keeps code in is the container's network (docker: none or the internal egress network;
+    the sandbox service: internal networks, and the API refusing requests from them)."""
+    host, _, port = proxy.rpartition(":")
+    real_getaddrinfo = socket.getaddrinfo
+    real_connect, real_connect_ex = socket.socket.connect, socket.socket.connect_ex
+    proxy_ips = {info[4][0] for info in real_getaddrinfo(host, int(port))} if proxy else set()
+
+    def to_proxy(address) -> bool:
+        return isinstance(address, tuple) and len(address) >= 2 and address[0] in proxy_ips and address[1] == int(port)
+
+    def refuse(*_a, **_k):
+        raise PermissionError(
+            "network access is disabled in the script sandbox"
+            + ("; the hosts in sandbox.json are reached through the egress proxy (HTTPS_PROXY)" if proxy else "")
+        )
+
+    def getaddrinfo(name, *a, **k):
+        if proxy and name == host:
+            return real_getaddrinfo(name, *a, **k)
+        return refuse()
+
+    def connect(self, address):
+        return real_connect(self, address) if to_proxy(address) else refuse()
+
+    def connect_ex(self, address):
+        return real_connect_ex(self, address) if to_proxy(address) else refuse()
+
+    real_sendto, real_sendmsg = socket.socket.sendto, socket.socket.sendmsg
+
+    def sendto(self, data, *args):
+        return real_sendto(self, data, *args) if to_proxy(args[-1]) else refuse()
+
+    def sendmsg(self, buffers, ancdata=(), flags=0, address=None):
+        if address is not None and not to_proxy(address):
+            return refuse()
+        return real_sendmsg(self, buffers, ancdata, flags, *([address] if address is not None else []))
+
+    socket.socket.connect = connect  # type: ignore[method-assign]
+    socket.socket.connect_ex = connect_ex  # type: ignore[method-assign]
+    socket.socket.sendto = sendto  # type: ignore[method-assign]  # UDP: no data out but to the proxy either (R-11)
+    socket.socket.sendmsg = sendmsg  # type: ignore[method-assign]
+    socket.getaddrinfo = getaddrinfo  # type: ignore[assignment]
+    if not proxy:
+        socket.create_connection = refuse  # type: ignore[assignment]
 
 
 def _load(import_path: str):
@@ -71,8 +112,8 @@ def _tool_shim() -> None:
 
 def _sdk_shim() -> None:
     """Workspace code imports `agentcanvas.sdk` (`@on`, `@canvas_node`, `Event`, `Actions`); a bare sandbox image
-    (docker, LangSmith) has no AgentCanvas, so a stand-in with the same decorators keeps the plain functions. `emit`
-    and `secret` need the host and say so."""
+    (docker, LangSmith) has no AgentCanvas, so a stand-in with the same decorators keeps the plain functions. `secret`
+    needs the host and says so; `emit` is collected (`_collect_emits`)."""
     try:
         import agentcanvas.sdk  # noqa: F401
     except ImportError:
@@ -92,13 +133,25 @@ def _sdk_shim() -> None:
         sdk.canvas_node = _keep  # type: ignore[attr-defined]
         sdk.Event = _Event  # type: ignore[attr-defined]
         sdk.Actions = _Actions  # type: ignore[attr-defined]
-        sdk.emit = _host_only("emit")  # type: ignore[attr-defined]
         sdk.secret = _host_only("secret")  # type: ignore[attr-defined]
         pkg = types.ModuleType("agentcanvas")
         pkg.__path__ = []  # type: ignore[attr-defined]
         pkg.sdk = sdk  # type: ignore[attr-defined]
         sys.modules.setdefault("agentcanvas", pkg)
         sys.modules.setdefault("agentcanvas.sdk", sdk)
+
+
+_EMITTED: list[dict] = []  # events the code emitted: returned with its result, emitted into the run by the host
+
+
+def _collect_emits() -> None:
+    """`agentcanvas.sdk.emit` here has no run to write to (the run is in the host process): record the events,
+    which go back with the result."""
+
+    def emit(event_type, data=None):
+        _EMITTED.append({"type": str(event_type), "data": dict(data or {})})
+
+    sys.modules["agentcanvas.sdk"].emit = emit  # type: ignore[attr-defined]
 
 
 def _call_tool(obj, args: dict):
@@ -138,20 +191,47 @@ class _Actions:
         self.recorded.append({"action": "emit", "type": event_type, "data": data or {}})
 
 
+def _not_dumpable() -> None:
+    """Linux: other processes of the same user cannot read this one's /proc/<pid>/environ, memory or file handles,
+    or ptrace it. In a shared sandbox service, one call's code cannot read another call's (2026-10-29 review, S-2)."""
+    if sys.platform != "linux":
+        return
+    try:
+        import ctypes
+
+        ctypes.CDLL(None, use_errno=True).prctl(4, 0, 0, 0, 0)  # PR_SET_DUMPABLE, 0
+    except (OSError, AttributeError):
+        pass
+
+
+def _proxy_from(payload: dict) -> str:
+    """The egress proxy (`http://<signed list>@host:port`) from the payload, not the environment, where another
+    process of the same user could read it; set where HTTP clients look for it. Returns its `host:port`."""
+    proxy = str(payload.pop("egress_proxy", None) or "")
+    if proxy:
+        for name in ("HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy", "ALL_PROXY"):
+            os.environ[name] = proxy
+        os.environ["NO_PROXY"] = os.environ["no_proxy"] = ""
+    return proxy.rpartition("@")[2] if proxy else ""
+
+
 def main() -> int:
-    if os.environ.get("AC_BLOCK_NETWORK") == "1":
-        _block_network()
+    _not_dumpable()
     out = sys.stdout
     try:
         payload = json.loads(sys.stdin.read() or "{}")
+        proxy = _proxy_from(payload)
+        if os.environ.get("AC_BLOCK_NETWORK") == "1":
+            _block_network(proxy)
         _sdk_shim()
+        _collect_emits()
         if "tool_args" in payload:  # one call of a workspace tool: return its output
             _tool_shim()
             with contextlib.redirect_stdout(sys.stderr):
                 output = _call_tool(_load(sys.argv[1]), dict(payload["tool_args"] or {}))
                 if inspect.isawaitable(output):
                     output = asyncio.run(output)  # type: ignore[arg-type]
-            out.write(json.dumps({"ok": True, "output": output}, default=str) + "\n")
+            out.write(json.dumps({"ok": True, "output": output, "events": _EMITTED}, default=str) + "\n")
             return 0
         if "event" in payload:  # an event handler: return the actions it recorded
             act = _Actions()
@@ -169,7 +249,7 @@ def main() -> int:
                 result = asyncio.run(result)  # type: ignore[arg-type]
         if result is not None and not isinstance(result, dict):
             raise TypeError(f"a script must return a dict of channel updates, got {type(result).__name__}")
-        out.write(json.dumps({"ok": True, "update": result or {}}, default=str) + "\n")
+        out.write(json.dumps({"ok": True, "update": result or {}, "events": _EMITTED}, default=str) + "\n")
         return 0
     except BaseException as exc:  # noqa: BLE001 - report everything to the host
         tb = traceback.format_exc(limit=5)

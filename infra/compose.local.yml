@@ -2,12 +2,13 @@
 #   make docker-up          (or: docker compose -f infra/compose.local.yml up -d --build --wait)
 # then open http://localhost:7777 and choose your model on the first-run screen (hosted or local).
 # No sign-in: every request is the built-in local admin. Not for servers others can reach: use compose.prod.yml.
-# Optional settings come from your shell or a file passed with --env-file (see infra/.env.local.example).
+# Optional settings come from infra/.env.local (see infra/.env.local.example): the API reads every setting in it, and
+# the ${...} below come from it with --env-file (make docker-up passes it) or from your shell.
 name: agentcanvas-local
 
 services:
   postgres:
-    image: ${POSTGRES_IMAGE:-pgvector/pgvector:pg16}
+    image: ${POSTGRES_IMAGE:-pgvector/pgvector:pg16@sha256:7b822b0aac60967beb1ea5e576b8602c94c300a157d187f385ae3e0da199b90a}
     environment:
       POSTGRES_USER: agentcanvas
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-agentcanvas-local}
@@ -27,6 +28,11 @@ services:
         FRAMEWORKS: ${FRAMEWORKS:-all}
         WITH_MASTRA: ${WITH_MASTRA:-true}
     image: ${API_IMAGE:-agentcanvas-api:latest}
+    # every setting in infra/.env.local reaches the API (any AGENTCANVAS_* setting, OTEL_*, LANGSMITH_*...); the
+    # `environment` below wins where both name one
+    env_file:
+      - path: .env.local
+        required: false
     environment:
       DATABASE_URL: postgresql://agentcanvas:${POSTGRES_PASSWORD:-agentcanvas-local}@postgres:5432/agentcanvas
       AGENTCANVAS_ENV: dev                       # allows local mode (no sign-in)
@@ -37,10 +43,14 @@ services:
       AGENTCANVAS_SCRIPT_EXECUTION: remote       # workspace code runs in the `sandbox` service below
       AGENTCANVAS_SANDBOX_URL: http://sandbox:8090
       AGENTCANVAS_SANDBOX_TOKEN: ${AGENTCANVAS_SANDBOX_TOKEN:-local-sandbox-token-0123456789abcdef}
+      AGENTCANVAS_EGRESS_PROXY: egress:3128     # hosts a project's sandbox.json allows, and only those
+      AGENTCANVAS_EGRESS_SECRET: ${AGENTCANVAS_EGRESS_SECRET:-local-egress-secret-0123456789abcdef}
       AGENTCANVAS_CORS_ORIGINS: '["http://localhost:${WEB_PORT:-7777}"]'
       # models on your computer (Ollama, LM Studio, vLLM, llama.cpp) are reached from inside the container here
       AGENTCANVAS_LOCAL_MODELS_HOST: ${AGENTCANVAS_LOCAL_MODELS_HOST:-host.docker.internal}
-      FORWARDED_ALLOW_IPS: "*"
+      # the network the API shares with the sandbox service: workspace code runs there, so its requests are refused
+      AGENTCANVAS_REFUSE_CLIENTS: '["${SANDBOX_CONTROL_SUBNET:-10.250.250.0/24}"]'
+      FORWARDED_ALLOW_IPS: ${FRONT_SUBNET:-10.250.251.0/24}  # only nginx (web, on `front`) is trusted for X-Forwarded-*
       # optional: server-wide provider keys (the first-run screen stores a key per project instead)
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
@@ -53,7 +63,7 @@ services:
       LANGSMITH_API_KEY: ${LANGSMITH_API_KEY:-}
     extra_hosts: ["host.docker.internal:host-gateway"]   # Linux; Docker Desktop provides it already
     volumes: ["workspaces:/data/workspaces"]
-    networks: [default, sandbox]
+    networks: [default, front, sandbox-control]
     depends_on:
       postgres: { condition: service_healthy }
       sandbox: { condition: service_healthy }
@@ -66,7 +76,12 @@ services:
     command: ["uvicorn", "agentcanvas.sandbox.service:app", "--host", "0.0.0.0", "--port", "8090"]
     environment:
       AGENTCANVAS_SANDBOX_TOKEN: ${AGENTCANVAS_SANDBOX_TOKEN:-local-sandbox-token-0123456789abcdef}
-    networks: [sandbox]
+      # one call at a time per container, and after each nothing it started or wrote is left (S-2); more
+      # calls at once come from more replicas
+      AGENTCANVAS_SANDBOX_SWEEP: "1"
+    networks: [sandbox, sandbox-control]       # the API calls it on sandbox-control, and refuses calls back
+    deploy:
+      replicas: ${SANDBOX_REPLICAS:-2}
     read_only: true
     tmpfs: ["/tmp:size=512m,mode=1777"]
     cap_drop: [ALL]
@@ -79,6 +94,26 @@ services:
       retries: 30
     restart: unless-stopped
 
+  # The sandbox network's only way out (sandbox.json egress): admits the hosts each call's project lists, signed by the
+  # API, and refuses names that resolve to private addresses (the database, the API, cloud metadata).
+  egress:
+    image: ${API_IMAGE:-agentcanvas-api:latest}
+    command: ["python", "-m", "agentcanvas.sandbox.egress", "--port", "3128"]
+    environment:
+      AGENTCANVAS_EGRESS_SECRET: ${AGENTCANVAS_EGRESS_SECRET:-local-egress-secret-0123456789abcdef}
+      AGENTCANVAS_EGRESS_ALLOW_PRIVATE: ${AGENTCANVAS_EGRESS_ALLOW_PRIVATE:-0}   # 1: also private addresses
+    networks: [default, sandbox]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 256
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 3128), 2)"]
+      interval: 5s
+      retries: 20
+    restart: unless-stopped
+
   web:
     build: { context: .., dockerfile: infra/Dockerfile.web }
     image: ${WEB_IMAGE:-agentcanvas-web:latest}
@@ -86,6 +121,7 @@ services:
       API_UPSTREAM: http://api:8000
     # no sign-in here, so only this computer may reach it; WEB_BIND=0.0.0.0 opens it to your network on purpose
     ports: ["${WEB_BIND:-127.0.0.1}:${WEB_PORT:-7777}:8080"]
+    networks: [front]                          # it reaches the API and nothing else
     depends_on:
       api: { condition: service_healthy }
     healthcheck:
@@ -98,7 +134,14 @@ services:
 
 networks:
   sandbox:
-    internal: true                             # no route out
+    internal: true                             # no route out but the egress proxy: never the database, only listed hosts
+  # the API calls the sandbox service here; a request the other way (workspace code calling the API) is refused
+  sandbox-control:
+    internal: true
+    ipam: { config: [{ subnet: "${SANDBOX_CONTROL_SUBNET:-10.250.250.0/24}" }] }
+  # nginx to the API: the only network whose X-Forwarded-For the API believes
+  front:
+    ipam: { config: [{ subnet: "${FRONT_SUBNET:-10.250.251.0/24}" }] }
 
 volumes:
   pgdata:

@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.deps import CurrentUser, current_user, get_session
+from agentcanvas.api.v1.workspace import _off_loop
 from agentcanvas.db.models import Dataset, Evaluator, ReleaseGate
 from agentcanvas.db.repositories import WorkflowRepo
 from agentcanvas.errors import InvalidInput, NotFound
@@ -92,9 +93,10 @@ async def set_gate(
         gate = ReleaseGate(id=new_id("gate"), workflow_id=wf_id, environment=environment)
         session.add(gate)
     gate.dataset_id, gate.min_scores, gate.max_regression = body.dataset_id, body.min_scores, body.max_regression
-    workspace = request.app.state.projects.workspace((await WorkflowRepo(session).require(wf_id)).project_id).root
+    ws = request.app.state.projects.workspace((await WorkflowRepo(session).require(wf_id)).project_id)
     gate.dataset_version = version.number
-    gate.evaluators = gates.snapshot(evaluators, body.min_scores, workspace)
+    # the code pins read the workspace in turn with saves, off the event loop
+    gate.evaluators = await _off_loop(ws, lambda: gates.snapshot(evaluators, body.min_scores, ws.root))
     gate.updated_by, gate.updated_at = user.id, datetime.now(UTC)
     await session.commit()
     await session.refresh(gate)

@@ -1,12 +1,33 @@
+import { feed, parseMessage } from "../run/sseFrames";
+import type { FileRef } from "../ir/files";
+
 /** Share links (S23): the public chat page's talk with the API. No sign-in: the link's token is the capability, so
  * this module never sends the signed-in user's token (it does not use the authenticated client). */
+
+/** The file field a visitor may attach files to (G-5), when the workflow has one. */
+export interface ShareAttachments { field: string; accept?: string | null; multiple: boolean }
 
 export interface ShareInfo {
   title: string;
   greeting: string;
   suggestions: string[];
   input: { field?: string | null; chat?: boolean };
+  attachments?: ShareAttachments | null;
+  frame_origins?: string[]; // the sites allowed to frame the page (G-15): the postMessage API answers only these
 }
+
+/** A message of the visitor's saved conversation (G-15). */
+export interface SavedMessage {
+  role: "user" | "assistant";
+  text: string;
+  run_id?: string | null;
+  error?: boolean;
+  attached?: string[];
+  question?: ShareQuestion | null;
+}
+
+/** The visitor's latest conversation on this link, kept on the server; `busy`: its last message is still being answered. */
+export interface SavedConversation { thread_id: string | null; busy: boolean; messages: SavedMessage[] }
 
 export interface ShareQuestion { id: string | null; kind: "approval" | "tool_approval" | "input" | string; question: string }
 
@@ -75,17 +96,26 @@ export async function loadShare(token: string): Promise<ShareInfo> {
   return (await res.json()) as ShareInfo;
 }
 
+/** The conversation this browser's visitor secret last had on the link (empty when there is none). */
+export async function loadConversation(token: string): Promise<SavedConversation> {
+  const res = await fetch(`${BASE}/${encodeURIComponent(token)}/conversation`, {
+    credentials: "omit", headers: { "x-visitor": visitorId() },
+  });
+  if (!res.ok) throw await problem(res);
+  return (await res.json()) as SavedConversation;
+}
+
+/** Start over for good: the saved conversation is closed, so a reload does not bring it back. */
+export async function closeConversation(token: string): Promise<void> {
+  const res = await fetch(`${BASE}/${encodeURIComponent(token)}/conversation`, {
+    method: "DELETE", credentials: "omit", headers: { "x-visitor": visitorId() },
+  });
+  if (!res.ok) throw await problem(res);
+}
+
 /** Feed SSE text to `onEvent`; returns what is left over (an incomplete message). */
 export function parseSse(buffer: string, onEvent: (e: ShareEvent) => void): string {
-  let sep: number;
-  while ((sep = buffer.indexOf("\n\n")) >= 0) {
-    const message = buffer.slice(0, sep);
-    buffer = buffer.slice(sep + 2);
-    for (const line of message.split("\n")) {
-      if (line.startsWith("data: ")) onEvent(JSON.parse(line.slice(6)) as ShareEvent);
-    }
-  }
-  return buffer;
+  return feed<ShareEvent>(buffer, onEvent); // the run streams' framing: \r\n line ends too (a proxy may rewrite them)
 }
 
 async function stream(path: string, body: unknown, onEvent: (e: ShareEvent) => void, signal?: AbortSignal): Promise<void> {
@@ -98,15 +128,32 @@ async function stream(path: string, body: unknown, onEvent: (e: ShareEvent) => v
   let buffer = "";
   for (;;) {
     const { value, done } = await reader.read();
-    if (done) break;
+    if (done) { // a connection that closed right after the last line: its events (the answer's end) still count
+      for (const e of parseMessage<ShareEvent>(buffer)) onEvent(e);
+      break;
+    }
     buffer = parseSse(buffer + value, onEvent);
   }
 }
 
+/** Send a file to the link (the visitor's own: only this browser's conversations can use it). */
+export async function uploadShareFile(token: string, file: File): Promise<FileRef> {
+  const form = new FormData();
+  form.append("visitor", visitorId());
+  form.append("file", file);
+  const res = await fetch(`${BASE}/${encodeURIComponent(token)}/files`, { method: "POST", credentials: "omit", body: form });
+  if (!res.ok) throw await problem(res);
+  return (await res.json()) as FileRef;
+}
+
 export function sendMessage(
   token: string, message: string, threadId: string | null, onEvent: (e: ShareEvent) => void, signal?: AbortSignal,
+  files: FileRef[] = [],
 ): Promise<void> {
-  const body = { message, visitor: visitorId(), ...(threadId ? { thread_id: threadId } : {}) };
+  const body = {
+    message, visitor: visitorId(), ...(threadId ? { thread_id: threadId } : {}),
+    ...(files.length ? { files: files.map((f) => f.id) } : {}),
+  };
   return stream(`${encodeURIComponent(token)}/runs/stream`, body, onEvent, signal);
 }
 

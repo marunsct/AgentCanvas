@@ -46,11 +46,13 @@ The Problems tab explains the rest:
 | P004 | This AI block is designed for another workflow framework than the workflow's; for now it runs on the workflow's |
 | P005 | The agent framework this AI agent is designed for cannot take something wired into it (add-ons, some tools, its answer shape) |
 | P006 | The agent framework this AI agent is designed for is not installed on this server, so runs here fail until it is (`make framework FW=<id>` fixes it) |
+| P008 | The workflow has file or image fields and its framework does not show them to a model (only LangGraph does) |
 
 ## An AI block of its own framework
 
 An AI step, AI agent or Planning Agent can be **Designed for** another framework than the workflow (in the block's
-settings). Until mixed-framework flows arrive, the block still runs on the workflow's framework and P004 reminds you.
+settings). In a LangGraph workflow such an agent runs as a part of a [mixed flow](#mixed-flows-parts-and-contracts),
+in its own framework; a block that cannot run that way runs on the workflow's framework, and P004 says so.
 
 ## Design an agent in any agent framework
 
@@ -68,6 +70,7 @@ An **AI agent** block can be designed as a native agent of a popular agent frame
 | LlamaIndex | `llama-index-core`, `llama-index-llms-openai-like` | OpenAI-compatible |
 | Microsoft Agent Framework | `agent-framework-core`, `agent-framework-openai` | OpenAI-compatible |
 | Claude Agent SDK | `claude-agent-sdk` | Anthropic |
+| Claude Managed Agents (platform) | `anthropic` | Anthropic; exported as `ant apply` files, see below |
 
 Pick one and the block is generated as that framework's own code. You design it exactly as before: its
 instructions, the model wired into it, its tools (Python functions from the workspace, HTTP tools and MCP servers),
@@ -85,6 +88,36 @@ which tools need approval, and an answer shape. What changes:
   starts again from its beginning with your answer.
 - **Typed answers.** An answer shape becomes the framework's own structured output (a Pydantic class), and the
   answer lands in the block's `structured_response` output.
+
+### Take an agent to Claude Managed Agents
+
+**Claude Managed Agents** also appears in **Designed for**, under *Agent platforms*. It is Anthropic's hosted agent
+platform, not a Python framework, so the block still runs on the canvas as your workflow's own agent; what changes is
+the export. **Export for Claude Managed Agents (ant apply)** downloads the files the `ant` CLI applies:
+
+| File | What it is |
+|---|---|
+| `agents/<agent>/agent.md` | The agent: model, tools and MCP servers as YAML at the top, the instructions below |
+| `agents/<agent>/environment.yaml` | The cloud environment its sessions run in |
+| `agents/<agent>/vault.yaml` | Only when an MCP server needs a credential: the vault that holds it (never the secret) |
+| `agents/<agent>/skills/<name>/` | The workspace's skills (`skills/<name>/SKILL.md`, or the workflow's own `flows/<id>/skills/`) |
+| `run.py`, `custom_tools.py` | A session runner that answers the agent's custom tools and asks before calls that need approval |
+| `Makefile`, `doctor.py`, `tests/` | `make doctor`, `make plan`, `make apply`, `make run Q="…"`, and offline tests |
+| `README.md`, `GAPS.md` | `ant apply` and how to run a session; what did not carry over |
+
+How the canvas maps onto the platform:
+
+- **Model.** A Claude model (Claude 4.5 or later); another provider's model stops the export and says so.
+- **Python and web API tools** become *custom tools*: the platform sends each call to `run.py` on your machine,
+  which runs the same code as the canvas. A Python tool's arguments come from its signature and docstring.
+- **MCP servers** become `mcp_servers` with an `mcp_toolset`. The platform signs in with a vault credential, so the
+  README gives the `ant beta:vaults:credentials create` command instead of a header.
+- **Tools that need approval** become `always_ask` for MCP tools; for custom tools `run.py` asks on the terminal.
+- **Skills** from the workspace go with the agent.
+
+The export panel and `GAPS.md` list what does not carry over (add-ons, an enforced answer shape, temperature and token
+limits, scripts inside skills, and that sessions and costs live in the Claude Console). Apply with `ant apply`
+(`make plan` first), keep `claude-lock.json`, and start a session with `make run`.
 
 Each framework takes a little less than LangGraph does: add-ons (middleware) and the more unusual tool kinds cannot
 be wired into a designed agent, and P005 says which. Only the LangGraph framework can run agents designed for other
@@ -143,9 +176,10 @@ whether every block can run there; the ones that cannot are listed with P001.
 - **Typed answers** become the agent's `output_type`, and the answer lands in `structured_response`.
 - **Call limits.** A *Model call limit* add-on becomes the agent's `max_turns`; when it is reached the agent stops
   with a note (or the run fails, if the add-on says so).
-- **What it does not have.** No saved conversation history, state editing, replay or breakpoints, and a paused run
-  is kept in the server's memory (a restart forgets it). Planning agents, maps, subflows, memory blocks, HTTP and MCP
-  tools, guard blocks and other add-ons stay on LangGraph for now.
+- **Paused runs** are kept in the database with their conversation, so any server (another replica, or the same
+  one after a restart) continues them.
+- **What it does not have.** No saved conversation history, state editing, replay or breakpoints. Planning agents,
+  maps, subflows, memory blocks, HTTP and MCP tools, guard blocks and other add-ons stay on LangGraph for now.
 - **Export.** The Versions tab exports an OpenAI Agents SDK project: the flow, the small runtime it needs, a
   command-line runner (`python -m <name> '{"input": {...}}'`; a paused run is saved in `.runs/` and continued with
   `{"thread_id": ..., "resume": <answer>}`), each model block reached over its provider's OpenAI-compatible API, and
@@ -182,9 +216,10 @@ and export CrewAI workflows; a run says how to install it.
   starts again from the saved fields, skips the steps that had finished (the paths they took are remembered) and
   gives your answer to the step that asked.
 - **Loops** are guarded: a step that runs more often than the workflow's step limit stops the run.
+- **Paused runs** are kept in the database with their conversation: any server continues them, after a restart too.
 - **What it does not have yet.** Asking before a tool call, saved conversation history, state editing, replay and
-  breakpoints; a paused run is kept in the server's memory. Planning agents, maps, subflows, memory blocks, HTTP and
-  MCP tools, guard blocks and other add-ons stay on LangGraph for now. The Crew and Agent task blocks run only on
+  breakpoints. Planning agents, maps, subflows, memory blocks, HTTP and MCP tools, guard blocks and other add-ons stay
+  on LangGraph for now. The Crew and Agent task blocks run only on
   CrewAI.
 - **Export.** The Versions tab exports a CrewAI project: the flow, the small runtime it needs, a command-line runner
   that saves a paused run in `.runs/` and continues it, each model block reached over its provider's
@@ -216,9 +251,9 @@ says how to install it.
   answer to the step that asked.
 - **Loops** are guarded: a step that runs more often than the workflow's step limit stops the run, and a **Model
   call limit** block caps an agent's model calls in one turn.
-- **What it does not have yet.** Saved conversation history, state editing, replay and breakpoints; a paused run is
-  kept in the server's memory. Planning agents, maps, subflows, memory blocks, HTTP and MCP tools, guard blocks and
-  other add-ons stay on LangGraph for now.
+- **Paused runs** are kept in the database with their conversation: any server continues them, after a restart too.
+- **What it does not have yet.** Saved conversation history, state editing, replay and breakpoints. Planning agents,
+  maps, subflows, memory blocks, HTTP and MCP tools, guard blocks and other add-ons stay on LangGraph for now.
 - **Export.** The Versions tab exports an ADK project: the workflow, the small runtime it needs, a command-line
   runner that saves a paused run in `.runs/` and continues it, each model block reached through LiteLLM over its
   provider's OpenAI-compatible API, and tests that replay the saved test cases with a scripted model.
@@ -252,9 +287,9 @@ the canvas draws it, and the AI blocks are the framework's own agents:
 - **Approvals and questions** pause the run; when you answer, it continues from the step that asked.
 - **Model call limit.** The block caps an agent's model calls in one turn: the agent stops with a note in the
   conversation, or the run fails if the block says so.
-- **What they do not have yet.** Saved conversation history, state editing, replay and breakpoints; a paused run is
-  kept in the server's memory. Planning agents, maps, subflows, memory blocks, HTTP and MCP tools, guard blocks and
-  other add-ons stay on LangGraph for now.
+- **Paused runs** are kept in the database with their conversation: any server continues them, after a restart too.
+- **What they do not have yet.** Saved conversation history, state editing, replay and breakpoints. Planning agents,
+  maps, subflows, memory blocks, HTTP and MCP tools, guard blocks and other add-ons stay on LangGraph for now.
 - **Export.** The Versions tab exports a project for the framework: the flow, the small runtime it needs, a
   command-line runner that saves a paused run in `.runs/` and continues it, each model block reached over its
   provider's OpenAI-compatible API, and tests that replay the saved test cases with a scripted model.
@@ -317,7 +352,8 @@ Pick **Mastra** as the workflow's framework. Mastra is a TypeScript framework, s
 (22.18 or later) next to the server: `make mastra` installs Mastra and what the flow needs from npm in
 `apps/api/.frameworks/mastra` (or set `AGENTCANVAS_MASTRA_DIR` to a folder whose `node_modules` has them, and
 `AGENTCANVAS_NODE` to a Node.js other than the one on the `PATH`). Without it you can still design, check and export
-these workflows; a run says how to install it. The Docker image has no Node.js.
+these workflows; a run says how to install it. The Docker app's image includes Node.js and Mastra unless
+`FRAMEWORKS` leaves Mastra out (`WITH_MASTRA`).
 
 The workflow becomes a TypeScript module, read in the **Code** tab: a Mastra `Agent` for each AI block, an
 `async function` for each block and a `FLOW` that says which step follows which. It runs the way the canvas draws it,
@@ -359,12 +395,22 @@ up*. The top bar shows the workflow's own framework; **+N** opens the others.
 every other installed framework that can run it (the same workflow, written for that framework, as in the Code tab),
 then the Agent Spec previews. Only a LangGraph service gets the deploy kit and **Where it will run**.
 
+### Files and images
+
+[File and image fields](canvas.md#file-and-image-fields) reach an AI model on **LangGraph** only: runs on the canvas
+and LangGraph exports show them to Ask AI and AI Agent steps. Every other framework (the OpenAI Agents SDK, CrewAI, Google
+ADK, Pydantic AI, Agno, the Microsoft Agent Framework, Strands, LlamaIndex, Mastra) and the Agent Spec previews carry the
+field as plain data, a reference, and no step reads the file, so the model never sees it. A workflow set to one of them
+gets the warning **P008**, and the `GAPS.md` of its export lists the file fields. Planning Agents do not receive file
+fields on LangGraph either.
+
 ## The Echo demo engine
 
 Servers started with `AGENTCANVAS_ADAPTERS=langchain,echo` also offer **Echo**, a tiny built-in engine that shows
 how a second framework plugs in. It runs simple flows (set values, paths, wait for all, approvals, questions,
-Python steps), and its AI steps answer with scripted replies or repeat their prompt. It keeps paused runs in memory
-and exports only the workflow file. Use it to try the framework picker, not in production.
+Python steps), and its AI steps answer with scripted replies or repeat their prompt. It keeps paused runs in the
+database, like the other frameworks, and exports only the workflow file. Use it to try the framework picker, not
+in production.
 
 For developers: a new framework implements the adapter core, declares what else it can do in a manifest, and must
 pass the conformance kit (`apps/api/agentcanvas/conformance`); see ADR 0018.

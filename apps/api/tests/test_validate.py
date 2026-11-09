@@ -34,6 +34,13 @@ def test_router_route_without_edge(triage):
     assert "E012" in codes(triage)
 
 
+def test_an_empty_router_path_name_is_reported_once(triage):
+    """E-4: a router with `default: ""` gave E004 (the name's pattern) and also E012 for a route named ''."""
+    triage.require_node("n_rt").config["default"] = ""
+    found = codes(triage)
+    assert "E004" in found and "E012" not in found
+
+
 def test_bad_condition(triage):
     triage.require_node("n_rt").config["cases"][0]["when"] = "state.urgency =="
     assert "E013" in codes(triage)
@@ -122,6 +129,28 @@ def test_writes_and_reads_unknown_channel(triage):
     triage.require_node("n_esc").config["values"] = {"nope": "x"}
     triage.require_node("n_cls").config["prompt"] = "Classify {{ state.missing }}"
     assert {"E021", "E023"} <= set(codes(triage))
+
+
+def test_an_optional_channel_field_cleared_to_empty_is_not_an_unknown_channel(triage):
+    """E-4: clearing an optional output such as a guard's `flag_output` gave "refers to unknown state channel ''"."""
+    triage.nodes.append(
+        Node(id="n_g", type="guard.pii", name="pii", config={"input": "messages", "flag_output": "", "output": ""})
+    )
+    triage.edges = [e for e in triage.edges if e.id != "e1"] + [flow("g1", "START", "n_g"), flow("g2", "n_g", "n_cls")]
+    assert "E021" not in codes(triage)
+    triage.require_node("n_cls").config["output"] = ""  # a required one still is
+    assert "E021" in codes(triage)
+
+
+def test_prose_and_method_calls_are_not_channel_reads(triage):
+    """E-4: a prompt saying "state.get is not a field" gave "reads unknown state channel 'get'"."""
+    triage.require_node("n_ag").config["system_prompt"] = "Remember: state.get is not a field. Use state.nothing."
+    triage.require_node("n_cls").config["prompt"] = "Classify {{ state.get('ticket') }} ({{ state.ticket }})"
+    assert "E023" not in codes(triage)
+    triage.require_node("n_cls").config["prompt"] = "Classify {{ state.ticket }} {% if state.missing %}!{% endif %}"
+    triage.require_node("n_rt").config["cases"][0]["when"] = 'state.ghost == "high"'  # an expression: all of it
+    unknown = [d.message for d in validate(triage) if d.code == "E023"]
+    assert len(unknown) == 2 and "'missing'" in unknown[0] + unknown[1] and "'ghost'" in unknown[0] + unknown[1]
 
 
 def test_settings_reference_unknown_channel(triage):
@@ -255,7 +284,36 @@ def test_delta_storage_requires_batch_safe_reducer():
 def test_ir_1_0_documents_are_upgraded(triage):
     doc = triage.model_dump(mode="json")
     doc["ir_version"] = "1.0"
-    assert Workflow.model_validate(doc).ir_version == "1.2"
+    assert Workflow.model_validate(doc).ir_version == "1.3"
+
+
+def test_a_loop_through_a_map_has_an_exit():
+    """E-4: a map leaves the loop by its `empty` output (Finish when it is not connected), like a router's path."""
+    wf = Workflow(
+        id="wf_map_loop",
+        name="map_loop",
+        nodes=[
+            Node(id="n_plan", type="core.set", name="plan", config={"values": {"note": "{{ state.notes | length }}"}}),
+            Node(id="n_map", type="core.map", name="each_topic", config={"items": "topics", "item": "topic"}),
+            Node(id="n_work", type="core.set", name="work", config={"values": {"notes": "{{ state.topic }}"}}),
+        ],
+        edges=[
+            flow("e1", "START", "n_plan"),
+            flow("e2", "n_plan", "n_map"),
+            flow("e3", "n_map", "n_work", port="each"),
+            flow("e4", "n_work", "n_plan"),
+            flow("e5", "n_map", "END", port="empty"),
+        ],
+        state={
+            "channels": [
+                {"name": "topics", "type": {"type": "array"}},
+                {"name": "topic"},
+                {"name": "notes", "type": {"type": "array"}, "reducer": "append"},
+                {"name": "note"},
+            ]
+        },
+    )  # type: ignore[arg-type]
+    assert "W001" not in codes(wf) and not [d for d in validate(wf) if d.severity == "error"]
 
 
 def test_validation_of_200_nodes_is_fast():

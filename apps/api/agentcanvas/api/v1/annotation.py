@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime
 from typing import Any, Literal
 
@@ -265,13 +266,18 @@ async def list_items(
     if status != "all":
         q = q.where(AnnotationItem.status == status)
     items = (await s.scalars(q.order_by(AnnotationItem.created_at, AnnotationItem.id).limit(limit))).all()
+    return await _items_out(s, items, user.id)
+
+
+async def _items_out(s: AsyncSession, items: Sequence[AnnotationItem], me: str) -> list[ItemOut]:
+    """Items with who reviewed them."""
     reviewers: dict[str, list[str]] = {}
     rows = await s.execute(
         select(Annotation.item_id, Annotation.reviewer).where(Annotation.item_id.in_([i.id for i in items]))
     )
     for item_id, reviewer in rows.all():
         reviewers.setdefault(item_id, []).append(reviewer)
-    return [_item_out(i, reviewers.get(i.id, []), user.id) for i in items]
+    return [_item_out(i, reviewers.get(i.id, []), me) for i in items]
 
 
 @router.post("/annotation-queues/{aq_id}/items", response_model=list[ItemOut])
@@ -291,7 +297,7 @@ async def add_items(
             select(AnnotationItem).where(AnnotationItem.queue_id == aq_id, AnnotationItem.run_id.in_(body.run_ids))
         )
     ).all()
-    return [_item_out(i, [], user.id) for i in items]
+    return await _items_out(s, items, user.id)  # a run already in the queue may have been reviewed
 
 
 async def _detail(s: AsyncSession, item: AnnotationItem, me: str) -> ItemDetail:
@@ -343,6 +349,7 @@ async def annotate(
             raise InvalidInput("this run has no recorded input to turn into an example")
         meta = {"run_id": item.run_id, "annotation_queue": queue.name, "reviewer": user.id}
         corrected = Example(input=run.recording["input"], reference=body.add_to_dataset.reference, metadata=meta)
+        await DatasetService(s).check_new(ds.id, [corrected])  # refused before the review is saved, not after
         example = (ds.id, corrected, f"corrected run {item.run_id} ({queue.name})")
     thread = await s.get(Thread, item.thread_id)
     await annotation.submit(

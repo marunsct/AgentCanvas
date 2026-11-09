@@ -334,6 +334,47 @@ console.log(JSON.stringify(out));
 
 
 @installed
+def test_the_messages_field_replaces_and_removes_by_id_like_langgraph(tmp_path):
+    """add_messages was a plain append: an agent re-sending the chat with ids doubled every message."""
+    script = """
+import { reduce } from "./flow.ts";
+const a = { id: "1", role: "user", content: "hi" }, b = { id: "2", role: "assistant", content: "hello" };
+const out = [
+  reduce("add_messages", [a, b], [a, { ...b, content: "hello again" }, { role: "user", content: "no id" }]),
+  reduce("add_messages", [a, b], { type: "remove", id: "1" }),
+  reduce("add_messages", [a, b], [{ type: "remove", id: "__remove_all__" }, { role: "user", content: "fresh" }]),
+  reduce("append", [a], [a]),
+];
+console.log(JSON.stringify(out));
+"""
+    got = _node(tmp_path, script)
+    assert got == _MESSAGES_EXPECTED
+
+
+_A, _B = {"id": "1", "role": "user", "content": "hi"}, {"id": "2", "role": "assistant", "content": "hello"}
+_MESSAGES_EXPECTED = [
+    [_A, {**_B, "content": "hello again"}, {"role": "user", "content": "no id"}],
+    [_B],
+    [{"role": "user", "content": "fresh"}],
+    [_A, _A],  # a plain list field still appends
+]
+
+
+def test_the_python_flow_engine_reduces_messages_like_langgraph():
+    from agentcanvas.adapters.supersteps import reduce
+
+    got = [
+        reduce("add_messages", [_A, _B], [_A, {**_B, "content": "hello again"}, {"role": "user", "content": "no id"}]),
+        reduce("add_messages", [_A, _B], {"type": "remove", "id": "1"}),
+        reduce(
+            "add_messages", [_A, _B], [{"type": "remove", "id": "__remove_all__"}, {"role": "user", "content": "fresh"}]
+        ),
+        reduce("append", [_A], [_A]),
+    ]
+    assert got == _MESSAGES_EXPECTED
+
+
+@installed
 def test_cancelling_a_run_ends_it_while_it_waits_on_the_server(tmp_path):
     folder = _engine_dir(tmp_path)
     source = (
@@ -412,11 +453,9 @@ def test_most_templates_run_on_mastra():
 @pytest.mark.parametrize("name", _supported("mastra"))
 async def test_supported_templates_run(app, api_client, name):
     """Every template Mastra can run does, end to end, with the demo model (like `test_templates`)."""
-    from test_templates import INPUTS
+    from test_templates import demo_resources, template_input
 
-    from agentcanvas.testing import DemoResources
-
-    demo = DemoResources()
+    demo = demo_resources(app)
     app.state.resources_factory = lambda thread_id, wf: demo
     P = "/v1/projects/prj_default"
     if name == "knowledge_qa":
@@ -426,7 +465,7 @@ async def test_supported_templates_run(app, api_client, name):
     ir = {**wf["ir"], "framework": "mastra"}
     r = await api_client.put(f"/v1/workflows/{wf['id']}", json={"ir": ir}, headers={"If-Match": str(wf["version"])})
     assert r.status_code == 200 and not [d for d in r.json()["diagnostics"] if d["severity"] == "error"], r.text
-    text = (await api_client.post(f"/v1/workflows/{wf['id']}/runs/stream", json={"input": INPUTS[name]})).text
+    text = (await api_client.post(f"/v1/workflows/{wf['id']}/runs/stream", json={"input": template_input(name)})).text
     last = [json.loads(ln[6:]) for ln in text.splitlines() if ln.startswith("data: ")][-1]
     assert last["type"] == "RUN_FINISHED", last
 

@@ -7,7 +7,8 @@ SDK through the model bridge), so the gateway works the same for all of them, an
 * Backups: when a call fails (the provider is down, out of quota, times out...), the same call goes to each backup in
   order and the first answer wins. A streamed call fails over only before its first token.
 * Answer cache: an identical request (same models, messages, tools and options) within `cache_ttl` seconds gets the
-  stored answer without calling a provider, so it costs nothing. One cache per project, in the server's memory.
+  stored answer without calling a provider, so it costs nothing. One cache per project: in the process's memory, or,
+  on a server, in its database (`adapters/langchain/answer_cache.py`), so every replica shares it.
 
 Each answer carries `response_metadata["ac_gateway"]`: which model answered, whether it came from the cache, and the
 models that failed first. The real model calls run as child runs of the gateway's, so usage is counted, and priced,
@@ -60,6 +61,13 @@ class AnswerCache:
     def __len__(self) -> int:
         return len(self._items)
 
+    # The model calls are async: a cache that lives elsewhere (the server's database) overrides these two.
+    async def aget(self, key: str, ttl: float) -> AIMessage | None:
+        return self.get(key, ttl)
+
+    async def aput(self, key: str, answer: AIMessage, ttl: float) -> None:
+        self.put(key, answer)
+
 
 class GatewayModel(BaseChatModel):
     """A canvas model block with backups and an answer cache. `models[0]` is the block's own model."""
@@ -102,16 +110,29 @@ class GatewayModel(BaseChatModel):
     def _runnable(self, model: Any, tools: Any, options: Any) -> Any:
         return model.bind_tools(tools, **(options or {})) if tools else model
 
-    def _answer(self, reply: Any, i: int, failed: list[dict[str, str]], key: str) -> AIMessage:
+    def _answer(self, reply: Any, i: int, failed: list[dict[str, str]], key: str, stored: bool = False) -> AIMessage:
         if not isinstance(reply, AIMessage):
             reply = AIMessage(content=getattr(reply, "content", str(reply)))
-        if key and self.answers is not None:
+        if key and self.answers is not None and not stored:
             self.answers.put(key, reply)
         reply.response_metadata = {**reply.response_metadata, "ac_gateway": _note(self.names[i], False, failed)}
         return reply
 
+    async def _astore(self, reply: Any, key: str) -> AIMessage:
+        """The answer as a message, stored in the cache (which may be a database)."""
+        if not isinstance(reply, AIMessage):
+            reply = AIMessage(content=getattr(reply, "content", str(reply)))
+        if key and self.answers is not None and self.cache_ttl:
+            await self.answers.aput(key, reply, self.cache_ttl)
+        return reply
+
     def _hit(self, key: str) -> AIMessage | None:
-        hit = self.answers.get(key, self.cache_ttl) if key and self.cache_ttl else None
+        return self._noted(self.answers.get(key, self.cache_ttl) if key and self.cache_ttl else None)
+
+    async def _ahit(self, key: str) -> AIMessage | None:
+        return self._noted(await self.answers.aget(key, self.cache_ttl) if key and self.cache_ttl else None)
+
+    def _noted(self, hit: AIMessage | None) -> AIMessage | None:
         if hit is not None:
             hit.usage_metadata = None  # nothing was spent on it
             hit.response_metadata = {**hit.response_metadata, "ac_gateway": _note(self.names[0], True, [])}
@@ -149,7 +170,7 @@ class GatewayModel(BaseChatModel):
         ac_tools: Any = None, ac_tool_options: Any = None, **kwargs: Any,
     ) -> ChatResult:  # fmt: skip
         key = self._key(messages, stop, ac_tools, ac_tool_options, kwargs)
-        if (hit := self._hit(key)) is not None:
+        if (hit := await self._ahit(key)) is not None:
             return ChatResult(generations=[ChatGeneration(message=hit)])
         failed: list[dict[str, str]] = []
         for i, model in enumerate(self.models):
@@ -162,7 +183,8 @@ class GatewayModel(BaseChatModel):
                 if i == len(self.models) - 1:
                     raise
                 continue
-            return ChatResult(generations=[ChatGeneration(message=self._answer(reply, i, failed, key))])
+            reply = await self._astore(reply, key)
+            return ChatResult(generations=[ChatGeneration(message=self._answer(reply, i, failed, key, stored=True))])
         raise AssertionError("unreachable")
 
     def _stream(self, *args: Any, **kwargs: Any) -> Iterator[ChatGenerationChunk]:
@@ -173,7 +195,7 @@ class GatewayModel(BaseChatModel):
         ac_tools: Any = None, ac_tool_options: Any = None, **kwargs: Any,
     ) -> AsyncIterator[ChatGenerationChunk]:  # fmt: skip
         key = self._key(messages, stop, ac_tools, ac_tool_options, kwargs)
-        if (hit := self._hit(key)) is not None:
+        if (hit := await self._ahit(key)) is not None:
             yield ChatGenerationChunk(message=_chunk(hit))
             return
         failed: list[dict[str, str]] = []
@@ -196,7 +218,7 @@ class GatewayModel(BaseChatModel):
                 continue
             if total is None:
                 total = AIMessageChunk(content="")
-            self._answer(message_chunk_to_message(total), i, failed, key)  # stores it
+            await self._astore(message_chunk_to_message(total), key)
             note = {"ac_gateway": _note(self.names[i], False, failed)}
             yield ChatGenerationChunk(message=AIMessageChunk(content="", response_metadata=note))
             return

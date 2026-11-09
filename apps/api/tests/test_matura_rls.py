@@ -27,7 +27,19 @@ from agentcanvas.settings import Settings
 URL = os.getenv("TEST_DATABASE_URL") or ""
 postgres = pytest.mark.skipif(not URL.startswith("postgres"), reason="row-level security needs Postgres")
 APP_ROLE, PROBE_ROLE = "agentcanvas_rls_app", "agentcanvas_rls_probe"
-MIGRATION = pathlib.Path(__file__).parents[1] / "migrations/versions/20261017_a3c7e9b1d5f2_matura_workspaces_rls.py"
+MIGRATIONS = pathlib.Path(__file__).parents[1] / "migrations/versions"
+MIGRATION = MIGRATIONS / "20261017_a3c7e9b1d5f2_matura_workspaces_rls.py"
+LATER = [
+    MIGRATIONS / "20261029_e1a5c9d3f7b2_git_link.py",
+    MIGRATIONS / "20261029_e4a8c2f6b0d1_a2a_replies.py",
+    MIGRATIONS / "20261029_f6b0d4a8c2e5_answer_cache.py",
+    MIGRATIONS / "20261029_a7c1e5b9d3f2_stored_files.py",
+    MIGRATIONS / "20261029_b7d1f5a9c3e8_personal_tokens.py",
+    MIGRATIONS / "20261029_d2f6b0c4e8a1_scim.py",
+    MIGRATIONS / "20261029_e5a9c1b7d3f2_oauth_connections.py",
+    MIGRATIONS / "20261029_f3b7d1a9c5e8_run_search.py",
+    MIGRATIONS / "20261029_a9d3f7b1c5e2_presence.py",
+]  # tables added after it, each with its own policy
 
 
 @pytest.fixture
@@ -53,12 +65,17 @@ def test_every_table_has_a_policy_or_a_reason_not_to():
     for table, (column, parent) in rls.TENANT_TABLES.items():  # each column and parent exists and leads upwards
         assert column in Base.metadata.tables[table].c
         assert parent is None or parent in rls.TENANT_TABLES
-    spec = importlib.util.spec_from_file_location("ts26_migration", MIGRATION)
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    assert module.TABLES == rls.TENANT_TABLES  # the migration's copy matches
-    assert all(module._condition(t) == rls.policy_condition(t) for t in rls.TENANT_TABLES)
+    seen: dict[str, tuple[str, str | None]] = {}
+    for path in (MIGRATION, *LATER):  # the first migration, then each one that added tables (its own copy of them)
+        spec = importlib.util.spec_from_file_location(path.stem, path)
+        assert spec and spec.loader
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        assert not set(module.TABLES) & set(seen)
+        assert all(rls.TENANT_TABLES[t] == v for t, v in module.TABLES.items())  # the migration's copy matches
+        assert all(module._condition(t) == rls.policy_condition(t) for t in module.TABLES)
+        seen.update(module.TABLES)
+    assert seen == rls.TENANT_TABLES  # every table with a policy got it from one of them
 
 
 async def _seed(client) -> dict[str, dict[str, str]]:
@@ -187,3 +204,16 @@ async def test_a_matura_request_sees_only_its_organisation_even_without_filters(
             assert (
                 await client.get(f"/v1/workflows/{w.json()['id']}", headers=as_user(BEN, GLOBEX))
             ).status_code == 404
+            # knowledge is searched in the database under the policies too (G-6), and stays the organisation's
+            kb = await client.post(f"/v1/projects/{p}/knowledge", json={"name": "rls-docs"}, headers=h)
+            assert kb.status_code == 201, kb.text
+            k = f"/v1/knowledge/{kb.json()['id']}"
+            added = await client.post(
+                f"{k}/documents/text", json={"title": "IT", "text": "Report a lost laptop to IT."}, headers=h
+            )
+            assert added.status_code == 201, added.text
+            for mode in ("hybrid", "semantic", "keyword"):
+                r = await client.post(f"{k}/search", json={"query": "lost laptop", "mode": mode}, headers=h)
+                assert r.status_code == 200 and [x["title"] for x in r.json()["results"]] == ["IT"], (mode, r.text)
+            r = await client.post(f"{k}/search", json={"query": "lost laptop"}, headers=as_user(BEN, GLOBEX))
+            assert r.status_code == 404

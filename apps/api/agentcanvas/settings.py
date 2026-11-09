@@ -5,7 +5,7 @@ from __future__ import annotations
 from functools import cache
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -60,16 +60,40 @@ class Settings(BaseSettings):
     # how workspace code runs (M5-T4): in the API process (dev), a child process, a Docker container or a LangSmith
     # Sandbox (spike SP-2; credentials from LANGSMITH_API_KEY)
     script_execution: Literal["inprocess", "subprocess", "docker", "langsmith", "remote"] = "inprocess"
+    # staging and prod refuse to run workspace code as the API's own user (inprocess, subprocess) unless this says so:
+    # for a server only trusted people edit (S-8)
+    allow_unisolated_scripts: bool = False
     sandbox_url: str | None = (
         None  # "remote": the sandbox service (`agentcanvas.sandbox.service`), e.g. http://sandbox:8090
     )
     sandbox_token: str | None = None  # the bearer token the service expects
     sandbox_image: str = "python:3.12-slim"
+    # sandbox.json egress allow-lists (docker, remote): sandboxed code reaches the network only through this proxy
+    # (`agentcanvas.sandbox.egress`), which admits the hosts of the call's signed list. "remote": its address as the
+    # sandbox sees it (e.g. egress:3128); "docker": unset starts and uses the `agentcanvas-egress` container
+    egress_proxy: str | None = None
+    # "remote": hand the sandbox the proxy's IPv4 address instead of its name, so the sandbox needs no DNS (Kubernetes:
+    # a Service's ClusterIP is the same from every pod; not in compose, where the API sees the proxy on another network)
+    egress_proxy_resolve: bool = False
+    egress_secret: str | None = None  # signs each call's list; shared with the proxy (docker: derived when unset)
+    # the proxy reaches private addresses (10.x, 172.16.x, the database, 127.x) only when the operator says so: a
+    # project's sandbox.json cannot open them. Link-local and cloud metadata addresses are never reached.
+    egress_allow_private: bool = False
     langsmith_snapshot: str | None = None  # snapshot name/id to boot from; None = LangSmith's default snapshot
     langsmith_sandbox_endpoint: str | None = None  # None = the SDK default (LANGSMITH_ENDPOINT)
     langsmith_idle_s: int = 600  # idle sandboxes stop after this (a multiple of 60)
     recursion_limit: int = 50
+    # the Copilot's engine: our own tool loop, or LangChain's Deep Agents harness (PLAN.md section 2; the loop stays the
+    # default until Deep Agents has passed the same suite and the real-model evaluation)
+    copilot_engine: Literal["loop", "deepagents"] = "loop"
     cors_origins: list[str] = ["http://localhost:5173"]
+    # where people reach the web app, e.g. https://canvas.example.com: OAuth sign-ins to app connectors return to
+    # <public_url>/oauth/callback and (https only) authorization servers fetch our client metadata document from
+    # <public_url>/api/v1/oauth/client-metadata.json. Unset: the first CORS origin (the development server).
+    public_url: str | None = None
+    # networks whose requests get 403: the one the API shares with the sandbox service (compose: sandbox-control), so
+    # workspace code there cannot call the API from inside
+    refuse_clients: list[str] = []
     log_json: bool = False
     metrics_enabled: bool = True  # Prometheus at GET /metrics (M8-T3)
     # conversations (threads, their checkpoints and runs) are deleted this many days after their last activity
@@ -77,6 +101,21 @@ class Settings(BaseSettings):
     retention_days: int = 90
     audit_retention_days: int = 400  # audit-log rows older than this are deleted; 0 keeps them forever (S12)
     memory_retention_days: int = 0  # long-term memories not updated for this long are deleted; 0 (default): kept
+    # long-term memory's semantic index (F-7): "builtin" or "<provider>:<model>"; empty (default): by words.
+    # One size of vector per server (the pgvector column), so one model for every project; a model other than the
+    # built-in or a well-known hosted one needs its size in `memory_embedding_dims` (0: measured at startup)
+    memory_embedding: str = ""
+    memory_embedding_dims: int = 0
+    memory_embedding_base_url: str = ""  # a local server's address (LM Studio, Ollama) for `memory_embedding`
+    # whether an organisation's groups-to-roles table may add people who are not its members (CP-2); unset: only
+    # when the server has one organisation, so one tenant's admin cannot enrol every person of another
+    sso_groups_add_members: bool | None = None
+    # OCR for scanned PDFs and pictures added to a knowledge base: "auto" (default) uses Tesseract when it is installed
+    # (the Docker image has it), "off" never runs it. Languages are Tesseract codes joined by "+", e.g. "eng+deu".
+    ocr: str = "auto"
+    ocr_languages: str = "eng"
+    ocr_max_pages: int = 100  # pages OCR reads in one file; the rest are left out and the title says so
+    ocr_page_timeout_s: int = 60
     # control-database connections per API process (Postgres): pool_size kept open, up to max_overflow more
     db_pool_size: int = 10
     db_max_overflow: int = 20
@@ -91,12 +130,24 @@ class Settings(BaseSettings):
     # project's limits, so one anonymous visitor cannot use up a deployment's whole budget
     rate_limit_per_share_client: int = 30
     retention_interval_s: int = 3600  # how often the retention job looks for expired conversations
+    # G-5: the largest file a person may attach to a run (Run tab, share links, inline in API calls), in MB
+    max_upload_mb: float = Field(default=10, gt=0, le=20)  # the web server accepts 20 MB bodies (infra/nginx.conf)
+    max_project_files_mb: float = Field(default=1024, ge=0)  # all of a project's attached files; 0 = no limit
     # FR-X-10 safe redeploy: on shutdown, how long running runs get to finish before they are handed over (keep it
     # below the pod's terminationGracePeriodSeconds), and how often instances look for runs to continue
     drain_grace_s: float = 20.0
     handover_interval_s: float = 10.0
     # a running run whose instance has not refreshed it for this long lost its instance and is handed over
     orphan_after_s: float = 60.0
+
+    @field_validator("refuse_clients")
+    @classmethod
+    def _networks(cls, value: list[str]) -> list[str]:
+        import ipaddress
+
+        for network in value:
+            ipaddress.ip_network(network, strict=False)  # a typo stops the start, not a request
+        return value
 
 
 @cache

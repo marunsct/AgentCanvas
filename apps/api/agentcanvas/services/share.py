@@ -18,13 +18,14 @@ import secrets
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.db.models import Deployment, DeploymentShare, ShareThread, WorkflowVersion
 from agentcanvas.errors import InvalidInput, NotFound
 from agentcanvas.ir.contract import contract
+from agentcanvas.ir.files import accepts, is_file_schema
 from agentcanvas.ir.models import Workflow
 
 TOKEN_PREFIX = "sh_"
@@ -32,6 +33,7 @@ TEXT_FIELDS = ("message", "question", "query", "input", "text", "request", "prom
 STRONG_ANSWER_FIELDS = ("answer", "reply", "response")
 ANSWER_FIELDS = ("output", "result", "summary", "text", "message")
 MAX_SUGGESTIONS = 6
+MAX_TRANSCRIPT = 200  # messages kept per saved conversation; older ones drop off
 
 
 def new_token() -> str:
@@ -114,6 +116,28 @@ def input_shape(wf: Workflow, chosen: str | None) -> InputShape:
         return InputShape(field=messages, chat=True)
     only_in = [k for k in strings if k not in c.output]  # fields that are both in and out are rarely the question
     return InputShape(field=next((group[0] for group in (only_in, strings) if group), None))
+
+
+def text_inputs(wf: Workflow) -> list[str]:
+    """The inputs a visitor's message could go to: the text inputs and the message list, in the contract's order."""
+    messages = _messages_field(wf)
+    return [k for k, v in contract(wf).input.items() if k == messages or v.get("type") in (None, "string")]
+
+
+class AttachShape(BaseModel):
+    field: str = Field(description="the file input a visitor's attachments go to")
+    accept: str | None = Field(default=None, description="the media types it takes, e.g. image/*")
+    multiple: bool = Field(default=False, description="true: the field is a list of files")
+
+
+def attach_shape(wf: Workflow) -> AttachShape | None:
+    """The first file input of the workflow (G-5): where a visitor's attached files go."""
+    inputs = contract(wf).input
+    name = next((k for k, v in inputs.items() if is_file_schema(v)), None)
+    if name is None:
+        return None
+    schema = inputs[name]
+    return AttachShape(field=name, accept=accepts(schema), multiple=schema.get("type") == "array")
 
 
 def run_input(shape: InputShape, text: str) -> dict[str, Any]:
@@ -265,4 +289,35 @@ class ShareService:
 
     async def claim_thread(self, dep_id: str, thread_id: str, visitor: str) -> None:
         self.s.add(ShareThread(thread_id=thread_id, deployment_id=dep_id, visitor_hash=visitor_hash(visitor)))
+        await self.s.commit()
+
+    async def record(self, thread_id: str, *entries: dict[str, Any]) -> None:
+        """Add what the visitor sent or was told to the conversation they will see again after a reload."""
+        row = await self.s.get(ShareThread, thread_id, populate_existing=True)
+        if row is None:  # the link was regenerated, or the conversation expired, while the run went on
+            return
+        row.transcript = [*(row.transcript or []), *entries][-MAX_TRANSCRIPT:]
+        await self.s.commit()
+
+    async def latest(self, dep_id: str, visitor: str) -> ShareThread | None:
+        """The visitor's newest conversation on this link that they have not closed."""
+        return await self.s.scalar(
+            select(ShareThread)
+            .where(
+                ShareThread.deployment_id == dep_id,
+                ShareThread.visitor_hash == visitor_hash(visitor),
+                ShareThread.closed.is_(False),
+            )
+            .order_by(ShareThread.created_at.desc(), ShareThread.thread_id.desc())
+            .limit(1)
+        )
+
+    async def close_conversations(self, dep_id: str, visitor: str) -> None:
+        """ "New conversation": the visitor's conversations stay (the builders see their runs) but are not shown to
+        them again."""
+        await self.s.execute(
+            update(ShareThread)
+            .where(ShareThread.deployment_id == dep_id, ShareThread.visitor_hash == visitor_hash(visitor))
+            .values(closed=True)
+        )
         await self.s.commit()

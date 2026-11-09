@@ -7,6 +7,10 @@ Open the **Run** tab (or click **▶ Test** in the toolbar).
 - **JSON** mode: edit the input (pre-filled with the workflow's input channels) and click **▶ Run**.
 - **Chat** mode: for workflows built around the `messages` channel. Type a message and **Send**; each message
   continues the same conversation (thread).
+- **File and image inputs**: a workflow input typed *file* or *image* ([File and image fields](canvas.md#file-and-image-fields))
+  gets a box under the JSON: **Attach a file** or drop one on it. Images show a preview; the box refuses a file that is
+  too large or the wrong kind before sending it, and the server checks what the file really is. The run input then
+  holds a reference to the file, not the file. Remove it with ✕.
 - **continue thread**: tick it to run on the previous thread, keeping its state, instead of starting fresh.
 - **Dry run (stub risky tools)**: every tool that can write, send, execute or spend is replaced by a recorder, so
   the run has no side effects. The output shows what would have been called.
@@ -32,12 +36,43 @@ and the Run tab shows **Approval needed** with the value under review.
 Select a step and click **○ Add breakpoint** in the Inspector. A run pauses *before* that step
 (*Paused at a breakpoint before …*); inspect the state, then **⏵ Continue**.
 
+## History
+
+The **History** tab of the editor's dock lists this workflow's past conversations, newest first, with their status;
+click one to open it in the **Timeline**. The project's conversations of every workflow are on the **Runs** page
+([Settings and moving around](settings.md#your-workflows-and-the-runs-page)).
+
 ## Timeline: time travel and fork
 
 The **Timeline** tab in the bottom dock lists every checkpoint of the run's thread. Select one to see the state
 at that moment, including **lineage** (which step or input last wrote each channel). Edit the state and click
 **⑂ Fork from here** to re-run from that point with the change, without touching the original run. This is the
 quickest way to try "what if the classifier had said *high*?".
+
+## Trajectory: who did what
+
+The **Timeline** tab has a **Trajectory** view next to **Checkpoints**, and the **Runs** page has a **Trajectory**
+button on each conversation. It shows the whole conversation as a tree, one branch per run: the steps that ran,
+under a step the model replies and tool calls, the **helper agents** a Planning Agent handed tasks to (with their
+own replies and tools), agents of other frameworks that answered, steps inside subflows, and the frames you drew
+around steps. Each row shows its time, tokens and a bar placed on the run's timeline; click a row's name to show
+that step on the canvas, and the arrow to open arguments, replies and results. Runs are kept with their events,
+so the tree works for past runs too; runs from before this version show a note instead.
+
+## Find conversations by meaning
+
+The search box at the top of the **Runs** page finds conversations by what was asked and answered, not by exact
+words: *customers asking for a refund* finds a chat that says "I want my money back" when the project's embedding
+model understands that. Results are the best run of each conversation, with a snippet; click one to open it in the
+Timeline. Narrow it with the workflow filter below.
+
+- Each run is indexed in the background when it finishes, with the project's **embedding** model (Settings >
+  Models; the built-in offline embedding when none is chosen, which matches word forms, not synonyms).
+- Runs from before this version, and runs indexed with a model you have since replaced, are listed as *not
+  searchable yet*; **Index them** (builders) adds them, newest first.
+- The index follows your data: deleting a conversation, or the organisation's retention period, removes its search
+  entry, and nobody sees another organisation's runs. Secret values are masked before anything is embedded, but with
+  a hosted embedding model the masked text of inputs and answers is sent to that provider, as with a knowledge base.
 
 ## Explain
 
@@ -50,7 +85,10 @@ doesn't read JSON.
 - **📌 Pin last output:** after a run, select a step and pin its last output. Debug runs then skip that step and replay
   the pinned output: handy for iterating on a later step without re-running an expensive one. **Unpin** to undo.
 - **Mock replies:** select a *AI model* block and enter **Mock replies for debug runs**. Debug runs use those
-  replies instead of calling the model.
+  replies instead of calling the model. The replies follow the conversation: the first answer of a conversation is
+  reply 1, the next one reply 2, and the last reply repeats. An agent's tool loop and a chat's later turns move
+  through the list, but every **Ask AI** step starts a conversation of its own, so each one gets reply 1. To script
+  two Ask AI steps differently, give each its own AI model block.
 
 Pins and mocks only affect runs started from the editor, never published deployments.
 
@@ -65,7 +103,7 @@ warning in the run that crossed it.
 
 With `LANGSMITH_TRACING=true` and a `LANGSMITH_API_KEY` on the server, each run gets an **Open trace in LangSmith**
 link. With `OTEL_EXPORTER_OTLP_ENDPOINT` set, the server also exports OpenTelemetry traces. Secret values are
-masked as `***`; list fields in the workflow's `trace_redact` setting to keep their values out of traces entirely.
+masked as `***`; list fields under **Hide these fields from traces** in the Workflow panel to keep their values out of traces entirely.
 
 ## Save a run as a test
 

@@ -12,7 +12,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from agentcanvas.api.audit import note
 from agentcanvas.api.deps import CurrentUser, current_user, get_session
 from agentcanvas.db.models import KnowledgeBase, KnowledgeDocument
+from agentcanvas.db.repositories import ProjectRepo
 from agentcanvas.errors import InvalidInput
+from agentcanvas.services import model_defaults
 from agentcanvas.services.knowledge import (
     MAX_FILE_BYTES,
     Chunking,
@@ -48,6 +50,42 @@ class KnowledgeBasePatch(BaseModel):
     chunking: Chunking | None = None
 
 
+class RecrawlIn(BaseModel):
+    every_hours: int | None = Field(
+        default=None, ge=1, le=24 * 90, description="fetch the web pages again this often; null turns it off"
+    )
+
+
+class RecrawlResult(BaseModel):
+    at: datetime
+    added: int
+    updated: int
+    removed: int
+    unchanged: int
+    failed: list[dict[str, str]] = Field(description="[{url, error}]: pages that could not be fetched or added")
+
+
+class RecrawlOut(BaseModel):
+    every_hours: int | None
+    sitemaps: list[str]
+    last: RecrawlResult | None
+
+
+class KnowledgeDefaults(BaseModel):
+    chunking: Chunking = Field(
+        default_factory=Chunking, description="how new knowledge bases split their documents, unless they say"
+    )
+
+
+KEY = "knowledge_defaults"  # in the project's settings: {"chunking": {...}}
+
+
+def project_chunking(project_settings: dict) -> Chunking | None:
+    """The project's chunking for new knowledge bases, or None when it has set none (the built-in one applies)."""
+    raw = (project_settings.get(KEY) or {}).get("chunking")
+    return Chunking.model_validate(raw) if isinstance(raw, dict) else None
+
+
 class KnowledgeBaseOut(BaseModel):
     id: str
     project_id: str
@@ -57,6 +95,7 @@ class KnowledgeBaseOut(BaseModel):
     chunking: Chunking
     stale: bool = Field(description="settings changed since the documents were indexed: reindex")
     version: int
+    recrawl: RecrawlOut
     documents: int
     chunks: int
     created_at: datetime
@@ -85,6 +124,10 @@ class UrlIn(BaseModel):
     url: str = Field(min_length=8, max_length=2000)
 
 
+class SitemapIn(BaseModel):
+    url: str = Field(min_length=8, max_length=2000, description="a sitemap.xml (or a sitemap index) on a public host")
+
+
 class TextIn(BaseModel):
     title: str = Field(min_length=1, max_length=300)
     text: str = Field(min_length=1)
@@ -94,7 +137,7 @@ class SearchIn(BaseModel):
     query: str = Field(min_length=1, max_length=4000)
     mode: Literal["hybrid", "semantic", "keyword"] = "hybrid"
     top_k: int = Field(default=5, ge=1, le=50)
-    min_score: float = Field(default=0.0, ge=0)
+    min_score: float = Field(default=0.0, ge=0, le=1, description="0-1 in every mode (see the guide)")
 
 
 class SearchResult(BaseModel):
@@ -113,10 +156,20 @@ class SearchOut(BaseModel):
     results: list[SearchResult]
 
 
+def _recrawl(kb: KnowledgeBase) -> RecrawlOut:
+    cfg = kb.recrawl if isinstance(kb.recrawl, dict) else {}
+    last = cfg.get("last")
+    return RecrawlOut(
+        every_hours=cfg.get("every_hours"), sitemaps=list(cfg.get("sitemaps") or {}),
+        last=RecrawlResult.model_validate(last) if last else None,
+    )  # fmt: skip
+
+
 def _out(kb: KnowledgeBase, documents: int, chunks: int) -> KnowledgeBaseOut:
     return KnowledgeBaseOut(
         id=kb.id, project_id=kb.project_id, name=kb.name, description=kb.description, embedding=kb.embedding,
-        chunking=Chunking.model_validate(kb.chunking), stale=kb.stale, version=kb.version, documents=documents,
+        chunking=Chunking.model_validate(kb.chunking), stale=kb.stale, version=kb.version, recrawl=_recrawl(kb),
+        documents=documents,
         chunks=chunks, created_at=kb.created_at, updated_at=kb.updated_at,
     )  # fmt: skip
 
@@ -137,6 +190,21 @@ async def list_knowledge_bases(project_id: str, s: KnowledgeService = Depends(sv
     return [_out(kb, n, c) for kb, n, c in await s.list(project_id)]
 
 
+async def _project_settings(s: KnowledgeService, project_id: str) -> dict:
+    return (await ProjectRepo(s.s).require(project_id)).settings or {}
+
+
+def _on_project_server(embedding: Embedding | None, project_settings: dict) -> Embedding | None:
+    """An embedding model of the provider the project's model is on (an LM Studio embedding model beside an LM Studio
+    chat model) is reached at the same address with the same key, unless it names its own."""
+    default = project_settings.get("default_model") or {}
+    if embedding is None or embedding.base_url or embedding.api_key:
+        return embedding
+    if embedding.model.partition(":")[0] != str(default.get("model", "")).partition(":")[0]:
+        return embedding
+    return embedding.model_copy(update={"base_url": default.get("base_url"), "api_key": default.get("api_key")})
+
+
 @router.post("/projects/{project_id}/knowledge", response_model=KnowledgeBaseOut, status_code=201)
 async def create_knowledge_base(
     project_id: str,
@@ -149,12 +217,35 @@ async def create_knowledge_base(
     if body.sample:
         kb = await s.sample(project_id, body.sample, user.id)
     else:
+        embedding = body.embedding
+        project_settings = await _project_settings(s, project_id)
+        if embedding is None and (own := model_defaults.stored(project_settings).get("embedding")):
+            embedding = Embedding(model=own)  # the project's embedding model (Settings > Models)
+        embedding = _on_project_server(embedding, project_settings)
         kb = await s.create(
-            project_id, body.name, description=body.description, embedding=body.embedding, chunking=body.chunking,
-            user_id=user.id,
+            project_id, body.name, description=body.description, embedding=embedding,
+            chunking=body.chunking or project_chunking(project_settings), user_id=user.id,
         )  # fmt: skip
     note(request, knowledge_base=kb.name)
     return await _full(s, kb)
+
+
+@router.get("/projects/{project_id}/knowledge-defaults", response_model=KnowledgeDefaults)
+async def get_knowledge_defaults(project_id: str, s: KnowledgeService = Depends(svc)) -> KnowledgeDefaults:
+    """What a new knowledge base uses when it names no chunking (Settings > Knowledge)."""
+    return KnowledgeDefaults(chunking=project_chunking(await _project_settings(s, project_id)) or Chunking())
+
+
+@router.put("/projects/{project_id}/knowledge-defaults", response_model=KnowledgeDefaults)
+async def put_knowledge_defaults(
+    project_id: str, body: KnowledgeDefaults, request: Request, s: KnowledgeService = Depends(svc)
+) -> KnowledgeDefaults:
+    """Set the chunking new knowledge bases start with. Existing ones keep theirs."""
+    project = await ProjectRepo(s.s).require(project_id, lock=True)
+    project.settings = {**(project.settings or {}), KEY: {"chunking": body.chunking.model_dump()}}
+    await s.s.commit()
+    note(request, target=f"project_id={project_id}", **body.chunking.model_dump())
+    return body
 
 
 @router.get("/knowledge/{kb_id}", response_model=KnowledgeBaseOut)
@@ -167,8 +258,11 @@ async def update_knowledge_base(
     kb_id: str, body: KnowledgeBasePatch, s: KnowledgeService = Depends(svc)
 ) -> KnowledgeBaseOut:
     """A new embedding model or chunking marks the knowledge base stale until it is reindexed."""
+    embedding = body.embedding
+    if embedding is not None:
+        embedding = _on_project_server(embedding, await _project_settings(s, (await s.get(kb_id)).project_id))
     kb = await s.update(
-        kb_id, name=body.name, description=body.description, embedding=body.embedding, chunking=body.chunking
+        kb_id, name=body.name, description=body.description, embedding=embedding, chunking=body.chunking
     )
     return await _full(s, kb)
 
@@ -198,8 +292,8 @@ async def upload_documents(
     s: KnowledgeService = Depends(svc),
     user: CurrentUser = Depends(current_user),
 ) -> list[DocumentOut]:
-    """Upload files (multipart field `files`, up to 20 at a time, 20 MB each). All are read before any is added,
-    so an unreadable file adds nothing."""
+    """Upload files (multipart field `files`, up to 20 at a time, 20 MB each), in one transaction: a file that
+    cannot be read or added (unreadable, the same text twice, too many chunks) adds none of them."""
     if len(files) > MAX_FILES:
         raise InvalidInput(f"upload at most {MAX_FILES} files at a time")
     await s.get(kb_id)
@@ -209,7 +303,7 @@ async def upload_documents(
         if len(data) > MAX_FILE_BYTES:
             raise InvalidInput(f"'{f.filename}' is larger than {MAX_FILE_BYTES // (1024 * 1024)} MB")
         read.append((f.filename or "document.txt", data))
-    added = [await s.add_file(kb_id, name, data, user.id) for name, data in read]
+    added = await s.add_files(kb_id, read, user.id)
     note(request, documents=[d.name for d in added])
     return [_doc(d) for d in added]
 
@@ -226,6 +320,41 @@ async def add_url(
     doc = await s.add_url(kb_id, body.url, user.id, transport=getattr(request.app.state, "knowledge_transport", None))
     note(request, url=doc.url)
     return _doc(doc)
+
+
+@router.post("/knowledge/{kb_id}/documents/sitemap", response_model=RecrawlResult, status_code=201)
+async def add_sitemap(
+    kb_id: str,
+    body: SitemapIn,
+    request: Request,
+    s: KnowledgeService = Depends(svc),
+    user: CurrentUser = Depends(current_user),
+) -> RecrawlResult:
+    """Add every page of a sitemap (up to 500, on the sitemap's own host) and keep following it: a re-crawl adds
+    its new pages and removes the ones that left it. Private and internal addresses are refused."""
+    done = await s.add_sitemap(
+        kb_id, body.url, user.id, transport=getattr(request.app.state, "knowledge_transport", None)
+    )
+    note(request, sitemap=body.url, added=done["added"])
+    return RecrawlResult.model_validate(done)
+
+
+@router.put("/knowledge/{kb_id}/recrawl", response_model=KnowledgeBaseOut)
+async def set_recrawl(kb_id: str, body: RecrawlIn, s: KnowledgeService = Depends(svc)) -> KnowledgeBaseOut:
+    """Fetch the knowledge base's web pages and sitemaps again every `every_hours` hours (null: never)."""
+    return await _full(s, await s.set_recrawl(kb_id, body.every_hours))
+
+
+@router.post("/knowledge/{kb_id}/recrawl", response_model=RecrawlResult)
+async def recrawl_now(
+    kb_id: str,
+    request: Request,
+    s: KnowledgeService = Depends(svc),
+    user: CurrentUser = Depends(current_user),
+) -> RecrawlResult:
+    """Fetch the web pages and sitemaps now: changed pages are replaced, new sitemap pages added, gone ones removed."""
+    done = await s.recrawl(kb_id, user.id, transport=getattr(request.app.state, "knowledge_transport", None))
+    return RecrawlResult.model_validate(done)
 
 
 @router.post("/knowledge/{kb_id}/documents/text", response_model=DocumentOut, status_code=201)

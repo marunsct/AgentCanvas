@@ -2,25 +2,28 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import PlainTextResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas import agentspec, importers
 from agentcanvas.adapters import framework_adapter
 from agentcanvas.api.deps import CurrentUser, current_user, get_session, get_settings_dep, if_match
-from agentcanvas.db.models import CostAlert, Run, Thread
+from agentcanvas.api.v1.workspace import _off_loop
+from agentcanvas.db.models import CostAlert, Run, Thread, WorkflowRow
 from agentcanvas.errors import InvalidInput
 from agentcanvas.ids import new_id
 from agentcanvas.ir.commands import Command
 from agentcanvas.registry.adapters import portability
 from agentcanvas.runtime.runner import periods
-from agentcanvas.services.workflows import WorkflowService, WorkflowView
+from agentcanvas.services import template_kit
+from agentcanvas.services.workflows import WorkflowService, WorkflowView, list_templates
 from agentcanvas.settings import Settings
 from agentcanvas.validation import Diagnostic
 from agentcanvas.validation.blast import BlastRadius, blast_radius
@@ -45,6 +48,9 @@ class WorkflowOut(BaseModel):
     diagnostics: list[Diagnostic]
     created_at: datetime
     updated_at: datetime
+    kit: template_kit.KitOut | None = Field(
+        default=None, description="created from a template: the files, dataset, evaluators, tests and schedule it added"
+    )
 
 
 class WorkflowSummary(BaseModel):
@@ -102,13 +108,36 @@ def _out(v: WorkflowView, response: Response | None = None) -> WorkflowOut:
 async def create_workflow(
     project_id: str,
     body: CreateWorkflow,
+    request: Request,
     response: Response,
     svc: WorkflowService = Depends(service),
     user: CurrentUser = Depends(current_user),
 ) -> WorkflowOut:
-    view = await svc.create(project_id, body.name, body.template, user.id)
+    """An empty workflow, or one from a template with what the template brings beside it (`kit`)."""
+    doc = list_templates(svc.settings).get(body.template) if body.template else None
+    kit = template_kit.kit_of(doc)
+    template_kit.check(kit)
+    wf_id = new_id("wf")
+    added = template_kit.KitOut()
+    if kit.files:  # before the workflow, so its custom blocks are known when it is checked
+        await svc.projects.require(project_id)
+        ws = request.app.state.projects.workspace(project_id)
+        added = await _off_loop(ws, lambda: template_kit.write_files(ws, kit, wf_id, str(body.template)))
+    try:
+        view = await svc.create(project_id, body.name, body.template, user.id, wf_id=wf_id)
+        if kit.dataset or kit.evaluators or kit.tests or kit.triggers:
+            added = await template_kit.add_records(svc.repo.s, kit, wf_id, user.id, added)
+    except Exception:  # the kit's services commit as they go: undo all of it, never a workflow with half a kit
+        await svc.repo.s.rollback()
+        if await svc.repo.s.get(WorkflowRow, wf_id) is not None:
+            await svc.delete(wf_id)  # its dataset, evaluators, tests and schedule go with it
+        if written := added.files_written:
+            here = request.app.state.projects.workspace(project_id)
+            await _off_loop(here, lambda: [here.delete(rel) for rel in written])
+        raise
     response.headers["Location"] = f"/v1/workflows/{view.row.id}"
-    return _out(view, response)
+    out = _out(view, response)
+    return out.model_copy(update={"kit": added}) if kit != template_kit.Kit() else out
 
 
 @router.get("/projects/{project_id}/workflows", response_model=WorkflowPage)
@@ -154,6 +183,38 @@ async def apply_commands(
 @router.put("/workflows/{wf_id}/layout")
 async def set_layout(wf_id: str, body: LayoutUpdate, svc: WorkflowService = Depends(service)) -> dict[str, Any]:
     return {"layout": await svc.set_layout(wf_id, body.positions, body.replace)}
+
+
+class WorkflowPatch(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+
+
+@router.patch("/workflows/{wf_id}", response_model=WorkflowOut)
+async def rename_workflow(
+    wf_id: str, body: WorkflowPatch, response: Response, svc: WorkflowService = Depends(service)
+) -> WorkflowOut:
+    """Rename the workflow (a new draft version; the editor of another tab is told it changed)."""
+    if not body.name.strip():
+        raise InvalidInput("a workflow needs a name")
+    return _out(await svc.rename(wf_id, body.name.strip()), response)
+
+
+class DuplicateIn(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=200, description="default: '<name> (copy)'")
+
+
+@router.post("/workflows/{wf_id}/duplicate", response_model=WorkflowOut, status_code=201)
+async def duplicate_workflow(
+    wf_id: str,
+    body: DuplicateIn,
+    response: Response,
+    svc: WorkflowService = Depends(service),
+    user: CurrentUser = Depends(current_user),
+) -> WorkflowOut:
+    """A copy of the draft and its layout in the same project (not its versions, runs or deployments)."""
+    view = await svc.duplicate(wf_id, body.name.strip() if body.name else None, user.id)
+    response.headers["Location"] = f"/v1/workflows/{view.row.id}"
+    return _out(view, response)
 
 
 @router.delete("/workflows/{wf_id}", status_code=204)
@@ -298,12 +359,23 @@ async def import_agent_spec(
 
 # ------------------------------------------------------------------ importers (S31) ----
 class ImportFile(BaseModel):
-    file: dict[str, Any] = Field(description="The JSON a Langflow, Flowise, n8n or Agent Spec export downloads")
+    file: dict[str, Any] | None = Field(
+        None, description="The JSON a Langflow, Flowise, n8n or Agent Spec export downloads"
+    )
+    code: str | None = Field(
+        None, max_length=500_000, description="OpenAI Agents SDK Python (an Agent Builder export, or written by hand)"
+    )
     name: str | None = Field(None, min_length=1, max_length=200)
+
+    @model_validator(mode="after")
+    def _one(self) -> ImportFile:
+        if (self.file is None) == (self.code is None):
+            raise ValueError("send either `file` (an exported JSON file) or `code` (OpenAI Agents SDK Python)")
+        return self
 
 
 class Imported(WorkflowOut):
-    format: str = Field(description="langflow, flowise, n8n or agentspec")
+    format: str = Field(description="langflow, flowise, n8n, agentspec or openai_agents")
     report: list[str]
 
 
@@ -311,15 +383,30 @@ class Imported(WorkflowOut):
 async def import_file(
     project_id: str,
     body: ImportFile,
+    request: Request,
     response: Response,
     svc: WorkflowService = Depends(service),
     user: CurrentUser = Depends(current_user),
 ) -> Imported:
-    """A new workflow from another builder's file (Langflow, Flowise, n8n or Open Agent Spec), with what changed."""
-    try:
-        kind, ir, report, layout = importers.import_document(body.file, wf_id=new_id("wf"), name=body.name)
+    """A new workflow from another builder's file (Langflow, Flowise, n8n or Open Agent Spec) or OpenAI Agents SDK
+    code, with what changed."""
+    wf_id = new_id("wf")
+    try:  # off the event loop: a large or strange file must not stop the server answering others
+        kind, ir, report, layout = await asyncio.to_thread(
+            importers.import_document, body.file if body.file is not None else body.code, wf_id=wf_id, name=body.name
+        )
     except importers.ImportError_ as exc:
         raise InvalidInput(str(exc)) from exc
+    except RecursionError as exc:
+        raise InvalidInput("the file is nested too deeply to import") from exc
+    kit = template_kit.kit_of(ir)
+    if kit.files:  # code the workflow calls (an Agents SDK file's function tools): into the workspace first
+        await svc.projects.require(project_id)
+        ws = request.app.state.projects.workspace(project_id)
+        added = await _off_loop(ws, lambda: template_kit.write_files(ws, kit, wf_id, f"import of {kind}"))
+        report = [*report, *(f"Added {p} to the workspace." for p in added.files_written)]
+        report += [f"Kept your own {p}; the imported code needs its functions." for p in added.files_kept]
+        ir["metadata"].pop(template_kit.KIT, None)
     view = await svc.create_from_ir(project_id, ir, layout, user.id)
     response.headers["Location"] = f"/v1/workflows/{view.row.id}"
     return Imported(**_out(view, response).model_dump(), format=kind, report=report)

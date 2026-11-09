@@ -10,18 +10,20 @@ import asyncio
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, Header, Request, Response
+from fastapi import APIRouter, Depends, File, Header, Request, Response, UploadFile
 from pydantic import BaseModel, Field, StringConstraints
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.audit import note, payload_hash
 from agentcanvas.api.deps import CurrentUser, current_user, get_session
+from agentcanvas.api.v1.files import FileOut, file_out, file_service, read_upload
 from agentcanvas.api.v1.gates import gate_for
-from agentcanvas.api.v1.runs import _context, _respond, _thread
+from agentcanvas.api.v1.gitsync import GitSyncOut, sync_after_version
+from agentcanvas.api.v1.runs import _context, _respond
 from agentcanvas.api.v1.versions import workspace_commit
 from agentcanvas.api.v1.workflows import service
-from agentcanvas.db.models import Deployment, Project, Run, RunScore, Thread, WorkflowVersion
+from agentcanvas.db.models import Deployment, Organization, Project, Run, RunScore, Thread, WorkflowVersion
 from agentcanvas.errors import Conflict, Forbidden, InvalidInput, NotFound
 from agentcanvas.ids import new_id
 from agentcanvas.ir.contract import breaking_changes, contract
@@ -63,8 +65,13 @@ class DeploymentOut(BaseModel):
 
 class PublishOut(BaseModel):
     deployment: DeploymentOut
-    api_key: str | None = Field(None, description="shown once, when the deployment is created")
+    api_key: str | None = Field(
+        None, description="shown once: when the deployment is created, or published again after an unpublish"
+    )
     checklist: list[Check]
+    git: GitSyncOut | None = Field(
+        default=None, description="the pull request opened or updated for this version (G-14)"
+    )
 
 
 class KeyOut(BaseModel):
@@ -91,6 +98,12 @@ async def publish(
     key."""
     view = await svc.get(wf_id)
     wf, project_id = view.workflow, view.row.project_id
+    org = await session.get(Organization, user.org_id)
+    if org is not None and org.environments and body.environment not in org.environments:
+        raise InvalidInput(
+            f"'{body.environment}' is not one of this organisation's environments ({', '.join(org.environments)}); "
+            "an admin adds it in Settings > Organisation"
+        )
     # the organisation's policies as they apply to this environment (FR-X-19) are their own checklist item
     diagnostics = await svc._validate(wf, project_id, environment=body.environment)
     errors = [f"{d.code} {d.message}" for d in diagnostics if d.severity == "error" and d.code not in POLICY_CODES]
@@ -135,7 +148,9 @@ async def publish(
         created_by=user.id, reuse_unchanged=True,
     )  # fmt: skip
     dep, key = await deps.publish(view.row, body.environment, version)
-    return PublishOut(deployment=_dep(dep, version), api_key=key, checklist=checks)
+    out = PublishOut(deployment=_dep(dep, version), api_key=key, checklist=checks)
+    out.git = await sync_after_version(request, session, wf_id, version, "publish")  # G-14: never fails the publish
+    return out
 
 
 async def _live(session: AsyncSession, wf_id: str, environment: str) -> tuple[Workflow, str, str] | None:
@@ -232,7 +247,9 @@ async def count_call(
     row = await session.get(WorkflowRow, dep.workflow_id)
     if row is not None:
         PROJECT_OF[wf.id] = row.project_id
-    settings = request.app.state.settings
+    settings = await request.app.state.org_settings.for_project(
+        request.app.state.settings, row.project_id if row else None
+    )
     per_key = settings.rate_limit_by_environment.get(dep.environment, settings.rate_limit_per_deployment)
     await request.app.state.ratelimit.hit(
         (f"deployment:{dep.id}", per_key),
@@ -268,14 +285,21 @@ async def _start(
     dep, wf = caller or await _caller(request, session, dep_id, auth)
     version_id = dep.version_id
     if body.thread_id:
-        t = await _thread(session, body.thread_id)
-        if t.deployment_id != dep.id:
-            raise InvalidInput(f"thread '{body.thread_id}' was not started by this deployment")
+        await own_thread(session, dep, body.thread_id)
         wf, version_id = await _continue_on(session, dep, wf, body.thread_id)
     return await request.app.state.runner.start(
         wf, thread_id=body.thread_id, input=body.input, context=await _api_context(session, dep, wf, body),
         deployment_id=dep.id, version_id=version_id, labels={**body.metadata, **(labels or {})},
     )  # fmt: skip
+
+
+async def own_thread(session: AsyncSession, dep: Deployment, thread_id: str) -> Thread:
+    """A conversation this deployment started. Any other (unknown, another deployment's, another organisation's)
+    is the same 404, so a key holder cannot learn which thread ids exist elsewhere (S-6)."""
+    t = await session.scalar(select(Thread).where(Thread.id == thread_id, Thread.deployment_id == dep.id))
+    if t is None:
+        raise NotFound(f"thread '{thread_id}' not found for this deployment")
+    return t
 
 
 async def _continue_on(session: AsyncSession, dep: Deployment, wf: Workflow, thread_id: str) -> tuple[Workflow, str]:
@@ -317,6 +341,45 @@ async def api_run_wait(
     h = await _start(request, session, dep_id, body, authorization)
     await session.close()  # no connection held while the run works
     return await _result(h)
+
+
+async def key_caller(
+    dep_id: str,
+    request: Request,
+    authorization: str | None = Header(None),
+    session: AsyncSession = Depends(get_session),
+) -> tuple[Deployment, Workflow]:
+    """The deployment and workflow of the request's key, as a dependency: the key is checked before the body is read."""
+    return await _caller(request, session, dep_id, authorization)
+
+
+@public_router.post("/deployments/{dep_id}/files", response_model=FileOut, status_code=201)
+async def api_upload(
+    request: Request,
+    file: Annotated[UploadFile, File(description="an image, PDF, .docx or text file")],
+    caller: tuple[Deployment, Workflow] = Depends(key_caller),
+    session: AsyncSession = Depends(get_session),
+) -> FileOut:
+    """Upload a file for the workflow's file input, with the deployment's key (N-4): the answer is the reference to
+    put in the run's input, instead of sending the bytes inline as base64. Its media types and the size limit are the
+    ones of the file input; only a workflow that has one takes files."""
+    from agentcanvas.db.models import WorkflowRow
+    from agentcanvas.services.share import attach_shape
+
+    dep, wf = caller
+    shape = attach_shape(wf)
+    if shape is None:
+        raise InvalidInput("this deployment's workflow has no file input")
+    row = await session.get(WorkflowRow, dep.workflow_id)
+    if row is None:
+        raise NotFound("this deployment's workflow no longer exists")
+    files = file_service(request, session)
+    stored = await files.add(
+        row.project_id, file.filename, await read_upload(file, files), source="api", deployment_id=dep.id,
+        accept=shape.accept,
+    )  # fmt: skip
+    note(request, file=stored.id, media_type=stored.media_type, size=stored.size)
+    return file_out(stored)
 
 
 @public_router.post("/deployments/{dep_id}/runs/stream")
@@ -395,9 +458,7 @@ async def api_resume(
 ) -> ApiResult:
     """Answer a pending interrupt (approval, input) of a conversation this deployment started."""
     dep, wf = await _caller(request, session, dep_id, authorization)
-    t = await _thread(session, thread_id)
-    if t.deployment_id != dep.id:
-        raise InvalidInput(f"thread '{thread_id}' was not started by this deployment")
+    await own_thread(session, dep, thread_id)
     note(request, interrupt_id=body.interrupt_id, payload_sha256=payload_hash(body.value))
     wf, version_id = await _continue_on(session, dep, wf, thread_id)
     h = await request.app.state.runner.start(

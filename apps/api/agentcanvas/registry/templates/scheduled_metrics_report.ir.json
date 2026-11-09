@@ -1,0 +1,331 @@
+{
+  "ir_version": "1.1",
+  "id": "tpl_scheduled_metrics_report",
+  "name": "Daily metrics report",
+  "description": "Every weekday morning your Python code gathers yesterday's numbers, an AI writes a short report as structured data, and the report's format is checked before anyone sees it.",
+  "state": {
+    "channels": [
+      {
+        "name": "audience",
+        "type": {
+          "type": "string"
+        },
+        "io": "in",
+        "description": "Who reads the report, e.g. the leadership team"
+      },
+      {
+        "name": "day",
+        "type": {
+          "type": "string",
+          "examples": [
+            "2026-10-01"
+          ]
+        },
+        "io": "in",
+        "description": "Optional: the day to report on (YYYY-MM-DD). Empty = yesterday"
+      },
+      {
+        "name": "report_day",
+        "type": {
+          "type": "string"
+        },
+        "io": "out",
+        "description": "The day reported on"
+      },
+      {
+        "name": "metrics",
+        "type": {
+          "type": "object"
+        },
+        "io": "out",
+        "description": "The day's numbers, the day before, and the change in percent"
+      },
+      {
+        "name": "messages",
+        "type": {
+          "type": "array"
+        },
+        "reducer": "add_messages",
+        "io": "private",
+        "description": "The conversation the writer reads"
+      },
+      {
+        "name": "structured_response",
+        "type": {
+          "type": "object"
+        },
+        "io": "private",
+        "description": "The writer's report, before the format check"
+      },
+      {
+        "name": "report",
+        "type": {
+          "type": "object"
+        },
+        "io": "out",
+        "description": "The checked report: headline, summary, highlights, concerns and status"
+      }
+    ]
+  },
+  "resources": [
+    {
+      "id": "r_model",
+      "type": "model.chat",
+      "name": "report_model",
+      "config": {
+        "model": "anthropic:claude-haiku-5-5"
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_collect",
+      "type": "core.script",
+      "name": "gather_metrics",
+      "label": "Gather yesterday's metrics",
+      "config": {
+        "import_path": "scripts.metrics_report_collect:run",
+        "writes": [
+          "report_day",
+          "metrics"
+        ]
+      }
+    },
+    {
+      "id": "n_brief",
+      "type": "core.set",
+      "name": "brief_writer",
+      "label": "Hand the numbers to the writer",
+      "config": {
+        "values": {
+          "messages": "Write the daily metrics report for {{ state.audience }}.\n\nMetrics for {{ state.report_day }} (values), the day before (day_before) and the change in percent (change_pct):\n{{ state.metrics | tojson }}"
+        }
+      }
+    },
+    {
+      "id": "n_write",
+      "type": "core.agent",
+      "name": "write_report",
+      "label": "Write the report",
+      "policies": {
+        "retry": {
+          "max_attempts": 3
+        },
+        "timeout": {
+          "run_timeout": 60
+        }
+      },
+      "config": {
+        "system_prompt": "You write a short daily metrics report for busy readers. Lead with the change that matters most, in plain words with real numbers (\"Revenue rose 8% to $17,940\"). List up to four highlights and up to three concerns: falling conversion, more support tickets opened than closed, or uptime under 99.9%. Never invent a number that is not in the data. Status: on track when nothing needs attention, watch when one metric moved the wrong way, action needed when revenue or uptime dropped sharply.",
+        "response_format": {
+          "title": "DailyReport",
+          "type": "object",
+          "required": [
+            "headline",
+            "summary",
+            "highlights",
+            "concerns",
+            "status"
+          ],
+          "properties": {
+            "headline": {
+              "type": "string",
+              "description": "One line: the most important change"
+            },
+            "summary": {
+              "type": "string",
+              "description": "Two or three sentences with the key numbers"
+            },
+            "highlights": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "What went well"
+            },
+            "concerns": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "What needs attention"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "on track",
+                "watch",
+                "action needed"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "n_check",
+      "type": "guard.schema",
+      "name": "check_report",
+      "label": "Check the report format",
+      "config": {
+        "input": "structured_response",
+        "schema": {
+          "type": "object",
+          "required": [
+            "headline",
+            "summary",
+            "highlights",
+            "concerns",
+            "status"
+          ],
+          "properties": {
+            "headline": {
+              "type": "string",
+              "description": "One line: the most important change",
+              "maxLength": 120
+            },
+            "summary": {
+              "type": "string",
+              "description": "Two or three sentences with the key numbers",
+              "maxLength": 600
+            },
+            "highlights": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "What went well",
+              "maxItems": 4
+            },
+            "concerns": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "What needs attention",
+              "maxItems": 3
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "on track",
+                "watch",
+                "action needed"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        "repair": true,
+        "on_fail": "stop",
+        "output": "report"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "kind": "flow",
+      "source": {
+        "node": "START"
+      },
+      "target": {
+        "node": "n_collect"
+      }
+    },
+    {
+      "id": "e2",
+      "kind": "flow",
+      "source": {
+        "node": "n_collect"
+      },
+      "target": {
+        "node": "n_brief"
+      }
+    },
+    {
+      "id": "e3",
+      "kind": "flow",
+      "source": {
+        "node": "n_brief"
+      },
+      "target": {
+        "node": "n_write"
+      }
+    },
+    {
+      "id": "e4",
+      "kind": "flow",
+      "source": {
+        "node": "n_write"
+      },
+      "target": {
+        "node": "n_check"
+      }
+    },
+    {
+      "id": "e5",
+      "kind": "flow",
+      "source": {
+        "node": "n_check"
+      },
+      "target": {
+        "node": "END"
+      }
+    },
+    {
+      "id": "w6",
+      "kind": "wiring",
+      "source": {
+        "node": "r_model"
+      },
+      "target": {
+        "node": "n_write",
+        "port": "model"
+      }
+    },
+    {
+      "id": "w7",
+      "kind": "wiring",
+      "source": {
+        "node": "r_model"
+      },
+      "target": {
+        "node": "n_check",
+        "port": "model"
+      }
+    }
+  ],
+  "metadata": {
+    "gallery": {
+      "category": "Operations",
+      "tags": [
+        "schedule",
+        "python script",
+        "structured output",
+        "output check",
+        "reports"
+      ],
+      "difficulty": "intermediate",
+      "sample_input": {
+        "audience": "the leadership team"
+      }
+    },
+    "kit": {
+      "files": {
+        "scripts/metrics_report_collect.py": "\"\"\"Gather yesterday's business metrics for the \"Daily metrics report\" template.\n\nThe numbers below are sample data, the same for the same day, so the report can be tried at once. Replace\n`_fetch` with a query to your warehouse or analytics API; keep the fields it returns, or change the report's\nprompt to match.\n\"\"\"\n\nimport random\nfrom datetime import date, timedelta\n\n\ndef _fetch(day: date) -> dict:\n    \"\"\"Sample metrics for one day (replace with your own query).\"\"\"\n    rng = random.Random(day.isoformat())  # the same day always gives the same numbers\n    weekend = day.weekday() >= 5\n    orders = rng.randint(180, 240) if weekend else rng.randint(260, 340)\n    visits = orders * rng.randint(38, 46)\n    return {\n        \"orders\": orders,\n        \"revenue_usd\": round(orders * rng.uniform(52, 61), 2),\n        \"website_visits\": visits,\n        \"conversion_rate_pct\": round(100 * orders / visits, 2),\n        \"new_signups\": rng.randint(40, 90),\n        \"support_tickets_opened\": rng.randint(25, 60),\n        \"support_tickets_closed\": rng.randint(20, 60),\n        \"uptime_pct\": round(rng.choice([100.0, 100.0, 99.98, 99.4]), 2),\n    }\n\n\ndef run(state: dict) -> dict:\n    \"\"\"Yesterday's metrics (or those of `day`, YYYY-MM-DD), with the day before for comparison.\"\"\"\n    asked = str(state.get(\"day\") or \"\").strip()\n    day = date.fromisoformat(asked) if asked else date.today() - timedelta(days=1)\n    today, before = _fetch(day), _fetch(day - timedelta(days=1))\n    change = {\n        k: round(100 * (today[k] - before[k]) / before[k], 1) if before[k] else None\n        for k in today\n        if k not in (\"conversion_rate_pct\", \"uptime_pct\")\n    }\n    return {\n        \"report_day\": day.isoformat(),\n        \"metrics\": {\"day\": day.isoformat(), \"values\": today, \"day_before\": before, \"change_pct\": change},\n    }\n"
+      },
+      "triggers": [
+        {
+          "kind": "cron",
+          "config": {
+            "schedule": "0 8 * * 1-5",
+            "input": {
+              "audience": "the leadership team"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

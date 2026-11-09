@@ -12,19 +12,23 @@ functions over dicts: no LangChain, no pyagentspec (the CI ``frameworks`` job ch
 
 from __future__ import annotations
 
+import itertools
 import json
+import keyword
 import re
 import uuid
 from typing import Any
 
 from agentcanvas.ir.models import IDENT, RESERVED_NAMES, Workflow
+from agentcanvas.validation.analysis import PLAIN_VALUE_MAPS
+from agentcanvas.validation.rules.structure import GENERATED
 
 VERSION = "25.4.2"  # 25.4.2 adds A2AAgent; nothing here needs a later one
 _NS = uuid.UUID("6b1f3c0e-6a0e-4f5e-9a51-6167656e7473")
 _STATE_VAR = re.compile(r"\{\{\s*state\.([a-z][a-z0-9_]*)\s*\}\}")
 _STATE_REF = re.compile(r"\bstate\.([a-z][a-z0-9_]*)")  # any use: filters, fields of fields, loops
 _SPEC_VAR = re.compile(r"\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}")
-_EQUALS = re.compile(r'^\s*state\.([a-z][a-z0-9_]*)\s*==\s*"([^"\\]*)"\s*$')
+_EQUALS = re.compile(r'^\s*state\.([a-z][a-z0-9_]*)\s*==\s*("(?:[^"\\]|\\.)*")\s*$')
 _LOCAL = {
     "ollama": "http://localhost:11434",
     "lmstudio": "http://localhost:1234/v1",
@@ -38,6 +42,42 @@ class AgentSpecError(ValueError):
 
 
 # ------------------------------------------------------------------ export ----
+
+
+def _sequential(wf: Workflow, report: list[str]) -> list[Any]:
+    """The workflow's edges, with parallel one-step branches that meet at one "Wait for all" written one after another:
+    an Agent Spec flow follows one path at a time, and its start node takes one outgoing edge only (pyagentspec refuses
+    more). Other fan-outs are left as they are; the report says a runtime may follow only one of them."""
+    flows = [e for e in wf.edges if e.kind == "flow"]
+    out_of: dict[str, list[Any]] = {}
+    for e in flows:
+        out_of.setdefault(e.source.node, []).append(e)
+    joins = {n.id for n in wf.nodes if n.type == "core.join"}
+    replaced: set[str] = set()
+    added: list[Any] = []
+    for src, edges in out_of.items():
+        targets = [e.target.node for e in edges if not e.source.route]
+        if len(targets) < 2 or len(targets) != len(edges):
+            continue
+        nexts = [out_of.get(t, []) for t in targets]
+        if not all(len(n) == 1 for n in nexts) or len({n[0].target.node for n in nexts}) != 1:
+            continue
+        join = nexts[0][0].target.node
+        if join not in joins:
+            continue
+        chain = [src, *targets, join]
+        replaced |= {e.id for e in edges} | {n[0].id for n in nexts}
+        first = edges[0]
+        for i, (a, b) in enumerate(itertools.pairwise(chain)):
+            source, target = first.source.model_copy(update={"node": a, "route": None}), first.target
+            added.append(first.model_copy(update={"id": f"{first.id}-seq{i}", "source": source,
+                                                  "target": target.model_copy(update={"node": b})}))  # fmt: skip
+        names = ", ".join(node.name for t in targets if (node := wf.node(t)))
+        report.append(f"Steps that run side by side ({names}) run one after another in Agent Spec, which follows one "
+                      "path at a time.")  # fmt: skip
+    return [e for e in wf.edges if e.id not in replaced] + added
+
+
 def export_flow(wf: Workflow, layout: dict[str, Any] | None = None) -> tuple[dict[str, Any], list[str]]:
     """The workflow as an Agent Spec ``Flow`` document, and what it could not express. `layout` (canvas positions)
     rides along so an import back looks the same."""
@@ -180,11 +220,11 @@ class _Exporter:
             cases = (
                 [c for c in cfg.get("cases") or [] if isinstance(c, dict)] if isinstance(cfg.get("cases"), list) else []
             )
-            matches = [_EQUALS.match(str(c.get("when", ""))) for c in cases]
-            keys = {m.group(1) for m in matches if m}
+            matches = [_equals(str(c.get("when", ""))) for c in cases]
+            keys = {m[0] for m in matches if m}
             if all(matches) and len(keys) <= 1:
                 key = next(iter(keys), None)
-                mapping = {m.group(2): str(c.get("route", "")) for m, c in zip(matches, cases, strict=True) if m}
+                mapping = {m[1]: str(c.get("route", "")) for m, c in zip(matches, cases, strict=True) if m}
                 branches = sorted({"default", *mapping.values()})
                 return self.comp(
                     "BranchingNode", n.id, n.name, metadata={**meta, "branching_key": key},
@@ -242,7 +282,7 @@ class _Exporter:
                 self.writers.setdefault(name, []).append(spec_id.get(sid, sid))
 
         control = []
-        for e in wf.edges:
+        for e in _sequential(wf, self.report):
             if e.kind != "flow" or e.source.node not in spec_id or e.target.node not in spec_id:
                 continue
             src = by_id[spec_id[e.source.node]]
@@ -294,9 +334,6 @@ class _Exporter:
         return flow, list(dict.fromkeys(self.report))
 
 
-_PLAIN_VALUES = {"headers", "env"}  # config maps whose values may be keys typed in directly (not secret references)
-
-
 def _scrub(x: Any, report: list[str], where: str = "") -> Any:
     """`x` without header or environment values typed in as plain text: the file is meant to be shared. Secret
     references (`{"$secret": NAME}`) name a secret without holding it and stay."""
@@ -308,7 +345,7 @@ def _scrub(x: Any, report: list[str], where: str = "") -> Any:
         where = x["name"]
     out: dict[str, Any] = {}
     for k, v in x.items():
-        if k in _PLAIN_VALUES and isinstance(v, dict):
+        if k in PLAIN_VALUE_MAPS and isinstance(v, dict):
             kept = {h: val if isinstance(val, dict) and "$secret" in val else "" for h, val in v.items()}
             if kept != v:
                 report.append(f"'{where}': values of {k} typed in directly are left out of the file (they may be "
@@ -323,6 +360,17 @@ def _empty(schema: dict[str, Any]) -> Any:
     return {"string": "", "array": [], "object": {}, "boolean": False, "integer": 0, "number": 0}.get(
         str(schema.get("type"))
     )
+
+
+def _equals(when: str) -> tuple[str, str] | None:
+    """(field, value) of a rule `state.field == "value"`, its quotes and backslashes unescaped (None: another rule)."""
+    m = _EQUALS.match(when)
+    if not m:
+        return None
+    try:
+        return m.group(1), json.loads(m.group(2))
+    except json.JSONDecodeError:  # an escape CEL has and JSON lacks (\x41, \'): leave the rule as it is
+        return None
 
 
 def _reads(n: Any) -> list[str]:
@@ -388,6 +436,12 @@ def _title(name: Any) -> str:
     return (str(name or "").strip() or "Imported flow")[:200]
 
 
+def _key(n: Any) -> Any:
+    """What identifies a step of the file: its component id, so an inlined copy of a step (the start node written out
+    under `start_node` and again in `nodes`) is the same step; the object itself when it has no id."""
+    return n["id"] if isinstance(n, dict) and isinstance(n.get("id"), str) else id(n)
+
+
 def _collect(x: Any, refs: dict[str, Any]) -> None:
     if isinstance(x, dict):
         for k, v in (x.get("$referenced_components") or {}).items():
@@ -413,14 +467,17 @@ def _wrap_agent(agent: dict[str, Any]) -> dict[str, Any]:
 
 
 def ident(text: str, taken: set[str], fallback: str = "step") -> str:
-    """A snake_case name (IR identifiers) not in `taken`; adds it."""
+    """A snake_case name (IR identifiers) not in `taken`; adds it. Never a reserved step name, a Python keyword or a
+    name the generated code uses itself (E007): steps and blocks share one `taken` set, since their names are one
+    namespace (E000)."""
     s = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", str(text or ""))
     s = re.sub(r"[^a-z0-9_]+", "_", s.lower()).strip("_")
     if not s or not s[0].isalpha():
         s = f"{fallback}_{s}".strip("_")
     s = s[:58]
     out, i = s, 2
-    while out in taken or out in RESERVED_NAMES or not IDENT.match(out):
+    while (out in taken or out in RESERVED_NAMES or out in GENERATED or keyword.iskeyword(out)
+           or not IDENT.match(out)):  # fmt: skip
         out, i = f"{s}_{i}", i + 1
     taken.add(out)
     return out
@@ -479,8 +536,7 @@ class _Importer:
         params = cfg.get("default_generation_parameters") or {}
         conf.update({k: params[k] for k in ("temperature", "max_tokens") if k in params})
         rid = f"r_{len(self.resources) + 1}"
-        taken = {r["name"] for r in self.resources}
-        res_name = ident(cfg.get("name") or "model", taken, "model")
+        res_name = ident(cfg.get("name") or "model", self.node_names, "model")  # one namespace with the steps
         self.resources.append({"id": rid, "type": "model.chat", "name": res_name, "config": conf})
         self.models[str(cfg.get("id"))] = rid
         return rid
@@ -491,33 +547,33 @@ class _Importer:
         start = deref(flow.get("start_node")) or next(
             (n for n in nodes if n.get("component_type") == "StartNode"), None
         )
-        ids: dict[int, str] = {}  # id(spec node) -> IR node id or START/END
+        ids: dict[Any, str] = {}  # spec node (`_key`) -> IR node id or START/END
         for n in nodes:
-            if n is start or n.get("component_type") == "StartNode":
-                ids[id(n)] = "START"
+            if _key(n) == _key(start) or n.get("component_type") == "StartNode":
+                ids[_key(n)] = "START"
             elif n.get("component_type") == "EndNode":
-                ids[id(n)] = "END"
-        data_in: dict[tuple[int, str], str] = {}  # (node, input) -> channel name
+                ids[_key(n)] = "END"
+        data_in: dict[tuple[Any, str], str] = {}  # (node, input) -> channel name
         for e in flow.get("data_flow_connections") or []:
             src, dst = deref(e.get("source_node")), deref(e.get("destination_node"))
             out = str(e.get("source_output"))
             schema = next((o for o in (src or {}).get("outputs") or [] if o.get("title") == out), None)
-            data_in[(id(dst), str(e.get("destination_input")))] = self.channel(out, schema)
+            data_in[(_key(dst), str(e.get("destination_input")))] = self.channel(out, schema)
         for n in nodes:
-            if ids.get(id(n)) == "START":
+            if ids.get(_key(n)) == "START":
                 for p in n.get("inputs") or n.get("outputs") or []:
                     self.channel(str(p.get("title")), p, "in")
-            if ids.get(id(n)) == "END":
+            if ids.get(_key(n)) == "END":
                 for p in n.get("outputs") or n.get("inputs") or []:
-                    self.channel(data_in.get((id(n), str(p.get("title"))), str(p.get("title"))), p, "out")
+                    self.channel(data_in.get((_key(n), str(p.get("title"))), str(p.get("title"))), p, "out")
 
         ir_nodes: list[dict[str, Any]] = []
         for n in nodes:
-            if id(n) in ids:
+            if _key(n) in ids:
                 continue
-            node = self.node(n, lambda inp, n=n: data_in.get((id(n), inp)) or self.channel(inp))
+            node = self.node(n, lambda inp, n=n: data_in.get((_key(n), inp)) or self.channel(inp))
             node["id"] = f"n_{len(ir_nodes) + 1}"
-            ids[id(n)] = node["id"]
+            ids[_key(n)] = node["id"]
             if rid := node.pop("_model", None):
                 self.edges.append({"id": f"w_{node['id']}", "kind": "wiring", "source": {"node": rid},
                                    "target": {"node": node["id"], "port": "model"}})  # fmt: skip
@@ -525,19 +581,19 @@ class _Importer:
 
         for i, e in enumerate(flow.get("control_flow_connections") or []):
             src, dst = deref(e.get("from_node")), deref(e.get("to_node"))
-            if id(src) not in ids or id(dst) not in ids:
+            if _key(src) not in ids or _key(dst) not in ids:
                 raise AgentSpecError("a control flow edge points at a step that is not in the flow")
-            source: dict[str, Any] = {"node": ids[id(src)]}
+            source: dict[str, Any] = {"node": ids[_key(src)]}
             if (src or {}).get("component_type") == "BranchingNode":
                 source["port"] = f"route:{self.route(e.get('from_branch') or 'default')}"
-            self.edges.append({"id": f"e{i + 1}", "kind": "flow", "source": source, "target": {"node": ids[id(dst)]}})
+            self.edges.append({"id": f"e{i + 1}", "kind": "flow", "source": source, "target": {"node": ids[_key(dst)]}})
 
         channels = list(self.channels.values())
         if any(n["type"] in ("core.agent", "agent.a2a") for n in ir_nodes) and "messages" not in self.channel_names:
             channels.insert(0, {"name": "messages", "type": {"type": "array"}, "reducer": "add_messages",
                                 "storage": "delta"})  # fmt: skip
         ir = {
-            "ir_version": "1.2",
+            "ir_version": "1.3",
             "id": self.wf_id,
             "name": _title(self.name or flow.get("name")),
             "description": flow.get("description") or "",
@@ -588,7 +644,9 @@ class _Importer:
                 out.update(type="core.agent", config={"system_prompt": agent.get("system_prompt") or ""})
                 self.wire(out, agent.get("llm_config"))
                 if agent.get("tools"):
-                    self.report.append(f"Agent '{name}': its {len(agent['tools'])} tools were not imported; add "
+                    found = [self.deref(t) for t in agent["tools"]]
+                    tools = [str(t.get("name") or "unnamed") if isinstance(t, dict) else "unnamed" for t in found]
+                    self.report.append(f"Agent '{name}': its tools were not imported ({', '.join(tools)}); add "
                                        "them on the canvas.")  # fmt: skip
             else:
                 self.placeholder(out, n, f"its {agent.get('component_type')} agent")
@@ -599,7 +657,7 @@ class _Importer:
             out["config"] = {"values": {self.channel("message"): template(n.get("message") or "")}}
         elif kind == "BranchingNode":
             key = channel_for("branching_mapping_key")
-            cases = [{"when": f'state.{key} == "{v}"', "route": self.route(b)}
+            cases = [{"when": f"state.{key} == {json.dumps(v, ensure_ascii=False)}", "route": self.route(b)}
                      for v, b in (n.get("mapping") or {}).items()]  # fmt: skip
             out.update(type="core.router", config={"cases": cases, "default": "default"})
         else:

@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from datetime import UTC, datetime, timedelta
+from typing import Any, Literal
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agentcanvas.db.models import WorkflowRow, WorkflowVersion
+from agentcanvas.db.models import AppUser, CopilotConversation, WorkflowRow, WorkflowVersion
 from agentcanvas.db.repositories import WorkflowRepo
 from agentcanvas.errors import Conflict, NotFound
 from agentcanvas.ids import new_id
@@ -70,28 +72,71 @@ class VersionService:
         created_by: str | None = None,
         reuse_unchanged: bool = False,
     ) -> tuple[WorkflowVersion, bool]:
-        """Snapshot the draft. Returns (version, created); an unchanged draft is refused (or reused when asked)."""
-        row = await self.workflows.require(wf_id)
-        latest = await self.latest(wf_id)
-        if latest is not None and latest.ir_hash == row.ir_hash and latest.workspace_commit == workspace_commit:
-            if reuse_unchanged:
-                return latest, False
-            raise Conflict(f"nothing changed since v{latest.semver}", version_id=latest.id, semver=latest.semver)
-        version = WorkflowVersion(
-            id=new_id("ver"),
-            workflow_id=wf_id,
-            semver=next_semver(latest.semver if latest else None, bump),
-            ir=row.draft_ir,
-            layout=row.layout or {},
-            ir_hash=row.ir_hash,
-            workspace_commit=workspace_commit,
-            message=message,
-            created_by=created_by,
+        """Snapshot the draft. Returns (version, created); an unchanged draft is refused (or reused when asked).
+        Two snapshots at once both compute the next semver: the loser reads the winner's and tries once more."""
+        for attempt in range(2):
+            row = await self.workflows.require(wf_id)
+            latest = await self.latest(wf_id)
+            if latest is not None and latest.ir_hash == row.ir_hash and latest.workspace_commit == workspace_commit:
+                if reuse_unchanged:
+                    return latest, False
+                raise Conflict(f"nothing changed since v{latest.semver}", version_id=latest.id, semver=latest.semver)
+            now = datetime.now(UTC)  # to the microsecond (SQLite's own clock is to the second): changes credited once
+            since = _utc(latest.created_at) if latest else None
+            version = WorkflowVersion(
+                id=new_id("ver"),
+                workflow_id=wf_id,
+                semver=next_semver(latest.semver if latest else None, bump),
+                ir=row.draft_ir,
+                layout=row.layout or {},
+                ir_hash=row.ir_hash,
+                workspace_commit=workspace_commit,
+                message=message,
+                copilot_changes=await self._copilot_changes(wf_id, since, now),
+                created_by=created_by,
+                created_at=now,
+            )
+            self.s.add(version)
+            try:
+                await self.s.commit()
+            except IntegrityError:  # another snapshot took this semver first
+                await self.s.rollback()
+                if attempt:
+                    raise Conflict("another version was saved at the same moment; try again") from None
+                continue
+            await self.s.refresh(version)
+            return version, True
+        raise AssertionError("unreachable")
+
+    async def _copilot_changes(self, wf_id: str, since: datetime | None, until: datetime) -> list[dict[str, Any]]:
+        """The Copilot proposals accepted after the version before (FR-COP-07), oldest first, with who accepted them;
+        kept on the version, since the conversations that held them may be archived or expire. Only the
+        conversations changed since then are read (deciding a proposal changes its conversation), and only their
+        proposals, not their messages."""
+        q = select(CopilotConversation.user_id, CopilotConversation.proposals).where(
+            CopilotConversation.workflow_id == wf_id
         )
-        self.s.add(version)
-        await self.s.commit()
-        await self.s.refresh(version)
-        return version, True
+        if since is not None:  # with an hour's margin for the database's clock (`updated_at` is its time)
+            q = q.where(CopilotConversation.updated_at >= since - timedelta(hours=1))
+        found: list[dict[str, Any]] = []
+        for user_id, proposals in (await self.s.execute(q)).all():
+            for p in proposals or []:
+                at = _parse(p.get("decided_at"))
+                if p.get("status") != "accepted" or at is None or at > until or (since is not None and at <= since):
+                    continue
+                kept = p.get("accepted_commands")
+                found.append({
+                    "summary": p.get("summary") or "Changes to the workflow",
+                    "accepted_by": p.get("decided_by") or user_id,
+                    "accepted_at": p["decided_at"],
+                    "changes": len(kept) if kept is not None else len(p.get("commands") or []),
+                })  # fmt: skip
+        if found:
+            ids = {c["accepted_by"] for c in found}
+            emails = dict((await self.s.execute(select(AppUser.id, AppUser.email).where(AppUser.id.in_(ids)))).all())
+            for c in found:
+                c["accepted_by_email"] = emails.get(c["accepted_by"])
+        return sorted(found, key=lambda c: c["accepted_at"])
 
     async def workflow_at(self, wf_id: str, ref: str) -> Workflow:
         """The IR of a version, or of the draft for `ref == "draft"`."""
@@ -102,3 +147,14 @@ class VersionService:
 
     async def diff(self, wf_id: str, a: str, b: str) -> WorkflowDiff:
         return diff_workflows(await self.workflow_at(wf_id, a), await self.workflow_at(wf_id, b))
+
+
+def _utc(d: datetime) -> datetime:
+    return d if d.tzinfo else d.replace(tzinfo=UTC)  # SQLite gives back naive UTC
+
+
+def _parse(text: Any) -> datetime | None:
+    try:
+        return _utc(datetime.fromisoformat(text)) if isinstance(text, str) else None
+    except ValueError:
+        return None

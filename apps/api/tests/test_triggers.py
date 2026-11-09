@@ -109,6 +109,28 @@ async def test_cron_trigger_on_a_deployment(app, api_client):
     assert await cron.tick(at("2026-09-29T10:02")) == []  # unpublished: nothing runs
 
 
+async def test_a_broken_stored_schedule_does_not_stop_the_other_triggers(app, api_client):
+    """C-10: a schedule that no longer parses (saved by an older version, edited in the database) is skipped."""
+    from sqlalchemy import update
+
+    from agentcanvas.db.models import Trigger
+
+    wf = await make_greeter(api_client)
+    ids = []
+    for _ in range(2):
+        r = await api_client.post(
+            f"/v1/workflows/{wf}/triggers", json={"kind": "cron", "config": {"schedule": "* * * * *", "input": {}}}
+        )
+        assert r.status_code == 201, r.text
+        ids.append(r.json()["id"])
+    async with app.state.db.sessionmaker() as s:
+        await s.execute(update(Trigger).where(Trigger.id == ids[0]).values(config={"schedule": "every minute"}))
+        await s.commit()
+    fired = await app.state.cron.tick(at("2026-10-06T09:00"))
+    assert len(fired) == 1
+    await asyncio.wait_for(app.state.runner.handles[fired[0]].done.wait(), 10)
+
+
 async def test_replicas_fire_each_cron_minute_once(app, api_client):
     """S11: with several API replicas (one scheduler each), a due minute starts one run, not one per replica."""
     from agentcanvas.services.triggers import CronScheduler
@@ -126,3 +148,29 @@ async def test_replicas_fire_each_cron_minute_once(app, api_client):
     assert len(later) == 1  # whichever ticks first takes the next minute
     for rid in [*fired[0], *fired[1], *later]:
         await asyncio.wait_for(app.state.runner.handles[rid].done.wait(), 10)
+
+
+async def test_a_trigger_warns_when_a_connector_signs_in_as_the_person_who_started_the_run(api_client):
+    wf = await make_greeter(api_client)
+    cur = (await api_client.get(f"/v1/workflows/{wf}")).json()
+    ir = cur["ir"]
+    ir["resources"] = [
+        {"id": "r_gh", "name": "github", "type": "mcp.server",
+         "config": {"url": "https://mcp.example.com/mcp", "oauth": {"identity": "starter"}}},
+        {"id": "r_slack", "name": "slack", "type": "mcp.server",
+         "config": {"url": "https://slack.example.com/mcp", "oauth": {"identity": "service"}}},
+    ]  # fmt: skip
+    saved = await api_client.put(f"/v1/workflows/{wf}", json={"ir": ir}, headers={"If-Match": str(cur["version"])})
+    assert saved.status_code == 200, saved.text
+    made = await api_client.post(
+        f"/v1/workflows/{wf}/triggers", json={"kind": "cron", "config": {"schedule": "0 9 * * *"}}
+    )
+    assert made.status_code == 201, made.text
+    [warning] = made.json()["warnings"]  # only the connector that needs a person
+    assert "github" in warning and "service connection" in warning and "slack" not in warning
+    listed = (await api_client.get(f"/v1/workflows/{wf}/triggers")).json()
+    assert [t["warnings"] for t in listed] == [[warning]]
+    ir["resources"][0]["config"]["oauth"]["identity"] = "service"  # fixed: nothing to warn about
+    cur = (await api_client.get(f"/v1/workflows/{wf}")).json()
+    await api_client.put(f"/v1/workflows/{wf}", json={"ir": ir}, headers={"If-Match": str(cur["version"])})
+    assert (await api_client.get(f"/v1/workflows/{wf}/triggers")).json()[0]["warnings"] == []

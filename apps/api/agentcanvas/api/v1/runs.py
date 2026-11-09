@@ -8,30 +8,35 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from collections.abc import AsyncIterator
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Literal, cast
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import defer
 
 from agentcanvas.adapters.spi import ThreadStateAbility, require, supports
 from agentcanvas.api.audit import note, payload_hash
 from agentcanvas.api.deps import RANK, CurrentUser, current_user, get_session, get_settings_dep
 from agentcanvas.db.models import Deployment, InterruptTask, Project, Run, Thread, WorkflowRow, WorkflowVersion
-from agentcanvas.db.repositories import delete_thread_rows
+from agentcanvas.db.repositories import LIGHT_RUN, delete_thread_rows
 from agentcanvas.errors import Conflict, Forbidden, InvalidInput, NotFound, UpstreamError, WorkflowHasErrors
 from agentcanvas.ir.models import Workflow
 from agentcanvas.observability import counted_stream
 from agentcanvas.runtime.runner import RunHandle, Runner
 from agentcanvas.runtime.tracing import web_url
+from agentcanvas.runtime.trajectory import compact
 from agentcanvas.runtime.types import ResumeSpec, ThreadState, is_tool_recording
 from agentcanvas.services.explain import explain
 from agentcanvas.services.redeploy import thread_version
+from agentcanvas.services.run_search import RunSearchResult, RunSearchService
 from agentcanvas.services.secrets import hide_secrets
+from agentcanvas.services.trajectory import ThreadTrajectory, build_run
 from agentcanvas.services.workflows import WorkflowService
 from agentcanvas.settings import Settings
 from agentcanvas.validation.policies import CODES as POLICY_CODES
@@ -134,6 +139,16 @@ class ThreadOut(BaseModel):
     status: str
     created_at: datetime
     updated_at: datetime
+    # the Runs page's summary (filled by GET /threads)
+    workflow_name: str | None = None
+    deployment_id: str | None = Field(None, description="set when the conversation came through a deployment's API")
+    runs: int = 0
+    tokens: int = 0
+    cost_usd: float = 0.0
+    last_started_at: datetime | None = None
+    last_ended_at: datetime | None = None
+    last_error: str | None = None
+    last_run_id: str | None = None
 
 
 class ThreadPage(BaseModel):
@@ -145,9 +160,12 @@ class InterruptOut(BaseModel):
     id: str
     workflow_id: str | None = None
     workflow_name: str | None = None
+    project_id: str | None = Field(None, description="the workflow's project: the Inbox spans the organisation")
+    project_name: str | None = None
     thread_id: str
     run_id: str
     canvas_node_id: str
+    node_label: str | None = Field(None, description="the waiting block's label (or name) in the workflow's draft")
     kind: str
     payload: dict[str, Any]
     status: str
@@ -220,6 +238,9 @@ async def _runnable_workflow(svc: WorkflowService, wf_id: str) -> Workflow:
     errors = [d.model_dump() for d in view.diagnostics if d.severity == "error" and d.code not in POLICY_CODES]
     if errors:
         raise WorkflowHasErrors(f"workflow has {len(errors)} error(s); fix them before running", errors=errors)
+    if not view.workflow.nodes:
+        # a new workflow is not "wrong" (no red on an empty canvas), but there is nothing to run
+        raise InvalidInput("this workflow has no steps yet: add one from the palette and connect it from START to END")
     return view.workflow
 
 
@@ -282,9 +303,14 @@ async def start_run(
     if body.breakpoints and body.mode != "debug":
         raise InvalidInput("breakpoints require mode 'debug'")
     if body.thread_id:
+        # thread ids are one namespace across organisations: an id in use anywhere else gets the same answer, so it
+        # tells nothing about which workflow or organisation holds it
         t = await session.get(Thread, body.thread_id)
         if t is not None and t.workflow_id != wf_id:
-            raise InvalidInput(f"thread '{body.thread_id}' belongs to another workflow")
+            raise InvalidInput(
+                f"thread id '{body.thread_id}' cannot be used here: continue a conversation of this workflow, or "
+                "leave thread_id out (or choose another id) to start a new one"
+            )
     bp = body.breakpoints or Breakpoints()
     h = await r.start(
         wf,
@@ -296,6 +322,7 @@ async def start_run(
         context=_context(wf, body.context, user),
         durability=body.durability,
         user_id=user.id,
+        service_connection=user.role == "admin",  # the organisation's service connection is the admins'
         **_debug(wf, body, body.mode),
     )
     return _respond(r, h, body.stream)
@@ -341,40 +368,118 @@ async def cancel_run(run_id: str, r: Runner = Depends(runner)) -> dict[str, Any]
     return {"cancelled": await r.cancel(run_id)}
 
 
+# ------------------------------------------------------------------ search ----
+def run_search(request: Request) -> RunSearchService:
+    return request.app.state.run_search
+
+
+@router.get("/projects/{project_id}/runs/search", response_model=RunSearchResult)
+async def search_runs(
+    project_id: str,
+    q: str = Query(..., min_length=1, max_length=500, description='what to find: "customers asking for a refund"'),
+    workflow_id: str | None = None,
+    mode: Literal["hybrid", "semantic", "keyword"] = "hybrid",
+    limit: int = Query(20, ge=1, le=100),
+    session: AsyncSession = Depends(get_session),
+    svc: RunSearchService = Depends(run_search),
+) -> RunSearchResult:
+    """Find conversations by meaning (G-10): the project's runs ranked against `q` with its embedding model, the
+    best run of each conversation first. `stale` counts runs not in the index yet (`POST …/runs/search/index`)."""
+    if workflow_id:
+        row = await session.get(WorkflowRow, workflow_id)
+        if row is None or row.project_id != project_id:
+            raise NotFound(f"workflow '{workflow_id}' not found")
+    return await svc.search(project_id, q, workflow_id=workflow_id, limit=limit, mode=mode)
+
+
+@router.post("/projects/{project_id}/runs/search/index")
+async def index_runs(project_id: str, svc: RunSearchService = Depends(run_search)) -> dict[str, int]:
+    """Index the project's runs that are not in the search index (from before it, or made with another embedding
+    model), newest first, at most 2000 a call."""
+    return await svc.reindex(project_id)
+
+
 # ----------------------------------------------------------------- threads ----
+def _utc(t: datetime) -> datetime:
+    return t.replace(tzinfo=UTC) if t.tzinfo is None else t.astimezone(UTC)
+
+
 @router.get("/threads", response_model=ThreadPage)
 async def list_threads(
     workflow_id: str | None = None,
+    project_id: str | None = Query(None, description="only this project's conversations"),
     status: str | None = None,
+    since: datetime | None = Query(None, description="only conversations that began at or after this time (UTC)"),
+    until: datetime | None = Query(None, description="only conversations that began before this time (UTC)"),
     limit: int = Query(50, ge=1, le=200),
     cursor: str | None = None,
     session: AsyncSession = Depends(get_session),
     user: CurrentUser = Depends(current_user),
 ) -> ThreadPage:
+    """Conversations (threads) newest first, each with its workflow's name and a summary of its runs."""
     q = (
-        select(Thread)
+        select(Thread, WorkflowRow.name)
         .join(WorkflowRow, WorkflowRow.id == Thread.workflow_id)
         .join(Project, Project.id == WorkflowRow.project_id)
         .where(Project.org_id == user.org_id)
     )
     if workflow_id:
         q = q.where(Thread.workflow_id == workflow_id)
+    if project_id:
+        q = q.where(WorkflowRow.project_id == project_id)
     if status:
         q = q.where(Thread.status == status)
+    if since:
+        q = q.where(Thread.created_at >= _utc(since))
+    if until:
+        q = q.where(Thread.created_at < _utc(until))
     if cursor:
-        q = q.where(Thread.id < cursor)
-    rows = list((await session.scalars(q.order_by(Thread.id.desc()).limit(limit + 1))).all())
-    items = [
-        ThreadOut(
-            id=t.id,
-            workflow_id=t.workflow_id,
-            title=t.title,
-            status=t.status,
-            created_at=t.created_at,
-            updated_at=t.updated_at,
+        # ordered by when each began, not by id: a caller may name its own threads ("support-42"), which sort anywhere
+        # a thread of another organisation is as unknown as a missing one, so cursors cannot probe ids
+        known = await session.scalar(
+            select(Thread.id)
+            .join(WorkflowRow, WorkflowRow.id == Thread.workflow_id)
+            .join(Project, Project.id == WorkflowRow.project_id)
+            .where(Thread.id == cursor, Project.org_id == user.org_id)
         )
-        for t in rows[:limit]
-    ]
+        if known is None:
+            raise InvalidInput(f"unknown cursor '{cursor}'")
+        # compared in SQL, not through a bound value: SQLite keeps CURRENT_TIMESTAMP as text a datetime never equals
+        after = select(Thread.created_at).where(Thread.id == cursor).scalar_subquery()
+        q = q.where(or_(Thread.created_at < after, and_(Thread.created_at == after, Thread.id < cursor)))
+    order = (Thread.created_at.desc(), Thread.id.desc())
+    rows = list((await session.execute(q.order_by(*order).limit(limit + 1))).all())
+    page = rows[:limit]
+    runs: dict[str, list[Run]] = {}
+    if page:
+        found = await session.scalars(
+            select(Run).options(*LIGHT_RUN).where(Run.thread_id.in_([t.id for t, _ in page])).order_by(Run.started_at)
+        )
+        for r in found:
+            runs.setdefault(r.thread_id, []).append(r)
+    items = []
+    for t, wf_name in page:
+        mine = runs.get(t.id, [])
+        last = mine[-1] if mine else None
+        items.append(
+            ThreadOut(
+                id=t.id,
+                workflow_id=t.workflow_id,
+                title=t.title,
+                status=t.status,
+                created_at=t.created_at,
+                updated_at=t.updated_at,
+                workflow_name=wf_name,
+                deployment_id=t.deployment_id,
+                runs=len(mine),
+                tokens=sum(r.tokens_in + r.tokens_out for r in mine),
+                cost_usd=float(sum(r.cost_usd for r in mine)),
+                last_started_at=last.started_at if last else None,
+                last_ended_at=last.ended_at if last else None,
+                last_error=last.error if last else None,
+                last_run_id=last.id if last else None,
+            )
+        )
     return ThreadPage(items=items, next_cursor=items[-1].id if len(rows) > limit else None)
 
 
@@ -454,8 +559,39 @@ async def explain_thread(
 @router.get("/threads/{thread_id}/runs", response_model=list[RunOut])
 async def thread_runs(thread_id: str, session: AsyncSession = Depends(get_session)) -> list[RunOut]:
     await _thread(session, thread_id)
-    rows = (await session.scalars(select(Run).where(Run.thread_id == thread_id).order_by(Run.id))).all()
+    q = select(Run).options(*LIGHT_RUN).where(Run.thread_id == thread_id).order_by(Run.id)
+    rows = (await session.scalars(q)).all()
     return [_run_out(x) for x in rows]
+
+
+@router.get("/threads/{thread_id}/trajectory", response_model=ThreadTrajectory)
+async def thread_trajectory(
+    thread_id: str,
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings_dep),
+    r: Runner = Depends(runner),
+) -> ThreadTrajectory:
+    """The conversation as a tree (G-10): each run's steps, helper agents, model replies, tool calls and framework
+    parts, with times and tokens. A run still going on shows what it did so far."""
+    t = await _thread(session, thread_id)
+    try:
+        wf: Workflow | None = (await _thread_target(session, settings, t, runnable=False))[0]
+    except NotFound:  # its deployment is gone: the tree still shows, with step ids for labels
+        wf = None
+    q = select(Run).options(defer(Run.recording), defer(Run.context)).where(Run.thread_id == thread_id)
+    runs = (await session.scalars(q.order_by(Run.started_at, Run.id))).all()
+    out = []
+    for i, run in enumerate(runs, 1):
+        events = run.events
+        h = r.handles.get(run.id)
+        if h is not None and not h.done.is_set():  # still running here: what it did so far
+            events = compact(list(h.events), h.event_times, time.time_ns())
+        out.append(build_run(run.id, events, wf, status=run.status, started_at=run.started_at, index=i,
+                             error=run.error))  # fmt: skip
+    res = r.resources(thread_id, wf) if wf is not None else None
+    return ThreadTrajectory.model_validate(
+        hide_secrets(ThreadTrajectory(thread_id=t.id, workflow_id=t.workflow_id, runs=out).model_dump(), _secrets(res))
+    )
 
 
 @router.post("/threads/{thread_id}/resume")
@@ -479,6 +615,7 @@ async def resume_thread(
         thread_id=thread_id,
         resume=ResumeSpec(body.value, body.interrupt_id),
         user_id=user.id,
+        service_connection=user.role == "admin",
         mode="debug" if body.pins or body.mocks or body.dry_run else "normal",
         **_debug(wf, body, "debug"),
         **target_kw,
@@ -587,11 +724,23 @@ async def delete_thread(
 
 
 # ------------------------------------------------------------------- inbox ----
-def _intr(x: InterruptTask, workflow_id: str | None = None, workflow_name: str | None = None) -> InterruptOut:
+def _intr(
+    x: InterruptTask,
+    workflow_id: str | None = None,
+    workflow_name: str | None = None,
+    ir: dict | None = None,
+    project: Project | None = None,
+) -> InterruptOut:
+    node = next((n for n in (ir or {}).get("nodes", []) if n.get("id") == x.canvas_node_id), None)
     return InterruptOut(
+        node_label=(node.get("label") or str(node.get("name", "")).replace("_", " ").capitalize() or None)
+        if node
+        else None,
         id=x.id,
         workflow_id=workflow_id,
         workflow_name=workflow_name,
+        project_id=project.id if project else None,
+        project_name=project.name if project else None,
         thread_id=x.thread_id,
         run_id=x.run_id,
         canvas_node_id=x.canvas_node_id,
@@ -613,7 +762,7 @@ async def inbox(
     user: CurrentUser = Depends(current_user),
 ) -> list[InterruptOut]:
     q = (
-        select(InterruptTask, Thread.workflow_id, WorkflowRow.name)
+        select(InterruptTask, Thread.workflow_id, WorkflowRow.name, Project)
         .join(Thread, Thread.id == InterruptTask.thread_id)
         .join(WorkflowRow, WorkflowRow.id == Thread.workflow_id)
         .join(Project, Project.id == WorkflowRow.project_id)
@@ -623,7 +772,12 @@ async def inbox(
         q = q.where(Thread.workflow_id == workflow_id)
     # newest first: a long backlog must not hide what is waiting right now
     rows = (await session.execute(q.order_by(InterruptTask.created_at.desc()).limit(limit))).all()
-    return [_intr(x, wid, name) for x, wid, name in rows]
+    # each workflow's document once, for its steps' labels: not once per waiting item (F-2)
+    wids = {wid for _, wid, _, _ in rows}
+    irs = dict(
+        (await session.execute(select(WorkflowRow.id, WorkflowRow.draft_ir).where(WorkflowRow.id.in_(wids)))).all()
+    )
+    return [_intr(x, wid, name, irs.get(wid), project) for x, wid, name, project in rows]
 
 
 @router.post("/inbox/{interrupt_id}/decision", tags=["inbox"])

@@ -70,6 +70,15 @@
           "title": "Structured output (JSON Schema)",
           "format": "json_schema",
           "description": "When set, the agent's final answer is validated against this schema and written to the `structured_response` channel."
+        },
+        "files": {
+          "type": "array",
+          "title": "Files to show the AI",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "description": "Which file or image fields (state fields typed file or image) the AI is shown with the message. Leave empty to show all of them. Images and PDFs reach models that can see; other models get a PDF's text and are told they cannot see images."
         }
       }
     },
@@ -272,6 +281,15 @@
           "title": "Save the reply in",
           "format": "channel",
           "description": "The data field that receives the AI's answer. Add fields in the Inspector (click empty canvas)."
+        },
+        "files": {
+          "type": "array",
+          "title": "Files to show the AI",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "description": "Which file or image fields (state fields typed file or image) the AI is shown with the message. Leave empty to show all of them. Images and PDFs reach models that can see; other models get a PDF's text and are told they cannot see images."
         }
       }
     },
@@ -881,6 +899,17 @@
           },
           "maxItems": 5,
           "description": "If this model fails (the service is down, out of quota, too slow), the same request goes to these models in order. Each uses its provider's own key (the project secret or server variable named after the provider) and this block's temperature, output limit and timeout."
+        },
+        "cheapest_of": {
+          "type": "array",
+          "title": "Use the cheapest of",
+          "items": {
+            "type": "string",
+            "format": "model",
+            "pattern": "^[a-z0-9_\\-]+:.+$"
+          },
+          "maxItems": 10,
+          "description": "Each run uses the cheapest of these models that is ready (its provider has a key here) and that your organisation's policies allow, instead of the model above, which stays the choice when none qualifies. Cheapest by catalog price, input plus output; a model with no price only when no priced one qualifies; local models are never chosen (list them among the backup models). Backup models still apply after the one chosen. Exports use the model above."
         },
         "cache_ttl": {
           "type": "integer",
@@ -2462,7 +2491,8 @@
           "type": "string",
           "title": "Knowledge base",
           "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
-          "description": "The name of a knowledge base in this project (Knowledge page). Exports ship it as knowledge/<name>.jsonl."
+          "description": "The name of a knowledge base in this project (Knowledge page). Exports ship it as knowledge/<name>.jsonl.",
+          "format": "knowledge_base"
         },
         "query": {
           "type": "string",
@@ -2493,8 +2523,9 @@
           "type": "number",
           "title": "Minimum score",
           "minimum": 0,
+          "maximum": 1,
           "default": 0,
-          "description": "Drop passages scoring below this (0 = keep the best ones whatever their score)"
+          "description": "Drop passages scoring below this, 0-1 (0 = keep the best ones whatever their score). Keywords: relative to the best match; meaning: the cosine similarity; hybrid: 1 is first in both rankings, 0.5 first in one"
         },
         "output": {
           "type": "string",
@@ -3620,6 +3651,26 @@
                 }
               }
             ]
+          }
+        },
+        "oauth": {
+          "type": "object",
+          "title": "Sign in with OAuth",
+          "additionalProperties": false,
+          "required": [
+            "identity"
+          ],
+          "description": "For apps that need each person to sign in. 'starter': the run uses the connection of the person who started it (Connect it in the editor). 'service': it uses the organisation's service connection, which an admin connects; use it for schedules, webhooks and deployments.",
+          "properties": {
+            "identity": {
+              "enum": [
+                "starter",
+                "service"
+              ],
+              "title": "Acts as",
+              "default": "starter",
+              "description": "starter = the person who started the run; service = the organisation's service connection"
+            }
           }
         },
         "command": {

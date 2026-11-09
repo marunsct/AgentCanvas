@@ -62,6 +62,16 @@ def check_auth_settings(settings: Settings) -> None:
             "the hosted edition runs workspace scripts in a sandbox: set AGENTCANVAS_SCRIPT_EXECUTION=remote "
             "(the sandbox service), docker or langsmith"
         )
+    if (
+        settings.env in ("staging", "prod")
+        and settings.script_execution in ("inprocess", "subprocess")
+        and not settings.allow_unisolated_scripts
+    ):
+        raise RuntimeError(
+            f"AGENTCANVAS_SCRIPT_EXECUTION={settings.script_execution} runs workspace code as the API's own user, with "
+            "its database password and keys in reach: set it to remote (the sandbox service), docker or langsmith, "
+            "or AGENTCANVAS_ALLOW_UNISOLATED_SCRIPTS=true when only people you trust edit workspaces"
+        )
     if settings.script_execution == "remote" and not (settings.sandbox_url and settings.sandbox_token):
         raise RuntimeError(
             "AGENTCANVAS_SCRIPT_EXECUTION=remote needs AGENTCANVAS_SANDBOX_URL and AGENTCANVAS_SANDBOX_TOKEN"
@@ -134,6 +144,8 @@ class Authenticator:
             raise Unauthorized("token expired") from None
         except jwt.PyJWTError as exc:
             raise Unauthorized(f"invalid token: {exc}") from None
+        if not str(claims["sub"]).strip():  # identities are keyed by subject: a blank one would be everybody's account
+            raise Unauthorized("invalid token: the subject is empty")
         email = claims.get(s.oidc_email_claim) or claims.get("email") or ""
         return Identity(
             subject=str(claims["sub"]),

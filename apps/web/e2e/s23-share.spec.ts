@@ -59,8 +59,15 @@ test("publish, share as a chat page, chat as a signed-out visitor, embed the wid
   await expect(chat.getByRole("button", { name: "Good answer" }).last()).toHaveAttribute("aria-pressed", "true");
   // fits a phone: no sideways scrolling
   expect(await chat.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+  // G-15: a reload brings the visitor's conversation back, in the same thread
+  await chat.reload();
+  await expect(chat.getByTestId("share-user")).toHaveCount(2);
+  await expect(chat.getByTestId("share-assistant").last()).toContainText("Hi Bo");
   await chat.getByRole("button", { name: "New conversation" }).click();
   await expect(chat.getByTestId("share-user")).toHaveCount(0);
+  await chat.reload(); // started over for good: the old conversation does not come back
+  await expect(chat.getByTestId("share-user")).toHaveCount(0);
+  await expect(chat.getByRole("button", { name: "Grace" })).toBeVisible();
   await expect(chat.getByRole("button", { name: "Grace" })).toBeVisible();
 
   // another website adds the widget: a chat button opening the compact page in an iframe. The "website" is a real
@@ -73,6 +80,12 @@ test("publish, share as a chat page, chat as a signed-out visitor, embed the wid
   await new Promise<void>((ok) => shop.listen(0, "127.0.0.1", ok));
   const site = await visitor.newPage();
   await site.goto(`http://127.0.0.1:${(shop.address() as AddressInfo).port}/`);
+  // G-15: the shop's own script hears the widget's events (the page and the widget share one window)
+  await site.evaluate(() => {
+    const heard: string[] = [];
+    (window as unknown as { heard: string[] }).heard = heard;
+    window.addEventListener("message", (e) => { if (e.data?.agentcanvas === 1) heard.push(`${e.data.type}:${e.data.text ?? ""}`); });
+  });
   await site.getByRole("button", { name: "Open Chat" }).click();
   const frame = site.frameLocator('iframe[title="Chat"]');
   await expect(frame.getByRole("heading", { name: "Greeting desk" })).toBeVisible();
@@ -80,7 +93,16 @@ test("publish, share as a chat page, chat as a signed-out visitor, embed the wid
   await frame.getByLabel("Your message").fill("Lin");
   await frame.getByRole("button", { name: "Send" }).click();
   await expect(frame.getByTestId("share-assistant").last()).toContainText("Hi Lin");
+  await expect.poll(() => site.evaluate(() => (window as unknown as { heard: string[] }).heard)).toEqual(
+    expect.arrayContaining(["opened:", "ready:", "reply:Hi Lin"]),
+  );
   await site.getByRole("button", { name: "Close Chat" }).click();
+  await expect(site.locator("iframe[title='Chat']")).toBeHidden();
+  // ...and drives it: prefill opens the chat and puts the text in the message box
+  await site.evaluate(() => window.postMessage({ agentcanvas: 1, type: "prefill", text: "Where is my order?" }, location.origin));
+  await expect(site.locator("iframe[title='Chat']")).toBeVisible();
+  await expect(frame.getByLabel("Your message")).toHaveValue("Where is my order?");
+  await site.evaluate(() => window.postMessage({ agentcanvas: 1, type: "close" }, location.origin));
   await expect(site.locator("iframe[title='Chat']")).toBeHidden();
 
   // switching sharing off closes the page

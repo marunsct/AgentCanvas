@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+import traceback
 from collections import OrderedDict
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field, replace
@@ -30,8 +31,12 @@ from agentcanvas.ir.canonical import ir_hash
 from agentcanvas.ir.models import Budget, Workflow
 from agentcanvas.log import get_logger
 from agentcanvas.registry import default_registry
+from agentcanvas.runtime import masking
+from agentcanvas.runtime.identity import CURRENT, RunIdentity
 from agentcanvas.runtime.tracing import trace_ref
+from agentcanvas.runtime.trajectory import compact
 from agentcanvas.runtime.types import REPLAYABLE, ResumeSpec, RunMode, RunSpec
+from agentcanvas.services.files import DEFAULT_MAX_BYTES, FileService
 
 log = get_logger(__name__)
 ResourcesFactory = Callable[[str, Workflow | None], Any]
@@ -57,18 +62,27 @@ class RunHandle:
     # "event": started by an event handler (its lifecycle events are not re-delivered); "test": a saved test case
     origin: str = "user"
     emitted: list[dict[str, Any]] = field(default_factory=list)  # sdk.emit() events, delivered after the run
+    event_depth: int = 0  # how many events led to this run (a handler's run emits events one level deeper)
     traced: bool = False  # sent to LangSmith ("Open trace", M6-T6)
     input: dict[str, Any] | None = None  # a fresh run's input: its model replies are recorded (FR-X-13)
     drained: bool = False  # stopped by a server shutdown; another instance continues it (FR-X-10)
     superseded: bool = False  # swept while this instance stalled: another instance continues it (S13)
+    finishing: bool = False  # saving its outcome: a cancel now would cut the save short and wedge the thread
+    # a task cancelled before it began never runs its code, so nothing would finish the run: until `_pump` starts,
+    # a stop is a request it reads first (RT-10)
+    started: bool = False
+    stop_requested: bool = False
+    decided: list[str] = field(default_factory=list)  # Inbox items this run answers (back to pending if it fails)
     deployment_id: str | None = None  # a run of a published deployment (online evaluators score these, S13)
     version_id: str | None = None
     labels: dict[str, str] = field(default_factory=dict)  # what the deployment API caller tagged it with
     trace_redact: list[str] = field(default_factory=list)  # the workflow's fields that never reach a trace
     held: list[dict[str, Any]] = field(default_factory=list)  # last events, published once the run is saved (see _pump)
     size: int = 0  # about how many bytes its events take in memory (finished runs are evicted by this too)
+    trimmed_to: int = 0  # events before this index were already looked at by `_trim`
     event_times: list[int] = field(default_factory=list)  # wall clock (ns) of each event, for trace export (S15)
     alerted: set[tuple[str, float]] = field(default_factory=set)  # (period, share) cost alerts this run checked
+    routing: list[dict[str, Any]] = field(default_factory=list)  # the model each routed block got (services/routing.py)
 
 
 def _plain(value: Any) -> Any:
@@ -136,18 +150,65 @@ def rubric_scores(h: Any) -> list[RunScore]:
     return out
 
 
-def price(model_id: str | None, tokens_in: int, tokens_out: int) -> float | None:
-    """USD for a model call from catalog prices; None when the model or its prices are unknown."""
+RUNNING_BYTES = 64 * 1024 * 1024  # a running run's events in memory before its oldest ones are shrunk
+KEEP_RECENT = 100  # events at the end that are never emptied
+TRIM_TEXT = 200  # what a trimmed event keeps of each long text in it
+
+
+def _shrunk(value: Any) -> Any:
+    """`value` with every string longer than TRIM_TEXT cut to that length (a copy; `value` is left as it is)."""
+    if isinstance(value, str):
+        return value if len(value) <= TRIM_TEXT else value[:TRIM_TEXT] + "…"
+    if isinstance(value, dict):
+        return {k: _shrunk(v) for k, v in value.items()}
+    if isinstance(value, list | tuple):
+        return [_shrunk(v) for v in value]
+    return value
+
+
+def _without_secrets(text: str) -> str:
+    """`text` with every project secret masked (the values traces are masked with)."""
+    values = sorted({v for v in masking.provider() if len(v) >= 6}, key=len, reverse=True)
+    return masking.mask_strings(text, values) if values else text
+
+
+def price(
+    model_id: str | None, tokens_in: int, tokens_out: int, cache_read: int = 0, cache_write: int = 0
+) -> float | None:
+    """USD for a model call from catalog prices; None when the model or its prices are unknown. `tokens_in`
+    includes the input read from (`cache_read`) and written to (`cache_write`) the prompt cache, each at its own
+    price when the catalog has one. A prompt above the model's long-context threshold is charged its long-context
+    prices (the cache prices scaled like the input price)."""
     info = default_registry().model(model_id or "")
     if info is None or info.price_in_per_mtok is None or info.price_out_per_mtok is None:
         return None
-    return (tokens_in * info.price_in_per_mtok + tokens_out * info.price_out_per_mtok) / 1_000_000
+    p_in, p_out, scale = info.price_in_per_mtok, info.price_out_per_mtok, 1.0
+    if (
+        info.price_above_tokens is not None
+        and tokens_in > info.price_above_tokens
+        and info.price_in_above_per_mtok is not None
+        and info.price_out_above_per_mtok is not None
+    ):
+        scale = info.price_in_above_per_mtok / p_in if p_in else 1.0
+        p_in, p_out = info.price_in_above_per_mtok, info.price_out_above_per_mtok
+    read = info.price_cache_read_per_mtok * scale if info.price_cache_read_per_mtok is not None else p_in
+    write = info.price_cache_write_per_mtok * scale if info.price_cache_write_per_mtok is not None else p_in
+    plain = max(0, tokens_in - cache_read - cache_write)
+    return (plain * p_in + cache_read * read + cache_write * write + tokens_out * p_out) / 1_000_000
+
+
+def usage_price(model_id: str | None, usage: dict[str, Any]) -> float | None:
+    """`price` of a usage record (`input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_write_tokens`)."""
+    return price(
+        model_id, int(usage.get("input_tokens", 0)), int(usage.get("output_tokens", 0)),
+        int(usage.get("cache_read_tokens", 0)), int(usage.get("cache_write_tokens", 0)),
+    )  # fmt: skip
 
 
 @dataclass
 class Spent:
-    """What was spent before a run: by its thread's earlier runs, and by all the workflow's runs today and this
-    month (UTC; runs still going count once they finish)."""
+    """What was spent before a run: by its thread's earlier runs, and by all the workflow's other runs today and this
+    month (UTC), on any API instance: runs still going count what they have spent so far (`_concurrent_spend`)."""
 
     thread_tokens: int = 0
     thread_cost: float = 0.0
@@ -190,60 +251,8 @@ def check_budget(budget: Budget | None, usage: dict[str, Any], before: Spent) ->
             raise BudgetExceeded(f"budget exceeded: {used:g} of {limit:g} {what}")
 
 
-class SpendTally:
-    """What a workflow's runs spend while they are going, per budget period, in this process. A run's cost reaches
-    the database only when it finishes, so runs going at the same time would each see the same spending before
-    them and together pass a daily or monthly limit. Each run's check adds what the workflow's runs already going
-    had spent when it started, and what the workflow's other runs spent since.
-
-    Limitation: the tally is per process. Runs on other API instances count only once they finish (the database),
-    so concurrent runs spread over several instances can still overshoot a period limit by what they spend
-    together while going."""
-
-    def __init__(self) -> None:
-        self.total: dict[tuple[str, str], float] = {}  # (workflow, period label) -> USD reported in this process
-        self.running: dict[str, dict[str, float]] = {}  # workflow -> run -> USD so far
-        self.marks: dict[str, tuple[dict[str, str], dict[str, float]]] = {}  # run -> (labels, totals) at its start
-
-    def start(self, workflow_id: str, run_id: str) -> float:
-        """Note where a run starts (before reading the database's spending); returns what the workflow's other
-        runs going here had spent by then, which the database does not have yet."""
-        labels = {p: label for p, (label, _) in periods().items()}
-        current = set(labels.values())
-        for key in [k for k in self.total if k[0] == workflow_id and k[1] not in current]:
-            del self.total[key]  # a past day or month
-        self.marks[run_id] = (labels, {p: self.total.get((workflow_id, lb), 0.0) for p, lb in labels.items()})
-        going = self.running.setdefault(workflow_id, {})
-        carry = sum(cost for run, cost in going.items() if run != run_id)
-        going[run_id] = 0.0
-        return carry
-
-    def add(self, workflow_id: str, run_id: str, cost: float) -> None:
-        if not cost:
-            return
-        going = self.running.get(workflow_id, {})
-        if run_id in going:
-            going[run_id] += cost
-        for label, _ in periods().values():
-            self.total[(workflow_id, label)] = self.total.get((workflow_id, label), 0.0) + cost
-
-    def others(self, workflow_id: str, run_id: str, own: float) -> dict[str, float]:
-        """USD the workflow's other runs in this process spent since this run started, per period."""
-        labels, marks = self.marks.get(run_id, ({}, {}))
-        return {p: max(0.0, self.total.get((workflow_id, lb), 0.0) - marks[p] - own) for p, lb in labels.items()}
-
-    def finish(self, workflow_id: str, run_id: str) -> None:
-        """The run's cost is in the database now."""
-        self.marks.pop(run_id, None)
-        going = self.running.get(workflow_id)
-        if going is not None:
-            going.pop(run_id, None)
-            if not going:
-                del self.running[workflow_id]
-
-
 async def workflow_spend(s: Any, workflow_id: str, *, exclude_run: str | None = None) -> tuple[float, float]:
-    """USD the workflow's runs spent today and this month (UTC)."""
+    """USD the workflow's runs spent today and this month (UTC), those still going at what they have spent so far."""
     p = periods()
     day, month = p["day"][1], p["month"][1]
     q = (
@@ -291,7 +300,10 @@ class Runner:
         # awaited before a run starts (the project's secrets, reloaded when another instance changed them)
         self.prepare_hooks: list[Callable[[Workflow], Awaitable[None]]] = []
         self.draining = False  # shutting down: no new runs (FR-X-10)
-        self.spend = SpendTally()  # runs going in this process, for daily and monthly budgets
+        # picks the models of blocks that list `cheapest_of` (db session, workflow, project id -> workflow, notes)
+        self.router: Callable[[Any, Workflow, str], Awaitable[tuple[Workflow, list[dict[str, Any]]]]] | None = None
+        # G-5: files sent inline in a run's input (AGENTCANVAS_MAX_UPLOAD_MB, AGENTCANVAS_MAX_PROJECT_FILES_MB)
+        self.max_file_bytes, self.max_project_file_bytes = DEFAULT_MAX_BYTES, 0
 
     @property
     def models(self) -> ModelService:
@@ -345,8 +357,16 @@ class Runner:
         deployment_id: str | None = None,
         version_id: str | None = None,
         labels: dict[str, str] | None = None,
+        event_depth: int = 0,
+        visitor_hash: str | None = None,
+        project_files: bool = False,
+        service_connection: bool = False,
     ) -> RunHandle:
-        """Start a run. `context=None` reuses the context of the last run on `context_from` (default: this thread)."""
+        """Start a run. `context=None` reuses the context of the last run on `context_from` (default: this thread).
+        A deployment's run takes only files given to that deployment (`visitor_hash`: a share link's visitor, whose
+        own uploads on the link it may use); `project_files`: the input was written by a builder (a schedule's), so
+        any of the project's files. `service_connection`: the person who starts it may use the organisation's service
+        connection (an admin); a deployment's runs always may."""
         if self.draining:
             raise Unavailable("this server is restarting; retry the request", retry_after=5)
         adapter = self.adapter_for(wf)
@@ -357,7 +377,18 @@ class Runner:
             raise Conflict(f"thread '{thread_id}' already has an active run", run_id=self.active_by_thread[thread_id])
         run_id = new_id("run")
         self.active_by_thread[thread_id] = run_id  # reserved before any await: a concurrent start is refused
+        routed, routing = wf, []  # the workflow as this run executes it, and why each routed block got its model
         try:
+            # the run resolves secrets and workspace code from the workflow's own project: read it here, at every
+            # start, instead of trusting a map filled only when some service happened to load the workflow (after
+            # a restart, a hand-over or on another replica it was missing and the default project was used). The
+            # prepare hooks (the secrets refresh, the security gate) read it too, so it is known before they run.
+            async with self.db.sessionmaker() as s:
+                project_id = await s.scalar(select(WorkflowRow.project_id).where(WorkflowRow.id == wf.id))
+            if project_id is not None:
+                from agentcanvas.services.projects import PROJECT_OF
+
+                PROJECT_OF[wf.id] = project_id
             for prepare in self.prepare_hooks:
                 await prepare(wf)
             async with self.db.sessionmaker() as s:
@@ -389,14 +420,17 @@ class Runner:
                 if context is None:
                     context = await self._last_context(s, context_from or thread_id)
                 org_id = await ScopeRepo(s).org_of("workflow", wf.id)  # None for workflows outside the database
-                # the run resolves secrets and workspace code from the workflow's own project: read it here, at every
-                # start, instead of trusting a map filled only when some service happened to load the workflow (after
-                # a restart, a hand-over or on another replica it was missing and the default project was used)
-                project_id = await s.scalar(select(WorkflowRow.project_id).where(WorkflowRow.id == wf.id))
-                if project_id is not None:
-                    from agentcanvas.services.projects import PROJECT_OF
-
-                    PROJECT_OF[wf.id] = project_id
+                if self.router is not None and project_id is not None:
+                    try:
+                        routed, routing = await self.router(s, wf, project_id)
+                    except Exception:
+                        log.exception("run.routing_failed", run_id=run_id)
+                if input and project_id is not None:  # G-5: files as the project keeps them, bytes stored first
+                    schemas = {c.name: c.type for c in wf.state.channels}
+                    input = await FileService(s, self.max_file_bytes, self.max_project_file_bytes).claim(
+                        project_id, input, schemas, deployment_id=None if project_files else deployment_id,
+                        visitor_hash=visitor_hash,
+                    )  # fmt: skip
                 await s.flush()
                 s.add(
                     Run(
@@ -409,17 +443,24 @@ class Runner:
                         context=context,
                         trace_url=trace_ref(run_id),
                         labels=labels or None,
+                        origin=origin,
                     )
                 )
+                decided: list[str] = []
                 if resume is not None:
-                    await self._decide_interrupts(s, thread_id, resume, decided_by or user_id)
+                    decided = await self._decide_interrupts(s, thread_id, resume, decided_by or user_id)
                 await s.commit()
+        except IntegrityError as exc:
+            self.active_by_thread.pop(thread_id, None)
+            if _thread_taken(exc):  # another replica created this new thread a moment earlier (R-6)
+                raise Conflict(f"thread '{thread_id}' already has an active run") from exc
+            raise  # anything else is not a busy thread: never report it as one (RT-20)
         except BaseException:
             self.active_by_thread.pop(thread_id, None)
             raise
 
         spec = RunSpec(
-            workflow=wf,
+            workflow=routed,
             thread_id=thread_id,
             run_id=run_id,
             input=input,
@@ -434,6 +475,8 @@ class Runner:
             dry_run=dry_run,
             mocks=mocks or {},
             org_id=org_id,
+            user_id=user_id,
+            service_connection=service_connection or deployment_id is not None,
             labels={
                 k: v
                 for k, v in {"origin": origin, "deployment_id": deployment_id, "version_id": version_id}.items()
@@ -446,6 +489,9 @@ class Runner:
             trace_redact=list(wf.settings.trace_redact),
         )  # fmt: skip
         handle.traced = trace_ref(run_id) is not None
+        handle.event_depth = event_depth
+        handle.routing = routing
+        handle.decided = decided  # an error before the answer is applied puts them back in the Inbox (R-4)
         if input is not None and resume is None and checkpoint_id is None and origin != "test":
             handle.input = _plain(input)  # a copy: the engine may turn the caller's message dicts into objects in place
         self.handles[run_id] = handle
@@ -463,39 +509,40 @@ class Runner:
         q = select(Run.context).where(Run.thread_id == thread_id).order_by(Run.id.desc()).limit(1)
         return (await s.scalar(q)) or {}
 
-    async def _decide_interrupts(self, s: Any, thread_id: str, resume: ResumeSpec, decided_by: str | None) -> None:
-        q = update(InterruptTask).where(InterruptTask.thread_id == thread_id, InterruptTask.status == "pending")
+    async def _decide_interrupts(self, s: Any, thread_id: str, resume: ResumeSpec, decided_by: str | None) -> list[str]:
+        """Mark the answered Inbox items decided; returns their ids."""
+        pending = select(InterruptTask.id).where(
+            InterruptTask.thread_id == thread_id, InterruptTask.status == "pending"
+        )
         if resume.interrupt_id:
-            q = q.where(InterruptTask.id == resume.interrupt_id)
+            pending = pending.where(InterruptTask.id == resume.interrupt_id)
+        ids = list((await s.scalars(pending)).all())
+        q = update(InterruptTask).where(InterruptTask.id.in_(ids), InterruptTask.status == "pending")
         decision = resume.value if isinstance(resume.value, dict) else {"value": resume.value}
         res = await s.execute(
             q.values(status="decided", decision=decision, decided_by=decided_by, decided_at=datetime.now(UTC))
         )
         if resume.interrupt_id and res.rowcount == 0 and await s.get(InterruptTask, resume.interrupt_id):
             raise Conflict(f"inbox item '{resume.interrupt_id}' was already decided")  # a concurrent decision won
+        return ids
 
     # ---------------------------------------------------------------- pump ----
     async def _emit(self, h: RunHandle, event: dict[str, Any]) -> None:
         event = {**event, "seq": len(h.events) + 1}
         h.events.append(event)
         h.size += len(json.dumps(event, default=str))
+        if h.size > RUNNING_BYTES:
+            self._trim(h)
         h.event_times.append(time.time_ns())
         async with h.changed:
             h.changed.notify_all()
 
     async def _pump(self, h: RunHandle, spec: RunSpec) -> None:
+        h.started = True  # from here on a cancel reaches the code below, which always finishes the run
         started = time.perf_counter()
-        await self._emit(
-            h,
-            {
-                "type": "RUN_STARTED",
-                "runId": h.run_id,
-                "threadId": h.thread_id,
-                "workflowId": h.workflow_id,
-                "mode": spec.mode,
-                "adapter": spec.workflow.framework,
-            },
-        )
+        CURRENT.set(
+            RunIdentity(spec.org_id, spec.user_id, spec.service_connection)
+        )  # app connectors that sign in read it per call (G-7)
         status, error, interrupts = "error", None, []
         # The run's last events are published only after the run is finalised (saved, thread released): a client
         # that sends its next message the moment it reads RUN_FINISHED must find the thread free, not 'already has
@@ -508,12 +555,34 @@ class Runner:
             else:
                 await self._emit(h, event)
 
+        def late_usage(record: dict[str, Any]) -> None:  # reported after the run stopped: before its last event
+            event = self._priced(h, {"type": "CUSTOM", "name": "ac.usage", "value": record})
+            at = next((i for i, e in enumerate(held) if e["type"] in ("RUN_FINISHED", "RUN_ERROR")), len(held))
+            held.insert(at, event)
+
+        spec.on_usage = late_usage
         budget = spec.workflow.settings.budget
         events: Any = None  # the adapter's async generator (closed in `finally`)
-        carry = self.spend.start(h.workflow_id, h.run_id)
+        by_period = budget is not None and (
+            budget.daily_max_cost_usd is not None or budget.monthly_max_cost_usd is not None
+        )
         try:
+            if h.stop_requested:  # stopped before its task began (`_stop_task`)
+                raise asyncio.CancelledError
+            await self._emit(
+                h,
+                {
+                    "type": "RUN_STARTED",
+                    "runId": h.run_id,
+                    "threadId": h.thread_id,
+                    "workflowId": h.workflow_id,
+                    "mode": spec.mode,
+                    "adapter": spec.workflow.framework,
+                },
+            )
+            for note in h.routing:
+                await self._emit(h, {"type": "CUSTOM", "name": "ac.route", "value": note})
             before = await self._spent(h, budget) if budget else Spent()
-            before = replace(before, day_cost=before.day_cost + carry, month_cost=before.month_cost + carry)
             check_budget(budget, h.usage, before)  # a conversation that is already over budget does not start
             resources = self.resources(spec.thread_id, spec.workflow)
             events = self.adapter_for(spec.workflow).execute(spec, resources)
@@ -522,13 +591,7 @@ class Runner:
                     if raw["type"] == "CUSTOM" and raw.get("name") == "ac.usage":
                         priced = self._priced(h, raw)
                         await emit(priced)
-                        self.spend.add(h.workflow_id, h.run_id, priced["value"]["cost_usd"] or 0.0)
-                        others = self.spend.others(h.workflow_id, h.run_id, h.usage["cost_usd"])
-                        now = replace(
-                            before,
-                            day_cost=before.day_cost + others.get("day", 0.0),
-                            month_cost=before.month_cost + others.get("month", 0.0),
-                        )  # with what the workflow's concurrent runs here spent meanwhile
+                        now = await self._concurrent_spend(h, before) if by_period else before
                         await self._cost_alerts(h, budget, now)
                         check_budget(budget, h.usage, now)
                         continue
@@ -582,33 +645,48 @@ class Runner:
                     "threadId": h.thread_id,
                 },
             )
-        except Exception as exc:
-            status, error = "error", f"{type(exc).__name__}: {exc}"
-            log.exception("run.crashed", run_id=h.run_id)
+        except Exception as exc:  # noqa: BLE001 - raised before the adapter could redact it (graph build, MCP): R-7
+            status, error = "error", _without_secrets(f"{type(exc).__name__}: {exc}")
+            trace = _without_secrets("".join(traceback.format_exception(exc)))
+            log.error("run.crashed", run_id=h.run_id, error=error, traceback=trace)
             await emit(
                 {"type": "RUN_ERROR", "code": "internal", "message": error, "runId": h.run_id, "threadId": h.thread_id},
             )
         finally:
+            h.finishing = True  # from here on the run only saves itself; `cancel()` and friends leave it alone
             try:
-                if events is not None:
-                    await events.aclose()  # stops the graph if we left early (budget, cancel)
-                h.status = status
-                await self._finish(h, status, error, interrupts)
-                self.spend.finish(h.workflow_id, h.run_id)  # after its cost is saved: later runs read it there
-            finally:  # even if finalising was cut short: the thread is released and the last events are published
-                if self.active_by_thread.get(h.thread_id) == h.run_id:  # the thread is free for its next run
-                    del self.active_by_thread[h.thread_id]
-                for event in held:
-                    await self._emit(h, event)
-            await self._hooks(self.finish_hooks, h, status, error, interrupts)
-            h.finished_at = time.monotonic()
-            h.done.set()
-            self._evict()  # a quiet server must not hold finished runs' events beyond its limits
-            async with h.changed:
-                h.changed.notify_all()
+                await self._close(h, events, status, error, interrupts, held)
+            finally:  # however the save went, whoever waits for the run is told it is over
+                h.finished_at = time.monotonic()
+                h.done.set()
+                self._evict()  # a quiet server must not hold finished runs' events beyond its limits
+                async with h.changed:
+                    h.changed.notify_all()
             # event handlers may take long and start or resume runs (on this thread too): nobody waiting for the
             # run waits for them, but they still run in its task, so a shutdown lets them finish
             await self._hooks(self.after_hooks, h, status, error, interrupts)
+
+    async def _close(
+        self,
+        h: RunHandle,
+        events: Any,
+        status: str,
+        error: str | None,
+        interrupts: list[dict[str, Any]],
+        held: list[dict[str, Any]],
+    ) -> None:
+        """Save a run's outcome, free its thread, publish its last events and run the finish hooks."""
+        try:
+            if events is not None:
+                await events.aclose()  # stops the graph if we left early (budget, cancel)
+            h.status = status
+            await self._finish(h, status, error, interrupts)
+        finally:  # even if finalising was cut short: the thread is released and the last events are published
+            if self.active_by_thread.get(h.thread_id) == h.run_id:  # the thread is free for its next run
+                del self.active_by_thread[h.thread_id]
+            for event in held:
+                await self._emit(h, event)
+        await self._hooks(self.finish_hooks, h, status, error, interrupts)
 
     @staticmethod
     async def _hooks(hooks: list[Callable[..., Any]], h: RunHandle, *args: Any) -> None:
@@ -635,6 +713,7 @@ class Runner:
                         cache_hits=h.usage["cache_hits"],
                         fallbacks=h.usage["fallbacks"],
                         recording=_recording(h, status),
+                        events=compact([*h.events, *h.held], h.event_times, time.time_ns()),
                         handover=h.drained,
                     )
                 )
@@ -642,39 +721,62 @@ class Runner:
                     await s.commit()
                     return
                 await s.execute(update(Thread).where(Thread.id == h.thread_id).values(status=thread_status))
+                untouched = not any(e.get("type") == "STEP_FINISHED" for e in h.events)
+                # failed, cancelled or stopped by a restart before the answer took: the run still waits for it
+                stopped = status in ("error", "cancelled") or (status == "interrupted" and h.drained)
+                if stopped and h.decided and untouched:
+                    await s.execute(
+                        update(InterruptTask)
+                        .where(InterruptTask.id.in_(h.decided), InterruptTask.status == "decided")
+                        .values(status="pending", decision=None, decided_by=None, decided_at=None)
+                    )
+                    if thread_status in ("error", "idle"):
+                        await s.execute(update(Thread).where(Thread.id == h.thread_id).values(status="interrupted"))
                 for intr in interrupts:
-                    if await s.get(InterruptTask, intr["id"]) is None:
-                        s.add(
-                            InterruptTask(
-                                id=intr["id"],
-                                thread_id=h.thread_id,
-                                run_id=h.run_id,
-                                canvas_node_id=intr.get("canvas_node_id") or "",
-                                kind=intr["kind"],
-                                payload=_as_object(intr["payload"]),
-                            )
+                    asked = {
+                        "run_id": h.run_id, "canvas_node_id": intr.get("canvas_node_id") or "", "kind": intr["kind"],
+                        "payload": _as_object(intr["payload"]),
+                    }  # fmt: skip
+                    row = await s.get(InterruptTask, intr["id"])
+                    if row is None:
+                        s.add(InterruptTask(id=intr["id"], thread_id=h.thread_id, **asked))
+                    elif row.status != "pending":  # asked again (its answer did not take): open it again
+                        await s.execute(
+                            update(InterruptTask)
+                            .where(InterruptTask.id == intr["id"])
+                            .values(status="pending", decision=None, decided_by=None, decided_at=None, **asked)
                         )
                 s.add_all(rubric_scores(h))
                 await s.commit()
         except Exception:
             log.exception("run.finish_failed", run_id=h.run_id)
             await self._finish_bare(h, status, error, thread_status)
+        except asyncio.CancelledError:  # a shutdown that would not wait: leave at least the status and a free thread
+            await self._finish_bare(h, status, error, thread_status)
+            raise
 
     async def _finish_bare(self, h: RunHandle, status: str, error: str | None, thread_status: str) -> None:
         """The least a finished run must leave in the database when saving everything failed (a recording or a usage
         figure the column cannot store): its status and a free thread. Without it the thread would stay 'running' and
-        refuse every later message."""
-        try:
-            async with self.db.sessionmaker() as s:
-                await s.execute(
-                    update(Run)
-                    .where(Run.id == h.run_id, Run.status == "running")
-                    .values(status=status, error=error, ended_at=datetime.now(UTC), handover=h.drained)
-                )
-                await s.execute(update(Thread).where(Thread.id == h.thread_id).values(status=thread_status))
-                await s.commit()
-        except Exception:
-            log.exception("run.finish_bare_failed", run_id=h.run_id)
+        refuse every later message. Its tokens and cost are kept too (budgets and reports count them), unless they
+        are what could not be stored."""
+        usage = {
+            "tokens_in": h.usage["input_tokens"], "tokens_out": h.usage["output_tokens"],
+            "cost_usd": h.usage["cost_usd"], "cache_hits": h.usage["cache_hits"], "fallbacks": h.usage["fallbacks"],
+        }  # fmt: skip
+        for extra in (usage, {}):
+            try:
+                async with self.db.sessionmaker() as s:
+                    await s.execute(
+                        update(Run)
+                        .where(Run.id == h.run_id, Run.status == "running")
+                        .values(status=status, error=error, ended_at=datetime.now(UTC), handover=h.drained, **extra)
+                    )
+                    await s.execute(update(Thread).where(Thread.id == h.thread_id).values(status=thread_status))
+                    await s.commit()
+                return
+            except Exception:
+                log.exception("run.finish_bare_failed", run_id=h.run_id, with_usage=bool(extra))
 
     def _priced(self, h: RunHandle, raw: dict[str, Any]) -> dict[str, Any]:
         """Add the cost to a usage event and to the run's totals."""
@@ -684,7 +786,7 @@ class Runner:
         if v.get("failed"):  # ... or a backup model answered
             h.usage["fallbacks"] += 1
         has_tokens = v["input_tokens"] or v["output_tokens"]
-        v["cost_usd"] = price(v.get("model"), v["input_tokens"], v["output_tokens"]) if has_tokens else 0.0
+        v["cost_usd"] = usage_price(v.get("model"), v) if has_tokens else 0.0
         h.usage["input_tokens"] += v["input_tokens"]
         h.usage["output_tokens"] += v["output_tokens"]
         if v["cost_usd"] is None:
@@ -704,6 +806,23 @@ class Runner:
             if budget.daily_max_cost_usd or budget.monthly_max_cost_usd:
                 out.day_cost, out.month_cost = await workflow_spend(s, h.workflow_id, exclude_run=h.run_id)
         return out
+
+    async def _concurrent_spend(self, h: RunHandle, before: Spent) -> Spent:
+        """Save what the run has spent so far on its row, and read what the workflow's other runs have spent, on any
+        API instance. Every run does the same after each model call, so runs going at once, here or on other replicas,
+        stop a day or month budget within a model call of each other's spending (G-8). If the database does not
+        answer, the run carries on with what it knew."""
+        try:
+            async with self.db.sessionmaker() as s:
+                await s.execute(
+                    update(Run).where(Run.id == h.run_id, Run.status == "running").values(cost_usd=h.usage["cost_usd"])
+                )
+                await s.commit()
+                day, month = await workflow_spend(s, h.workflow_id, exclude_run=h.run_id)
+        except Exception:
+            log.warning("run.spend_sync_failed", run_id=h.run_id, exc_info=True)
+            return before
+        return replace(before, day_cost=day, month_cost=month)
 
     async def _cost_alerts(self, h: RunHandle, budget: Budget | None, before: Spent) -> None:
         """Raise the cost alerts (S26) this run's spending crosses: once per workflow, period and share, however many
@@ -741,10 +860,34 @@ class Runner:
                          "limit_usd": limit, "message": message}  # fmt: skip
                 await self._emit(h, {"type": "CUSTOM", "name": "ac.cost_alert", "value": value})
 
+    @staticmethod
+    def _trim(h: RunHandle) -> None:
+        """A run going on for hours keeps every event for late subscribers: past RUNNING_BYTES the oldest are
+        shrunk in place, token deltas emptied and long text in other events (step outputs, tool answers) cut to
+        TRIM_TEXT characters. Their numbers stay, so `after=` still works; the full text is in the run's final
+        events and its checkpoint (R-8). Each event is looked at once: `trimmed_to` remembers where this stopped,
+        so a long run does not rescan its whole list on every new event (RT-14)."""
+        end = len(h.events) - KEEP_RECENT  # the newest stay whole, whatever the size
+        i = h.trimmed_to
+        while i < end and h.size > RUNNING_BYTES * 3 // 4:
+            ev = h.events[i]
+            i += 1
+            if ev.get("type") in ("RUN_STARTED", "RUN_FINISHED", "RUN_ERROR") or ev.get("trimmed"):
+                continue
+            if ev.get("type") == "TEXT_MESSAGE_CONTENT":
+                small = {**ev, "delta": "", "trimmed": True} if ev.get("delta") else ev
+            else:
+                shrunk = _shrunk(ev)
+                small = {**shrunk, "trimmed": True} if shrunk != ev else ev
+            if small is not ev:
+                h.size -= len(json.dumps(ev, default=str)) - len(json.dumps(small, default=str))
+                h.events[i - 1] = small
+        h.trimmed_to = i
+
     def _evict(self) -> None:
         """Forget the oldest finished runs beyond `keep_finished` and `keep_bytes` of events (running ones stay)."""
         finished = [rid for rid, h in self.handles.items() if h.done.is_set()]
-        for rid in finished[: max(0, len(self.handles) - self._keep)]:
+        for rid in finished[: max(0, len(finished) - self._keep)]:  # running runs do not count (R-8)
             self.handles.pop(rid, None)
         total = sum(h.size for h in self.handles.values() if h.done.is_set())
         for rid in [rid for rid, h in self.handles.items() if h.done.is_set()]:
@@ -773,12 +916,25 @@ class Runner:
         await h.done.wait()
         return h
 
+    @staticmethod
+    def _stoppable(h: RunHandle) -> bool:
+        """Still doing its work: a run that is saving its outcome finishes that first (a second cancel, a drain or a
+        superseded heartbeat used to cut the save short and leave its thread `running`)."""
+        return h.task is not None and not h.done.is_set() and not h.finishing
+
     async def cancel(self, run_id: str) -> bool:
         h = self.handles.get(run_id)
-        if h is None or h.task is None or h.done.is_set():
+        if h is None or not self._stoppable(h):
             return False
-        h.task.cancel()
+        self._stop_task(h)
         return True
+
+    @staticmethod
+    def _stop_task(h: RunHandle) -> None:
+        if h.started:
+            h.task.cancel()  # type: ignore[union-attr]
+        else:
+            h.stop_requested = True
 
     async def drain(self, grace_s: float) -> list[str]:
         """Stop taking runs, give running ones `grace_s` to finish, then stop the rest at their last checkpoint
@@ -786,11 +942,14 @@ class Runner:
         self.draining = True
         running = [h for h in self.handles.values() if h.task and not h.done.is_set()]
         if running and grace_s > 0:
-            await asyncio.wait([asyncio.ensure_future(h.done.wait()) for h in running], timeout=grace_s)
-        left = [h for h in running if not h.done.is_set()]
+            waiters = [asyncio.ensure_future(h.done.wait()) for h in running]
+            _, pending = await asyncio.wait(waiters, timeout=grace_s)
+            for w in pending:  # runs that did not finish in time: their waiters would otherwise outlive the loop
+                w.cancel()
+        left = [h for h in running if self._stoppable(h)]
         for h in left:
             h.drained = True
-            h.task.cancel()  # type: ignore[union-attr]
+            self._stop_task(h)
         await asyncio.gather(*(h.task for h in left if h.task), return_exceptions=True)
         if left:
             log.info("runner.drained", runs=[h.run_id for h in left])
@@ -814,16 +973,16 @@ class Runner:
             await s.commit()
         for run_id in gone:
             h = self.handles.get(run_id)
-            if h is not None and h.task is not None and not h.done.is_set():
+            if h is not None and self._stoppable(h):
                 log.warning("run.superseded", run_id=run_id)
                 h.superseded = True
-                h.task.cancel()
+                self._stop_task(h)
         return gone
 
     async def shutdown(self) -> None:
         for h in list(self.handles.values()):
-            if h.task and not h.done.is_set():
-                h.task.cancel()
+            if self._stoppable(h):
+                self._stop_task(h)
         await asyncio.gather(*(h.task for h in self.handles.values() if h.task), return_exceptions=True)
 
     # -------------------------------------------------------------- queries ----
@@ -831,6 +990,12 @@ class Runner:
         async with self.db.sessionmaker() as s:
             q = select(InterruptTask).where(InterruptTask.thread_id == thread_id, InterruptTask.status == "pending")
             return list((await s.scalars(q)).all())
+
+
+def _thread_taken(exc: IntegrityError) -> bool:
+    """The insert of a new thread lost to one with the same id: SQLite names the column, Postgres the key."""
+    text = str(exc.orig)
+    return "thread.id" in text or "thread_pkey" in text
 
 
 def _title(input: dict[str, Any] | None) -> str | None:

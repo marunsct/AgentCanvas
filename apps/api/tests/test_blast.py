@@ -112,7 +112,7 @@ def test_blast_radius_respects_the_mcp_tool_filter():
 def test_dry_run_stubs_mcp_tools_that_announce_destructive_hint():
     from langchain_core.tools import StructuredTool
 
-    from agentcanvas.adapters.langchain.nodes import Resources, _config_key
+    from agentcanvas.adapters.langchain.nodes import Resources
 
     def make(name: str, destructive: bool) -> StructuredTool:
         t = StructuredTool.from_function(func=lambda: "called", name=name, description=name)
@@ -122,6 +122,33 @@ def test_dry_run_stubs_mcp_tools_that_announce_destructive_hint():
     wipe, lookup = make("wipe", True), make("lookup", False)
     config = {"url": "https://mcp.example.com/mcp"}  # nothing cached by "Browse tools"
     resources = Resources()
-    resources._mcp[("crm", _config_key(config))] = [wipe, lookup]
+    resources._mcp[("crm", resources._key(config))] = [wipe, lookup]
     stubbed = resources.with_dry_run(set()).tool("crm", config, "mcp.server")
     assert stubbed[0] is not wipe and stubbed[0].name == "wipe" and stubbed[1] is lookup
+
+
+def test_a_damaged_group_of_steps_does_not_break_the_blast_radius():
+    """Its inner workflow is not valid (validation says so, E018): the overlay and the dry run skip it."""
+    from agentcanvas.validation import validate
+
+    group = {"id": "n_g", "type": "core.subgraph", "name": "group",
+             "config": {"workflow": {"nodes": [], "edges": [{"source": 0}]}}}  # fmt: skip
+    wf = Workflow.model_validate({"id": "wf_x", "name": "x", "nodes": [group], "edges": []})
+    assert "E018" in {d.code for d in validate(wf)}
+    assert blast_radius(wf).nodes == [] and dry_run_tools(wf) == set()
+
+
+async def test_a_conversation_reads_while_its_mcp_server_is_down(app):
+    """R-5: reading a conversation (its state, history, an edit of its state) built the run's graph, which contacts
+    every MCP server first: with one down, opening the conversation failed. Reading needs only the checkpoints."""
+    from agentcanvas.testing import DemoResources as Resources
+
+    wf = agent_wf()
+    wf["resources"][1] = {"id": "r_mcp", "type": "mcp.server", "name": "crm",
+                          "config": {"url": "http://127.0.0.1:9/mcp"}}  # fmt: skip  # nothing listens there
+    wf["edges"][-1]["source"]["node"] = "r_mcp"
+    workflow = Workflow.model_validate(wf)
+    adapter = app.state.runner.adapters["langchain"]
+    state = await adapter.get_state(workflow, "th_never_ran", Resources())
+    assert state.values == {} or isinstance(state.values, dict)
+    assert await adapter.history(workflow, "th_never_ran", Resources()) == []

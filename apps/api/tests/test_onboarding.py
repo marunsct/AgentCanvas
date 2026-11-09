@@ -39,7 +39,7 @@ async def _set_default_model(api_client) -> None:
 async def test_playground_needs_a_model(app, api_client):
     _script(app, "hi")
     r = await api_client.post(f"{P}/playground/chat", json={"messages": [{"role": "user", "content": "hi"}]})
-    assert r.status_code == 422 and "default model" in r.text
+    assert r.status_code == 422 and "Settings > Models" in r.text
 
 
 async def test_playground_chat_uses_the_default_model_and_the_whole_conversation(app, api_client):
@@ -84,14 +84,19 @@ async def test_playground_model_errors_are_readable(app, api_client):
 
 async def test_playground_becomes_a_workflow_that_runs(app, api_client):
     await _set_default_model(api_client)
-    body = {"name": "French helper", "system_prompt": "Answer in French.", "temperature": 0.3}
+    body = {
+        "name": "French helper",
+        "system_prompt": "Answer in French.",
+        "temperature": 0.3,
+        "model": "ollama:llama3.3",
+    }  # a model that takes a temperature (no Claude model does)
     r = await api_client.post(f"{P}/playground/workflow", json=body)
     assert r.status_code == 201, r.text
     wf = r.json()
     assert not [d for d in wf["diagnostics"] if d["severity"] == "error"], wf["diagnostics"]
     (agent,) = wf["ir"]["nodes"]
     assert agent["type"] == "core.agent" and agent["config"] == {"system_prompt": "Answer in French."}
-    assert wf["ir"]["resources"][0]["config"] == {"model": "anthropic:claude-haiku-4-5", "temperature": 0.3}
+    assert wf["ir"]["resources"][0]["config"] == {"model": "ollama:llama3.3", "temperature": 0.3}
     demo = DemoResources()
     app.state.resources_factory = lambda thread_id, w: demo
     run = await api_client.post(
@@ -99,6 +104,15 @@ async def test_playground_becomes_a_workflow_that_runs(app, api_client):
     )
     events = [json.loads(ln[6:]) for ln in run.text.splitlines() if ln.startswith("data: ")]
     assert events[-1]["type"] == "RUN_FINISHED", events[-1]
+
+
+async def test_playground_workflow_leaves_out_a_temperature_the_model_refuses(app, api_client):
+    """W020: a model the catalog marks `sampling: false` gets no temperature in the workflow made from the chat."""
+    await _set_default_model(api_client)
+    body = {"model": "anthropic:claude-haiku-5-5", "temperature": 0.5}
+    wf = (await api_client.post(f"{P}/playground/workflow", json=body)).json()
+    assert wf["ir"]["resources"][0]["config"] == {"model": "anthropic:claude-haiku-5-5"}
+    assert not [d for d in wf["diagnostics"] if d["code"] == "W020"], wf["diagnostics"]
 
 
 # ------------------------------------------------------------------ Push to GitHub ----
@@ -231,3 +245,98 @@ async def test_push_needs_the_builder_role(app, api_client):
     finally:
         app.dependency_overrides.pop(current_user, None)
     assert r.status_code == 403 and chat.status_code == 403
+
+
+async def test_playground_streams_the_answer(app, api_client):
+    """POST .../chat/stream: the answer as delta events, then done with the whole reply; a failure is an event."""
+    import json
+
+    await _set_default_model(api_client)
+    _script(app, "Bonjour tout le monde !")
+    r = await api_client.post(f"{P}/playground/chat/stream", json={"messages": [{"role": "user", "content": "hi"}]})
+    assert r.status_code == 200 and r.headers["content-type"].startswith("text/event-stream")
+    events = [json.loads(line[5:]) for line in r.text.splitlines() if line.startswith("data:")]
+    assert "".join(e["text"] for e in events if e["type"] == "delta") == "Bonjour tout le monde !", events
+    assert events[-1] == {**events[-1], "type": "done", "reply": "Bonjour tout le monde !"}
+
+    async def broken(*a, **kw):
+        raise RuntimeError("rate limited")
+        yield ""
+
+    app.state.models.stream = broken
+    r = await api_client.post(f"{P}/playground/chat/stream", json={"messages": [{"role": "user", "content": "hi"}]})
+    last = json.loads([line for line in r.text.splitlines() if line.startswith("data:")][-1][5:])
+    assert last["type"] == "error" and "rate limited" in last["message"]
+
+
+# ------------------------------------------------------------------ Playground tools ----
+WEATHER = '''from langchain_core.tools import tool
+
+
+@tool
+def weather(city: str) -> str:
+    """The weather in a city."""
+    return f"sunny in {city}"
+'''
+
+
+async def _with_weather_tool(api_client) -> str:
+    r = await api_client.put(f"{P}/files/tools/weather.py", json={"content": WEATHER})
+    assert r.status_code == 200, r.text
+    return "tools.weather:weather"
+
+
+async def test_playground_model_calls_the_picked_workspace_tools(app, api_client):
+    from agentcanvas.adapters.langchain.testing import tool_call
+
+    await _set_default_model(api_client)
+    path = await _with_weather_tool(api_client)
+    seen: list = []
+
+    def factory(thread_id, wf):
+        model = scripted(tool_call("weather", {"city": "Paris"}), "It is sunny in Paris.")
+        original = model.ainvoke
+
+        async def spy(messages, *a, **kw):
+            seen.append(list(messages))
+            return await original(messages, *a, **kw)
+
+        object.__setattr__(model, "ainvoke", spy)
+        return DemoResources(overrides={"copilot": model})
+
+    app.state.resources_factory = factory
+    body = {"messages": [{"role": "user", "content": "weather in Paris?"}], "tools": [path]}
+    r = await api_client.post(f"{P}/playground/chat", json=body)
+    assert r.status_code == 200, r.text
+    assert r.json()["reply"] == "It is sunny in Paris."
+    assert r.json()["tools"] == [{"name": "weather", "args": {"city": "Paris"}, "result": "sunny in Paris"}]
+    assert [type(m).__name__ for m in seen[1]][-2:] == ["AIMessage", "ToolMessage"]  # the result went back
+    assert seen[1][-1].content == "sunny in Paris"
+
+    s = await api_client.post(f"{P}/playground/chat/stream", json=body)  # the stream shows each call, then the answer
+    events = [json.loads(ln[5:]) for ln in s.text.splitlines() if ln.startswith("data:")]
+    assert [e["type"] for e in events] == ["tool", "delta", "done"], events
+    assert events[0]["result"] == "sunny in Paris" and events[1]["text"] == "It is sunny in Paris."
+
+
+async def test_playground_refuses_a_tool_the_workspace_does_not_have(app, api_client):
+    await _set_default_model(api_client)
+    _script(app, "hi")
+    body = {"messages": [{"role": "user", "content": "x"}], "tools": ["tools.nope:nope"]}
+    r = await api_client.post(f"{P}/playground/chat", json=body)
+    assert r.status_code == 422 and "not a tool in the project's workspace" in r.text
+    bad = await api_client.post(f"{P}/playground/chat", json={**body, "tools": ["../etc:passwd"]})
+    assert bad.status_code == 422
+
+
+async def test_playground_workflow_wires_the_picked_tools(app, api_client):
+    await _set_default_model(api_client)
+    path = await _with_weather_tool(api_client)
+    r = await api_client.post(f"{P}/playground/workflow", json={"tools": [path]})
+    assert r.status_code == 201, r.text
+    wf = r.json()
+    assert not [d for d in wf["diagnostics"] if d["severity"] == "error"], wf["diagnostics"]
+    tool = next(x for x in wf["ir"]["resources"] if x["type"] == "tool.python")
+    assert tool["config"] == {"import_path": path}
+    wires = [e for e in wf["ir"]["edges"] if e["kind"] == "wiring" and e["target"].get("port") == "tools"]
+    assert [e["source"]["node"] for e in wires] == [tool["id"]]

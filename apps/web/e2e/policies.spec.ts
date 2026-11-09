@@ -1,4 +1,4 @@
-import { expect, test } from "./fixtures";
+import { answerDialog, expect, test } from "./fixtures";
 
 // Sprint 10 (FR-X-19): an admin adds an organisation policy; the editor flags workflows that break it.
 
@@ -7,7 +7,8 @@ test("add a policy, see it in the editor, switch it off and delete it", async ({
   const name = `Policy demo ${Date.now()}`;
   const wf = await (await page.request.post("/api/v1/projects/prj_default/workflows", { data: { name } })).json();
   await page.goto("/");
-  await page.getByTestId("policies-link").click();
+  await page.getByTestId("settings-link").click();
+  await page.getByTestId("settings-policies").click();
   await page.getByLabel("policy name").fill(`Needs a person ${name}`);
   await page.getByLabel("scope").selectOption("workflow");
   await page.getByLabel("match").fill(`workflow.name == "${name}"`);
@@ -28,8 +29,13 @@ test("add a policy, see it in the editor, switch it off and delete it", async ({
   await expect(page.locator(".problems")).not.toContainText("E095");
 
   await page.goto("/policies");
-  page.once("dialog", (d) => void d.accept());
+  await row.getByRole("button", { name: "Edit" }).click(); // edited in place: the form fills, Save keeps the id
+  const form = page.getByRole("form", { name: "Edit policy" });
+  await form.getByLabel("description").fill("edited: a person approves first");
+  await form.getByRole("button", { name: "Save policy" }).click();
+  await expect(row).toContainText("edited: a person approves first");
   await row.getByRole("button", { name: "Delete" }).click();
+  await answerDialog(page);
   await expect(row).toHaveCount(0);
 });
 

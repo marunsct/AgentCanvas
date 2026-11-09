@@ -12,6 +12,16 @@ export interface McpTool {
   read_only?: boolean;
 }
 
+/**
+ * The `tool_filter` after ticking or unticking `name`: an empty filter offers every tool, so unticking starts from
+ * all of them (it used to offer only the unticked one). Null again when every tool is ticked.
+ */
+export function toggleTool(filter: string[], all: string[], name: string): string[] | null {
+  const offered = filter.length ? filter : all;
+  const next = offered.includes(name) ? offered.filter((n) => n !== name) : [...offered, name];
+  return next.length === 0 || all.every((n) => next.includes(n)) ? null : next;
+}
+
 export function McpBrowser({ resource }: { resource: IRResource }) {
   const dispatch = useEditor((s) => s.dispatch);
   const [busy, setBusy] = useState(false);
@@ -36,10 +46,7 @@ export function McpBrowser({ resource }: { resource: IRResource }) {
       setBusy(false);
     }
   };
-  const toggle = (name: string) => {
-    const next = filter.has(name) ? [...filter].filter((n) => n !== name) : [...filter, name];
-    save({ tool_filter: next.length ? next : null });
-  };
+  const toggle = (name: string) => save({ tool_filter: toggleTool([...filter], tools.map((t) => t.name), name) });
 
   return (
     <div className="mcp-browser" aria-label="MCP tools">
@@ -52,7 +59,9 @@ export function McpBrowser({ resource }: { resource: IRResource }) {
             {tools.map((t) => (
               <li key={t.name}>
                 <label className="row" title={t.description}>
+                  {/* the last offered tool stays ticked: an empty filter means every tool */}
                   <input type="checkbox" checked={filter.size === 0 || filter.has(t.name)}
+                    disabled={(filter.size || tools.length) === 1 && (filter.size === 0 || filter.has(t.name))}
                     onChange={() => toggle(t.name)} aria-label={`offer ${t.name}`} />
                   <code>{t.name}</code>
                   {t.destructive && <span className="badge err" title="the server marks this tool destructive">destructive</span>}

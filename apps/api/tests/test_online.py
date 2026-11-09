@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from test_evaluators import new
 from test_org_scope import act_as_b, org_b  # noqa: F401 - fixture
@@ -10,7 +10,7 @@ from test_publish import bearer, make_greeter, set_greeting
 
 from agentcanvas import observability
 from agentcanvas.api.deps import current_user
-from agentcanvas.services.online import buckets, judge_cost, matches, sampled
+from agentcanvas.services.online import judge_cost, matches, sampled
 
 GREETS = {"channel": "out", "pattern": r"^Hello \w+$"}
 
@@ -104,6 +104,52 @@ async def test_drift_opens_and_resolves_an_alert(app, api_client):
     assert await app.state.online.report() == set()
 
 
+async def test_an_alert_resolves_once_traffic_stops(app, api_client):
+    """E-11: with too few scores in the window the check returned before resolving, and only a scored run checked,
+    so an alert stayed open for good once traffic stopped."""
+    from sqlalchemy import update
+
+    from agentcanvas.db.models import RunScore
+
+    wf, dep, key, ev = await deployed(api_client)
+    body = {"evaluator_id": ev["id"], "alert_below": 0.5, "min_samples": 2}
+    assert (await api_client.post(f"/v1/deployments/{dep}/online-evaluators", json=body)).status_code == 201
+    await set_greeting(api_client, wf, "Hey")
+    assert (await api_client.post(f"/v1/workflows/{wf}/publish", json={})).status_code == 200
+    for who in ("Ada", "Bob"):
+        await call(app, api_client, dep, key, who)
+    assert len((await api_client.get(f"/v1/workflows/{wf}/alerts")).json()) == 1
+    async with app.state.db.sessionmaker() as s:  # two hours pass without a run
+        await s.execute(update(RunScore).values(created_at=datetime.now(UTC) - timedelta(hours=2)))
+        await s.commit()
+    assert await app.state.online.report() == set()
+    assert (await api_client.get(f"/v1/workflows/{wf}/alerts")).json() == []
+
+
+async def test_an_alert_stays_open_while_runs_go_unscored(app, api_client):
+    """I-2: the drift check counted scored runs only, so when the evaluator stopped scoring (a judge failing on
+    every run) the window looked empty and the open alert was resolved."""
+    from sqlalchemy import select, update
+
+    from agentcanvas.db.models import OnlineEvaluator, RunScore
+
+    wf, dep, key, ev = await deployed(api_client)
+    body = {"evaluator_id": ev["id"], "alert_below": 0.5, "min_samples": 2}
+    assert (await api_client.post(f"/v1/deployments/{dep}/online-evaluators", json=body)).status_code == 201
+    await set_greeting(api_client, wf, "Hey")
+    assert (await api_client.post(f"/v1/workflows/{wf}/publish", json={})).status_code == 200
+    for who in ("Ada", "Bob"):
+        await call(app, api_client, dep, key, who)
+    assert len((await api_client.get(f"/v1/workflows/{wf}/alerts")).json()) == 1
+    async with app.state.db.sessionmaker() as s:
+        await s.execute(update(RunScore).values(score=None, passed=False))  # the evaluator now fails on every run
+        online = await s.scalar(select(OnlineEvaluator).where(OnlineEvaluator.deployment_id == dep))
+        assert online is not None
+        await app.state.online.check_drift(s, online, "greets", wf)
+        await s.commit()
+    assert len((await api_client.get(f"/v1/workflows/{wf}/alerts")).json()) == 1
+
+
 async def test_one_open_alert_per_rule(app, api_client):
     """Several scoring tasks (or pods) seeing the same rule break at once open one alert between them."""
     import asyncio
@@ -149,7 +195,7 @@ async def test_online_evaluators_are_org_scoped(app, api_client, org_b):  # noqa
         app.dependency_overrides.pop(current_user)
 
 
-def test_sampling_filters_costs_and_buckets(monkeypatch):
+def test_sampling_filters_and_costs(monkeypatch):
     assert sampled("run_1", "oev_1", 1.0) and not sampled("run_1", "oev_1", 0.0)
     hits = sum(sampled(f"run_{i}", "oev_1", 0.25) for i in range(4000))
     assert 900 < hits < 1100 and sampled("run_7", "oev_1", 0.5) == sampled("run_7", "oev_1", 0.5)
@@ -163,10 +209,9 @@ def test_sampling_filters_costs_and_buckets(monkeypatch):
     tokens, cost = judge_cost({"anthropic:claude-haiku-4-5": {"input_tokens": 1000, "output_tokens": 100}})
     assert (tokens, cost) == (1100, 0.0015)
     assert judge_cost({"nobody:nothing": {"input_tokens": 5}}) == (5, 0.0)
+    # E-11: a judge without a price counted as free with nothing saying so
+    assert online.unpriced({"nobody:nothing": {"input_tokens": 5}, "anthropic:claude-haiku-4-5": {"input_tokens": 1}})
+    assert online.unpriced({"nobody:nothing": {"input_tokens": 5}}) == ["nobody:nothing"]
+    assert online.unpriced({"nobody:nothing": {}}) == []  # never called
 
-    t = datetime(2026, 10, 6, 13, 30, tzinfo=UTC)
-    rows = [(t, "a", 1.0, True, 0.01), (t.replace(hour=14), "a", 0.0, False, 0.0), (t, "a", None, False, 0.0)]
-    hourly = buckets(rows, 1)
-    assert [(b["start"].hour, b["runs"], b["scored"], b["mean"]) for b in hourly] == [(13, 2, 1, 1.0), (14, 1, 1, 0.0)]
-    [daily] = buckets(rows, 24)
-    assert daily["start"].hour == 0 and daily["runs"] == 3 and daily["mean"] == 0.5 and daily["pass_rate"] == 0.3333
+    # the hourly and daily buckets: test_efficiency.py, through the endpoint (the database groups them)

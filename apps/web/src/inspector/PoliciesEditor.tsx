@@ -4,16 +4,10 @@ import type { IRNode, NodePolicies } from "../ir/model";
 
 const num = (v: string) => (v.trim() === "" ? null : Number(v));
 
-export function PoliciesEditor({ node }: { node: IRNode }) {
-  const wf = useEditor((s) => s.wf);
-  const dispatch = useEditor((s) => s.dispatch);
-  const p: NodePolicies = node.policies ?? {};
-  const update = (patch: Record<string, unknown>) =>
-    dispatch([{ op: "UpdateNode", id: node.id, patch: { policies: patch } }], { debounceMs: 400 });
-
+/** Retries, timeout and cache: what a block has of its own and what the workflow gives every block (`node_defaults`). */
+export function PolicyFields({ p, update }: { p: NodePolicies; update: (patch: Record<string, unknown>) => void }) {
   return (
-    <fieldset className="policies">
-      <legend>Runtime policies</legend>
+    <>
       <label>
         Retries (max attempts)
         <input type="number" min={1} max={20} value={p.retry?.max_attempts ?? ""} placeholder="off"
@@ -29,6 +23,21 @@ export function PoliciesEditor({ node }: { node: IRNode }) {
         <input type="number" min={1} value={p.cache?.ttl ?? ""} placeholder="no cache"
           onChange={(e) => update({ cache: num(e.target.value) === null ? null : { ttl: num(e.target.value) } })} />
       </label>
+    </>
+  );
+}
+
+export function PoliciesEditor({ node }: { node: IRNode }) {
+  const wf = useEditor((s) => s.wf);
+  const dispatch = useEditor((s) => s.dispatch);
+  const p: NodePolicies = node.policies ?? {};
+  const update = (patch: Record<string, unknown>) =>
+    dispatch([{ op: "UpdateNode", id: node.id, patch: { policies: patch } }], { debounceMs: 400 });
+
+  return (
+    <fieldset className="policies">
+      <legend>Runtime policies</legend>
+      <PolicyFields p={p} update={update} />
       <label>
         On error, go to
         <select value={p.error_route ?? ""} onChange={(e) => update({ error_route: e.target.value || null })}>

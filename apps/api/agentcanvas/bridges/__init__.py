@@ -22,8 +22,10 @@ from pathlib import Path
 from typing import Any
 
 from agentcanvas import agentspec, designs
+from agentcanvas.adapters.langchain.packager import canvas_only
 from agentcanvas.errors import InvalidInput
 from agentcanvas.ir.models import Workflow
+from agentcanvas.validation.analysis import refuse_plain_secrets
 
 KIT = Path(__file__).resolve().parent / "kit"
 FAKE_MODEL = Path(designs.__file__).resolve().parent / "kit" / "fake_model.py"
@@ -49,7 +51,7 @@ TARGETS: dict[str, Target] = {
                _ALL_NODES, "pyagentspec builds a LangGraph graph from the flow when it starts."),
         Target("wayflow", "WayFlow", ("wayflowcore==26.3.1", "jinja2>=3.1"), _ALL_NODES,
                "WayFlow, Oracle's Agent Spec runtime, runs the flow as a WayFlow Flow."),
-        Target("openai_agents", "OpenAI Agents SDK", ("pyagentspec==26.3.1", "openai-agents==0.23.1"),
+        Target("openai_agents", "OpenAI Agents SDK", ("pyagentspec==26.3.1", "openai-agents==0.24.0"),
                frozenset({"StartNode", "EndNode", "LlmNode", "AgentNode", "BranchingNode"}),
                "pyagentspec writes the flow as OpenAI Agents SDK code when it starts; it takes AI steps, agents and "
                "simple paths only."),
@@ -115,7 +117,21 @@ def gaps(wf: Workflow, target: str) -> list[Gap]:
             if n.type == "core.set" and isinstance(values, dict) and (bad := sorted(lists & set(values))):
                 out.append(Gap(True, f"'{n.name}' writes text into the list field '{bad[0]}'; {t.label} expects a "
                                      "list there."))  # fmt: skip
-    out += [Gap(False, r) for r in report]
+    gated = {e.source.node for e in wf.flow_edges() if e.target.node != "END"}
+    for n in wf.nodes:
+        if n.type == "core.approval" and n.id in gated:  # Agent Spec has no yes/no step: it became a question
+            out.append(Gap(True, f"Approval '{n.name}' is a question here: the answer is text and the steps after it "
+                                 "run whatever it is. Add a path after it that checks the answer."))  # fmt: skip
+        if approve := [t for t in n.config.get("approve_tools") or [] if t]:
+            out.append(Gap(False, f"Agent '{n.name}': {', '.join(approve)} asked a person before running on the "
+                                  "canvas; set that up again where you wire its tools."))  # fmt: skip
+    for ch in wf.state.channels:
+        if ch.reducer not in ("replace", "add_messages"):
+            out.append(Gap(False, f"The field '{ch.name}' combines what steps write on the canvas ({ch.reducer}); "
+                                  "here each step that writes it replaces it."))  # fmt: skip
+    out += [Gap(False, g) for g in canvas_only(wf, t.label)]
+    named = {f"Approval '{n.name}'" for n in wf.nodes if n.type == "core.approval" and n.id in gated}
+    out += [Gap(False, r) for r in report if r.split(":")[0] not in named]  # those are a Must fix above
     out.append(Gap(False, "Runs, approvals, history and traces stay in the other framework: nothing reports back to "
                           "AgentCanvas."))  # fmt: skip
     if target == "openai_agents":
@@ -153,6 +169,7 @@ def export_files(wf: Workflow, target: str) -> dict[str, str]:
     t = TARGETS[target]
     if any(n.type == "core.subgraph" for n in wf.nodes):
         raise InvalidInput("whole-flow exports to other frameworks do not take subflows yet")
+    refuse_plain_secrets(wf)
     doc, _ = agentspec.export_flow(wf)
     found = gaps(wf, target)
     root = f"{_slug(wf.name)}-{target.replace('_', '-')}"

@@ -84,9 +84,9 @@ def score_lead(state: dict, cfg: dict) -> dict:
 
 ## Secrets
 
-Store API keys and passwords on the Workspace page under **Secrets** (**Save secret**). Names are
-`UPPER_SNAKE_CASE`. Secrets are encrypted at rest, can't be read back through the API, and are masked as `***` in
-run events and traces.
+Store API keys and passwords in **Settings › Secrets** (**Save secret**; the Workspace page links there). Names are
+`UPPER_SNAKE_CASE`, values at least 6 characters. Secrets are encrypted at rest, can't be read back through the API,
+and are masked as `***` in run events, traces and error messages, also when they appear base64- or URL-encoded.
 
 - In widget settings: `{"$secret": "NAME"}`, e.g. an HTTP tool's header. A AI model block's **API key** field lets you
   pick a secret by name; a secret named after the provider (`OPENAI_API_KEY`, `GOOGLE_API_KEY`…) is used by that
@@ -97,15 +97,25 @@ run events and traces.
 
 Workspace code runs where the server is configured to run it (`AGENTCANVAS_SCRIPT_EXECUTION`): in the API process
 (local default), a child process, a Docker container, the **sandbox service** (production default: a separate
-container or pod with none of the server's secrets and no network), or a LangSmith Sandbox (experimental). **Sandbox policy** edits `sandbox.json`: time and memory limits, an outbound network allow-list,
-and headers injected into outgoing requests (so code can call an API without seeing its key).
+container or pod with none of the server's secrets), or a LangSmith Sandbox (experimental). **Settings › Sandbox**
+edits the project's `sandbox.json`: time and memory limits, and the hosts code may reach.
 
 Outside the API process, every piece of workspace code runs there: Script steps, custom widgets, event handlers and
 Python tools (each tool call is one sandbox run; the tool's name and arguments are read from its source). A child
-process gets time, memory and file limits and no network by default, but runs as the server's user and is not an
-isolation boundary. The sandbox service is: each call sends it only the project's files, it runs them with the same
-limits and no network, and it holds no database credentials, keys or other projects' files. Use it, or Docker, for
-code you do not trust.
+process gets time, memory and file limits and no network, but runs as the server's user and is not an isolation
+boundary. The sandbox service is: each call sends it only the project's files, it runs them with the same limits,
+and it holds no database credentials, keys or other projects' files. Use it, or Docker, for code you do not trust.
+
+**Network.** Code has no network unless the project lists hosts (`api.github.com`, `files.example.com:8443`,
+`*.googleapis.com`). With Docker, the sandbox service or LangSmith it then reaches those hosts and nothing else:
+its only way out is the egress proxy, which checks every connection against the list (signed by the server for
+each call, so code cannot widen it). It never reaches a link-local or cloud metadata address (`169.254.169.254`),
+and reaches a private one (the database, `10.x`, `172.16.x`) only when whoever runs the server allows it with
+`AGENTCANVAS_EGRESS_ALLOW_PRIVATE=1`: naming the address in `sandbox.json` is not enough, since the project writes
+that file. HTTP clients that read `HTTPS_PROXY` (requests, httpx, urllib) work as usual; others get
+no connection. The in-process and child-process modes cannot limit the network: Settings does not offer the list
+there, and a staging or production server refuses to run code that has one. Headers injected into outgoing
+requests (`inject`, so code can call an API without seeing its key) are applied by the LangSmith Sandbox only.
 
 ## Events
 

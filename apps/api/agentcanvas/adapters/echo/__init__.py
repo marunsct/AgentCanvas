@@ -194,8 +194,7 @@ class EchoAdapter:
         wf = spec.workflow
         try:
             if spec.resume is not None:
-                saved = await paused_runs.load(spec.thread_id)
-                await paused_runs.store().drop(spec.thread_id)
+                saved = await paused_runs.load(spec.thread_id)  # kept until the continuation finishes (R-4)
                 paused = Paused.from_dict(saved) if saved is not None else None
                 if paused is None:
                     yield {"type": "RUN_ERROR", "code": "error", "message": "nothing to resume on this conversation"}
@@ -212,8 +211,18 @@ class EchoAdapter:
                 frontier, done, steps = rounds.lead(self, wf, "START", values), set(), 0
                 scripted = {k: list(v) for k, v in spec.mocks.items()}
                 answers = {}
+            outcome: dict[str, Any] | None = None
             async for ev in self._loop(wf, spec, resources, values, frontier, done, steps, scripted, answers, rounds):
+                if ev.get("type") in ("RUN_FINISHED", "RUN_ERROR"):
+                    outcome = ev
                 yield ev
+            if (
+                spec.resume is not None
+                and outcome is not None
+                and outcome["type"] == "RUN_FINISHED"
+                and not outcome.get("interrupts")
+            ):  # a new pause replaced it; an error keeps it to answer again
+                await paused_runs.store().drop(spec.thread_id)
         except Exception as exc:  # noqa: BLE001 - every failure reaches the UI as RUN_ERROR
             yield {"type": "RUN_ERROR", "code": "error", "message": f"{type(exc).__name__}: {exc}"}
 

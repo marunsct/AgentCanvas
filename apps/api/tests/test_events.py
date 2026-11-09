@@ -256,3 +256,99 @@ async def test_resume_continues_a_published_conversation_on_its_version(app, api
     assert h.status == "success" and h.deployment_id == dep and h.version_id
     assert PROJECT_OF[signer] == "prj_default"
     assert (await api_client.get(f"/v1/threads/{thread}")).json()["values"]["ok"] is True
+
+
+async def test_the_event_log_pages_back_through_older_events_and_filters_by_type(app, api_client):
+    await setup(api_client)
+    for i in range(5):
+        kind = "crm.lead.created" if i % 2 else "crm.lead.lost"
+        assert (await api_client.post(f"{P}/events", json={"type": kind, "data": {"id": f"P{i}"}})).status_code == 200
+    everything = [e["id"] for e in (await api_client.get(f"{P}/events")).json()]
+    walked, before = [], None
+    for _ in range(5):
+        page = (
+            await api_client.get(f"{P}/events", params={"limit": 2, **({"before": before} if before else {})})
+        ).json()
+        walked += [e["id"] for e in page]
+        if len(page) < 2:
+            break
+        before = page[-1]["id"]
+    assert walked == everything and len(everything) == 5
+    lost = (await api_client.get(f"{P}/events", params={"type": "crm.lead.lost"})).json()
+    assert len(lost) == 3 and {e["type"] for e in lost} == {"crm.lead.lost"}
+    assert (await api_client.get(f"{P}/events", params={"before": "evt_nope"})).status_code == 422
+    # C-11: another project's event is unknown here too, not a page that tells it exists
+    other = (await api_client.post("/v1/projects", json={"name": "Elsewhere"})).json()["id"]
+    foreign = await api_client.get(f"/v1/projects/{other}/events", params={"before": everything[0]})
+    assert foreign.status_code == 422, foreign.text
+
+
+async def test_an_event_emitted_by_code_in_a_sandbox_reaches_the_run_and_the_handlers(app, api_client):
+    """`sdk.emit` in sandboxed code has no run to write to: the child records the events, the host emits them into
+    the run (they used to fail the step, so scripts that emitted broke under the default sandbox)."""
+    app.state.settings.script_execution = "subprocess"
+    app.state.projects._resources.clear()
+    await setup(api_client)
+    flag_src = (
+        "from agentcanvas.sdk import emit\n\n\n"
+        "def run(state):\n    emit('invoice.flagged', {'invoice': 'INV-9'})\n    return {'out': 'flagged'}\n"
+    )
+    await api_client.put(f"{P}/files/scripts/flag_boxed.py", json={"content": flag_src})
+    flag = {"id": "n_f", "type": "core.script", "name": "flag", "config": {"import_path": "scripts.flag_boxed:run"}}
+    flagger = await make_wf(api_client, linear("Boxed flagger", [flag], ["out"]))
+    stream = events((await api_client.post(f"/v1/workflows/{flagger}/runs/stream", json={})).text)
+    assert stream[-1]["type"] == "RUN_FINISHED", stream[-1]
+    assert any(e["type"] == "CUSTOM" and (e.get("value") or {}).get("ac_event") == "invoice.flagged" for e in stream)
+    await delivered(app)
+    log = (await api_client.get(f"{P}/events")).json()
+    flagged = next(e for e in log if e["type"] == "invoice.flagged")
+    assert flagged["source"] == "run" and flagged["data"] == {"invoice": "INV-9"}
+
+
+async def test_a_run_that_starts_itself_through_its_events_stops(app, api_client):
+    """RT-6: events a run emitted were delivered at depth 0 whoever started it, so a handler starting the run that
+    emits the event looped for ever. Each run now carries how many events led to it."""
+    src = (
+        "from agentcanvas.sdk import on\n\n\n"
+        '@on("echo.tick")\ndef again(event, act):\n    act.start_workflow("Echoer")\n'
+    )
+    await api_client.put(f"{P}/files/events/echo.py", json={"content": src})
+    tick = "from agentcanvas.sdk import emit\n\n\ndef run(state):\n    emit('echo.tick', {})\n    return {'out': 'x'}\n"
+    await api_client.put(f"{P}/files/scripts/tick.py", json={"content": tick})
+    node = {"id": "n_t", "type": "core.script", "name": "tick", "config": {"import_path": "scripts.tick:run"}}
+    wf = await make_wf(api_client, linear("Echoer", [node], ["out"]))
+    await api_client.post(f"/v1/workflows/{wf}/runs/stream", json={})
+    for _ in range(100):  # without a limit this goes on for ever: look at the first 20 runs at most
+        await asyncio.sleep(0.05)
+        handles = [h for h in app.state.runner.handles.values() if h.workflow_id == wf]
+        if len(handles) > 20 or (all(h.done.is_set() for h in handles) and len(handles) > 1):
+            break
+    await asyncio.sleep(0.3)
+    handles = [h for h in app.state.runner.handles.values() if h.workflow_id == wf]
+    assert len(handles) == 6  # the first run + 5 levels of runs started by its events
+    ticks = [e for e in (await api_client.get(f"{P}/events")).json() if e["type"] == "echo.tick"]
+    assert any(e["status"] == "error" and "levels deep" in (e["results"][0]["error"] or "") for e in ticks)
+
+
+PAYMENTS = """from agentcanvas.sdk import on
+
+
+@on("payment.received", dedup_key="event.data.id")
+def record(event, act):
+    if event.data.get("crm_down"):
+        raise RuntimeError("the CRM did not answer")
+    act.emit("payment.recorded", {"id": event.data["id"]})
+"""
+
+
+async def test_a_handler_that_failed_takes_the_same_event_again(app, api_client):
+    """R-10: the dedup key was taken before the handler ran, so a handler that failed (a timeout, a service down)
+    never saw that event again: its redelivery was "duplicate". Now only a handler that finished keeps the key."""
+    await api_client.put(f"{P}/files/events/payments.py", json={"content": PAYMENTS})
+    failed = (await api_client.post(f"{P}/events", json={"type": "payment.received",
+                                                          "data": {"id": "P1", "crm_down": True}})).json()  # fmt: skip
+    assert "CRM did not answer" in failed["handlers"][0]["error"]
+    retried = (await api_client.post(f"{P}/events", json={"type": "payment.received", "data": {"id": "P1"}})).json()
+    assert retried["handlers"][0].get("skipped") is None and not retried["handlers"][0].get("error")
+    again = (await api_client.post(f"{P}/events", json={"type": "payment.received", "data": {"id": "P1"}})).json()
+    assert again["handlers"][0]["skipped"] == "duplicate"  # once it ran to the end, the key holds

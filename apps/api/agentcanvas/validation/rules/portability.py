@@ -11,6 +11,8 @@ be one that framework can run, natively or by emulation, as its manifest (`regis
 * P005 error — an Agent block designed for another agent framework (S21) uses something that framework cannot take.
 * P006 warning — that agent framework is not installed on this server, so the block's runs fail.
 * P007 warning — the workflow's framework does not apply node policies (retry, timeout, cache, error route).
+* P008 warning — the workflow has file or image fields (G-5) and its framework does not show them to a model: only
+  LangChain / LangGraph does, so on the others the file is carried as plain data.
 
 An Agent block may name an agent framework (`designs.AGENT_FRAMEWORKS`, e.g. OpenAI Agents SDK) as its engine: the
 workflow's framework then runs it as a step in that framework's own code, if it can (the `agent_designs` ability).
@@ -21,6 +23,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 
 from agentcanvas import designs
+from agentcanvas.designs import managed
 from agentcanvas.registry import adapters
 from agentcanvas.validation.engine import Diagnostic, ValidationContext, error, info, rule, warning
 
@@ -57,6 +60,17 @@ def framework_runs_every_block(ctx: ValidationContext) -> Iterator[Diagnostic]:
             continue
         if n.engine in designs.AGENT_FRAMEWORKS:
             yield from _designed(ctx, n, target)
+            continue
+        if n.engine == managed.ID:  # G-12: runs here as the workflow's own agent; the export is for the platform
+            if n.type not in designs.DESIGN_TYPES:
+                yield error("P001", f"only Agent blocks can be designed for {managed.PLATFORM.label}", node_id=n.id)
+            else:
+                yield info(
+                    "P004",
+                    f"designed for {managed.PLATFORM.label}; it runs on {target.label}, the workflow's framework, "
+                    "and exports as files for `ant apply`",
+                    node_id=n.id,
+                )
             continue
         engine = installed.get(n.engine)
         if engine is None:
@@ -120,6 +134,27 @@ POLICY_FRAMEWORKS = {"langchain"}  # frameworks that apply node policies (retry,
 def _policy_names(p: object) -> list[str]:
     names = [("retry", "retry"), ("timeout", "timeout"), ("cache", "cache"), ("error_route", "error route")]
     return [label for attr, label in names if getattr(p, attr, None)]
+
+
+@rule
+def framework_shows_files(ctx: ValidationContext) -> Iterator[Diagnostic]:
+    """P008 warning: file and image fields reach models in LangChain / LangGraph runs and exports only."""
+    wf = ctx.wf
+    target = adapters.manifest(wf.framework)
+    if target is None or wf.framework == "langchain":
+        return
+    from agentcanvas.filecontent import file_fields
+
+    channels = [c.model_dump(mode="json", exclude_defaults=True) for c in wf.state.channels]
+    files = file_fields(channels)
+    if files and any(n.type in ENGINE_TYPES and not n.disabled for n in wf.nodes):
+        yield warning(
+            "P008",
+            f"{target.label} does not show file or image fields ({', '.join(files)}) to a model: they are carried as "
+            "plain data and no AI step reads the file",
+            path="state.channels",
+            hint="run this workflow on LangChain (Framework in the workflow settings) to have models see the files",
+        )
 
 
 @rule

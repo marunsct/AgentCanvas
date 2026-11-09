@@ -3,32 +3,27 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { apiFetch } from "../api/client";
-import { maturaMode, signInEnabled, signOut, switchOrganisation } from "../api/auth";
-import { chooseWorkspace, PROJECT_ID, PROJECT_NAME, useSetup, useTemplates, useWorkflows, WORKSPACE_ID, WORKSPACES } from "../api/queries";
+import { PROJECT_ID, PROJECT_NAME, useSetup, useTemplates, useWorkflows } from "../api/queries";
 import { useCan, useMe } from "../api/session";
 import { FileImport, FORMAT_LABELS, type ImportOut } from "../release/Import";
 import { startTour } from "../tutor/Tutor";
 import { QueryStatus } from "../ui/QueryStatus";
-import { ThemeSwitcher } from "../theme/ThemeSwitcher";
+import { PageHeader } from "../ui/PageHeader";
+import { kitNote } from "./gallery";
 import { TemplateGallery } from "./TemplateGallery";
-import type { InvitationOut as Invitation } from "../api/generated";
+import { WorkflowList } from "./WorkflowList";
+import type { InvitationOut as Invitation, KitOut } from "../api/generated";
+import { toast } from "../ui/dialog";
 
 export function HomePage() {
   const me = useMe((s) => s.me);
   const canBuild = useCan("builder");
-  const isAdmin = useCan("admin");
   const workflows = useWorkflows();
   const templates = useTemplates();
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [name, setName] = useState("");
   const [imported, setImported] = useState<ImportOut | null>(null);
-  // Matura workspaces (TS26): picking one moves the page to one of its projects
-  const [, setWorkspace] = useState(WORKSPACE_ID);
-  const pickWorkspace = useMutation({
-    mutationFn: (id: string | null) => chooseWorkspace(id),
-    onSettled: () => { setWorkspace(WORKSPACE_ID); void qc.invalidateQueries(); },
-  });
   const onImported = (out: ImportOut) => {
     void qc.invalidateQueries({ queryKey: ["workflows"] });
     // a file AgentCanvas wrote comes back exactly: open it; otherwise show what was approximated first
@@ -37,9 +32,11 @@ export function HomePage() {
   };
   const create = useMutation({
     mutationFn: (body: { name: string; template?: string }) =>
-      apiFetch<{ id: string }>(`/projects/${PROJECT_ID}/workflows`, { method: "POST", json: body }),
+      apiFetch<{ id: string; kit?: KitOut | null }>(`/projects/${PROJECT_ID}/workflows`, { method: "POST", json: body }),
     onSuccess: (wf) => {
       void qc.invalidateQueries({ queryKey: ["workflows"] });
+      const note = kitNote(wf.kit);
+      if (note) toast(note);
       navigate(`/workflows/${wf.id}`);
     },
   });
@@ -55,57 +52,37 @@ export function HomePage() {
 
   return (
     <div className="page home">
-      <header className="topbar">
-        <span className="brand">AgentCanvas</span><span className="crumb" data-testid="project-name">/ {PROJECT_NAME}</span>
-        {WORKSPACES.length > 0 && (
-          <select aria-label="workspace" data-testid="workspace-switcher" value={WORKSPACE_ID ?? ""} disabled={pickWorkspace.isPending}
-            onChange={(e) => pickWorkspace.mutate(e.target.value || null)}>
-            <option value="">All workspaces</option>
-            {WORKSPACES.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
-          </select>
-        )}
-        <span className="spacer" />
-        {canBuild && <Link to="/setup" data-testid="setup-link">Model</Link>}
-        {canBuild && <Link to="/playground" data-testid="playground-link">Playground</Link>}
-        <Link to="/inbox">Inbox</Link>
-        <Link to="/knowledge" data-testid="knowledge-link">Knowledge</Link>
-        <Link to="/memory" data-testid="memory-link">Memory</Link>
-        <Link to="/workspace" data-testid="workspace-link">Workspace</Link>
-        <Link to="/events" data-testid="events-link">Events</Link>
-        {isAdmin && <Link to="/members" data-testid="members-link">Members</Link>}
-        {isAdmin && <Link to="/audit" data-testid="audit-link">Audit log</Link>}
-        <Link to="/policies" data-testid="policies-link">Policies</Link>
-        {maturaMode() && Object.keys(me.memberships).length > 1 && (
-          <select aria-label="organisation" data-testid="org-switcher" value={me.org_id}
-            onChange={(e) => void switchOrganisation(e.target.value)}>
-            {Object.keys(me.memberships).map((id) => <option key={id} value={id}>{me.org_names?.[id] ?? id}</option>)}
-          </select>
-        )}
-        <span className="me-chip" data-testid="me" title={me.email}>{me.email || "you"} · {me.role}</span>
-        {signInEnabled() && <button type="button" className="link small" onClick={() => void signOut()}>Sign out</button>}
-        <ThemeSwitcher />
-      </header>
+      <PageHeader title="Workflows" description={`Everything built in ${PROJECT_NAME}.`}
+        actions={canBuild ? <>
+          <a className="button" href="#new-workflow">+ New workflow</a>
+          <button type="button" data-testid="start-tour" disabled={tour.isPending} onClick={() => tour.mutate()}
+            title="Build a real workflow in six short steps">Guided build</button>
+        </> : undefined} />
       <Invitations />
-      {pickWorkspace.error && <p className="error-text" role="alert">{(pickWorkspace.error as Error).message}</p>}
       {!canBuild && (
         <p className="muted" data-testid="read-only-note">You can view workflows and runs here; your role ({me.role}) cannot create or edit them.</p>
       )}
       {canBuild && <>
       <SetupBanner />
-      <section className="guided">
-        <h2>New here?</h2>
-        <p className="muted">Build a real workflow in six short steps — state, steps, flow, a model, a run and a human approval.</p>
-        <div className="row gap">
-          <button type="button" className="primary" data-testid="start-tour" onClick={() => tour.mutate()}>Start the guided build</button>
-          <Link to="/playground" className="button" data-testid="try-playground">Try a model in the playground</Link>
-        </div>
-        {tour.error && <p className="error-text">{(tour.error as Error).message}</p>}
-      </section>
-      <section>
+      {(workflows.data?.items.length ?? 0) < 3 && workflows.data && (
+        <section className="guided">
+          <h2>New here?</h2>
+          <p className="muted">Build a real workflow in six short steps — state, steps, flow, a model, a run and a human approval.</p>
+          <div className="row gap">
+            <button type="button" className="primary" disabled={tour.isPending} onClick={() => tour.mutate()}>Start the guided build</button>
+            <Link to="/playground" className="button" data-testid="try-playground">Try a model in the playground</Link>
+          </div>
+        </section>
+      )}
+      {tour.error && <p className="error-text">{(tour.error as Error).message}</p>}
+      </>}
+      <WorkflowList />
+      {canBuild && <>
+      <section id="new-workflow">
         <h2>New workflow</h2>
         <form className="row gap" onSubmit={(e) => { e.preventDefault(); create.mutate({ name: name.trim() || "Untitled workflow" }); }}>
           <input placeholder="Workflow name" value={name} onChange={(e) => setName(e.target.value)} aria-label="workflow name" />
-          <button type="submit" className="primary">Create empty</button>
+          <button type="submit" className="primary" disabled={create.isPending}>Create empty</button>
         </form>
         <h3>…or start from a template</h3>
         <QueryStatus q={templates} what="templates" />
@@ -114,7 +91,7 @@ export function HomePage() {
             onPick={(t) => create.mutate({ name: name.trim() || t.name, template: t.id })} />
         )}
         {create.error && <p className="error-text">{(create.error as Error).message}</p>}
-        <h3>…or bring one from Langflow, Flowise, n8n or another agent framework</h3>
+        <h3>…or bring one from OpenAI Agent Builder, Flowise, Langflow, n8n or another agent framework</h3>
         <FileImport projectId={PROJECT_ID} onDone={onImported} />
         {imported && (
           <div className="notes small" data-testid="import-notes">
@@ -126,21 +103,6 @@ export function HomePage() {
         )}
       </section>
       </>}
-      <section>
-        <h2>Workflows</h2>
-        <QueryStatus q={workflows} what="workflows" />
-        {workflows.data?.items.length === 0 && (
-          <div className="empty-state">No workflows yet. Name one above and click <b>Create empty</b>, or start from a template.</div>
-        )}
-        <ul className="wf-list">
-          {workflows.data?.items.map((w) => (
-            <li key={w.id}>
-              <Link to={`/workflows/${w.id}`}>{w.name}</Link>{" "}
-              <small className="muted">v{w.version} · {new Date(w.updated_at).toLocaleString()}</small>
-            </li>
-          ))}
-        </ul>
-      </section>
     </div>
   );
 }
@@ -151,13 +113,13 @@ function SetupBanner() {
   if (!setup.data) return null;
   const dm = setup.data.default_model;
   if (setup.data.done) {
-    return dm ? <p className="muted small" data-testid="default-model">New workflows use <code>{dm.model}</code>. <Link to="/setup">Change</Link></p> : null;
+    return dm ? <p className="muted small" data-testid="default-model">New workflows use <code>{dm.model}</code>. <Link to="/settings/models">Change</Link></p> : null;
   }
   return (
     <section className="guided" data-testid="setup-banner">
       <h2>Set up your model</h2>
       <p className="muted">Choose the AI model your workflows use: Claude, GPT, Gemini, Mistral, Groq, DeepSeek, Grok, or a local model with Ollama, LM Studio, vLLM or llama.cpp.</p>
-      <Link to="/setup" className="button primary">Choose a model</Link>
+      <Link to="/settings/models" className="button primary">Choose a model</Link>
     </section>
   );
 }

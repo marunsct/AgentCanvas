@@ -50,8 +50,7 @@ The workflow's **Framework** setting says when its framework is not set up on th
 4. Hosted providers: paste your **API key**. It is stored encrypted as a project secret and never shown again.
    Local servers: leave **Server address** empty to use the default port on your computer.
 5. Click **Test connection**: AgentCanvas sends one short message and shows the reply, or the error.
-6. Click **Save**. Templates you open from now on use this model. You can change it any time from **Model** in the
-   top bar, and pick a different model on any AI model block on the canvas.
+6. Click **Save**. Templates you open from now on use this model. You can change it any time in **Settings › Models**, and pick a different model on any AI model block on the canvas.
 
 Models on your own computer are reached from inside Docker through `host.docker.internal`, so start Ollama
 (`ollama serve`, then `ollama pull llama3.3`) or LM Studio's local server before testing.
@@ -64,14 +63,16 @@ Models on your own computer are reached from inside Docker through `host.docker.
 | `docker compose -f infra/compose.local.yml down -v` | stop and delete all data |
 
 Optional settings (another port with `WEB_PORT`, server-wide provider keys) go in `infra/.env.local`: copy
-`infra/.env.local.example` and fill it in; `make docker-up` picks it up. The Docker setup has no sign-in (you are
+`infra/.env.local.example` and fill it in; `make docker-up` picks it up. The API reads every setting in that file, so
+any `AGENTCANVAS_*` setting from [Deploy and operate](deploy.md#essential-settings) can go there too. The Docker setup has no sign-in (you are
 the local admin): don't expose it to other people. For a shared server follow [Deploy and operate](deploy.md).
 
 ## From source
 
 !!! tip "Verified"
-    The from-source steps were run on a clean checkout on 2026-10-06: `make setup`, `make dev-fake`, `make dev-web`,
-    the smoke test in step 6, a publish + API call, and the first-run model screen. The Docker stack is started and
+    The from-source steps were run on a clean checkout on 2026-10-06 (`make setup`, `make dev-fake`, `make dev-web`,
+    the smoke test in step 6, a publish + API call, the first-run model screen); the screens have changed since (the
+    app shell, Settings, the workflow list), so the pictures here are older than the app. The Docker stack is started and
     checked (first-run setup included) by CI on every change.
 
 ### At a glance
@@ -181,8 +182,8 @@ make dev-web
 Same as `cd apps/web && pnpm dev`. Open <http://localhost:5173>. The web dev server forwards `/api/*` to the API on
 port 8000, so no extra configuration is needed.
 
-You land on **Home**: a *Start the guided build* button, a *New workflow* box, eight template cards and your
-workflow list. The top bar shows `you · admin`.
+You land on **Home**: your workflows (five to a page, with search and a *Changed* filter), a *Start the guided
+build* button, a *New workflow* box and the template gallery (search, category and level). Your initial at the right of the top bar opens a menu that says you are an admin.
 
 ![Home page](img/home.png)
 
@@ -195,6 +196,10 @@ workflow list. The top bar shows `you · admin`.
 5. Click **Approve**.
 6. *Streamed output* shows `reply_drafter Done — the tool call finished (demo model).` and the Output shows the
    tool's answer `sent: demo`. Every step shows a green *done* badge.
+
+This card is a demo with scripted model replies: it is offered when the server runs in development (`make dev-fake`
+and the Docker app). With a real model chosen on the first-run screen the drafted reply is the model's own words, so
+step 6 shows different text; the approval and the green badges are the same.
 
 ![A finished run](img/editor-run.png)
 
@@ -214,7 +219,7 @@ make dev-api      # same as dev-fake, but calls the models you choose
 ```
 
 `make dev-api` runs `cd apps/api && uv run uvicorn agentcanvas.api.main:app --reload --port 8000`. Then, in the web
-app, click **Model** in the top bar (or **Choose a model** on Home) and pick any provider, hosted or local, with its
+app, open **Settings › Models** (or **Choose a model** on Home) and pick any provider, hosted or local, with its
 API key: the same first-run screen as in [Docker](#run-everything-in-docker). Every supported provider's integration
 is installed by `make setup`.
 
@@ -235,6 +240,14 @@ DATABASE_URL=postgresql://agentcanvas:agentcanvas@localhost:5432/agentcanvas mak
 ```
 
 Migrations run automatically at startup. `make infra` also starts Redis, which the API does not need today.
+
+### Optional: read scanned documents (OCR)
+
+Scanned PDFs and pictures added to a knowledge base are read with [Tesseract](https://github.com/tesseract-ocr/tesseract).
+The Docker image has it. From source, install it and AgentCanvas finds it on the path: `sudo apt install tesseract-ocr`
+(Debian and Ubuntu), `brew install tesseract` (macOS), or the installer from the Tesseract project (Windows). Check with
+`tesseract --version`. More languages: `sudo apt install tesseract-ocr-deu`, then `AGENTCANVAS_OCR_LANGUAGES=eng+deu`.
+Without it a scan is refused with a message that says so; everything else works.
 
 ### 9. Optional: the production-style container setup
 
@@ -266,7 +279,7 @@ Local mode makes you an admin with no sign-in. To try real sign-in with
     ```
 
 The web app now redirects to Keycloak; the bootstrap email becomes an admin on first sign-in and can invite others
-from **Members**.
+from **Settings › Members**.
 
 ## Stop, reset and update
 
@@ -283,7 +296,7 @@ from **Members**.
 | `pnpm: command not found` | `corepack enable && corepack prepare pnpm@10 --activate`, or `npm i -g pnpm@10`. |
 | `address already in use` on 8000 or 5173 | Another process holds the port: stop it (`lsof -i :8000` on macOS/Linux) or stop an old server. |
 | The web app shows an error on every page | The API is not running or not on port 8000. Check `curl localhost:8000/healthz`. |
-| A run fails with an authentication error from the provider | The key is missing or wrong: enter it again under **Model**, or check the project secret named after the provider on the **Workspace** page. |
+| A run fails with an authentication error from the provider | The key is missing or wrong: enter it again in **Settings › Models**, or check the project secret named after the provider in **Settings › Secrets**. |
 | **Test connection** to Ollama / LM Studio fails with a connection error | The local server is not running, or listens on another port: start it, or enter its address under *Server address*. In Docker, the address must use `host.docker.internal`, not `localhost`. |
 | A model shows *integration is not installed on this server* | Run `make setup` again (it installs every provider), or `docker compose … up --build`. |
 | `make docker-up` fails with *port is already allocated* | Something else uses 7777: set `WEB_PORT=7778` in `infra/.env.local`. |

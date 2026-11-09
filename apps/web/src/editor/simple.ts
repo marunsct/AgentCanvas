@@ -1,9 +1,10 @@
 /** Simple mode (S31): the editor with only the blocks and panels a first workflow needs.
  *
  * It hides blocks for advanced patterns (subgraphs, maps, scripts, middleware, protocols, framework blocks), the
- * Workspace, Evaluate and versioning, and the canvas power tools. Nothing in the workflow changes: a block that is
+ * tests and code panels, and the canvas power tools. It hides blocks, not the product: Publish (Versions), Evaluate
+ * and Workspace stay reachable. Nothing in the workflow changes: a block that is
  * already on the canvas stays, and switching back to Full shows everything again. The choice is remembered in this
- * browser. */
+ * browser and, when signed in, with the person (api/preferences.ts). */
 
 /** The blocks Simple mode offers: steps that answer, decide, set values or ask a person, and their models and tools. */
 export const SIMPLE_TYPES = new Set([
@@ -12,8 +13,8 @@ export const SIMPLE_TYPES = new Set([
 ]);
 
 /** Side panels and dock tabs Simple mode keeps. */
-export const SIMPLE_TABS = new Set(["inspect", "copilot", "run"]);
-export const SIMPLE_DOCK = new Set(["problems", "timeline"]);
+export const SIMPLE_TABS = new Set(["inspect", "copilot", "run", "versions"]);
+export const SIMPLE_DOCK = new Set(["problems", "timeline", "runs"]);
 
 const KEY = "agentcanvas.simple";
 

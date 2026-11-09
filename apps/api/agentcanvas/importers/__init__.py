@@ -11,12 +11,15 @@ what AgentCanvas cannot run. Pure functions over dicts: nothing from those build
 
 from __future__ import annotations
 
+import json
+import math
 import re
 from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlparse
 
 from agentcanvas.agentspec import ident
+from agentcanvas.sampling import refuses
 
 CHAT_INPUT = "{{ state.messages[-1].content }}"  # the person's latest chat message
 AGENT_REPLY = "{{ state.messages[-1].content }}"  # an agent's answer: the last message of the chat
@@ -37,6 +40,7 @@ class _Step:
     label: str | None = None
     model: str | None = None
     tools: list[str] = field(default_factory=list)
+    subagents: list[str] = field(default_factory=list)  # a Planning Agent's specialists (agent.subagent blocks)
     after: list[tuple[str, str | None]] = field(default_factory=list)  # (earlier step key or START, route)
     position: dict[str, float] | None = None
 
@@ -53,7 +57,7 @@ class Builder:
         self.steps: dict[str, _Step] = {}
         self.resources: list[dict[str, Any]] = []
         self._models: dict[str, str] = {}
-        self._node_names: set[str] = set()
+        self.names: set[str] = set()  # step and block names: one namespace (E000)
         self.outputs: list[str] = []
         self.chat = False
         self._unders: dict[str, dict[str, str]] = {}  # step key -> _under(key), reset by build()
@@ -84,6 +88,8 @@ class Builder:
               label: str | None = None) -> str:  # fmt: skip
         """A model block (`provider:model`), shared by the steps that use the same settings; returns its id."""
         conf: dict[str, Any] = {"model": model}
+        if refuses(model):
+            temperature = None  # W020: the model refuses it
         if isinstance(temperature, int | float) and not isinstance(temperature, bool) and 0 <= temperature <= 2:
             conf["temperature"] = float(temperature)
         if isinstance(max_tokens, int) and not isinstance(max_tokens, bool) and max_tokens > 0:
@@ -93,8 +99,7 @@ class Builder:
         key = repr(sorted(conf.items()))
         if key not in self._models:
             rid = f"r_{len(self.resources) + 1}"
-            taken = {r["name"] for r in self.resources}
-            name = ident(label or model.partition(":")[2] or "model", taken, "model")
+            name = ident(label or model.partition(":")[2] or "model", self.names, "model")
             self.resources.append({"id": rid, "type": "model.chat", "name": name, "config": conf})
             self._models[key] = rid
         return self._models[key]
@@ -106,9 +111,8 @@ class Builder:
         if not host or "{{" in url.split("?")[0].split("//", 1)[-1].split("/")[0]:
             return None
         rid = f"r_{len(self.resources) + 1}"
-        taken = {r["name"] for r in self.resources}
         method = method.upper() if method.upper() in ("GET", "POST", "PUT", "PATCH", "DELETE") else "GET"
-        self.resources.append({"id": rid, "type": "tool.http", "name": ident(name, taken, "tool"), "config": {
+        self.resources.append({"id": rid, "type": "tool.http", "name": ident(name, self.names, "tool"), "config": {
             "description": (description or f"Calls {host}")[:500], "method": method, "url": url,
             "allowed_domains": [host]}})  # fmt: skip
         return rid
@@ -121,7 +125,7 @@ class Builder:
             raise ImportError_(f"two steps share the id '{key}'")
         if len(self.steps) >= MAX_STEPS:
             raise ImportError_(f"the {self.source} file has more than {MAX_STEPS} steps; split it before importing")
-        st = _Step(key=key, id=f"n_{len(self.steps) + 1}", type=type_, name=ident(name, self._node_names, "step"),
+        st = _Step(key=key, id=f"n_{len(self.steps) + 1}", type=type_, name=ident(name, self.names, "step"),
                    config=config, label=(label or None) and str(label)[:120], model=model, tools=list(tools or []),
                    position=position)  # fmt: skip
         self.steps[key] = st
@@ -203,12 +207,14 @@ class Builder:
                 edges.append(_wire(st.model, st.id, "model"))
             for rid in st.tools:
                 edges.append(_wire(rid, st.id, "tools"))
+            for rid in st.subagents:
+                edges.append(_wire(rid, st.id, "subagents"))
             sources = [(k, r) for k, r in st.after if k == "START" or k in self.steps] or [("START", None)]
             target = st.id
             if len(sources) > 1 and not self._exclusive(sources):  # needs every earlier step: wait for all of them
                 waits += 1
                 wait_id = f"n_{len(steps) + waits}"
-                wait_name = ident(f"wait_for_{st.name}", self._node_names, "wait")
+                wait_name = ident(f"wait_for_{st.name}", self.names, "wait")
                 nodes.append({"id": wait_id, "type": "core.join", "name": wait_name, "config": {}})
                 if st.position:
                     layout[wait_id] = {"x": st.position["x"] - 160, "y": st.position["y"]}
@@ -231,7 +237,7 @@ class Builder:
             channels.insert(0, {"name": "messages", "type": {"type": "array"}, "reducer": "add_messages",
                                 "io": "inout"})  # fmt: skip
         ir: dict[str, Any] = {
-            "ir_version": "1.2",
+            "ir_version": "1.3",
             "id": self.wf_id,
             "name": self.name,
             "description": self.description,
@@ -276,9 +282,9 @@ PROVIDERS = {  # what the builders call a provider -> AgentCanvas's provider id
     "ollama": "ollama", "azure": "azure_openai", "azure openai": "azure_openai", "azureopenai": "azure_openai",
     "lmstudio": "lmstudio", "lm studio": "lmstudio", "vllm": "vllm",
 }  # fmt: skip
-DEFAULT_MODELS = {"openai": "gpt-5.5", "anthropic": "claude-haiku-4-5", "google_genai": "gemini-3.6-flash",
+DEFAULT_MODELS = {"openai": "gpt-5.5", "anthropic": "claude-haiku-5-5", "google_genai": "gemini-3.6-flash",
                   "mistralai": "mistral-large-latest", "groq": "llama-3.3-70b-versatile", "ollama": "llama3.3",
-                  "deepseek": "deepseek-chat", "xai": "grok-4", "azure_openai": "gpt-5.5"}  # fmt: skip
+                  "deepseek": "deepseek-v4-pro", "xai": "grok-4.7", "azure_openai": "gpt-5.5"}  # fmt: skip
 
 
 def model_id(provider: str, name: Any, report: Builder | None = None) -> str:
@@ -311,7 +317,8 @@ def brace_template(text: str, value_of: Any) -> str:
 
 
 def cel_string(value: Any) -> str:
-    return '"' + str(value).replace("\\", "\\\\").replace('"', '\\"') + '"'
+    """A CEL string literal: JSON's escapes (quotes, backslashes, newlines and other control characters) are CEL's."""
+    return json.dumps(str(value), ensure_ascii=False)
 
 
 def compare(field_expr: str, operation: str, value: Any) -> str | None:
@@ -338,6 +345,8 @@ def compare(field_expr: str, operation: str, value: Any) -> str | None:
             number = float(value)
         except (TypeError, ValueError):
             return None
+        if not math.isfinite(number):  # nan and inf are not CEL numbers
+            return None
         return f"double({field_expr}) {numeric[op]} {number}"
     return None
 
@@ -360,11 +369,16 @@ def position(x: Any, y: Any) -> dict[str, float] | None:
 
 
 # ------------------------------------------------------------------ entry point ----
-FORMATS = {"langflow": "Langflow", "flowise": "Flowise", "n8n": "n8n", "agentspec": "Open Agent Spec"}
+FORMATS = {"langflow": "Langflow", "flowise": "Flowise", "n8n": "n8n", "agentspec": "Open Agent Spec",
+           "openai_agents": "OpenAI Agents SDK"}  # fmt: skip
 
 
 def detect(doc: Any) -> str | None:
-    """Which builder wrote `doc`: langflow, flowise, n8n or agentspec (None: none of them)."""
+    """Which builder wrote `doc`: langflow, flowise, n8n, agentspec or openai_agents (None: none of them)."""
+    from agentcanvas.importers.openai_agents import looks_like
+
+    if looks_like(doc) or (isinstance(doc, dict) and looks_like(doc.get("code"))):
+        return "openai_agents"  # Python: as text, or {"code": "..."} as the import route takes it
     if not isinstance(doc, dict):
         return None
     if "component_type" in doc:
@@ -384,12 +398,22 @@ def detect(doc: Any) -> str | None:
 
 def import_document(doc: Any, *, wf_id: str, name: str | None = None) -> tuple[str, dict[str, Any], list[str],
                                                                               dict[str, Any]]:  # fmt: skip
-    """(format, IR document, report, layout) for a Langflow, Flowise, n8n or Agent Spec file."""
+    """(format, IR document, report, layout) for a Langflow, Flowise, n8n or Agent Spec file, or OpenAI Agents SDK
+    code. Workspace files the workflow needs (an Agents SDK file's function tools) are its `metadata.kit`."""
     kind = detect(doc)
     if kind is None:
         raise ImportError_(
-            "this file is not a Langflow, Flowise, n8n or Agent Spec export (expected the JSON each one downloads)"
+            "this file is not a Langflow, Flowise, n8n or Agent Spec export (expected the JSON each one downloads) or "
+            "OpenAI Agents SDK code"
         )
+    if kind == "openai_agents":
+        from agentcanvas.importers import openai_agents
+
+        builder, files = openai_agents.read(doc if isinstance(doc, str) else doc["code"], wf_id=wf_id, name=name)
+        ir, report, layout = builder.build()
+        if files:
+            ir["metadata"]["kit"] = {"files": files}
+        return kind, ir, report, layout
     if kind == "agentspec":
         from agentcanvas import agentspec
 

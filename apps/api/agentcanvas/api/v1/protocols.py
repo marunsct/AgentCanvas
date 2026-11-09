@@ -24,22 +24,40 @@ from typing import Any
 from fastapi import APIRouter, Depends, Header, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agentcanvas.api.deps import get_session
-from agentcanvas.api.v1.deployments import ApiResult, ApiRunIn, _caller, _continue_on, _result, _start
-from agentcanvas.api.v1.runs import _thread
+from agentcanvas.api.deps import get_session, get_settings_dep
+from agentcanvas.api.urls import api_url
+from agentcanvas.api.v1.deployments import ApiResult, ApiRunIn, _caller, _continue_on, _result, _start, own_thread
 from agentcanvas.db.models import Deployment, InterruptTask, Run, Thread, WorkflowVersion
+from agentcanvas.db.repositories import LIGHT_RUN
 from agentcanvas.errors import Conflict, DomainError, InvalidInput, NotFound, TooManyRequests, Unauthorized
 from agentcanvas.ir.contract import Contract, contract
 from agentcanvas.ir.models import Workflow
 from agentcanvas.runtime.types import ResumeSpec
+from agentcanvas.settings import Settings
 
 router = APIRouter(tags=["agent protocols"])
 
-MCP_VERSIONS = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")  # newest first
-A2A_VERSION = "0.3.0"
+# 2026-07-28 is "modern": every request carries its version in `_meta`, no `initialize`, no sessions. The older ones are
+# "legacy" (an `initialize` handshake); this server speaks both, choosing by how the client opens (dual-era)
+MCP_MODERN = ("2026-07-28",)
+MCP_LEGACY = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
+MCP_VERSIONS = MCP_MODERN + MCP_LEGACY  # newest first
+META_VERSION = "io.modelcontextprotocol/protocolVersion"
+META_SERVER = "io.modelcontextprotocol/serverInfo"
+LIST_TTL_MS = 300_000  # a deployment's tools change only when it is published again
+HEADER_MISMATCH, UNSUPPORTED_VERSION = -32020, -32022
+A2A_VERSION = "0.3.0"  # what a client that sends no `A2A-Version` header speaks (the spec's rule)
+A2A_V1 = "1.0"
+A2A_V1_METHODS = ("SendMessage", "GetTask", "CancelTask", "ListTasks", "SendStreamingMessage", "SubscribeToTask",
+                  "GetExtendedAgentCard")  # fmt: skip
+TASK_NOT_FOUND, TASK_NOT_CANCELABLE, UNSUPPORTED_OPERATION, VERSION_NOT_SUPPORTED = -32001, -32002, -32004, -32009
+V1_STATES = {
+    "completed": "TASK_STATE_COMPLETED", "input-required": "TASK_STATE_INPUT_REQUIRED", "working": "TASK_STATE_WORKING",
+    "canceled": "TASK_STATE_CANCELED", "failed": "TASK_STATE_FAILED",
+}  # fmt: skip
 TEXT_FIELDS = ("message", "question", "query", "input", "text", "request", "prompt", "ticket")
 
 
@@ -143,9 +161,7 @@ async def _resume(
     iid: str | None,
     labels: dict[str, str] | None = None,
 ) -> ApiResult:
-    t = await _thread(session, thread_id)
-    if t.deployment_id != dep.id:
-        raise InvalidInput(f"thread '{thread_id}' was not started by this deployment")
+    await own_thread(session, dep, thread_id)
     wf, version_id = await _continue_on(session, dep, wf, thread_id)
     h = await request.app.state.runner.start(
         wf,
@@ -247,14 +263,69 @@ async def _mcp_call(
     raise RpcError(-32602, f"unknown tool '{name}'")
 
 
+def _mcp_transport_refusal(request: Request, settings: Settings) -> JSONResponse | None:
+    """The Streamable HTTP transport's two checks. `Origin`: a browser page may only call from this server's own
+    origin or one of the API's CORS origins (403 otherwise; the defence against DNS rebinding, which the transport
+    requires). `MCP-Protocol-Version`: when sent, one this server speaks (400 otherwise); absent means 2025-03-26."""
+    origin = request.headers.get("origin")
+    own = f"{request.url.scheme}://{request.url.netloc}"
+    if origin is not None and origin != own and origin not in settings.cors_origins:
+        return JSONResponse(_rpc_error(None, -32600, f"requests from the origin '{origin[:200]}' are not allowed"), 403)
+    version = request.headers.get("mcp-protocol-version")
+    if version is not None and version not in MCP_VERSIONS:
+        return _unsupported(None, version)
+    return None
+
+
+def _unsupported(id_: Any, version: str) -> JSONResponse:
+    known = ", ".join(MCP_VERSIONS)
+    body = _rpc_error(id_, UNSUPPORTED_VERSION, f"MCP protocol version '{version[:40]}' is not supported ({known})",
+                      {"supported": list(MCP_VERSIONS), "requested": version[:40]})  # fmt: skip
+    return JSONResponse(body, 400)
+
+
+def _header_value(raw: str | None) -> str | None:
+    """A mirrored header's value, decoding the `=?base64?…?=` form clients use for names that are not plain ASCII."""
+    if raw is not None and raw.startswith("=?base64?") and raw.endswith("?="):
+        import base64
+        import binascii
+
+        try:
+            return base64.b64decode(raw[9:-2], validate=True).decode()
+        except (binascii.Error, UnicodeDecodeError):
+            return None
+    return raw
+
+
+def _modern_refusal(request: Request, msg: dict[str, Any], version: str) -> JSONResponse | None:
+    """The 2026-07-28 request checks: a version this server speaks, and the mirrored headers (`MCP-Protocol-Version`,
+    `Mcp-Method`, `Mcp-Name`) present and equal to the body, so a gateway routing on them sees what runs."""
+    id_ = msg.get("id")
+    if version not in MCP_MODERN:
+        return _unsupported(id_, version)
+    params = msg.get("params") or {}
+    expected = {"mcp-protocol-version": version, "mcp-method": msg["method"]}
+    if msg["method"] in ("tools/call", "prompts/get", "resources/read"):
+        expected["mcp-name"] = str(params.get("name") if msg["method"] != "resources/read" else params.get("uri"))
+    for header, value in expected.items():
+        sent = request.headers.get(header)
+        if (_header_value(sent) if header == "mcp-name" else sent) != value:
+            what = "is missing" if sent is None else f"'{sent[:80]}' does not match the body's '{value[:80]}'"
+            return JSONResponse(_rpc_error(id_, HEADER_MISMATCH, f"Header mismatch: {header} {what}"), 400)
+    return None
+
+
 @router.post("/deployments/{dep_id}/mcp")
 async def mcp_endpoint(
     dep_id: str,
     request: Request,
     authorization: str | None = Header(None),
     session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings_dep),
 ) -> Response:
     """The deployment as a remote MCP server (Streamable HTTP; every response is a single JSON message)."""
+    if (refused := _mcp_transport_refusal(request, settings)) is not None:
+        return refused
     dep, wf = await _caller(request, session, dep_id, authorization)
     try:
         msg = await _rpc(request)
@@ -263,12 +334,17 @@ async def mcp_endpoint(
     method, params, id_ = msg["method"], msg.get("params") or {}, msg.get("id")
     if "id" not in msg:  # a notification (initialized, cancelled, ...): nothing to answer
         return Response(status_code=202)
+    modern = ((params.get("_meta") or {}) if isinstance(params.get("_meta"), dict) else {}).get(META_VERSION)
+    if modern is not None:
+        if (refused := _modern_refusal(request, msg, str(modern))) is not None:
+            return refused
+        return await _mcp_modern(request, session, dep, wf, msg, authorization)
     try:
         if method == "initialize":
             asked = params.get("protocolVersion")
             version = await session.get(WorkflowVersion, dep.version_id)
             result: dict[str, Any] = {
-                "protocolVersion": asked if asked in MCP_VERSIONS else MCP_VERSIONS[0],
+                "protocolVersion": asked if asked in MCP_LEGACY else MCP_LEGACY[0],  # `initialize` is legacy
                 "capabilities": {"tools": {"listChanged": False}},
                 "serverInfo": {"name": f"agentcanvas-{tool_name(wf)}", "version": version.semver if version else "0"},
                 "instructions": wf.description or f"Tools of the {wf.name} workflow, published with AgentCanvas.",
@@ -288,6 +364,37 @@ async def mcp_endpoint(
     return JSONResponse({"jsonrpc": "2.0", "id": id_, "result": result})
 
 
+async def _mcp_modern(
+    request: Request, session: AsyncSession, dep: Deployment, wf: Workflow, msg: dict[str, Any], auth: str | None
+) -> Response:
+    """A 2026-07-28 request, served on its own: every result says it is `complete`, names this server, and list
+    results say how long they stay fresh (`ttlMs`) and that they are this caller's (`cacheScope`)."""
+    method, params, id_ = msg["method"], msg.get("params") or {}, msg.get("id")
+    version = await session.get(WorkflowVersion, dep.version_id)
+    server = {"name": f"agentcanvas-{tool_name(wf)}", "version": version.semver if version else "0"}
+    cached = {"ttlMs": LIST_TTL_MS, "cacheScope": "private"}  # behind the deployment key: never a shared cache
+    try:
+        if method == "server/discover":
+            result: dict[str, Any] = {
+                "supportedVersions": list(MCP_VERSIONS), "capabilities": {"tools": {"listChanged": False}},
+                "instructions": wf.description or f"Tools of the {wf.name} workflow, published with AgentCanvas.",
+                **cached,
+            }  # fmt: skip
+        elif method == "tools/list":
+            result = {"tools": _mcp_tools(wf, contract(wf)), **cached}
+        elif method == "tools/call":
+            result = await _mcp_call(request, session, dep, wf, params, auth)
+        elif method in ("resources/list", "prompts/list", "resources/templates/list"):
+            result = {method.split("/")[0] if method != "resources/templates/list" else "resourceTemplates": [],
+                      **cached}  # fmt: skip
+        else:  # the modern transport answers an unknown method with 404 and the JSON-RPC error
+            return JSONResponse(_rpc_error(id_, -32601, f"method '{method}' is not supported"), 404)
+    except RpcError as e:
+        return JSONResponse(_rpc_error(id_, e.code, e.message, e.data))
+    result = {"resultType": "complete", **result, "_meta": {META_SERVER: server}}
+    return JSONResponse({"jsonrpc": "2.0", "id": id_, "result": result})
+
+
 @router.get("/deployments/{dep_id}/mcp")
 async def mcp_no_stream(dep_id: str) -> Response:
     """No server-initiated stream: every answer comes back on its POST."""
@@ -303,7 +410,28 @@ async def _deployment(session: AsyncSession, dep_id: str) -> tuple[Deployment, W
     return dep, Workflow.model_validate(version.ir), version.semver
 
 
-def agent_card(wf: Workflow, semver: str, url: str) -> dict[str, Any]:
+def agent_card(wf: Workflow, semver: str, url: str, version: str | None = None) -> dict[str, Any]:
+    """The agent card: A2A 1.0's shape for a client that asks for 1.x (`A2A-Version`), else 0.3's, which also lists
+    the 1.0 interface (`supportedInterfaces`) so a 1.0 client reading it without the header finds it."""
+    card = _card_v03(wf, semver, url)
+    interfaces = [{"url": url, "protocolBinding": "JSONRPC", "protocolVersion": A2A_V1},
+                  {"url": url, "protocolBinding": "JSONRPC", "protocolVersion": "0.3"}]  # fmt: skip
+    if not _v1(version):
+        return {**card, "supportedInterfaces": interfaces}
+    drop = ("protocolVersion", "url", "preferredTransport", "securitySchemes", "security")
+    return {
+        **{k: v for k, v in card.items() if k not in drop},
+        "supportedInterfaces": interfaces,
+        "securitySchemes": {"deploymentKey": {"httpAuthSecurityScheme": {"scheme": "bearer"}}},
+        "securityRequirements": [{"schemes": {"deploymentKey": {"list": []}}}],
+    }
+
+
+def _v1(version: str | None) -> bool:
+    return bool(version) and str(version).strip().split(".")[0] == "1"
+
+
+def _card_v03(wf: Workflow, semver: str, url: str) -> dict[str, Any]:
     c = contract(wf)
     fields = ", ".join(c.input) or "none"
     return {
@@ -340,7 +468,8 @@ async def a2a_card(dep_id: str, request: Request, session: AsyncSession = Depend
     """The deployment's A2A agent card. Public, as A2A clients read it before they authenticate: it names the
     workflow and its input fields; running it needs the key."""
     _, wf, semver = await _deployment(session, dep_id)
-    return agent_card(wf, semver, str(request.url_for("a2a_endpoint", dep_id=dep_id)))
+    url = api_url(request, "a2a_endpoint", dep_id=dep_id)  # as callers reach it, e.g. behind nginx's /api
+    return agent_card(wf, semver, url, request.headers.get("a2a-version"))
 
 
 def _parts(message: dict[str, Any]) -> tuple[dict[str, Any], str | None]:
@@ -403,12 +532,31 @@ def _agent_message(task_id: str, context_id: str, text: str, data: dict[str, Any
             "contextId": context_id, "parts": parts}  # fmt: skip
 
 
+def _v1_task(task: dict[str, Any]) -> dict[str, Any]:
+    """A task in A2A 1.0's wire form: ProtoJSON enum names, parts without `kind`, no `kind` on the task."""
+
+    def parts(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return [{k: v for k, v in p.items() if k != "kind"} for p in items]
+
+    status = dict(task["status"])
+    status["state"] = V1_STATES.get(status["state"], "TASK_STATE_FAILED")
+    if "message" in status:
+        m = status["message"]
+        status["message"] = {**{k: v for k, v in m.items() if k != "kind"}, "role": "ROLE_AGENT",
+                             "parts": parts(m["parts"])}  # fmt: skip
+    out = {k: v for k, v in task.items() if k not in ("kind", "status", "artifacts")}
+    out["status"] = status
+    if task.get("artifacts"):
+        out["artifacts"] = [{**a, "parts": parts(a["parts"])} for a in task["artifacts"]]
+    return out
+
+
 async def _task_thread(session: AsyncSession, dep: Deployment, task_id: str) -> Thread:
     """The conversation of a task (a task is named after the run that started it)."""
     q = select(Thread).join(Run, Thread.id == Run.thread_id)
     thread = await session.scalar(q.where(Run.id == task_id, Thread.deployment_id == dep.id))
     if thread is None:
-        raise RpcError(-32001, f"task '{task_id}' not found")
+        raise RpcError(TASK_NOT_FOUND, f"task '{task_id}' not found")
     return thread
 
 
@@ -444,7 +592,7 @@ async def _a2a_send(
     except ValidationError as exc:
         raise RpcError(-32602, f"invalid message: {exc.errors()[0]['msg']}") from None
     except NotFound:
-        raise RpcError(-32001, f"context '{context_id}' not found") from None
+        raise RpcError(TASK_NOT_FOUND, f"context '{context_id}' not found") from None
     await session.close()
     res = await _result(h)
     return _task(res, res.run_id)
@@ -454,8 +602,10 @@ async def _a2a_get(request: Request, session: AsyncSession, dep: Deployment, par
     """A task's state: the run that started it, or the latest run that answered it (labelled with the task)."""
     task_id = str(params.get("id") or "")
     thread = await _task_thread(session, dep, task_id)
-    runs = (await session.scalars(select(Run).where(Run.thread_id == thread.id).order_by(Run.started_at.desc()))).all()
-    latest = next((r for r in runs if r.id == task_id or (r.labels or {}).get("a2a_task") == task_id), None)
+    # the newest run that is the task or answered it, found in SQL: a long conversation has many runs
+    task_run = or_(Run.id == task_id, Run.labels["a2a_task"].as_string() == task_id)
+    q = select(Run).options(*LIGHT_RUN).where(Run.thread_id == thread.id, task_run)
+    latest = await session.scalar(q.order_by(Run.started_at.desc(), Run.id.desc()).limit(1))
     handle = request.app.state.runner.handles.get(latest.id) if latest else None
     if handle is not None and handle.done.is_set():
         res = await _result(handle)
@@ -466,6 +616,26 @@ async def _a2a_get(request: Request, session: AsyncSession, dep: Deployment, par
     return _task(res, task_id)
 
 
+async def _a2a_v1(
+    request: Request,
+    session: AsyncSession,
+    dep: Deployment,
+    wf: Workflow,
+    method: str,
+    params: dict[str, Any],
+    auth: str | None,
+) -> dict[str, Any]:
+    """An A2A 1.0 call: the 0.3 handlers do the work, the answer takes 1.0's shape."""
+    if method == "SendMessage":
+        return {"task": _v1_task(await _a2a_send(request, session, dep, wf, params, auth))}
+    if method == "GetTask":
+        return _v1_task(await _a2a_get(request, session, dep, params))
+    if method == "CancelTask":
+        await _task_thread(session, dep, str(params.get("id") or ""))  # an unknown task is TaskNotFound
+        raise RpcError(TASK_NOT_CANCELABLE, "tasks cannot be cancelled through A2A; a paused task simply waits")
+    raise RpcError(UNSUPPORTED_OPERATION, f"{method} is not supported by this agent (see its card's capabilities)")
+
+
 @router.post("/deployments/{dep_id}/a2a", name="a2a_endpoint")
 async def a2a_endpoint(
     dep_id: str,
@@ -473,7 +643,8 @@ async def a2a_endpoint(
     authorization: str | None = Header(None),
     session: AsyncSession = Depends(get_session),
 ) -> Response:
-    """The deployment as an A2A agent (JSON-RPC, A2A 0.3)."""
+    """The deployment as an A2A agent (JSON-RPC): A2A 1.0's methods (`SendMessage`, `GetTask`, …) and 0.3's
+    (`message/send`, `tasks/get`), told apart by name as the reference SDK does."""
     dep, wf = await _caller(request, session, dep_id, authorization)
     id_: Any = None
     try:
@@ -481,7 +652,13 @@ async def a2a_endpoint(
         method, params, id_ = msg["method"], msg.get("params") or {}, msg.get("id")
         if "id" not in msg:  # a notification: nothing runs and nothing is answered
             return Response(status_code=204)
-        if method == "message/send":
+        if method in A2A_V1_METHODS:
+            version = request.headers.get("a2a-version") or "0.3"  # the spec: no header means 0.3
+            if not _v1(version):
+                said = f"{method} is A2A {A2A_V1}; send the header A2A-Version: {A2A_V1} (0.3 clients use message/send)"
+                raise RpcError(VERSION_NOT_SUPPORTED, said, {"supportedVersions": [A2A_V1, "0.3"]})
+            result = await _a2a_v1(request, session, dep, wf, method, params, authorization)
+        elif method == "message/send":
             result = await _a2a_send(request, session, dep, wf, params, authorization)
         elif method == "tasks/get":
             result = await _a2a_get(request, session, dep, params)

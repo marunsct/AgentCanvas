@@ -10,7 +10,7 @@
     {"name": "approved", "type": {"type": "boolean"}}
   ]},
   "resources": [
-    {"id": "r_fast",  "type": "model.chat", "name": "fast_model",  "config": {"model": "openai:gpt-5-mini", "temperature": 0}},
+    {"id": "r_fast",  "type": "model.chat", "name": "fast_model",  "config": {"model": "openai:gpt-5.6-luna"}},
     {"id": "r_smart", "type": "model.chat", "name": "smart_model", "config": {"model": "anthropic:claude-sonnet-5-5"}},
     {"id": "r_send",  "type": "tool.python", "name": "send_reply", "config": {"import_path": "examples.tools:send_reply"}}
   ],

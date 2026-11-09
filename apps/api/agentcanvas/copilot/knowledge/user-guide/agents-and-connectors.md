@@ -31,15 +31,15 @@ which shows what will be sent on an approval card; a rejection skips the agent.
 
 | Framework | Package (exports install this version) | Point the block at |
 |---|---|---|
-| OpenAI Agents SDK | `openai-agents==0.23.1` | an `Agent` |
-| CrewAI | `crewai==1.15.25` | a `Crew` (its task texts can use `{input}` and other field names), an `Agent` or a `Flow` |
-| Google ADK | `google-adk==2.11.0` | an agent (`LlmAgent`, …) |
-| Pydantic AI | `pydantic-ai-slim==2.54.0` | an `Agent` |
-| Agno | `agno==3.1.1` | an `Agent` or `Team` |
-| Strands Agents | `strands-agents==1.58.1` | an `Agent` |
+| OpenAI Agents SDK | `openai-agents==0.24.0` | an `Agent` |
+| CrewAI | `crewai==1.15.33` | a `Crew` (its task texts can use `{input}` and other field names), an `Agent` or a `Flow` |
+| Google ADK | `google-adk==2.13.0` | an agent (`LlmAgent`, …) |
+| Pydantic AI | `pydantic-ai-slim==2.63.0` | an `Agent` |
+| Agno | `agno==3.1.11` | an `Agent` or `Team` |
+| Strands Agents | `strands-agents==1.62.0` | an `Agent` |
 | LlamaIndex Workflows | `llama-index-workflows==2.25.0` | a `Workflow` (it gets `input=` and the other fields) |
-| Microsoft Agent Framework | `agent-framework-core==1.20.0` | an agent (`client.as_agent(...)`) |
-| Claude Agent SDK | `claude-agent-sdk==0.2.164` | a `ClaudeAgentOptions` |
+| Microsoft Agent Framework | `agent-framework-core==1.23.0` | an agent (`client.as_agent(...)`) |
+| Claude Agent SDK | `claude-agent-sdk==0.2.174` | a `ClaudeAgentOptions` |
 | Python function | none | `async def run(input, ctx)`: return text, or a dict to set several fields |
 
 - The agent's own package (and its model provider's, such as `openai`) must be installed on the server, and an
@@ -53,9 +53,10 @@ which shows what will be sent on an approval card; a rejection skips the agent.
   agent's code runs inside the server.
 - **Remote agents (A2A)**: when the remote agent asks for more information (`input-required`), the run pauses and
   the question appears in the Inbox; the answer goes back to the same task. Addresses on private networks are
-  refused unless you turn on **Allow private network**. Put keys in **Headers** as secrets. If AgentCanvas
-  restarts while a remote agent waits for an answer, the step stops with a message instead of sending the first
-  message again; start the run again.
+  refused unless you turn on **Allow private network**. Put keys in **Headers** as secrets. What the remote agent
+  said so far is kept in the database, so the answer can reach any server, after a restart too. (An exported project
+  keeps it in its own process: if that restarts while a remote agent waits, the step stops with a message instead of
+  sending the first message again; start the run again.)
 
 ### Open Agent Spec files
 
@@ -84,6 +85,7 @@ same one as the [deployment API](publish.md), with the same rate limits.
 |---|---|
 | Address | `https://<your AgentCanvas>/api/v1/deployments/<id>/mcp` |
 | Transport | Streamable HTTP (every answer is one JSON message; no server-sent stream) |
+| Protocol | MCP `2026-07-28` (no handshake: `server/discover`, the version in each request) and the earlier revisions back to `2024-11-05` for clients that open with `initialize` |
 | Sign-in | `Authorization: Bearer <deployment key>` |
 | Tools | one tool named after the workflow, with the workflow's input fields; plus `answer` when the workflow can pause for a person |
 
@@ -114,7 +116,7 @@ conversation, pass the `thread_id` of the earlier run to the workflow's tool.
 | | |
 |---|---|
 | Agent card | `https://<your AgentCanvas>/api/v1/deployments/<id>/a2a/.well-known/agent-card.json` (no key needed to read it) |
-| Endpoint | `https://<your AgentCanvas>/api/v1/deployments/<id>/a2a` (JSON-RPC, A2A 0.3) |
+| Endpoint | `https://<your AgentCanvas>/api/v1/deployments/<id>/a2a` (JSON-RPC: A2A 1.0 with the header `A2A-Version: 1.0`, and A2A 0.3) |
 | Sign-in | `Authorization: Bearer <deployment key>` |
 
 - `message/send` runs the workflow. A **data** part gives the input fields; a **text** part goes to the workflow's
@@ -123,7 +125,10 @@ conversation, pass the `thread_id` of the earlier run to the workflow's tool.
 - A pause becomes the `input-required` state. Send the answer to the same task (`taskId`): "yes" or "no" for an
   approval, or the answer to a question.
 - `contextId` continues a conversation; `tasks/get` reads a task again.
-- Not supported: streaming (`message/stream`), push notifications and cancelling a task.
+- A2A 1.0 clients use `SendMessage` and `GetTask` (the same behaviour, in 1.0's form: `TASK_STATE_COMPLETED`,
+  parts without `kind`); the agent card comes in 1.0's form when read with `A2A-Version: 1.0`, and lists both
+  versions either way.
+- Not supported: streaming (`message/stream`, `SendStreamingMessage`), push notifications and cancelling a task.
 
 Runs started over MCP or A2A are ordinary runs of the deployment: they appear under **Runs**, count towards online
 evaluation and keep their conversations.
@@ -135,19 +140,50 @@ double-click it: it becomes an **App connector (MCP)** block already set up for 
 into an agent, and use **Browse tools** to pick tools.
 
 - **Keys.** Connectors that need a key name the secret they read, such as `GITHUB_MCP_AUTH`. Add it under
-  **Workspace → Secrets**. Where a server expects `Authorization: Bearer <token>`, store the whole value,
+  **Settings › Secrets**. Where a server expects `Authorization: Bearer <token>`, store the whole value,
   including `Bearer `.
 - **Local connectors** start a program on the AgentCanvas server (`npx` or `uvx`). They work only in the local
   edition, after an admin turns on *local MCP servers*, and need Node.js or uv on the server.
-- **Sign-in only.** A few apps accept only an interactive sign-in (OAuth). They are listed so you can find them,
-  but AgentCanvas cannot sign in to them yet.
+- **Sign-in only.** A few apps (Linear, Atlassian…) accept only an interactive sign-in (OAuth). Select the block and click
+  **Connect** to sign in with your own account; see [Sign-in per person](#sign-in-per-person).
 
 Each entry was checked against npm, PyPI or the official MCP registry when the gallery was built; its tooltip says
 what it needs.
 
+### Sign-in per person
+
+A connector that has the **Sign in with OAuth** setting (the apps above that accept only a sign-in come with it) does not use
+one shared key. Each person connects their own account, once:
+
+1. Select the connector's block and click **Connect**. You go to the app's own sign-in page and come back; the block then
+   shows *connected as you*. **Settings › You › Connections** lists your connections and lets you disconnect them.
+2. Set **Acts as** on the block, which says whose connection a run uses:
+   - **starter** (the default): the connection of the person who starts the run, or resumes it after an approval. A run
+     nobody started (a schedule, a webhook, a deployment call or a share link) has no connection of its own and stops
+     with a message saying so.
+   - **service**: the organisation's service connection, which an admin connects with **Connect the service account** on
+     the same block. Use it for schedules, webhooks and deployments, and when the app account should be shared on purpose.
+     A draft run that a builder starts in the editor does not use it (that would lend the admin's account to every
+     builder): publish the workflow, to a test environment if you like, and run it there. Admins' own runs, and a
+     deployment's runs resumed from the inbox, do use it.
+3. **Browse tools** uses your own connection (or the service one, when the block is set to it and you are an admin).
+
+Behind the scenes AgentCanvas follows the MCP authorization standard against whatever server the block points at: it finds
+the server's sign-in settings itself, uses the server's client-metadata-document support or registers itself with the
+server, and signs in with PKCE. Tokens are stored encrypted with the organisation's key and renewed as needed; if the app
+revokes access, the connection shows *expired* and runs say to connect it again. A provider that supports neither client
+metadata documents nor dynamic registration (GitHub and Slack style) needs an app made at the provider: an admin registers the
+redirect address shown under **Settings › Connections › Sign-in credentials** there, then enters the client id and secret with
+the connector's server address. The secret is stored encrypted and never shown again, and entered credentials are used before
+the other two ways, for that server only: another connector whose server names the same sign-in server cannot use them
+(it would receive tokens made with your app). To use them for another server too, enter the same client id with that
+server's address; the secret is kept. **Connect** says which sign-in server it sends you to when that is not the app's
+own host, so you can check you trust the connector's server before signing in. The operator sets `AGENTCANVAS_PUBLIC_URL`
+([Deploy](deploy.md)). A workflow exported as code cannot sign in: connectors with this setting need the AgentCanvas server.
+
 ## Send traces to your observability tool
 
-Under **Setup** → **Send traces to your observability tool**, an admin picks a destination:
+Under **Settings › Observability**, an admin picks where traces go:
 
 | Destination | Address | Keys |
 |---|---|---|

@@ -10,10 +10,10 @@ demo models so every feature works offline and free. See [Run AgentCanvas on you
 **Which models are supported?**
 Anthropic, OpenAI, Azure OpenAI, Google Gemini, Mistral, Groq, DeepSeek, xAI, any OpenAI-compatible API, and models
 on your own computer through Ollama, LM Studio, vLLM or llama.cpp. All are installed with AgentCanvas. Choose one
-on the **Model** screen and enter its key there. See [Models and API keys](models.md).
+in **Settings › Models** and enter its key there. See [Models and API keys](models.md).
 
 **Can I use AgentCanvas without sending data to a cloud provider?**
-Yes: pick a local model (Ollama, LM Studio, vLLM, llama.cpp) on the **Model** screen. Runs, memory and traces stay
+Yes: pick a local model (Ollama, LM Studio, vLLM, llama.cpp) in **Settings › Models**. Runs, memory and traces stay
 on your machine unless you turn on LangSmith tracing.
 
 **Is the generated code mine? Can I run it without AgentCanvas?**

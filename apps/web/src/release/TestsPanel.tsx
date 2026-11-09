@@ -51,8 +51,11 @@ export function TestsPanel() {
       </form>
       {record.error && <p className="error-text small">{(record.error as Error).message}</p>}
       <ul className="case-list">
-        {list.map((c) => <CaseRow key={c.id} c={c} onDelete={() => remove.mutate(c.id)} />)}
+        {list.map((c) => (
+          <CaseRow key={c.id} c={c} onDelete={() => { if (window.confirm(`Delete test case ${c.name}?`)) remove.mutate(c.id); }} />
+        ))}
       </ul>
+      {remove.error && <p className="error-text small" role="alert">{(remove.error as Error).message}</p>}
     </div>
   );
 }

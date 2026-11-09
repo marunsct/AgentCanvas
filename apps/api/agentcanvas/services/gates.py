@@ -96,7 +96,9 @@ async def _reuse(
         .limit(20)
     )  # fmt: skip
     for exp in (await s.scalars(q)).all():
-        if any(spec not in exp.evaluators for spec in specs):
+        # a simulated user's conversations are not the examples as the gate runs them (the JSON column may hold
+        # a JSON null, which `IS NULL` misses, so this is checked here)
+        if exp.simulation or any(spec not in exp.evaluators for spec in specs):
             continue
         for i, t in enumerate(exp.targets):
             if ir_hash(t["ir"]) == wanted:
@@ -177,6 +179,7 @@ async def evaluate(
         try:
             await asyncio.wait_for(asyncio.shield(job.launch(exp_id)), GATE_TIMEOUT_S)
         except TimeoutError:
+            await job.cancel(exp_id)  # the gate has failed: stop the experiment and its model spend with it
             return Check(name="evaluation", ok=False, detail=f"the evaluation did not finish in {GATE_TIMEOUT_S:g} s")
         async with db.sessionmaker() as s:
             exp = await s.get(Experiment, exp_id)
@@ -196,11 +199,15 @@ async def evaluate(
         if name in pairwise and not paired:
             notes.append(f"{name}: no live version to compare with")
             continue
-        mean = next((e.mean for e in found.evaluators if e.evaluator == name), None)
+        ev = next((e for e in found.evaluators if e.evaluator == name), None)
+        mean = ev.mean if ev else None
         minimum = minimums[name]
         what = "win rate vs live" if name in pairwise else "mean"
         line = f"{name}: {what} {mean if mean is not None else '—'} (needs {minimum:g})"
-        (failures if mean is None or mean < minimum else notes).append(line)
+        unscored = ev.unscored if ev else found.completed
+        if unscored and mean is not None:  # the mean leaves them out: most examples unscored could still "pass"
+            line += f"; {unscored} of {found.completed} example(s) unscored"
+        (failures if mean is None or mean < minimum or unscored else notes).append(line)
     if regression and before is not None and live is not None:
         now, was = found.pass_rate or 0.0, before.pass_rate or 0.0
         line = f"pass rate {now:.0%} vs {was:.0%} for v{live[2]} (may drop {max_regression:.0%})"

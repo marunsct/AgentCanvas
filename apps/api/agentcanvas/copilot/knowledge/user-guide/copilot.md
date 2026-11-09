@@ -28,6 +28,17 @@ Open it with **✦ Copilot** in the editor's top bar (or the **Copilot** tab on 
 The Copilot tells you what it cannot do for you, such as adding an API key as a [secret](workspace.md) or filling
 a memory space.
 
+## Conversations, Stop and the plan
+
+- **History** at the top of the panel lists your earlier conversations about this workflow; open one to carry on
+  where it stopped. **New chat** keeps the current one there.
+- **■ Stop** ends an answer while it is being written: the Copilot stops on the server straight away, so it spends no
+  more tokens; what was said so far is kept and marked "stopped".
+- On a longer build the Copilot keeps a short **Plan** (a to-do list, "2 of 5 done") under its answer, so you see
+  where it is.
+- A proposal lists each change with a tick box: untick what you do not want (unticking a step unticks the wires to
+  it) and **Accept** applies only what is ticked. The canvas shows the ticked changes as they would be.
+
 ## Testing
 
 Ask "write tests for this and run them", or let the Copilot do it after building from a brief with success
@@ -51,9 +62,18 @@ The Copilot can find, explain and fix problems:
 
 Ask "explain" to get only an explanation; ask "fix" to get a proposal. In Ask mode it never changes or runs anything.
 
+## Building for another framework
+
+Ask "make this run on CrewAI" (or the OpenAI Agents SDK, Google ADK, Pydantic AI, Agno, the Microsoft Agent
+Framework, Strands, LlamaIndex or Mastra) and the Copilot first reads what that framework can do, then checks
+your workflow against it. It tells you which blocks the framework runs as they are, which it only emulates and how
+(the validator's P002 warnings), and which it refuses (P001), and then proposes the framework change and the
+replacements for blocks that do not fit. This list is built from the same framework descriptions the validator and
+the framework picker use, so it is always current. See [Frameworks](frameworks.md).
+
 ## Project notes
 
-Notes on the Setup page under **AI Copilot** are read on every message: conventions ("drafts use
+Notes in **Settings › Copilot** are read on every message: conventions ("drafts use
 ollama:llama3.3", "anything that emails customers needs an approval step"). The Copilot can propose a note too; it
 is added when you accept.
 
@@ -64,11 +84,16 @@ description, explains the file or the lines you selected, and fixes the problems
 diff you accept or reject; nothing is saved until you press **Save**. It uses the same model and privacy setting as
 the chat.
 
+In the chat, the Copilot can also write the code a workflow needs (a script step's file, a tool for an agent, a
+custom block, an event handler). Each file is part of its proposal, under **Writes workspace code**, with **Show
+the code** and a tick box. Nothing is written until you accept; each accepted file is saved as one commit in the
+workspace's history, saying it came from the Copilot and who accepted it.
+
 ## Which model it uses
 
-Set this on the **Setup** page under **AI Copilot**:
+Set this in **Settings › Copilot**:
 
-- **Use the workflow's model** (default): the project's default model from first-run setup, or, without one, the
+- **Use the project's model** (default): the project's default model from first-run setup, or, without one, the
   first AI model in the workflow.
 - **Use a separate model**: any `provider:model`, for example a stronger model for building, or a local model
   (`ollama:…`) so nothing leaves your machine. Its key is the provider's project secret, as for
@@ -78,10 +103,18 @@ The model must support tool calling. Your organisation's model [policies](accoun
 Copilot too: a policy that allows only some models in workflows also limits the Copilot.
 
 **Model for questions** (optional) answers Ask-mode questions with a different, usually cheaper, model.
+
+To try another model in one conversation, click the model's name at the top of the panel and pick one. The list
+shows only models that can answer here: hosted models whose API key is set (a project secret or a server
+variable), the models your local server (Ollama, LM Studio, vLLM, llama.cpp) lists while it is running, and the
+project's own OpenAI-compatible model. **Set up more models…** at the bottom opens **Settings › Models**. The same
+policies and privacy setting apply; **New chat** goes back to the project's choice.
+
 **Private** limits the Copilot to models running on your own machines (Ollama, LM Studio, vLLM, llama.cpp), so
 your workflows never leave them.
 
-**Token limit per chat** caps what one conversation can spend (input plus output tokens). The chat shows how much
+**Token limit per chat** caps what one conversation can spend (input plus output tokens; input read from the
+provider's prompt cache costs a tenth or less and does not count). The chat shows how much
 is used; **New chat** starts over with a fresh limit.
 
 ## What it knows
@@ -89,8 +122,14 @@ is used; **New chat** starts over with a fresh limit.
 The Copilot gets a knowledge pack built from the running product on every message: how workflows are put together,
 every block with its ports and settings (including your workspace's own blocks), the starter templates and the edit
 commands and the meaning of every problem code. Providers that support prompt caching (Anthropic) cache it, so it is
-cheap after the first message. Its tools look up a block's full settings, read a template, read your workflow with
+cheap after the first message: the cost shown prices cache reads and writes at their own rates. Its tools look up a block's full settings, read a template, read your workflow with
 its problems, read past runs, search this user guide, and list the models and which secrets are set (names only).
+It can also see the project's [secrets](workspace.md) by name (never their values) and which ones the workflow
+needs, its [knowledge bases](knowledge.md) (documents, embedding model, whether one needs reindexing), and what an
+[export](export.md) of the workflow would hold and lack. These are for explaining and pointing you to the right
+page, in either mode: adding a secret or a document, and exporting, stay with you.
+An answer that used this guide ends with **From: Guide › page › section** links, which open the section in the
+app's own copy of the guide. Each answer also shows the tokens it used, and its cost when the model has a price.
 
 Text inside your workflow (prompts, descriptions) is treated as data: it cannot change what the Copilot is asked to
 do. The Copilot refuses to put API keys or passwords into settings and uses secret references instead.
@@ -99,10 +138,15 @@ do. The Copilot refuses to put API keys or passwords into settings and uses secr
 
 - `GET/PUT /v1/projects/{id}/copilot-settings` turns the Copilot on or off and sets its model and token limit.
 - `GET /v1/workflows/{id}/copilot` returns your conversation, its brief and any open proposal;
-  `POST …/copilot/messages` streams an answer (Server-Sent Events); `POST …/copilot/proposals/{id}` records
+  `POST …/copilot/messages` streams an answer (Server-Sent Events); `POST …/copilot/stop` ends it (Stop);
+  `POST …/copilot/proposals/{id}` records
   accept or reject; `DELETE …/copilot` starts a new chat. Conversations are per person and per workflow.
+- `make copilot-evals` (from the repository root) measures the Copilot with a model of your choice on your own
+  computer: `MODEL=ollama:qwen3` (the default) or any `provider:model`, `ENGINE=loop` or `deepagents`, and
+  `OUT=report.json` for the results. It runs both suites below; without a reachable model it says so and runs an
+  offline demo Copilot, whose score means nothing but shows the harness works.
 - Developers can measure a model's building quality with the eval harness:
   `uv run python -m agentcanvas.copilot.evals --model anthropic:claude-sonnet-5-5` builds ten workflows from plain
-  requests and checks each one validates and uses the expected blocks; `--suite debug` plants about 30 bugs in the
+  requests and checks each one validates and uses the expected blocks; `--suite debug` plants over a hundred bugs in the
   starter templates (a missing arrow to Finish, an unplugged model, a wrong output field, a broken condition, an
   unknown field in a prompt) and checks the Copilot's fix leaves no errors.

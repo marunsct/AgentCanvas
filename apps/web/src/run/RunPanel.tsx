@@ -2,8 +2,10 @@
 import { runErrorHelp } from "../help/diagnostics";
 import { useCopilot } from "../copilot/copilot";
 import { HelpText } from "../help/HelpText";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
+import { useShallow } from "zustand/react/shallow";
+import type { TestCaseIn } from "../api/generated";
 import { apiFetch } from "../api/client";
 import { can } from "../api/session";
 import { useEditor } from "../editor/store";
@@ -13,6 +15,10 @@ import { formatMetrics, useRun } from "./runStore";
 import { useUi } from "../editor/ui";
 import { testCaseFromRun } from "../release/testcases";
 import { cancelRun, continueRun, debugAids, resumeRun, startRun } from "./session";
+import { promptDialog } from "../ui/dialog";
+import { FilePicker } from "../ui/FilePicker";
+import { isFileSchema, type FileRef } from "../ir/files";
+import { fileFields, uploadProjectFile, withFiles } from "./files";
 
 /** Open the run's LangSmith trace in a new tab (asks the API for the URL: a plain link carries no sign-in). */
 async function openTrace(runId: string) {
@@ -47,7 +53,7 @@ const EMPTY: Record<string, unknown> = { string: "", array: [], object: {}, numb
 /** A starter input: one key per input channel, typed (`topics: []`, `question: ""`). */
 export function sampleInput(wf: WF): string {
   const inputs = wf.state.channels.filter((c) => (c.io ?? "inout") === "inout" || c.io === "in");
-  const fields = inputs.filter((c) => c.reducer !== "add_messages").slice(0, 4);
+  const fields = inputs.filter((c) => c.reducer !== "add_messages" && !isFileSchema(c.type)).slice(0, 4); // files: attached below
   const empty = (c: (typeof fields)[number]) => EMPTY[(c.type as { type?: string } | undefined)?.type ?? "string"] ?? "";
   return JSON.stringify(Object.fromEntries(fields.map((c) => [c.name, empty(c)])), null, 2);
 }
@@ -65,14 +71,14 @@ export function RunPanel() {
   const [chatOverride, setChatOverride] = useState<boolean | null>(null);
   if (!wf) return null;
   const builder = can("builder"); // running needs builder (the API answers 403 otherwise)
-  const blocked = run.running || errors > 0 || !builder;
+  const blocked = run.running || run.starting || errors > 0 || !builder;
   const chat = chatOverride ?? isChat(wf);
 
   return (
     <div className="panel-body run-panel">
       <h3>
         Test run{" "}
-        {(breakpoints > 0 || pinned > 0 || mocked > 0 || dryRun) && (
+        {builder && (breakpoints > 0 || pinned > 0 || mocked > 0 || dryRun) && (
           <small className="badge warn" data-testid="debug-badge">
             debug{breakpoints > 0 && ` · ${breakpoints} breakpoint(s)`}{pinned > 0 && ` · ${pinned} pinned`}{mocked > 0 && ` · ${mocked} mocked`}{dryRun && " · dry run"}
           </small>
@@ -83,8 +89,9 @@ export function RunPanel() {
         <button type="button" role="radio" aria-checked={chat} className={chat ? "active" : ""} onClick={() => setChatOverride(true)}>Chat</button>
       </div>
       <label className="row small" title="Tools that write, send or execute only record what they would have done">
-        <input type="checkbox" checked={dryRun} onChange={(e) => useUi.getState().setDryRun(e.target.checked)} aria-label="dry run" />
-        Dry run (stub risky tools)
+        <input type="checkbox" checked={dryRun && builder} disabled={!builder}
+          onChange={(e) => useUi.getState().setDryRun(e.target.checked)} aria-label="dry run" />
+        Dry run (tools that change things are only recorded)
       </label>
       {chat ? <ChatInput wf={wf} disabled={blocked} /> : <FormInput wf={wf} disabled={blocked || busyEditing} />}
       {errors > 0 && <p className="muted">{errors} problem(s) must be fixed before you can run — see Problems at the bottom; each one says how to fix it.</p>}
@@ -92,7 +99,7 @@ export function RunPanel() {
       <div className="row gap">
         {run.running && builder && <button type="button" onClick={() => void cancelRun()}>■ Stop</button>}
         {run.breakpoint && !run.running && builder && (
-          <button type="button" className="primary" onClick={() => void continueRun()}>⏵ Continue</button>
+          <button type="button" className="primary" disabled={run.starting} onClick={() => void continueRun()}>⏵ Continue</button>
         )}
       </div>
       {run.breakpoint && !run.running && (
@@ -131,7 +138,7 @@ export function RunPanel() {
         </button>
       )}
       {!run.running && run.interrupts.map((intr) => (
-        <DecisionCard key={intr.id} intr={intr} busy={!can("reviewer")} onDecide={(v) => void resumeRun(v, intr.id)} />
+        <DecisionCard key={intr.id} intr={intr} busy={run.starting || !can("reviewer")} onDecide={(v) => void resumeRun(v, intr.id)} />
       ))}
       {Object.keys(run.output).length > 0 && !chat && (
         <>
@@ -156,16 +163,19 @@ function FormInput({ wf, disabled }: { wf: WF; disabled: boolean }) {
   const initial = useMemo(() => sampleInput(wf), [wf]);
   const [input, setInput] = useState(initial);
   const [cont, setCont] = useState(false);
-  const run = useRun();
+  const [attached, setAttached] = useState<Record<string, FileRef[]>>({});
+  const files = useMemo(() => fileFields(wf), [wf]);
+  const threadId = useRun((s) => s.threadId);
+  const busy = useRun((s) => s.running || s.starting);
   const start = () => {
     let parsed: Record<string, unknown>;
     try {
       parsed = JSON.parse(input || "{}");
     } catch {
-      run.apply({ type: "RUN_ERROR", message: "input is not valid JSON" });
+      useRun.getState().apply({ type: "RUN_ERROR", message: "input is not valid JSON" });
       return;
     }
-    void startRun(parsed, { continueThread: cont });
+    void startRun(withFiles(parsed, files, attached), { continueThread: cont });
   };
   return (
     <>
@@ -173,42 +183,55 @@ function FormInput({ wf, disabled }: { wf: WF; disabled: boolean }) {
         Input (JSON)
         <textarea className="mono" rows={5} value={input} onChange={(e) => setInput(e.target.value)} aria-label="run input" />
       </label>
+      {files.map((f) => (
+        <FilePicker key={f.name} label={f.name} accept={f.accept} multiple={f.multiple} disabled={disabled}
+          value={attached[f.name] ?? []} upload={(file) => uploadProjectFile(file, f.accept)}
+          onChange={(v) => setAttached((a) => ({ ...a, [f.name]: v }))} />
+      ))}
       <label className="row">
-        <input type="checkbox" checked={cont} disabled={!run.threadId} onChange={(e) => setCont(e.target.checked)} />
-        continue thread <code>{run.threadId ?? "—"}</code>
+        <input type="checkbox" checked={cont} disabled={!threadId} onChange={(e) => setCont(e.target.checked)} />
+        continue thread <code>{threadId ?? "—"}</code>
       </label>
-      <button type="button" className="primary" onClick={start} disabled={disabled}>{run.running ? "Running…" : "▶ Run"}</button>
+      <button type="button" className="primary" onClick={start} disabled={disabled}>{busy ? "Running…" : "▶ Run"}</button>
     </>
   );
 }
 
-function ChatInput({ wf, disabled }: { wf: WF; disabled: boolean }) {
+export function ChatInput({ wf, disabled }: { wf: WF; disabled: boolean }) {
   const run = useRun();
   const [text, setText] = useState("");
   const thread = useQuery({
     queryKey: ["thread", run.threadId, run.runSeq],
     queryFn: () => apiFetch<{ values: { messages?: ChatMessage[] } }>(`/threads/${run.threadId}`),
     enabled: Boolean(run.threadId),
+    // the same conversation refetched after a run: keep it on screen meanwhile
+    placeholderData: (prev, prevQuery) => (prevQuery?.queryKey[1] === run.threadId ? keepPreviousData(prev) : undefined),
   });
   const messages = thread.data?.values.messages ?? [];
+  const humans = messages.filter((m) => m.type === "human").length;
+  // the message just sent, shown at once: the conversation only has it once the run has stored it
+  const [sent, setSent] = useState<{ text: string; humans: number } | null>(null);
+  const pending = sent && humans <= sent.humans ? sent.text : null;
   const send = () => {
     if (!text.trim()) return;
     const content = text.trim();
     setText("");
+    setSent({ text: content, humans: run.threadId ? humans : 0 });
     void startRun({ messages: [{ role: "user", content }] }, { continueThread: true });
   };
   return (
     <div className="chat" data-testid="chat">
       <div className="chat-log">
-        {messages.length === 0 && <p className="muted">Send a message to start a conversation with “{wf.name}”.</p>}
+        {messages.length === 0 && !pending && <p className="muted">Send a message to start a conversation with “{wf.name}”.</p>}
         {messages.map((m, i) => <ChatBubble key={i} m={m} />)}
+        {pending && <div className="bubble human" data-testid="chat-sent">{pending}</div>}
         {run.running && Object.values(run.output).map((t, i) => <div key={`s${i}`} className="bubble ai streaming">{t}</div>)}
       </div>
       <form className="row gap" onSubmit={(e) => { e.preventDefault(); send(); }}>
         <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Message…" aria-label="chat message" disabled={disabled} />
         <button type="submit" className="primary" disabled={disabled}>Send</button>
       </form>
-      <button type="button" className="link small" onClick={() => useRun.getState().setThread(null)}>New conversation</button>
+      <button type="button" className="link small" onClick={() => { setSent(null); useRun.getState().setThread(null); }}>New conversation</button>
     </div>
   );
 }
@@ -226,25 +249,38 @@ function ChatBubble({ m }: { m: ChatMessage }) {
 }
 
 /** "Save as test case" (M6-T9): this input must keep producing this status, route and output. */
-function SaveAsTest() {
+export function SaveAsTest() {
   const wf = useEditor((s) => s.wf);
-  const run = useRun();
+  // only what a test case is made of: the whole store changes on every streamed token
+  const run = useRun(useShallow((s) => ({
+    input: s.input, finalOutput: s.finalOutput, route: s.route, interrupts: s.interrupts, error: s.error, running: s.running,
+  })));
   const qc = useQueryClient();
-  const [saved, setSaved] = useState<string | null>(null);
+  const [asking, setAsking] = useState(false);
+  const save = useMutation({
+    mutationFn: (body: TestCaseIn) => apiFetch(`/workflows/${wf?.id}/test-cases`, { method: "POST", json: body }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["test-cases", wf?.id] }),
+  });
   if (!wf) return null;
   const draft = testCaseFromRun(wf, run, debugAids(), "");
   if (!draft) return null;
-  const save = async () => {
-    const name = window.prompt("Test case name", `case ${new Date().toLocaleTimeString()}`);
-    if (!name) return;
-    await apiFetch(`/workflows/${wf.id}/test-cases`, { method: "POST", json: { ...draft, name } });
-    void qc.invalidateQueries({ queryKey: ["test-cases", wf.id] });
-    setSaved(name);
+  const ask = async () => {
+    if (asking || save.isPending) return;
+    setAsking(true);
+    try {
+      const name = (await promptDialog({ title: "Save as test case", body: "This input must keep producing this status, route and output.", confirm: "Save", input: { label: "Name", value: `case ${new Date().toLocaleTimeString()}`, required: true } }))?.trim();
+      if (name) save.mutate({ ...draft, name });
+    } finally {
+      setAsking(false);
+    }
   };
   return (
     <p className="row gap">
-      <button type="button" onClick={() => void save()}>Save as test case</button>
-      {saved && <span className="muted small" role="status">saved “{saved}”</span>}
+      <button type="button" disabled={asking || save.isPending} onClick={() => void ask()}>
+        {save.isPending ? "Saving…" : "Save as test case"}
+      </button>
+      {save.isSuccess && <span className="muted small" role="status">saved “{save.variables.name}”</span>}
+      {save.isError && <span className="error-text small" role="alert">Could not save the test case: {(save.error as Error).message}</span>}
     </p>
   );
 }

@@ -41,7 +41,10 @@ from agentcanvas.adapters.langchain.codegen import one_line
 from agentcanvas.adapters.langchain.interop import FRAMEWORKS
 from agentcanvas.designs import article
 from agentcanvas.errors import InvalidInput
-from agentcanvas.ir.models import Workflow
+from agentcanvas.ir.files import is_file_schema
+from agentcanvas.ir.models import Workflow, budget_gap
+from agentcanvas.tomltext import toml_string
+from agentcanvas.validation.analysis import refuse_plain_secrets
 from agentcanvas.workspace import bundle
 
 API_ROOT = Path(__file__).parents[2]  # the `agentcanvas` package directory
@@ -53,18 +56,24 @@ RUNTIME_FILES = [
     "adapters/langchain/interop.py",
     "adapters/langchain/nodes.py",
     "adapters/langchain/parts.py",
+    "adapters/langchain/spend.py",  # the deploy kit's per-run budget
     "adapters/langchain/testing.py",
     "expr.py",
+    "filecontent.py",
     "guardrails.py",
     "knowledge_search.py",
+    "registry/models.json",  # which models take sampling settings (`sampling.py`)
     "safe_regex.py",
+    "sampling.py",
     "sdk.py",
     "security/__init__.py",
+    "security/addresses.py",  # which addresses are public (the HTTP tool, RT-15)
     "security/imports.py",
     "workspace/__init__.py",
     "workspace/loader.py",
     "workspace/store.py",
 ]
+FILE_PACKAGES = ["pypdf", "python-docx"]  # added when the workflow has file fields (G-5)
 PINNED = ["langgraph", "langchain", "langchain-core", "deepagents", "jsonschema", "cel-python", "jinja2", "httpx"]
 SERVICE = [  # the HTTP service and where it keeps conversations (S16)
     "fastapi", "uvicorn", "langgraph-checkpoint-sqlite", "aiosqlite", "langgraph-checkpoint-postgres", "psycopg",
@@ -89,6 +98,15 @@ PROVIDERS = {  # model id prefix -> (integration package, API key variable)
 }
 
 
+# What an export imports (or its frameworks do) besides the standard library: the flow's own package must not hide
+# one of them on src/, whether or not the server has it installed (`find_spec` sees only the server's packages).
+RESERVED = {
+    "agent_framework", "agentcanvas", "agents", "agno", "anyio", "boto3", "botocore", "celpy", "crewai", "google",
+    "httpx", "jinja2", "jsonschema", "llama_index", "mastra", "mcp", "openai", "opentelemetry", "pydantic",
+    "pydantic_ai", "pydantic_core", "pytest", "strands", "tests", "workflows",
+}  # fmt: skip
+
+
 def package_name(name: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_") or "workflow"
     if not slug[0].isalpha() or _taken(slug):
@@ -102,7 +120,7 @@ def _taken(slug: str) -> bool:
     import keyword
     import sys
 
-    if keyword.iskeyword(slug) or slug in sys.stdlib_module_names:
+    if keyword.iskeyword(slug) or slug in sys.stdlib_module_names or slug in RESERVED:
         return True
     try:
         return importlib.util.find_spec(slug) is not None
@@ -127,6 +145,15 @@ def _models(wf: Workflow) -> list[tuple[str, str]]:
         if n.type == "core.subgraph":
             out += _models(wf.subworkflow(n))
     return out
+
+
+def file_fields_of(wf: Workflow, subflows: bool = True) -> list[str]:
+    """Names of the file and image fields (G-5) of the workflow and, unless `subflows` is off, its subflows."""
+    out = [c.name for c in wf.state.channels if is_file_schema(c.type)]
+    for n in wf.nodes if subflows else []:
+        if n.type == "core.subgraph":
+            out += file_fields_of(wf.subworkflow(n))
+    return list(dict.fromkeys(out))
 
 
 def _frameworks(wf: Workflow) -> set[str]:
@@ -170,6 +197,10 @@ def dependencies(wf: Workflow) -> list[str]:
         for pkg in designs.AGENT_FRAMEWORKS[str(node.engine)].packages:
             if pkg not in deps:
                 deps.append(pkg)
+    if file_fields_of(wf):  # filecontent.py reads PDFs and Word documents for models that cannot see them
+        for dist in FILE_PACKAGES:
+            v = _version(dist)
+            deps.append(f"{dist}=={v}" if v else dist)
     for _, model in _models(wf):
         pkg = PROVIDERS.get(model.partition(":")[0], (None, None))[0]
         if pkg and not any(d.startswith(pkg) for d in deps):
@@ -245,7 +276,7 @@ def _pyproject(wf: Workflow, pkg: str, version: str, extra: list[str] | None = N
     return f'''[project]
 name = "{pkg.replace("_", "-")}"
 version = "{version}"
-description = {json.dumps(f"{wf.name} — exported from AgentCanvas")}
+description = {toml_string(f"{wf.name} — exported from AgentCanvas")}
 requires-python = ">=3.12,<3.15"
 dependencies = [
 {deps}]
@@ -283,7 +314,31 @@ The service (`src/{pkg}/app.py`) answers the same API as an AgentCanvas deployme
 `src/scripts|tools|nodes/` is the project's workspace code. In your own code: `from {pkg}.graph import build_graph`
 and pass your checkpointer and store. `python -m {pkg} '{{"input": {{}}}}'` runs one turn from the command line, and
 `langgraph dev` serves it with LangGraph Studio (`pip install "langgraph-cli[inmem]"`).
-{_mixed(wf)}"""
+{_files(wf)}{_mixed(wf)}"""
+
+
+def _files(wf: Workflow) -> str:
+    """The README's section on file and image fields (G-5), or nothing."""
+    names = file_fields_of(wf)
+    if not names:
+        return ""
+    return f"""
+## Files and images
+
+The file fields ({", ".join(f"`{n}`" for n in names)}) hold a reference to a file. Without an AgentCanvas server the
+reference carries the file itself or its address, in the run's input:
+
+```json
+{{"{names[0]}": {{"kind": "file", "name": "invoice.pdf", "media_type": "application/pdf", "data": "<base64>"}}}}
+{{"{names[0]}": {{"kind": "file", "name": "photo.png", "media_type": "image/png", "url": "https://example.com/photo.png"}}}}
+```
+
+`data` is read up to 2 MB and, being part of the input, is saved in the checkpoint: use `url` for anything larger
+(it is fetched when a model needs it, not saved). Ask AI and AI Agent steps show these files to their model as
+LangChain content blocks: images and PDFs to a model that can see them, a PDF's text to one that cannot, Word
+documents and text files as text. To read files from your own storage instead, set `resources.files` to an async
+function that takes the reference and returns `(bytes, media_type, name)`.
+"""
 
 
 def _mixed(wf: Workflow) -> str:
@@ -403,11 +458,15 @@ from agentcanvas.adapters.langchain.nodes import Resources
 from {pkg} import graph as generated
 
 MODELS = {models}
+# an app connector or MCP server is not reachable from a test machine (or has a placeholder address): the graph is built
+# with a recorded tool in its place, as a replayed run does
+MCP_SERVERS = {mcp}
 CASES = json.loads((Path(__file__).parent / "test_cases.json").read_text())
 
 
 async def build(mocks: dict):
-    resources = Resources().with_mocks(mocks)
+    stubs = {{n: [{{"tool": "ping", "args": {{}}, "output": "ok"}}] for n in MCP_SERVERS}}
+    resources = Resources().with_mocks({{**stubs, **mocks}})
     build = getattr(generated, "abuild_graph", None)
     if build:
         return await build(resources, checkpointer=InMemorySaver())
@@ -500,6 +559,55 @@ def test_workspace_code_imports(import_path):
 '''
 
 
+def canvas_only(wf: Workflow, label: str) -> list[str]:
+    """What a block does on the canvas but not in `label` (e.g. "a CrewAI flow"), one line per block: backup models
+    and the answer cache (the canvas's model gateway gives them), and node policies (retry, timeout, cache, error
+    route), which only LangGraph applies."""
+    out = []
+    for r in wf.resources:
+        if r.type != "model.chat":
+            continue
+        if backups := [str(b) for b in r.config.get("fallbacks") or [] if b]:
+            out.append(f"Model block '{r.name}': its backup models ({', '.join(backups)}) are not tried; when its "
+                       "model fails, the step fails.")  # fmt: skip
+        if candidates := [str(m) for m in r.config.get("cheapest_of") or [] if m]:
+            out.append(f"Model block '{r.name}': it does not pick the cheapest of {', '.join(candidates)}; it always "
+                       f"uses {r.config.get('model')}.")  # fmt: skip
+        if r.config.get("cache_ttl"):
+            out.append(f"Model block '{r.name}': its answer cache ({r.config['cache_ttl']} s) is not exported; every "
+                       "request reaches the model.")  # fmt: skip
+    names = [("retry", "retry"), ("timeout", "time limit"), ("cache", "cache"), ("error_route", "error path")]
+    if files := file_fields_of(
+        wf, subflows=False
+    ):  # G-5: only the LangChain / LangGraph runtime shows files to a model
+        out.append(f"File and image fields ({', '.join(files)}): only a LangGraph export shows them to a model. In "
+                   f"{label} they are carried as plain data (the reference), and no step reads the file; the model "
+                   "never sees it.")  # fmt: skip
+
+    def unused(found: list[str]) -> str:
+        return " and ".join(found) + (" do" if len(found) > 1 else " does") + f" not apply in {label}"
+
+    if budget := budget_gap(wf, label):  # the AgentCanvas runner enforces it; this code has no runner
+        out.append(budget)
+    if defaults := [what for attr, what in names if getattr(wf.settings.node_defaults, attr, None)]:
+        out.append(f"The workflow's default {unused(defaults)}: steps run once, with no time limit, and an error ends "
+                   "the run.")  # fmt: skip
+    for n in wf.nodes:
+        if policies := [what for attr, what in names if getattr(n.policies, attr, None)]:
+            out.append(f"'{n.name}': its {unused(policies)}: it runs once, with no time limit, and an error ends the "
+                       "run.")  # fmt: skip
+    return out
+
+
+def gaps_md(wf: Workflow, label: str) -> str:
+    """`GAPS.md` of an export to `label`: `canvas_only`, as a list to go through before relying on the export."""
+    lines = [f"# What runs differently in {label}", ""]
+    lines += [f"- {g}" for g in canvas_only(wf, label)] or [
+        "Nothing found: no backup models, answer cache or step policies."
+    ]
+    return "\n".join(lines) + "\n"
+
+
 def _exportable_cases(wf: Workflow, cases: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Cases that run offline: every chat model mocked, no pinned outputs (the export has no debug pins)."""
     models = {name for name, _ in _models(wf)}
@@ -521,6 +629,7 @@ def package(
 ) -> tuple[str, bytes]:
     """(file name, zip bytes) of the standalone project for `wf`, whose generated code is `source`, with the
     deploy kit for `target` (one of deploykit.TARGETS)."""
+    refuse_plain_secrets(wf)
     pkg = package_name(wf.name)
     root = pkg.replace("_", "-")
     secrets = sorted(_secret_names(wf.model_dump(mode="json")))
@@ -542,9 +651,15 @@ def package(
         f"src/{pkg}/server.py": SERVER.format(pkg=pkg, secrets=json.dumps(secrets)),
         f"src/{pkg}/__main__.py": MAIN.format(pkg=pkg),
         "src/agentcanvas/NOTICE.md": "The AgentCanvas node library (Apache-2.0), vendored so the project runs alone.\n",
-        "tests/test_smoke.py": SMOKE.format(pkg=pkg, models=json.dumps(sorted({n for n, _ in _models(wf)}))),
+        "tests/test_smoke.py": SMOKE.format(
+            pkg=pkg,
+            models=json.dumps(sorted({n for n, _ in _models(wf)})),
+            mcp=json.dumps(sorted(r.name for r in wf.resources if r.type == "mcp.server")),
+        ),
         "tests/test_cases.json": json.dumps(cases, indent=2) + "\n",
     }
+    if gap := budget_gap(wf, "this project", langgraph=True):  # the service enforces the per-run limits only
+        files["GAPS.md"] = f"# What runs differently in this project\n\n- {gap}\n"
     for rel in RUNTIME_FILES:
         files[f"src/agentcanvas/{rel}"] = (API_ROOT / rel).read_bytes()
     designed = designed_agents(wf)

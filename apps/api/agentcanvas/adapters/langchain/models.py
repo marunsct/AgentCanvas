@@ -7,7 +7,10 @@ service, never a framework adapter, so a workflow's framework does not decide wh
 from __future__ import annotations
 
 import json
+from collections.abc import AsyncIterator
 from typing import Any
+
+from agentcanvas.registry import token_counts
 
 
 class LangChainModels:
@@ -26,8 +29,8 @@ class LangChainModels:
             [SystemMessage(content=system), HumanMessage(content=prompt)]
         )
         if usage is not None and (meta := getattr(reply, "usage_metadata", None)):
-            usage["input_tokens"] = usage.get("input_tokens", 0) + int(meta.get("input_tokens", 0))
-            usage["output_tokens"] = usage.get("output_tokens", 0) + int(meta.get("output_tokens", 0))
+            for k, n in token_counts(meta).items():  # cache reads and writes too: they are priced apart
+                usage[k] = usage.get(k, 0) + n
         return reply.content if isinstance(reply.content, str) else json.dumps(reply.content)
 
     async def chat(
@@ -73,8 +76,8 @@ class LangChainModels:
         llm = resources.model("copilot", {**(config or {}), "model": model})
         reply = await (llm.bind_tools(specs) if specs else llm).ainvoke(converted)
         if usage is not None and (meta := getattr(reply, "usage_metadata", None)):
-            usage["input_tokens"] = usage.get("input_tokens", 0) + int(meta.get("input_tokens", 0))
-            usage["output_tokens"] = usage.get("output_tokens", 0) + int(meta.get("output_tokens", 0))
+            for k, n in token_counts(meta).items():  # cache reads and writes too: they are priced apart
+                usage[k] = usage.get(k, 0) + n
         content = reply.content
         if isinstance(content, list):  # content blocks: keep the text ones
             content = "".join(b.get("text", "") if isinstance(b, dict) else str(b) for b in content)
@@ -83,3 +86,38 @@ class LangChainModels:
             for i, c in enumerate(getattr(reply, "tool_calls", None) or [])
         ]
         return {"content": str(content or ""), "tool_calls": calls}
+
+    async def stream(
+        self,
+        resources: Any,
+        model: str,
+        messages: list[dict[str, Any]],
+        usage: dict[str, int] | None = None,
+        config: dict[str, Any] | None = None,
+    ) -> AsyncIterator[str]:
+        from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+
+        kinds = {"system": SystemMessage, "user": HumanMessage, "assistant": AIMessage}
+        converted = [kinds[m["role"]](content=str(m.get("content") or "")) for m in messages if m["role"] in kinds]
+        llm = resources.model("copilot", {**(config or {}), "model": model})
+        async for chunk in llm.astream(converted):
+            if usage is not None and (meta := getattr(chunk, "usage_metadata", None)):
+                for k, n in token_counts(meta).items():  # cache reads and writes too: they are priced apart
+                    usage[k] = usage.get(k, 0) + n
+            content = chunk.content
+            if isinstance(content, list):  # content blocks: keep the text ones
+                content = "".join(b.get("text", "") if isinstance(b, dict) else str(b) for b in content)
+            if content:
+                yield str(content)
+
+    def tool_spec(self, tool: Any) -> dict[str, Any]:
+        from langchain_core.utils.function_calling import convert_to_openai_tool
+
+        fn = convert_to_openai_tool(tool)["function"]
+        parameters = fn.get("parameters") or {"type": "object", "properties": {}}
+        return {"name": fn["name"], "description": fn.get("description") or "", "parameters": parameters}
+
+    async def call_tool(self, tool: Any, args: dict[str, Any]) -> str:
+        out = await tool.ainvoke(args)
+        content = getattr(out, "content", out)  # a tool may answer with a ToolMessage
+        return content if isinstance(content, str) else json.dumps(content, default=str)

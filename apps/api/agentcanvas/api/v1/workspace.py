@@ -7,6 +7,7 @@ use) next to the project's shared code at the root.
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 from typing import Any
 
@@ -17,7 +18,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from agentcanvas.api.deps import get_session
 from agentcanvas.db.repositories import ProjectRepo, WorkflowRepo
 from agentcanvas.errors import Conflict, InvalidInput, NotFound
-from agentcanvas.sandbox.policy import POLICY_FILE, check_policy
+from agentcanvas.sandbox.policy import (
+    POLICY_FILE,
+    PolicyError,
+    SandboxPolicy,
+    check_policy,
+    load_policy,
+    parse_policy,
+)
 from agentcanvas.workspace import Workspace, WorkspaceError
 from agentcanvas.workspace.store import workflow_key
 
@@ -94,7 +102,7 @@ async def _own_folder(session: AsyncSession, project_id: str, ws: Workspace, wf_
     row = await WorkflowRepo(session).require(wf_id)
     if row.project_id != project_id:
         raise NotFound(f"workflow '{wf_id}' not found")
-    return _guard(lambda: ws.ensure_workflow(wf_id))
+    return await _off_loop(ws, lambda: ws.ensure_workflow(wf_id))  # a first use commits the new folder
 
 
 @router.get("/files", response_model=list[FileOut])
@@ -118,14 +126,14 @@ async def list_workflow_files(
 
 
 def _lint(ws: Workspace, path: str, request: Request, project_id: str) -> list[LintItem]:
-    """ruff for Python files; the sandbox policy checks (E082/E083/W082/W074) for `sandbox.json`."""
+    """ruff for Python files; the sandbox policy checks (E082-E085, W082, W083, W074) for `sandbox.json`."""
     items = [LintItem(**d) for d in ws.lint(path)]
     if path.strip("/") == POLICY_FILE:
         projects = request.app.state.projects
         mode, secrets = projects.settings.script_execution, set(projects.secrets.get(project_id, {}))
         items += [
             LintItem(line=1, column=1, end_line=1, end_column=1, code=p["code"], message=p["message"])
-            for p in check_policy(ws.root, mode, secrets)
+            for p in check_policy(ws.root, mode, secrets, projects.settings.env)
         ]
     return items
 
@@ -144,6 +152,18 @@ async def save_file(
     info = await _off_loop(ws, lambda: ws.write(path, body.content))
     diagnostics = await asyncio.to_thread(_lint, ws, path, request, project_id)
     return SavedFile(path=info.path, size=info.size, modified=info.modified, diagnostics=diagnostics)
+
+
+class FileMove(BaseModel):
+    path: str = Field(min_length=1, max_length=500, description="the file to move")
+    to: str = Field(min_length=1, max_length=500, description="its new path (a new name, or another folder)")
+
+
+@router.post("/files-move", response_model=FileOut)
+async def move_file(body: FileMove, ws: Workspace = Depends(workspace)) -> FileOut:
+    """Rename or move a file. Blocks and workflows that name it by its old import path stop finding it."""
+    info = await _off_loop(ws, lambda: _guard(lambda: ws.move(body.path, body.to)))
+    return FileOut(path=info.path, size=info.size, modified=info.modified)
 
 
 @router.delete("/files/{path:path}", status_code=204)
@@ -207,6 +227,7 @@ async def workspace_catalog(
         projects.workspace(project_id).root,
         projects.settings.script_execution,
         set(projects.secrets.get(project_id, {})),
+        projects.settings.env,
     )
     return CatalogOut(
         tools=[t for t in cat.tools if visible(t)],
@@ -219,3 +240,49 @@ async def workspace_catalog(
             for p in (request.app.state.projects.workspace(project_id).root / "events" / "schemas").glob("*.json")
         ),
     )
+
+
+# ------------------------------------------------------------------ sandbox policy (Settings > Sandbox) ----
+class SandboxOut(BaseModel):
+    mode: str = Field(description="how this server runs workspace code (AGENTCANVAS_SCRIPT_EXECUTION)")
+    enforces_egress: bool = Field(description="an egress list gives code exactly those hosts")
+    refuses_egress: bool = Field(description="an egress list makes this server refuse to run the code")
+    applies_inject: bool = Field(description="inject rules add their headers (LangSmith only)")
+    policy: SandboxPolicy | None = Field(description="the saved policy; null when sandbox.json is invalid")
+    error: str | None = None
+    problems: list[LintItem] = []
+
+
+def _sandbox_out(ws: Workspace, request: Request, project_id: str) -> SandboxOut:
+    settings = request.app.state.projects.settings
+    mode = settings.script_execution
+    enforces = mode in ("docker", "langsmith") or (mode == "remote" and bool(settings.egress_proxy))
+    try:
+        policy, error = load_policy(ws.root), None
+    except PolicyError as exc:
+        policy, error = None, str(exc)
+    return SandboxOut(
+        mode=mode, enforces_egress=enforces, applies_inject=mode == "langsmith",
+        refuses_egress=not enforces and mode in ("inprocess", "subprocess") and settings.env in ("staging", "prod"),
+        policy=policy, error=error, problems=_lint(ws, POLICY_FILE, request, project_id),
+    )  # fmt: skip
+
+
+@router.get("/sandbox", response_model=SandboxOut)
+async def get_sandbox(project_id: str, request: Request, ws: Workspace = Depends(workspace)) -> SandboxOut:
+    """The project's sandbox policy (`sandbox.json`) and what this server does with it."""
+    return await asyncio.to_thread(_sandbox_out, ws, request, project_id)
+
+
+@router.put("/sandbox", response_model=SandboxOut)
+async def put_sandbox(
+    project_id: str, body: SandboxPolicy, request: Request, ws: Workspace = Depends(workspace)
+) -> SandboxOut:
+    """Save the sandbox policy as `sandbox.json` (the same checks as the file: hostnames, secrets, limits)."""
+    text = json.dumps(body.model_dump(exclude_defaults=True), indent=2) + "\n"
+    try:
+        parse_policy(text)
+    except PolicyError as exc:
+        raise InvalidInput(str(exc)) from None
+    await _off_loop(ws, lambda: ws.write(POLICY_FILE, text))
+    return await asyncio.to_thread(_sandbox_out, ws, request, project_id)

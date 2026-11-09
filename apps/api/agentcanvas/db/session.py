@@ -6,6 +6,7 @@ import asyncio
 from collections.abc import AsyncIterator
 from pathlib import Path
 
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
 from agentcanvas.db.rls import TenantSession, connect_options
@@ -37,6 +38,8 @@ class Database:
         self.engine: AsyncEngine = create_async_engine(
             self.url, pool_pre_ping=True, connect_args=connect_options(self.url), **pool
         )
+        if self.engine.dialect.name == "sqlite":
+            event.listen(self.engine.sync_engine, "connect", _sqlite_foreign_keys)
         self.sessionmaker = async_sessionmaker(self.engine, expire_on_commit=False, sync_session_class=TenantSession)
 
     @property
@@ -53,6 +56,15 @@ class Database:
 
     async def dispose(self) -> None:
         await self.engine.dispose()
+
+
+def _sqlite_foreign_keys(dbapi_connection, _record) -> None:
+    """SQLite enforces foreign keys (and so the schema's ON DELETE CASCADE) only when each connection asks: without it
+    a deleted workflow left its versions, threads and deployments behind, and a published endpoint kept answering.
+    Only the app's connections ask; migrations run on their own engine, where a batch table rebuild must not cascade."""
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA foreign_keys=ON")
+    cursor.close()
 
 
 def run_alembic(url: str, action: str, revision: str) -> None:

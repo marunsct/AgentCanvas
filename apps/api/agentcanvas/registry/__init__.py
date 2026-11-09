@@ -10,12 +10,15 @@ from __future__ import annotations
 import json
 import os
 from collections.abc import Sequence
+from datetime import date
 from functools import cache
 from importlib.util import find_spec
 from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from agentcanvas.sampling import SAMPLING, without_sampling  # noqa: F401 - part of the registry's API
 
 HERE = Path(__file__).parent
 
@@ -83,8 +86,43 @@ class ModelInfo(BaseModel):
     vision: bool = False
     reasoning: bool = False
     context_window: int | None = None
-    price_in_per_mtok: float | None = None  # USD per 1M input tokens; None = unknown (fill from provider pricing)
+    price_in_per_mtok: float | None = None  # USD per 1M input tokens; None = unknown (AGENTCANVAS_MODEL_PRICES)
     price_out_per_mtok: float | None = None
+    # prompt caching: reading cached input, and writing it (5-minute cache); None = charged as ordinary input
+    price_cache_read_per_mtok: float | None = None
+    price_cache_write_per_mtok: float | None = None
+    # a long-context tier: a call whose prompt has more than `price_above_tokens` input tokens is charged these per
+    # 1M input and output tokens instead (Claude Haiku 5.5: above 100K), its cache prices scaled like the input's
+    price_above_tokens: int | None = None
+    price_in_above_per_mtok: float | None = None
+    price_out_above_per_mtok: float | None = None
+    # takes temperature / top_p / top_k: current Claude models refuse non-default values (400) and reasoning models
+    # such as GPT-5 take the default only, so a run leaves them out for a model marked False
+    sampling: bool = True
+    retires: date | None = None  # the day the provider stops serving it (W023 warns; new choices do not offer it)
+
+
+def token_counts(meta: Any) -> dict[str, int]:
+    """A model reply's token counts from LangChain's `usage_metadata` (or any mapping shaped like it): input and
+    output, and the part of the input read from or written to the provider's prompt cache. `input_tokens`
+    includes the cached part, as LangChain reports it."""
+    meta = meta or {}
+    details = meta.get("input_token_details") or {}
+    return {
+        "input_tokens": int(meta.get("input_tokens") or 0),
+        "output_tokens": int(meta.get("output_tokens") or 0),
+        "cache_read_tokens": int(details.get("cache_read") or 0),
+        "cache_write_tokens": int(details.get("cache_creation") or 0),
+    }
+
+
+def billed_tokens(usage: dict[str, Any]) -> int:
+    """Tokens a token cap counts: what was sent and received, less what was read from the prompt cache (a tenth of
+    the price or less; the Copilot re-sends its whole knowledge pack on every call, so counting it in full ended a
+    chat after one or two builds)."""
+    return (
+        int(usage.get("input_tokens", 0)) - int(usage.get("cache_read_tokens", 0)) + int(usage.get("output_tokens", 0))
+    )
 
 
 class ProviderInfo(BaseModel):
@@ -149,9 +187,35 @@ def load_manifests(directory: Path = HERE / "nodes") -> list[NodeManifest]:
     return [NodeManifest.model_validate(json.loads(p.read_text())) for p in sorted(directory.glob("*.json"))]
 
 
+def priced(models: list[ModelInfo], raw: str | None) -> list[ModelInfo]:
+    """Apply AGENTCANVAS_MODEL_PRICES, `{"openai:gpt-5.5": [in, out], ...}` in USD per million tokens: the catalog
+    prices only the models whose list price was checked, and an operator knows their own (or negotiated) prices.
+    A malformed value or an unknown model is refused, so a budget never silently counts nothing."""
+    if not raw:
+        return models
+    try:
+        table = json.loads(raw)
+        prices = {str(k): tuple(float(x) for x in v) for k, v in table.items()}
+        if any(len(v) not in (2, 4) for v in prices.values()):
+            raise ValueError("each model takes [in, out] or [in, out, cache read, cache write]")
+    except (ValueError, TypeError, IndexError, AttributeError) as exc:
+        raise ValueError(
+            f'AGENTCANVAS_MODEL_PRICES must be JSON like {{"provider:model": [in, out]}} (or [in, out, cache read, '
+            f"cache write]): {exc}"
+        ) from None
+    known = {m.id for m in models}
+    if unknown := sorted(set(prices) - known):
+        raise ValueError(f"AGENTCANVAS_MODEL_PRICES names models not in the catalog: {', '.join(unknown)}")
+    if any(x < 0 for pair in prices.values() for x in pair):
+        raise ValueError("AGENTCANVAS_MODEL_PRICES: prices cannot be negative")
+    fields = ("price_in_per_mtok", "price_out_per_mtok", "price_cache_read_per_mtok", "price_cache_write_per_mtok")
+    return [m.model_copy(update=dict(zip(fields, prices[m.id], strict=False))) if m.id in prices else m for m in models]
+
+
 @cache
 def default_registry() -> Registry:
-    models = [ModelInfo.model_validate(m) for m in json.loads((HERE / "models.json").read_text())]
+    catalog = [ModelInfo.model_validate(m) for m in json.loads((HERE / "models.json").read_text())]
+    models = priced(catalog, os.environ.get("AGENTCANVAS_MODEL_PRICES"))
     providers = [ProviderInfo.model_validate(p) for p in json.loads((HERE / "providers.json").read_text())]
     return Registry(load_manifests(), models, providers)
 

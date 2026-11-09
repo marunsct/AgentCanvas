@@ -49,10 +49,32 @@ async def test_examples_are_checked_and_every_change_is_a_version(api_client):
 
     old = (await api_client.get(f"{base}?version=2")).json()  # versions never change
     assert old["version"] == 2 and old["items"][0]["reference"] == {"out": "Hello Ada"}
+    assert (await api_client.get(f"{base}?version=0")).status_code == 404  # C-11: not the latest
     versions = (await api_client.get(f"{base}/versions")).json()
     assert [(v["number"], v["examples"]) for v in versions] == [(4, 1), (3, 2), (2, 2), (1, 0)]
     listed = (await api_client.get(f"/v1/workflows/{wf}/datasets")).json()
     assert [(d["id"], d["version"], d["examples"]) for d in listed] == [(ds["id"], 4, 1)]
+
+
+def test_csv_references_keep_the_type_of_the_output_they_are_compared_with():
+    """E-8: every reference cell was parsed as JSON ("1" -> 1, "true" -> True, "null" -> None), so an exact match
+    against the run's text output failed."""
+    from agentcanvas.ir.models import Workflow
+    from agentcanvas.services.datasets import parse_csv
+
+    wf = Workflow.model_validate({
+        "id": "wf_csv", "name": "csv",
+        "state": {"channels": [
+            {"name": "q"}, {"name": "answer"}, {"name": "count", "type": {"type": "integer"}},
+            {"name": "tags", "type": {"type": "array"}}, {"name": "loose", "type": {}},
+        ]},
+    })  # fmt: skip
+    csv = (
+        'q,reference.answer,reference.count,reference.tags,reference.loose\na,1,2,"[""x""]",true\nb,null,null,[],1e5\n'
+    )
+    first, second = parse_csv(csv, wf, None)
+    assert first.reference == {"answer": "1", "count": 2, "tags": ["x"], "loose": "true"}
+    assert second.reference == {"answer": "null", "tags": [], "loose": "1e5"}  # a null count is no reference
 
 
 async def test_import_and_export(api_client):
@@ -91,6 +113,34 @@ async def test_import_and_export(api_client):
     assert r.json()["items"][-1]["reference"] == {"out": "Hello Di"}
     broken = await api_client.post(f"{copy}/import", json={"format": "jsonl", "content": '{"input": {}}\n[1]\n'})
     assert broken.status_code == 422 and broken.json()["detail"].startswith("line 2:")
+
+
+async def test_a_csv_with_a_long_cell_imports_and_a_broken_one_is_refused(api_client, monkeypatch):
+    import csv as csv_module
+
+    wf = await make_greeter(api_client)
+    base = f"/v1/datasets/{(await new_dataset(api_client, wf))['id']}"
+    long = "x" * 200_000  # over the csv module's 128 KB default
+    r = await api_client.post(f"{base}/import", json={"format": "csv", "content": f"who\n{long}\n"})
+    assert r.status_code == 200, r.text[:200]
+    assert r.json()["items"][0]["input"] == {"who": long}
+
+    def broken(*_a, **_k):
+        raise csv_module.Error("unexpected end of data")
+
+    monkeypatch.setattr(csv_module, "DictReader", broken)
+    r = await api_client.post(f"{base}/import", json={"format": "csv", "content": "who\nAda\n"})
+    assert r.status_code == 422 and "not a CSV file" in r.json()["detail"], r.text[:200]
+
+
+async def test_a_dataset_named_outside_latin1_exports_under_its_name(api_client):
+    wf = await make_greeter(api_client)
+    ds = await new_dataset(api_client, wf, 'Tickets 日本 "q"')
+    exported = await api_client.get(f"/v1/datasets/{ds['id']}/export")
+    assert exported.status_code == 200, exported.text
+    disposition = exported.headers["content-disposition"]
+    assert disposition.startswith('attachment; filename="Tickets _q_-v1.jsonl"'), disposition
+    assert "filename*=UTF-8''Tickets%20%E6%97%A5%E6%9C%AC%20%22q%22-v1.jsonl" in disposition
 
 
 async def test_examples_from_test_cases_and_runs(app, api_client):

@@ -10,6 +10,7 @@ import asyncio
 import json
 import os
 import re
+import sys
 from pathlib import Path
 
 import pytest
@@ -34,6 +35,13 @@ POLICY = {
     "timeout_s": 5,
     "memory_mb": 256,
 }
+
+
+@pytest.mark.parametrize("entry", ["169.254.169.254", "169.254.169.254:80", "[fe80::1]:443", "[fd00:ec2::254]"])
+def test_a_list_naming_a_metadata_address_is_refused(entry):
+    with pytest.raises(PolicyError, match="metadata"):
+        parse_policy(json.dumps({"egress": [entry]}))
+    assert parse_policy(json.dumps({"egress": ["10.0.0.5:5432", "api.github.com"]})).egress  # the operator decides
 
 
 def test_policy_parse_and_proxy_config(tmp_path):
@@ -68,11 +76,29 @@ def test_policy_parse_and_proxy_config(tmp_path):
     assert check_policy(ws.root, "subprocess", set()) == []  # no sandbox.json: nothing to say
     ws.write("sandbox.json", json.dumps({**POLICY, "egress": ["*:443"]}))
     codes = {p["code"] for p in check_policy(ws.root, "docker", set())}
-    assert codes == {"E083", "W082", "W074"}  # unknown secret, no network in docker, allow-all egress
+    assert codes == {"E083", "W083", "E085"}  # unknown secret, inject is LangSmith's only, "*" the proxy cannot match
+    assert "W074" in {p["code"] for p in check_policy(ws.root, "langsmith", {"CRM_TOKEN"})}  # allows every host
+    assert "W082" in {p["code"] for p in check_policy(ws.root, "subprocess", set())}  # cannot restrict: a warning
+    assert "E084" in {p["code"] for p in check_policy(ws.root, "inprocess", set(), env="prod")}  # ... refused there
     ws.write("sandbox.json", json.dumps(POLICY))
     assert check_policy(ws.root, "langsmith", {"CRM_TOKEN"}) == []
     ws.write("sandbox.json", "{nope")
     assert [p["code"] for p in check_policy(ws.root, "langsmith", set())] == ["E082"]
+
+
+@pytest.mark.parametrize("entry", ["*", "*:443", "~.*\\.example\\.com"])
+@pytest.mark.parametrize("mode", ["docker", "remote"])
+async def test_langsmith_only_egress_entries_are_refused_where_the_proxy_cannot_match_them(tmp_path, mode, entry):
+    """RT-17: "*" and "~regex" passed the policy check, but the egress proxy matches hosts and *.domains only, so in
+    docker and remote modes such a list silently allowed nothing (and W074 said it allowed everything)."""
+    ws = Workspace(tmp_path / "ws")
+    ws.write("sandbox.json", json.dumps({"egress": [entry]}))
+    ws.write("h.py", "def f(state):\n    return {'x': 1}\n")
+    codes = {p["code"] for p in check_policy(ws.root, mode, set())}
+    assert "E085" in codes and "W074" not in codes
+    runner = SandboxRunner(Settings(env="test", script_execution=mode, secret_key="k" * 64), ws.root, {})
+    with pytest.raises(ScriptError, match="LangSmith's syntax"):
+        await runner("h:f")({})
 
 
 # --------------------------------------------------------------------------------------- fake LangSmith ----
@@ -290,11 +316,13 @@ def test_the_child_supplies_the_sdk_on_a_bare_image(tmp_path):
     assert run("events.hooks:pong", {"event": event}) == {
         "ok": True, "actions": [{"action": "emit", "type": "test.pong", "data": {"n": 2}}],
     }  # fmt: skip
-    assert run("events.hooks:node", {"state": {"n": 3}, "config": {"k": 2}}) == {"ok": True, "update": {"n": 6}}
+    assert run("events.hooks:node", {"state": {"n": 3}, "config": {"k": 2}}) == {
+        "ok": True, "update": {"n": 6}, "events": [],  # events the code emitted, for the host to relay
+    }  # fmt: skip
 
 
 async def test_network_rules_in_a_mode_without_a_network_are_reported_once(tmp_path):
-    """sandbox.json egress/inject only work in LangSmith mode; elsewhere the code is offline, and the log says so."""
+    """An egress list the mode cannot restrict (development: allowed) is logged once per workspace."""
     from structlog.testing import capture_logs
 
     from agentcanvas.sandbox import runners
@@ -309,3 +337,199 @@ async def test_network_rules_in_a_mode_without_a_network_are_reported_once(tmp_p
         await runner("h:f")({})
     warned = [e for e in logs if e["event"] == "sandbox.egress_not_enforced"]
     assert len(warned) == 1 and warned[0]["mode"] == "subprocess"
+
+
+async def test_a_cancelled_call_stops_its_code(tmp_path):
+    """A run cancelled (or out of time budget) while workspace code runs: the code stops with it, it does not live
+    on with nobody waiting for it."""
+    from agentcanvas.sandbox.runners import run_in_sandbox
+
+    (tmp_path / "scripts").mkdir()
+    (tmp_path / "scripts" / "sleepy.py").write_text(
+        "import os, pathlib, time\n\n\ndef run(state):\n"
+        f"    pathlib.Path({str(tmp_path / 'pid')!r}).write_text(str(os.getpid()))\n"
+        "    time.sleep(60)\n    return {}\n"
+    )
+    call = asyncio.create_task(run_in_sandbox("subprocess", tmp_path, "scripts.sleepy:run", {}, image="", timeout=30))
+    for _ in range(100):
+        if (tmp_path / "pid").exists():
+            break
+        await asyncio.sleep(0.05)
+    pid = int((tmp_path / "pid").read_text())
+    call.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await call
+    with pytest.raises(ProcessLookupError):
+        os.kill(pid, 0)
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="prctl and /proc are Linux's")
+async def test_another_process_cannot_read_a_calls_proxy_credential(tmp_path):
+    """S-2: in a shared sandbox, one call's code could read another call's /proc/<pid>/environ (the signed egress
+    credential) because both run as one user. The credential now arrives on stdin and the child is not dumpable."""
+    from agentcanvas.sandbox.runners import _exchange
+
+    (tmp_path / "scripts").mkdir()
+    (tmp_path / "scripts" / "peek.py").write_text(
+        "import ctypes, os\n\n\ndef run(state):\n"
+        "    try:\n        open('/proc/self/environ', 'rb').read()\n        readable = True\n"
+        "    except PermissionError:\n        readable = False\n"
+        "    return {'dumpable': ctypes.CDLL(None).prctl(3, 0, 0, 0, 0), 'environ_readable': readable,\n"
+        "            'proxy_set': os.environ.get('HTTPS_PROXY', '').endswith('@127.0.0.1:9')}\n"
+    )
+    out = await _exchange("subprocess", tmp_path, "scripts.peek:run", {"state": {}}, "", 20,
+                          proxy="http://list:secretcred@127.0.0.1:9")  # fmt: skip
+    # not dumpable: /proc/<pid>/environ is root's, so no other process of the user reads it (nor the call itself)
+    assert out["update"] == {"dumpable": 0, "environ_readable": False, "proxy_set": True}
+    from agentcanvas.sandbox.runners import subprocess_command
+
+    _, env, _ = subprocess_command(tmp_path, "scripts.peek:run")
+    assert not any("secretcred" in v or "PROXY" in k for k, v in env.items())  # the credential is not in the env
+
+
+async def test_a_child_that_writes_without_end_is_stopped(tmp_path, monkeypatch):
+    """RT-5: `communicate()` kept everything the child wrote in the API's memory until it exited or timed out."""
+    from agentcanvas.sandbox import runners
+
+    monkeypatch.setattr(runners, "MAX_STDOUT", 1024 * 1024, raising=False)
+    (tmp_path / "scripts").mkdir()
+    (tmp_path / "scripts" / "flood.py").write_text(
+        "import os, time\n\n\ndef run(state):\n    for _ in range(64):\n        os.write(1, b'x' * 65536)\n"
+        "    time.sleep(60)\n"
+    )
+    started = asyncio.get_running_loop().time()
+    with pytest.raises(runners.ScriptError, match="more than 1 MB"):
+        await runners._exchange("subprocess", tmp_path, "scripts.flood:run", {"state": {}}, "", 5)
+    assert asyncio.get_running_loop().time() - started < 4  # stopped at the cap, not at the time limit
+
+
+class FakeDocker:
+    """`asyncio.create_subprocess_exec` for docker commands: records them; `start` answers or hangs."""
+
+    def __init__(self, hang: bool):
+        self.calls: list[list[str]] = []
+        self.hang = hang
+
+    async def __call__(self, *argv: str, **kw):
+        self.calls.append(list(argv))
+        hang = self.hang and argv[1] == "start"
+
+        class Proc:
+            returncode: int | None = None if hang else 0
+            stdin = type("W", (), {"write": lambda s, d: None, "close": lambda s: None,
+                                   "drain": staticmethod(lambda: asyncio.sleep(0))})()  # fmt: skip
+
+            def __init__(self):
+                self.stdout, self.stderr = asyncio.StreamReader(), asyncio.StreamReader()
+                if not hang:
+                    self.stdout.feed_data(b'{"ok": true, "update": {"n": 1}}\n')
+                    self.stdout.feed_eof()
+                self.stderr.feed_eof()
+
+            async def communicate(self):
+                return b"", b""
+
+            async def wait(self):
+                return self.returncode
+
+            def kill(self):
+                self.returncode = -9
+                self.stdout.feed_eof()
+
+        return Proc()
+
+
+@pytest.mark.parametrize("hang", [False, True])
+async def test_a_docker_call_always_removes_its_container(tmp_path, monkeypatch, hang):
+    """RT-19: `docker run --rm` killed while it was creating the container could leave it running (`docker kill`
+    came too early); now the container is created first, started attached, and removed however the call ends."""
+    from agentcanvas.sandbox import runners
+
+    docker = FakeDocker(hang)
+    monkeypatch.setattr(runners.asyncio, "create_subprocess_exec", docker)
+    call = asyncio.create_task(runners._exchange("docker", tmp_path, "s:f", {"state": {}}, "img", 20))
+    if hang:
+        await asyncio.sleep(0.05)
+        call.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await call
+    else:
+        assert (await call)["update"] == {"n": 1}
+    verbs = [c[1] for c in docker.calls]
+    assert verbs[:2] == ["create", "start"] and verbs[-1] == "rm"
+    name = docker.calls[0][docker.calls[0].index("--name") + 1]
+    assert docker.calls[-1] == ["docker", "rm", "-f", name] and "--rm" not in docker.calls[0]
+
+
+async def test_only_the_end_of_what_a_child_printed_is_kept():
+    from agentcanvas.sandbox import runners
+
+    stream = asyncio.StreamReader()
+    stream.feed_data(b"a" * 300_000 + b"the end")
+    stream.feed_eof()
+    tail = await runners._read_tail(stream, 1000)
+    assert len(tail) == 1000 and tail.endswith(b"the end")
+
+
+async def test_udp_is_blocked_like_tcp(tmp_path):
+    """R-11: the child's network guard covered connections but not datagrams, so a script could send data out over
+    UDP (as DNS queries, say). A guard against mistakes only: the container's network is the real wall."""
+    from agentcanvas.sandbox.runners import _exchange
+
+    (tmp_path / "scripts").mkdir()
+    (tmp_path / "scripts" / "udp.py").write_text(
+        "import socket\n\n\ndef run(state):\n    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)\n"
+        "    try:\n        s.sendto(b'x', ('192.0.2.1', 53))\n        return {'sent': True}\n"
+        "    except PermissionError:\n        return {'sent': False}\n"
+    )
+    out = await _exchange("subprocess", tmp_path, "scripts.udp:run", {"state": {}}, "", 20)
+    assert out["update"] == {"sent": False}
+
+
+async def test_the_run_gate_checks_again_after_the_workspace_changes():
+    from test_frameworks import GREETER
+
+    from agentcanvas.ir.models import Workflow
+    from agentcanvas.services.run_gate import RunGate
+    from agentcanvas.settings import Settings
+
+    registries = [object()]
+    gate = RunGate(Settings(), registry=lambda wf: registries[-1])
+    checked: list[object] = []
+    gate.blockers = lambda wf, registry=None: checked.append(registry) or []  # type: ignore[method-assign]
+    wf = Workflow.model_validate({"id": "wf_g", "name": "g", **GREETER})
+    await gate(wf)
+    await gate(wf)
+    assert len(checked) == 1  # the same workflow and code: checked once
+    registries.append(object())  # the workspace code changed: a new registry
+    await gate(wf)
+    assert len(checked) == 2
+
+
+async def test_the_run_gate_is_not_fooled_by_a_reused_object_id(monkeypatch):
+    """RT-11: the cache key held `id(registry)`, which CPython hands to a new object once the old one is freed, so
+    new workspace code could pass on an older check. Keyed on the workspace revision (or the registry itself)."""
+    from test_frameworks import GREETER
+
+    from agentcanvas.ir.models import Workflow
+    from agentcanvas.services import run_gate
+    from agentcanvas.settings import Settings
+
+    monkeypatch.setattr(run_gate, "id", lambda obj: 42, raising=False)  # every registry gets the freed one's id
+    registries = [object()]
+    gate = run_gate.RunGate(Settings(), registry=lambda wf: registries[-1])
+    checked: list[object] = []
+    gate.blockers = lambda wf, registry=None: checked.append(registry) or []  # type: ignore[method-assign]
+    wf = Workflow.model_validate({"id": "wf_g", "name": "g", **GREETER})
+    await gate(wf)
+    registries.append(object())
+    await gate(wf)
+    assert len(checked) == 2
+    revisions = ["r1"]
+    gate = run_gate.RunGate(Settings(), registry=lambda wf: registries[-1], revision=lambda wf: revisions[-1])
+    gate.blockers = lambda wf, registry=None: checked.append(registry) or []  # type: ignore[method-assign]
+    await gate(wf)
+    await gate(wf)
+    revisions.append("r2")
+    await gate(wf)
+    assert len(checked) == 4

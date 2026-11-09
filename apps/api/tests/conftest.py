@@ -35,6 +35,8 @@ TABLES = [
     "event_log",
     "audit_log",
     "interrupt_task",
+    "a2a_reply",
+    "answer_cache",
     "run",
     "thread",
     "trigger",
@@ -72,7 +74,7 @@ async def _truncate(url: str) -> None:
             await conn.execute(text(f"TRUNCATE {', '.join(present)} CASCADE"))
         for table in RUNTIME_TABLES:  # thread ids repeat across tests: stale checkpoints would leak in
             if (await conn.execute(text(f"SELECT to_regclass('public.{table}')"))).scalar():
-                await conn.execute(text(f"TRUNCATE {table}"))
+                await conn.execute(text(f"TRUNCATE {table} CASCADE"))  # `store` has vectors referencing it
     await engine.dispose()
 
 

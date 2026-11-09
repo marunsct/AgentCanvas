@@ -3,17 +3,22 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { ApiError, apiFetch } from "../api/client";
-import type { Check, DeploymentOut, PublishOut } from "../api/generated";
+import type { Check, DeploymentOut, OrgSettingsOut, PublishOut } from "../api/generated";
 import { can } from "../api/session";
 import { useEditor } from "../editor/store";
 import { ConnectSection } from "./ConnectSection";
 import { ShareSection } from "./ShareSection";
+import { confirmDialog, promptDialog } from "../ui/dialog";
 
 export function PublishSection({ wfId }: { wfId: string }) {
   const qc = useQueryClient();
   const [checks, setChecks] = useState<Check[] | null>(null);
   const [key, setKey] = useState<{ deployment: string; key: string } | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const org = useQuery({ queryKey: ["org-settings"], queryFn: () => apiFetch<OrgSettingsOut>("/org/settings") });
+  const offered = org.data?.offered_environments ?? ["prod"];
+  const [env, setEnv] = useState("prod");
+  const target = offered.includes(env) ? env : offered[offered.length - 1];
   const deps = useQuery({ queryKey: ["deployments", wfId], queryFn: () => apiFetch<DeploymentOut[]>(`/workflows/${wfId}/deployments`) });
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ["deployments", wfId] });
@@ -23,7 +28,7 @@ export function PublishSection({ wfId }: { wfId: string }) {
   const publish = useMutation({
     mutationFn: async (override_reason?: string) => {
       await useEditor.getState().flush();
-      return apiFetch<PublishOut>(`/workflows/${wfId}/publish`, { method: "POST", json: { environment: "prod", override_reason } });
+      return apiFetch<PublishOut>(`/workflows/${wfId}/publish`, { method: "POST", json: { environment: target, override_reason } });
     },
     onSuccess: (out) => {
       setChecks(out.checklist ?? []);
@@ -33,7 +38,7 @@ export function PublishSection({ wfId }: { wfId: string }) {
     onError: (e) => { setChecks(e instanceof ApiError ? (e.problem.checklist as Check[] | undefined) ?? null : null); refresh(); },
   });
   const rotate = async (d: DeploymentOut) => {
-    if (!window.confirm("Issue a new key? The current key stops working immediately.")) return;
+    if (!(await confirmDialog({ title: "Issue a new key?", body: "The current key stops working immediately.", confirm: "Issue a new key", danger: true }))) return;
     setActionError(null);
     try {
       const out = await apiFetch<{ api_key: string }>(`/deployments/${d.id}/rotate-key`, { method: "POST" });
@@ -44,7 +49,7 @@ export function PublishSection({ wfId }: { wfId: string }) {
     }
   };
   const unpublish = async (d: DeploymentOut) => {
-    if (!window.confirm(`Unpublish ${d.environment}? Calls with its key will be refused.`)) return;
+    if (!(await confirmDialog({ title: `Unpublish ${d.environment}?`, body: "Calls with its key will be refused.", confirm: "Unpublish", danger: true }))) return;
     setActionError(null);
     try {
       await apiFetch(`/deployments/${d.id}`, { method: "DELETE" });
@@ -57,14 +62,19 @@ export function PublishSection({ wfId }: { wfId: string }) {
   return (
     <section className="publish" aria-label="publish">
       <h4>Publish</h4>
+      {can("builder") && offered.length > 1 && (
+        <select aria-label="environment" value={target} onChange={(e) => setEnv(e.target.value)} className="env-select">
+          {offered.map((e) => <option key={e} value={e}>{e}</option>)}
+        </select>
+      )}
       {can("builder") && <button type="button" className="primary" disabled={publish.isPending} onClick={() => publish.mutate(undefined)}>
-        {publish.isPending ? "Checking…" : "Publish to prod"}
+        {publish.isPending ? "Checking…" : `Publish to ${target}`}
       </button>}
       {publish.error && <p className="error-text small" role="alert">{(publish.error as Error).message}</p>}
       {actionError && <p className="error-text small" role="alert">{actionError}</p>}
       {publish.error && can("admin") && checks?.some((c) => c.name === "evaluation" && !c.ok) && checks.every((c) => c.ok || c.name === "evaluation") && (
-        <button type="button" className="small danger" onClick={() => {
-          const reason = window.prompt("Publish although the release gate fails? The reason goes to the audit log.");
+        <button type="button" className="small danger" onClick={async () => {
+          const reason = await promptDialog({ title: "Publish although the release gate fails?", body: "The reason goes to the audit log.", confirm: "Publish anyway", danger: true, input: { label: "Reason", required: true } });
           if (reason?.trim()) publish.mutate(reason.trim());
         }}>Publish anyway…</button>
       )}

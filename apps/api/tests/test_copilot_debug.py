@@ -5,10 +5,19 @@ from __future__ import annotations
 
 import json
 
+import pytest
 from test_copilot import SETTINGS, ask, call, of, script
 from test_publish import make_greeter
 
 from agentcanvas.copilot import docs
+
+
+@pytest.fixture(autouse=True, params=["loop", "deepagents"])
+def engine(request, settings):
+    """Every Copilot test runs on both engines: the loop and the Deep Agents harness (PLAN.md section 2)."""
+    settings.copilot_engine = request.param
+    return request.param
+
 
 FIX_GREETING = [{"op": "UpdateNode", "id": "n_g", "patch": {"config": {"values": {"out": "Hi {{ state.who }}"}}}}]
 
@@ -26,7 +35,7 @@ async def a_run(api_client, wf: str, who: str = "Ada") -> str:
     return next(e["runId"] for e in events if e.get("runId"))
 
 
-async def test_debug_explains_a_run_and_checks_a_fix(app, api_client):
+async def test_debug_explains_a_run_and_checks_a_fix(app, api_client, monkeypatch):
     await separate_model(api_client)
     wf = await make_greeter(api_client)
     run_id = await a_run(api_client, wf)
@@ -39,30 +48,19 @@ async def test_debug_explains_a_run_and_checks_a_fix(app, api_client):
     assert not of(events, "proposal")
 
     # fix and check: propose the change, reproduce the old run on it, test it with an expectation
-    seen: list = []
-    original = app.state.models.chat
-
-    async def spy(resources, model, messages, tools, usage=None, config=None):
-        seen.append(messages)
-        return await original(resources, model, messages, tools, usage=usage, config=config)
-
-    app.state.models.chat = spy
-    try:
-        script(
-            app,
-            call("propose_changes", summary="Say Hi", commands=FIX_GREETING),
-            call("reproduce_run", run_id=run_id),
-            call("run_test", input={"who": "Bo"}, expect={"channels": {"out": "Hi Bo"}}),
-            call("propose_tests", summary="Add a test", tests=[
-                {"name": "greets Bo", "input": {"who": "Bo"}, "expect": {"channels": {"out": "Hi Bo"}}}]),
-            call("save_note", note="Greetings start with Hi."),
-            "Fixed: it now says Hi, and the test passes.",
-        )  # fmt: skip
-        events = await ask(api_client, wf, "make it say Hi instead and check it")
-    finally:
-        app.state.models.chat = original
-    results = [m for m in seen[-1] if m["role"] == "tool"]
-    reproduced, tested = json.loads(results[1]["content"]), json.loads(results[2]["content"])
+    results = record_tool_results(monkeypatch)
+    script(
+        app,
+        call("propose_changes", summary="Say Hi", commands=FIX_GREETING),
+        call("reproduce_run", run_id=run_id),
+        call("run_test", input={"who": "Bo"}, expect={"channels": {"out": "Hi Bo"}}),
+        call("propose_tests", summary="Add a test", tests=[
+            {"name": "greets Bo", "input": {"who": "Bo"}, "expect": {"channels": {"out": "Hi Bo"}}}]),
+        call("save_note", note="Greetings start with Hi."),
+        "Fixed: it now says Hi, and the test passes.",
+    )  # fmt: skip
+    events = await ask(api_client, wf, "make it say Hi instead and check it")
+    reproduced, tested = results[1], results[2]
     assert (
         reproduced["ok"] and reproduced["output"]["out"] == "Hi Ada" and reproduced["original"]["status"] == "success"
     )
@@ -86,25 +84,14 @@ async def test_debug_explains_a_run_and_checks_a_fix(app, api_client):
     assert ran["passed"] == 1
 
 
-async def test_problems_are_explained_and_tests_wait_for_a_valid_workflow(app, api_client):
+async def test_problems_are_explained_and_tests_wait_for_a_valid_workflow(app, api_client, monkeypatch):
     await separate_model(api_client)
     wf = await make_greeter(api_client)
     broken = [{"op": "Disconnect", "id": "e2"}]
     script(app, call("propose_changes", summary="x", commands=broken), call("get_problems"),
            call("run_test", input={"who": "x"}), "It no longer reaches the end.")  # fmt: skip
-    seen: list = []
-    original = app.state.models.chat
-
-    async def spy(resources, model, messages, tools, usage=None, config=None):
-        seen.append(messages)
-        return await original(resources, model, messages, tools, usage=usage, config=config)
-
-    app.state.models.chat = spy
-    try:
-        await ask(api_client, wf, "remove the last arrow")
-    finally:
-        app.state.models.chat = original
-    results = [json.loads(m["content"]) for m in seen[-1] if m["role"] == "tool"]
+    results = record_tool_results(monkeypatch)
+    await ask(api_client, wf, "remove the last arrow")
     problems = results[1]["problems"]
     assert problems and all("what" in p and "fix" in p for p in problems if p["code"].startswith("E"))
     assert not results[2]["ok"] and "fix the" in results[2]["error"]
@@ -168,7 +155,7 @@ async def test_debug_suite_plants_bugs_and_scores_a_fix():
 
 def test_test_runs_refuse_unaccepted_code_and_secrets_sent_elsewhere():
     """Review fix: a dry run stubs risky tools but not code; new code and re-pointed secrets wait for an accept."""
-    from agentcanvas.copilot.settings import CopilotSettings, _endpoint_for
+    from agentcanvas.copilot.settings import CopilotSettings, endpoint_for
     from agentcanvas.copilot.tools import unaccepted_risks
     from agentcanvas.ir.models import Resource, Workflow
     from agentcanvas.registry import default_registry
@@ -195,8 +182,8 @@ def test_test_runs_refuse_unaccepted_code_and_secrets_sent_elsewhere():
 
     # Ask mode on a self-hosted server keeps the separate model's address and key
     cs = CopilotSettings(source="separate", model="vllm:big", base_url="http://gpu:8000/v1", ask_model="vllm:small")
-    assert _endpoint_for("vllm:small", cs, None) == {"base_url": "http://gpu:8000/v1"}
-    assert _endpoint_for("anthropic:claude-haiku-4-5", cs, None) == {}
+    assert endpoint_for("vllm:small", cs, None) == {"base_url": "http://gpu:8000/v1"}
+    assert endpoint_for("anthropic:claude-haiku-4-5", cs, None) == {}
 
 
 def _script_node():
@@ -212,6 +199,82 @@ def test_a_turn_keeps_decisions_taken_meanwhile():
     turn = [{"id": "p1", "status": "superseded"}, {"id": "p2", "status": "pending"}]
     merged = merge_proposals(stored, turn)
     assert {p["id"]: p["status"] for p in merged} == {"p0": "rejected", "p1": "accepted", "p2": "pending"}
+
+
+def test_a_turn_drops_the_carried_proposal_when_it_was_accepted_meanwhile():
+    """E-6: accepting the open proposal while the Copilot answered left the new proposal holding the accepted
+    commands again, so it no longer applied ("id already exists") and the turn's own changes were lost."""
+    from agentcanvas.api.v1.copilot import _pending, merge_proposals
+    from agentcanvas.copilot.tools import ToolContext, carry_pending
+    from agentcanvas.ir.commands import apply_batch, parse_commands
+    from agentcanvas.ir.models import Node, Workflow
+    from agentcanvas.registry import default_registry
+
+    async def validate(_wf):
+        return []
+
+    saved = Workflow(id="wf_x", name="x", nodes=[Node(id="n_a", type="core.set", name="a")])
+    add = [{"op": "AddNode", "node": {"id": "n_b", "type": "core.set", "name": "b"}}]
+    open_one = {"id": "p1", "status": "pending", "summary": "Add b", "commands": add, "tests": [{"name": "t"}]}
+    ctx = ToolContext(workflow=saved, registry=default_registry(), templates={}, validate=validate)
+    carry_pending(ctx, [open_one])
+    more = [{"op": "UpdateNode", "id": "n_a", "patch": {"name": "renamed"}}]
+    new = {
+        "id": "p2", "status": "pending", "summary": "Add b; Rename a", "commands": [*add, *more],
+        "tests": [{"name": "t"}], "notes": [], "carried": ctx.carried,
+    }  # fmt: skip
+    stored = [{**open_one, "status": "accepted"}]  # the person accepted p1 in the editor meanwhile
+    merged = merge_proposals(stored, [{**open_one, "status": "superseded"}, new])
+    p2 = next(p for p in merged if p["id"] == "p2")
+    assert p2["commands"] == more and p2["tests"] == [] and p2["summary"] == "Rename a" and p2["status"] == "pending"
+
+    class View:  # the draft now holds p1's changes
+        workflow = apply_batch(saved, parse_commands(add))[0]
+
+    conv = type("Conv", (), {"proposals": merged})()
+    pending = _pending(conv, View())  # type: ignore[arg-type]
+    assert pending is not None and not pending["stale"]
+    assert [n.name for n in Workflow.model_validate(pending["preview"]).nodes] == ["renamed", "b"]
+    untouched = merge_proposals([open_one], [open_one, new])  # not accepted: the new one keeps everything
+    assert next(p for p in untouched if p["id"] == "p2")["commands"] == [*add, *more]
+
+
+async def test_a_carried_file_rewritten_this_turn_is_kept_when_the_carried_proposal_is_accepted(tmp_path):
+    """I-12: carried files were dropped by position, but proposing a file again moves it to the end: with the open
+    proposal accepted meanwhile, the turn's own new version of a carried file was dropped and a carried one kept."""
+    from agentcanvas.api.v1.copilot import merge_proposals
+    from agentcanvas.copilot.tools import ToolContext, carry_pending, propose_file
+    from agentcanvas.ir.models import Workflow
+    from agentcanvas.registry import default_registry
+    from agentcanvas.workspace.store import Workspace
+
+    async def validate(_wf):
+        return []
+
+    (tmp_path / "scripts").mkdir()
+    (tmp_path / "scripts" / "a.py").write_text("A = 0\n")
+    ws = Workspace(tmp_path)
+    files = [
+        {"path": "scripts/a.py", "content": "A = 1\n", "before": "A = 0\n"},
+        {"path": "scripts/b.py", "content": "B = 1\n", "before": None},
+    ]
+    open_one = {"id": "p1", "status": "pending", "summary": "Two files", "commands": [], "files": files}
+    ctx = ToolContext(
+        workflow=Workflow(id="wf_x", name="x"), registry=default_registry(), templates={}, validate=validate,
+        workspace=ws,
+    )  # fmt: skip
+    carry_pending(ctx, [open_one])
+    assert (await propose_file(ctx, {"path": "scripts/a.py", "content": "A = 2\n"}))["ok"]
+    assert [f["path"] for f in ctx.proposal.files] == ["scripts/b.py", "scripts/a.py"]  # a.py moved to the end
+    new = {
+        "id": "p2", "status": "pending", "summary": "Two files", "commands": [], "tests": [], "notes": [],
+        "files": ctx.proposal.files, "carried": ctx.carried,
+    }  # fmt: skip
+    merged = merge_proposals([{**open_one, "status": "accepted"}], [{**open_one, "status": "superseded"}, new])
+    p2 = next(p for p in merged if p["id"] == "p2")
+    # what is left is this turn's a.py, starting from the version the accepted proposal wrote
+    assert p2["files"] == [{"path": "scripts/a.py", "content": "A = 2\n", "before": "A = 1\n"}]
+    assert p2["status"] == "pending"
 
 
 def test_the_open_proposal_carries_into_the_next_turn():
@@ -246,3 +309,112 @@ async def test_a_reproduction_replays_risky_tools_instead_of_stubbing_them():
     res.dry_run = {"send_email"}
     tools = res.tool("mail", {"transport": "http", "url": "https://mail.example/mcp"}, "mcp.server")
     assert await tools[0].ainvoke({"to": "a@b.c"}) == "sent #42"
+
+
+async def test_a_reply_runs_a_bounded_number_of_tools_and_a_turn_a_bounded_number_of_test_runs(app, api_client):
+    """I-18: one model reply could ask for any number of tool calls (test runs among them) and all of them ran."""
+    from agentcanvas.copilot.tools import MAX_CALLS_PER_REPLY, MAX_TEST_RUNS
+
+    await separate_model(api_client)
+    wf = await make_greeter(api_client)
+    many = {"content": "", "tool_calls": [{"name": "get_problems", "args": {}}] * (MAX_CALLS_PER_REPLY + 4)}
+    script(app, many, "Checked.")
+    events = await ask(api_client, wf, "check it", mode="ask")
+    assert len(of(events, "tool")) == MAX_CALLS_PER_REPLY
+
+    test = call("run_test", input={"who": "Bo"})
+    script(app, *[test] * (MAX_TEST_RUNS + 2), "Tested.")
+    tools = of(await ask(api_client, wf, "test it a lot"), "tool")
+    assert [t["ok"] for t in tools] == [True] * MAX_TEST_RUNS + [False, False]
+    assert "already ran the workflow" in tools[-1]["error"]
+
+
+def record_tool_results(monkeypatch) -> list[dict]:
+    """Every tool result of the turn, in order, whichever engine runs it (both call the tools in `TOOLS`)."""
+    import dataclasses
+
+    from agentcanvas.copilot import tools as copilot_tools
+
+    results: list[dict] = []
+    for name, tool in list(copilot_tools.TOOLS.items()):
+
+        async def run(ctx, args, _run=tool.run):
+            out = await _run(ctx, args)
+            results.append(out)
+            return out
+
+        monkeypatch.setitem(copilot_tools.TOOLS, name, dataclasses.replace(tool, run=run))
+    return results
+
+
+async def test_a_proposal_is_accepted_in_part(app, api_client):
+    """FR-COP-01: the person keeps some changes, some tests and not the notes; the record says what was kept."""
+    await separate_model(api_client)
+    wf = await make_greeter(api_client)
+    tests = [{"name": f"case {i}", "input": {"who": "Bo"}, "expect": {"channels": {"out": "Hi Bo"}}} for i in (1, 2)]
+    script(
+        app,
+        call("propose_changes", summary="Say Hi", commands=FIX_GREETING),
+        call("propose_tests", summary="Add tests", tests=tests),
+        call("save_note", note="Greetings start with Hi."),
+        "Proposed.",
+    )  # fmt: skip
+    events = await ask(api_client, wf, "make it say Hi, with tests")
+    proposal = of(events, "proposal")[0]["proposal"]
+    url = f"/v1/workflows/{wf}/copilot/proposals/{proposal['id']}"
+    total = len(proposal["commands"])
+    bad = await api_client.post(url, json={"status": "accepted", "commands": [total]})
+    assert bad.status_code == 422
+    r = await api_client.post(url, json={"status": "accepted", "commands": [0], "tests": [1], "notes": False})
+    assert r.status_code == 204, r.text
+    assert [c["name"] for c in (await api_client.get(f"/v1/workflows/{wf}/test-cases")).json()] == ["case 2"]
+    assert "Greetings start with Hi." not in (await api_client.get(SETTINGS)).json()["notes"]
+    kept = (await api_client.get(f"/v1/workflows/{wf}/copilot")).json()["proposals"][-1]
+    assert kept["status"] == "accepted" and kept["accepted_commands"] == [0]
+
+
+async def test_get_problems_adds_best_practice_suggestions():
+    """FR-COP-04: judgement calls, with what, why and fix, apart from the validator's problems."""
+    from agentcanvas.copilot.rules import suggestions
+    from agentcanvas.ir.models import Workflow
+    from agentcanvas.services.workflows import list_templates
+    from agentcanvas.settings import Settings
+
+    triage = Workflow.model_validate(list_templates(Settings())["ticket_triage"])
+    found = {s["code"]: s for s in suggestions(triage)}
+    assert "S001" not in found  # its router has a default
+    assert found["S002"]["what"] == "This model has no backup model." and found["S002"]["fix"]
+    bare = triage.model_copy(deep=True)
+    router = next(n for n in bare.nodes if n.type == "core.router")
+    router.config.pop("default")
+    llm = next(n for n in bare.nodes if n.type == "core.llm")
+    llm.config["prompt"] = "Summarise."
+    codes = [s["code"] for s in suggestions(bare)]
+    assert "S001" in codes and "S003" in codes
+
+
+async def test_real_model_runs_need_the_persons_permission(app, api_client):
+    """run_test on a workflow with models: refused (and the panel asked) until the person allows real runs; with
+    scripted replies for every model it needs no permission."""
+    from test_copilot import new_workflow
+
+    await separate_model(api_client)
+    wf = (await new_workflow(api_client, template="ticket_triage"))["id"]
+    test = call("run_test", input={"ticket": "Invoice?"})
+    script(app, test, "Done.")
+    events = await ask(api_client, wf, "try it")
+    assert any(e["type"] == "permission" and e["kind"] == "real_runs" for e in events)
+    tool = next(e for e in events if e["type"] == "tool" and e["name"] == "run_test")
+    assert tool["ok"] is False and "not allowed test runs that call real models" in tool["error"]
+
+    script(app, test, "Done.")
+    r = await api_client.post(
+        f"/v1/workflows/{wf}/copilot/messages", json={"text": "try it", "mode": "build", "allow_real_runs": True}
+    )
+    events = [json.loads(line[5:]) for line in r.text.splitlines() if line.startswith("data:")]
+    assert not any(e["type"] == "permission" for e in events)
+
+    mocked = call("run_test", input={"ticket": "Invoice?"}, mocks={"fast_model": ["low"], "smart_model": ["Thanks"]})
+    script(app, mocked, "Done.")
+    events = await ask(api_client, wf, "try it with scripted replies")
+    assert not any(e["type"] == "permission" for e in events)

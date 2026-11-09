@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import contextlib
+import copy
+import logging
 import time
 import warnings
 from collections import OrderedDict
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import UTC, datetime
@@ -20,7 +22,7 @@ from agentcanvas.adapters.langchain import nodes as ac
 from agentcanvas.adapters.langchain.codegen import generate
 from agentcanvas.adapters.langchain.events import UsageTracker, jsonable, nested_index, node_index, translate
 from agentcanvas.adapters.langchain.interpreter import build_from_plan, prepare
-from agentcanvas.adapters.langchain.persistence import Persistence, copy_thread, open_persistence
+from agentcanvas.adapters.langchain.persistence import MemoryEmbedding, Persistence, copy_thread, open_persistence
 from agentcanvas.adapters.langchain.plan import lower
 from agentcanvas.ir.canonical import ir_hash
 from agentcanvas.ir.models import Workflow
@@ -47,7 +49,10 @@ class LangChainAdapter:
 
     def __init__(self, graph_cache_size: int = 128):
         self._p: Persistence | None = None
-        self._graphs: OrderedDict[tuple[str, int, str], tuple[Any, Any]] = OrderedDict()
+        self.memory_embedding: MemoryEmbedding | None = (
+            None  # set before `persistence`: long-term memory's semantic index
+        )
+        self._graphs: OrderedDict[tuple[str, int, str, str], tuple[Any, Any]] = OrderedDict()
         self._cache_size = graph_cache_size
         self._shared = self.new_resources()
 
@@ -66,11 +71,11 @@ class LangChainAdapter:
 
     def embedder(self, spec: dict[str, Any], secrets: dict[str, str]) -> Any:
         """A knowledge base's embedding function (S24)."""
-        return ac.knowledge_embedder(spec, secrets)
+        return ac.knowledge_embedder(spec, secrets, public_only=get_settings().edition == "hosted")
 
     @asynccontextmanager
     async def persistence(self, database_url: str | None) -> AsyncIterator[None]:
-        async with open_persistence(database_url) as p:
+        async with open_persistence(database_url, self.memory_embedding) as p:
             self._p = p
             try:
                 yield
@@ -94,8 +99,9 @@ class LangChainAdapter:
 
     async def graph(self, wf: Workflow, resources: ac.Resources) -> Any:
         """Compiled graph for (IR, resources), cached: rebuilding per run is wasteful for real models."""
-        # the entry keeps `resources` alive, so its id cannot be reused; the revision changes when workspace code does
-        key = (ir_hash(wf), id(resources), resources.revision())
+        # the entry keeps `resources` alive, so its id cannot be reused; the revision changes when workspace code does,
+        # the fingerprint when a secret value does (a rotated key must reach the graph's model clients and MCP tools)
+        key = (ir_hash(wf), id(resources), resources.revision(), resources.secrets_fingerprint())
         if key in self._graphs:
             self._graphs.move_to_end(key)
             return self._graphs[key][1]
@@ -107,6 +113,25 @@ class LangChainAdapter:
         if len(self._graphs) > self._cache_size:
             self._graphs.popitem(last=False)
         return graph
+
+    async def _read_graph(self, wf: Workflow, resources: ac.Resources) -> Any:
+        """A graph to read or edit a conversation's state with: the run's own when it can be built, else one whose
+        unreachable MCP servers have no tools (reading state needs only the checkpointer). Opening a conversation
+        no longer fails because a tool server is down (R-5). The fallback is never cached, so runs never see it."""
+        try:
+            return await self.graph(wf, resources)
+        except Exception:  # noqa: BLE001 - an MCP server down, or its address refused: read without its tools
+            logging.getLogger(__name__).warning("reading %s without the tools of an MCP server that failed", wf.id)
+        plan = lower(wf, _registry(resources))
+        reader = copy.copy(resources)
+        reader._mcp = dict(resources._mcp)
+        for pr in plan.mcp:
+            try:
+                await reader.load_mcp(pr.resource.name, pr.resource.config)
+            except Exception:  # noqa: BLE001
+                reader._mcp[(pr.resource.name, reader._key(pr.resource.config))] = []
+        p = self._persist()
+        return build_from_plan(plan, reader, checkpointer=p.checkpointer, store=p.store)
 
     async def _debug_graph(self, wf: Workflow, resources: ac.Resources, pins: dict[str, dict[str, Any]]) -> Any:
         p = self._persist()
@@ -151,9 +176,7 @@ class LangChainAdapter:
         return list(await self.store.alist_namespaces(prefix=prefix or None, limit=limit))
 
     async def memory_items(self, namespace: tuple[str, ...], query: str | None, limit: int) -> list[dict[str, Any]]:
-        items = await self.store.asearch(namespace, limit=1000 if query else limit)
-        if query:
-            items = ac.keyword_rank(items, query, limit)
+        items = await ac.recall(self.store, namespace, query or "", limit)
         return [
             {
                 "namespace": list(i.namespace),
@@ -214,7 +237,7 @@ class LangChainAdapter:
                 await self.store.aput((*root, *i.namespace), i.key, i.value)
                 await self.store.adelete(i.namespace, i.key)
             moved += len(items)
-        await self.store.aput(*self.ADOPTED, {"org_id": org_id, "items": moved})
+        await self.store.aput(*self.ADOPTED, {"org_id": org_id, "items": moved}, index=False)
         return moved
 
     def generate(self, wf: Workflow, registry: Any = None) -> str:
@@ -237,6 +260,20 @@ class LangChainAdapter:
 
     # ----------------------------------------------------------- execution ----
     async def execute(self, spec: RunSpec, resources: ac.Resources) -> AsyncIterator[dict[str, Any]]:
+        """The run's events, each with the project's secret values masked: one place, so no event kind (usage
+        records carry a backup model's error text) can skip it (RT-13)."""
+        secrets = getattr(resources, "_secrets", None) or {}
+        hidden = sorted((v for v in secrets.values() if len(v) >= 6), key=len, reverse=True)
+        events = self._events(spec, resources, hidden)
+        try:
+            async for ev in events:
+                yield _redacted(ev, hidden)
+        finally:  # closed early (a budget reached, a cancel): the run's own clean-up runs now
+            await events.aclose()
+
+    async def _events(
+        self, spec: RunSpec, resources: ac.Resources, hidden: list[str]
+    ) -> AsyncGenerator[dict[str, Any]]:
         wf = spec.workflow
         if spec.pins or spec.mocks or spec.dry_run:  # debug aids: a one-off graph, never cached
             if spec.mocks:
@@ -284,7 +321,6 @@ class LangChainAdapter:
         token = _SECRETS.set(secrets)  # sdk.secret() in in-process scripts and custom nodes
         redaction = masking.redacting(wf.settings.trace_redact)  # the root run and model runs in LangSmith (S13)
         redaction.__enter__()
-        hidden = sorted((v for v in secrets.values() if len(v) >= 6), key=len, reverse=True)
         started: dict[str, float] = {}
         try:
             async for part in graph.astream(graph_input, cfg, **kwargs):
@@ -293,14 +329,18 @@ class LangChainAdapter:
                         started[ev["task_id"]] = time.perf_counter()
                     elif ev["type"] == "STEP_FINISHED" and ev["task_id"] in started:
                         ev["duration_ms"] = round((time.perf_counter() - started.pop(ev["task_id"])) * 1000)
-                    yield _redacted(ev, hidden)
-                for record in usage.drain():
+                    yield ev
+                for record in usage.records():
                     yield {"type": "CUSTOM", "name": "ac.usage", "value": record}
                 for reply in usage.drain_replies():
-                    yield _redacted({"type": "CUSTOM", "name": "ac.model_reply", "value": reply}, hidden)
+                    yield {"type": "CUSTOM", "name": "ac.model_reply", "value": reply}
                 for io in usage.drain_tool_io():
-                    yield _redacted({"type": "CUSTOM", "name": "ac.tool_io", "value": io}, hidden)
+                    yield {"type": "CUSTOM", "name": "ac.tool_io", "value": io}
+            for record in usage.records():  # reported after the last update
+                yield {"type": "CUSTOM", "name": "ac.usage", "value": record}
         except GraphRecursionError as exc:
+            for record in usage.records():  # what the run spent before it stopped still counts
+                yield {"type": "CUSTOM", "name": "ac.usage", "value": record}
             yield {
                 "type": "RUN_ERROR",
                 "code": "recursion_limit",
@@ -309,35 +349,35 @@ class LangChainAdapter:
             }
             return
         except Exception as exc:  # noqa: BLE001 - every failure must reach the UI as RUN_ERROR
-            yield _redacted({"type": "RUN_ERROR", "code": "error", "message": f"{type(exc).__name__}: {exc}"}, hidden)
+            for record in usage.records():
+                yield {"type": "CUSTOM", "name": "ac.usage", "value": record}
+            yield {"type": "RUN_ERROR", "code": "error", "message": f"{type(exc).__name__}: {exc}"}
             return
         finally:
             with contextlib.suppress(ValueError):  # closed from another context (e.g. cancelled run)
                 _SECRETS.reset(token)
             redaction.__exit__(None, None, None)
+            if spec.on_usage is not None:  # cancelled or timed out: the stream is closed, the usage still counts
+                for record in usage.drain():
+                    spec.on_usage(_redacted(record, hidden))
 
-        for record in usage.drain():
-            yield {"type": "CUSTOM", "name": "ac.usage", "value": record}
         for reply in usage.drain_replies():
-            yield _redacted({"type": "CUSTOM", "name": "ac.model_reply", "value": reply}, hidden)
+            yield {"type": "CUSTOM", "name": "ac.model_reply", "value": reply}
         for io in usage.drain_tool_io():
-            yield _redacted({"type": "CUSTOM", "name": "ac.tool_io", "value": io}, hidden)
+            yield {"type": "CUSTOM", "name": "ac.tool_io", "value": io}
         state = await self._state(graph, self._config(wf, spec.thread_id), names)
         for intr in state.interrupts:
-            yield _redacted({"type": "CUSTOM", "name": "ac.interrupt", "value": asdict(intr)}, hidden)
+            yield {"type": "CUSTOM", "name": "ac.interrupt", "value": asdict(intr)}
         paused = bool(state.interrupts or state.next)
-        yield _redacted(
-            {
-                "type": "RUN_FINISHED",
-                "outcome": "interrupt" if paused else "success",
-                "breakpoint": paused and not state.interrupts,
-                "interrupts": [asdict(i) for i in state.interrupts],
-                "next": state.next,
-                "checkpoint_id": state.checkpoint_id,
-                "output": _outputs(wf, state.values),
-            },
-            hidden,
-        )
+        yield {
+            "type": "RUN_FINISHED",
+            "outcome": "interrupt" if paused else "success",
+            "breakpoint": paused and not state.interrupts,
+            "interrupts": [asdict(i) for i in state.interrupts],
+            "next": state.next,
+            "checkpoint_id": state.checkpoint_id,
+            "output": _outputs(wf, state.values),
+        }
 
     # --------------------------------------------------------------- state ----
     async def _state(self, graph: Any, cfg: RunnableConfig, names: dict[str, str]) -> ThreadState:
@@ -360,12 +400,12 @@ class LangChainAdapter:
         )
 
     async def get_state(self, wf: Workflow, thread_id: str, resources: ac.Resources) -> ThreadState:
-        return await self._state(await self.graph(wf, resources), self._config(wf, thread_id), node_index(wf))
+        return await self._state(await self._read_graph(wf, resources), self._config(wf, thread_id), node_index(wf))
 
     async def history(
         self, wf: Workflow, thread_id: str, resources: ac.Resources, limit: int = 100, include_values: bool = False
     ) -> list[CheckpointInfo]:
-        graph, names = await self.graph(wf, resources), node_index(wf)
+        graph, names = await self._read_graph(wf, resources), node_index(wf)
         out = []
         async for snap in graph.aget_state_history(self._config(wf, thread_id), limit=limit):
             meta = snap.metadata or {}
@@ -393,7 +433,7 @@ class LangChainAdapter:
         as_node: str | None,
         checkpoint_id: str | None,
     ) -> str:
-        graph = await self.graph(wf, resources)
+        graph = await self._read_graph(wf, resources)
         node = wf.node(as_node) if as_node else None
         node_name = node.name if node else as_node  # accept canvas id or node name
         new_cfg = await graph.aupdate_state(self._config(wf, thread_id, checkpoint_id), values, as_node=node_name)

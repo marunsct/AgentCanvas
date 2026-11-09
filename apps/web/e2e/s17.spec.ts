@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { expect, test } from "./fixtures";
+import { expect, SETTINGS, test } from "./fixtures";
 
 // Sprint 17: a workspace per workflow with a way back, Copilot help with code, and every button labelled.
 
@@ -19,7 +19,9 @@ async function unnamedButtons(page: Page): Promise<string[]> {
 }
 
 async function expectAllLabelled(page: Page, where: string) {
-  await page.waitForLoadState("networkidle");
+  // not "networkidle": the editor keeps a presence stream open, so the network is never idle there
+  await page.waitForLoadState("load");
+  await page.waitForTimeout(500);
   expect(await unnamedButtons(page), `unlabelled buttons on ${where}`).toEqual([]);
 }
 
@@ -47,8 +49,8 @@ test("a workflow's own code: starter file, Copilot help, and the way back to the
   // the file lives in this workflow's own folder, next to the shared code
   await page.getByTestId("open-script").click();
   await expect(page).toHaveURL(new RegExp(`/workflows/${wfId}/workspace`));
-  await expect(page.getByRole("list", { name: "this workflow's files" })).toContainText(`scripts/count_${stamp}.py`);
-  await expect(page.getByRole("list", { name: "shared files" })).toContainText("scripts/example.py");
+  await expect(page.getByRole("navigation", { name: "this workflow's files" }).getByRole("button", { name: `scripts/count_${stamp}.py` })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "shared files" }).getByRole("button", { name: "scripts/example.py" })).toBeVisible();
   await expect(page.getByTestId("code-editor")).toContainText("def run(state: dict) -> dict:");
 
   // the Copilot proposes code as a diff; accepting puts it in the editor, unsaved
@@ -98,7 +100,7 @@ test("no page has an unlabelled button", async ({ page }) => {
     await page.getByRole("tab", { name: dock, exact: true }).click();
     await expectAllLabelled(page, `the editor's ${dock} panel`);
   }
-  for (const path of ["/", "/workspace", "/setup", "/inbox", "/memory", "/events", "/members", "/audit", "/policies",
+  for (const path of ["/", "/workspace", "/inbox", "/memory", "/events", "/playground", "/knowledge", "/runs", ...SETTINGS,
     `${new URL(editorUrl).pathname}/evaluation`, `${new URL(editorUrl).pathname}/workspace`]) {
     await page.goto(path);
     await expectAllLabelled(page, path);

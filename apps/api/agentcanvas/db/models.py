@@ -6,7 +6,7 @@ JSONB on Postgres, `inet` becomes text, `bytea` becomes a blob.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any, ClassVar
 
@@ -16,6 +16,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     DateTime,
+    Dialect,
     Float,
     ForeignKey,
     Index,
@@ -30,17 +31,34 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.types import TypeDecorator
+
+
+class UtcDateTime(TypeDecorator[datetime]):
+    """A timestamp read back in UTC with its timezone: SQLite stores none, and a time without one reads as local
+    time in a browser (a workflow changed a minute ago showed as "9 hours ago" in Tokyo)."""
+
+    impl = DateTime(timezone=True)
+    cache_ok = True
+
+    def process_bind_param(self, value: datetime | None, dialect: Dialect) -> datetime | None:
+        # SQLite keeps the wall clock and drops the offset: `?since=10:00+02:00` would compare as 10:00 UTC
+        return value.astimezone(UTC) if value is not None and value.tzinfo is not None else value
+
+    def process_result_value(self, value: datetime | None, dialect: Dialect) -> datetime | None:
+        return value.replace(tzinfo=UTC) if value is not None and value.tzinfo is None else value
+
 
 Json = JSON().with_variant(JSONB(), "postgresql")
 BigId = BigInteger().with_variant(Integer(), "sqlite")  # SQLite autoincrement needs INTEGER
 
 
 class Base(DeclarativeBase):
-    type_annotation_map: ClassVar[dict[Any, Any]] = {dict[str, Any]: Json, list[Any]: Json}
+    type_annotation_map: ClassVar[dict[Any, Any]] = {dict[str, Any]: Json, list[Any]: Json, datetime: UtcDateTime()}
 
 
 def _now() -> Mapped[datetime]:
-    return mapped_column(DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"), nullable=False)
+    return mapped_column(UtcDateTime(), server_default=text("CURRENT_TIMESTAMP"), nullable=False)
 
 
 class Organization(Base):
@@ -49,6 +67,17 @@ class Organization(Base):
     name: Mapped[str] = mapped_column(Text)
     # days a conversation is kept after its last activity (M8-T4); NULL = AGENTCANVAS_RETENTION_DAYS, 0 = forever
     retention_days: Mapped[int | None] = mapped_column(Integer)
+    # where workflows are published (dev, staging, prod...); None: any name, the web app offers the usual three
+    environments: Mapped[list[str] | None] = mapped_column(Json, nullable=True)
+    # its own values for server settings (services/org_settings.py): local MCP, rate limits, two retentions
+    settings: Mapped[dict[str, Any] | None] = mapped_column(Json, nullable=True)
+    # OIDC groups claim -> roles (G-13): {"claim", "roles": {"<group>": "<role>"}, "unmatched": "keep"|"remove"} (see
+    # services/sso_groups.py); SQL NULL: roles are managed by hand
+    sso_groups: Mapped[dict[str, Any] | None] = mapped_column(Json, nullable=True)
+    # SCIM provisioning (G-13): the SHA-256 of the identity provider's bearer token (NULL: SCIM is off), and its start
+    scim_token_hash: Mapped[str | None] = mapped_column(Text, unique=True)
+    scim_token_prefix: Mapped[str | None] = mapped_column(Text)
+    scim_token_created_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
     created_at: Mapped[datetime] = _now()
 
 
@@ -60,7 +89,7 @@ class OrgDataKey(Base):
     master_key_id: Mapped[str] = mapped_column(Text)  # which master key wrapped it ("local:…", "aws:…", "gcp:…")
     wrapped_key: Mapped[bytes] = mapped_column(LargeBinary)
     created_at: Mapped[datetime] = _now()
-    rotated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    rotated_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
 
 
 class AppUser(Base):
@@ -69,6 +98,7 @@ class AppUser(Base):
     oidc_subject: Mapped[str] = mapped_column(Text, unique=True)
     email: Mapped[str] = mapped_column(Text)
     display_name: Mapped[str | None] = mapped_column(Text)
+    preferences: Mapped[dict[str, Any] | None] = mapped_column(Json, nullable=True)  # theme, Simple mode...
     created_at: Mapped[datetime] = _now()
 
 
@@ -80,7 +110,10 @@ class Membership(Base):
     role: Mapped[str] = mapped_column(Text)
     # false: an invitation to someone who already belongs to another organisation, until they accept it (S11)
     accepted: Mapped[bool] = mapped_column(Boolean, server_default=text("true"), default=True)
-    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # the default organisation
+    last_used_at: Mapped[datetime | None] = mapped_column(UtcDateTime())  # the default organisation
+    # SCIM (G-13): `active: false` suspends the membership without deleting it; the provider's own id for the person
+    suspended: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    scim_external_id: Mapped[str | None] = mapped_column(Text)
 
 
 class Project(Base):
@@ -110,7 +143,7 @@ class WorkflowRow(Base):
     created_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
     created_at: Mapped[datetime] = _now()
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"), onupdate=func.now(), nullable=False
+        UtcDateTime(), server_default=text("CURRENT_TIMESTAMP"), onupdate=func.now(), nullable=False
     )
 
 
@@ -125,6 +158,8 @@ class WorkflowVersion(Base):
     ir_hash: Mapped[str] = mapped_column(Text)
     workspace_commit: Mapped[str | None] = mapped_column(Text)
     message: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
+    # the Copilot proposals accepted since the version before: [{summary, accepted_by, accepted_at, changes}]
+    copilot_changes: Mapped[list[Any]] = mapped_column(Json, server_default=text("'[]'"), default=list)
     created_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
     created_at: Mapped[datetime] = _now()
 
@@ -152,7 +187,7 @@ class Deployment(Base):
     __table_args__ = (UniqueConstraint("workflow_id", "environment", name="deployment_once"),)
     id: Mapped[str] = mapped_column(String, primary_key=True)
     workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"))
-    version_id: Mapped[str] = mapped_column(ForeignKey("workflow_version.id"))
+    version_id: Mapped[str] = mapped_column(ForeignKey("workflow_version.id", ondelete="CASCADE"))
     environment: Mapped[str] = mapped_column(Text, server_default=text("'prod'"), default="prod")
     api_key_hash: Mapped[str] = mapped_column(Text)
     key_prefix: Mapped[str | None] = mapped_column(Text)  # shown in the UI to tell keys apart
@@ -178,8 +213,32 @@ class DeploymentShare(Base):
     updated_by: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = _now()
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"), onupdate=func.now(), nullable=False
+        UtcDateTime(), server_default=text("CURRENT_TIMESTAMP"), onupdate=func.now(), nullable=False
     )
+
+
+class StoredFile(Base):
+    """A file a person attached to a run (G-5): uploaded in the Run tab, through a share link, or sent inline to the
+    API. Runs carry a reference (`agentcanvas/ir/files.py`), never the bytes; the bytes are read from here when a
+    model is shown the file. Deleted with its project, or by the retention job once no run has used it for as long
+    as the organisation keeps conversations."""
+
+    __tablename__ = "stored_file"
+    __table_args__ = (Index("stored_file_project_idx", "project_id", "last_used_at"),)
+    id: Mapped[str] = mapped_column(String, primary_key=True)  # fil_<ulid>
+    project_id: Mapped[str] = mapped_column(ForeignKey("project.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(Text)  # the uploader's file name, without any folder
+    media_type: Mapped[str] = mapped_column(Text)  # what the content is (sniffed), not what the uploader said
+    size: Mapped[int] = mapped_column(Integer)
+    sha256: Mapped[str] = mapped_column(Text)
+    data: Mapped[bytes] = mapped_column(LargeBinary, deferred=True)
+    source: Mapped[str] = mapped_column(Text, server_default=text("'upload'"), default="upload")  # upload|share|api
+    # a share link's visitor (S23): only the visitor who uploaded it may use it, and only on that link
+    deployment_id: Mapped[str | None] = mapped_column(ForeignKey("deployment.id", ondelete="CASCADE"))
+    visitor_hash: Mapped[str | None] = mapped_column(Text)
+    created_by: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = _now()
+    last_used_at: Mapped[datetime] = _now()
 
 
 class ShareThread(Base):
@@ -191,6 +250,9 @@ class ShareThread(Base):
     deployment_id: Mapped[str] = mapped_column(ForeignKey("deployment.id", ondelete="CASCADE"), index=True)
     visitor_hash: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = _now()
+    # what the visitor saw, so a reload brings the conversation back (G-15): [{role, text, run_id?, ...}]
+    transcript: Mapped[list[Any]] = mapped_column(Json, server_default=text("'[]'"), default=list)
+    closed: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)  # "New conversation"
 
 
 class Thread(Base):
@@ -202,13 +264,13 @@ class Thread(Base):
     )
     id: Mapped[str] = mapped_column(String, primary_key=True)  # == LangGraph thread_id
     workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"))
-    deployment_id: Mapped[str | None] = mapped_column(ForeignKey("deployment.id"))
+    deployment_id: Mapped[str | None] = mapped_column(ForeignKey("deployment.id", ondelete="SET NULL"))
     title: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text, server_default=text("'idle'"), default="idle")
     created_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
     created_at: Mapped[datetime] = _now()
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"), onupdate=func.now(), nullable=False
+        UtcDateTime(), server_default=text("CURRENT_TIMESTAMP"), onupdate=func.now(), nullable=False
     )
     # a paused run of a framework without its own checkpoints (runtime/paused.py), as that framework's JSON
     paused_state: Mapped[str | None] = mapped_column(Text)
@@ -223,7 +285,7 @@ class Run(Base):
     )
     id: Mapped[str] = mapped_column(String, primary_key=True)
     thread_id: Mapped[str] = mapped_column(ForeignKey("thread.id", ondelete="CASCADE"))
-    workflow_version_id: Mapped[str | None] = mapped_column(ForeignKey("workflow_version.id"))
+    workflow_version_id: Mapped[str | None] = mapped_column(ForeignKey("workflow_version.id", ondelete="SET NULL"))
     ir_hash: Mapped[str] = mapped_column(Text)
     mode: Mapped[str] = mapped_column(Text, server_default=text("'normal'"), default="normal")
     status: Mapped[str] = mapped_column(Text)
@@ -240,14 +302,51 @@ class Run(Base):
     context: Mapped[dict[str, Any] | None] = mapped_column(Json)
     # FR-X-13 cassette of a fresh run: its input, each model resource's replies, status, route and output
     recording: Mapped[dict[str, Any] | None] = mapped_column(Json)
+    # G-10: the run's events, compact (`runtime/trajectory.py`): the trajectory view once they left memory
+    events: Mapped[list[Any] | None] = mapped_column(Json)
     # FR-X-10: stopped by a server shutdown before it finished; the next instance continues the thread
     handover: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     # S12: refreshed while the run's instance is alive; a running run without a fresh heartbeat lost its instance
-    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    heartbeat_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
     # S13: what the deployment API caller tagged the run with (online evaluator filters, annotation rules)
     labels: Mapped[dict[str, Any] | None] = mapped_column(Json)
+    # the runner's origin: "user", "test" (experiments, test cases, Copilot test runs), … NULL before it was kept
+    origin: Mapped[str | None] = mapped_column(Text)
     started_at: Mapped[datetime] = _now()
-    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ended_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
+
+
+class RunSearch(Base):
+    """G-10: a finished run's input and answer, embedded for "find conversations where …". One row per run; it goes
+    with its run (retention, deleting the conversation or the workflow). `model` is the embedding model that made
+    the vector: a search ranks only the rows of the project's current model, `reindex` redoes the others."""
+
+    __tablename__ = "run_search"
+    __table_args__ = (Index("run_search_project_idx", "project_id", "created_at"),)
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("run.id", ondelete="CASCADE"), unique=True)
+    thread_id: Mapped[str] = mapped_column(Text, index=True)
+    workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("project.id", ondelete="CASCADE"))
+    text: Mapped[str] = mapped_column(Text)
+    vector: Mapped[bytes | None] = mapped_column(LargeBinary)  # float32, little-endian
+    model: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = _now()
+
+
+class Presence(Base):
+    """G-4: a tab of the editor that has a workflow open (a session), refreshed by its heartbeat. Rows older than the
+    TTL (`services/presence.py`) are not shown and are deleted by later heartbeats; the workflow's deletion takes
+    them with it."""
+
+    __tablename__ = "presence"
+    __table_args__ = (Index("presence_seen_idx", "workflow_id", "seen_at"),)
+    workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"), primary_key=True)
+    session_id: Mapped[str] = mapped_column(String, primary_key=True)
+    user_id: Mapped[str] = mapped_column(Text)
+    selected: Mapped[str | None] = mapped_column(Text)  # the block (node or resource id) the tab has selected
+    version: Mapped[int | None] = mapped_column(Integer)  # the workflow version the tab has
+    seen_at: Mapped[datetime] = _now()
 
 
 class InterruptTask(Base):
@@ -268,7 +367,32 @@ class InterruptTask(Base):
     decision: Mapped[dict[str, Any] | None] = mapped_column(Json)
     decided_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
     created_at: Mapped[datetime] = _now()
-    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decided_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
+
+
+class A2AReply(Base):
+    """What a remote A2A agent answered one step so far (`adapters/langchain/interop.py`): a step paused for the
+    agent's question continues on the same remote task, on any replica and after a restart (G-9)."""
+
+    __tablename__ = "a2a_reply"
+    thread_id: Mapped[str] = mapped_column(ForeignKey("thread.id", ondelete="CASCADE"), primary_key=True)
+    step: Mapped[str] = mapped_column(Text, primary_key=True)  # checkpoint namespace | canvas node id
+    replies: Mapped[list[Any]] = mapped_column(Json, server_default=text("'[]'"), default=list)
+    updated_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(), server_default=text("CURRENT_TIMESTAMP"), onupdate=func.now(), nullable=False
+    )
+
+
+class AnswerCacheRow(Base):
+    """A model answer kept by the gateway's answer cache (`adapters/langchain/answer_cache.py`), shared by replicas."""
+
+    __tablename__ = "answer_cache"
+    __table_args__ = (Index("answer_cache_expires_idx", "project_id", "expires_at"),)
+    project_id: Mapped[str] = mapped_column(ForeignKey("project.id", ondelete="CASCADE"), primary_key=True)
+    key: Mapped[str] = mapped_column(String, primary_key=True)  # the request's hash
+    answer: Mapped[dict[str, Any]] = mapped_column(Json)  # the AIMessage
+    created_at: Mapped[datetime] = _now()
+    expires_at: Mapped[datetime] = mapped_column(UtcDateTime())
 
 
 class Secret(Base):
@@ -351,6 +475,9 @@ class KnowledgeBase(Base):
     chunking: Mapped[dict[str, Any]]  # {"strategy", "size", "overlap"}
     stale: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     version: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    # web re-crawl (G-6): {"every_hours", "sitemaps": {sitemap url: [page urls]}, "last": {at, added, updated, ...}}
+    recrawl: Mapped[dict[str, Any] | None] = mapped_column(Json, nullable=True)
+    crawled_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)  # claimed by the crawl job
     created_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
     created_at: Mapped[datetime] = _now()
     updated_at: Mapped[datetime] = _now()
@@ -414,10 +541,10 @@ class Experiment(Base):
     error: Mapped[str | None] = mapped_column(Text)
     owner: Mapped[str | None] = mapped_column(Text)  # the instance working on it (S13); taking over changes it
     # refreshed by the instance working on it; a running experiment without a fresh heartbeat is taken over
-    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    heartbeat_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
     created_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
     created_at: Mapped[datetime] = _now()
-    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ended_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
 
 
 class ExperimentResult(Base):
@@ -463,6 +590,28 @@ class ReleaseGate(Base):
     dataset_version: Mapped[int | None] = mapped_column(Integer)
     evaluators: Mapped[list[Any] | None] = mapped_column(Json)  # [{name, kind, config, threshold}]
     updated_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
+    updated_at: Mapped[datetime] = _now()
+
+
+class GitLink(Base):
+    """G-14: a workflow connected to a branch of a GitHub repository (pull requests out, imports back)."""
+
+    __tablename__ = "git_link"
+    workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"), primary_key=True)
+    repo: Mapped[str] = mapped_column(Text)  # owner/name
+    branch: Mapped[str] = mapped_column(Text)
+    folder: Mapped[str] = mapped_column(Text, default="", server_default=text("''"))
+    token_secret: Mapped[str] = mapped_column(Text, default="GITHUB_TOKEN", server_default=text("'GITHUB_TOKEN'"))
+    target: Mapped[str] = mapped_column(Text, default="local", server_default=text("'local'"))
+    auto: Mapped[str] = mapped_column(Text, default="publish", server_default=text("'publish'"))  # off|publish|version
+    repo_hash: Mapped[str | None] = mapped_column(Text)  # hash of the IR the branch held when we last pushed or pulled
+    pr_number: Mapped[int | None] = mapped_column(Integer)
+    pr_url: Mapped[str | None] = mapped_column(Text)
+    last_version: Mapped[str | None] = mapped_column(Text)  # the version (or "draft") last pushed
+    last_synced_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
+    last_error: Mapped[str | None] = mapped_column(Text)
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
+    created_at: Mapped[datetime] = _now()
     updated_at: Mapped[datetime] = _now()
 
 
@@ -534,7 +683,7 @@ class EvalAlert(Base):
     value: Mapped[float] = mapped_column(Float)  # the window mean that broke the rule
     baseline: Mapped[float | None] = mapped_column(Float)  # the trailing mean ("drop")
     created_at: Mapped[datetime] = _now()
-    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    resolved_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
 
 
 class CostAlert(Base):
@@ -620,7 +769,7 @@ class Trigger(Base):
     __table_args__ = (CheckConstraint("kind IN ('webhook','cron')", name="trigger_kind"),)
     id: Mapped[str] = mapped_column(String, primary_key=True)
     workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"))
-    deployment_id: Mapped[str | None] = mapped_column(ForeignKey("deployment.id"))
+    deployment_id: Mapped[str | None] = mapped_column(ForeignKey("deployment.id", ondelete="SET NULL"))
     kind: Mapped[str] = mapped_column(Text)
     config: Mapped[dict[str, Any]]
     enabled: Mapped[bool] = mapped_column(Boolean, server_default=text("true"), default=True)
@@ -694,10 +843,15 @@ class EventDedup(Base):
 
 
 class CopilotConversation(Base):
-    """A person's Copilot chat about one workflow (S14): one per (workflow, user); "New chat" starts it over."""
+    """A person's Copilot chat about one workflow (S14). One is open per (workflow, user); "New chat" archives it,
+    and an archived one can be reopened. `busy_until` is the lease of the turn answering now (one at a time)."""
 
     __tablename__ = "copilot_conversation"
-    __table_args__ = (UniqueConstraint("workflow_id", "user_id"),)
+    __table_args__ = (
+        Index("copilot_conversation_open_once", "workflow_id", "user_id", unique=True,
+              postgresql_where=text("archived_at IS NULL"), sqlite_where=text("archived_at IS NULL")),
+        Index("copilot_conversation_by_person", "workflow_id", "user_id", "updated_at"),
+    )  # fmt: skip
     id: Mapped[str] = mapped_column(String, primary_key=True)
     workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"))
     user_id: Mapped[str] = mapped_column(Text)
@@ -705,7 +859,122 @@ class CopilotConversation(Base):
     brief: Mapped[dict[str, Any] | None] = mapped_column(Json, nullable=True)
     proposals: Mapped[list[Any]] = mapped_column(Json, server_default=text("'[]'"), default=list)
     usage: Mapped[dict[str, Any]] = mapped_column(Json, server_default=text("'{}'"), default=dict)
+    title: Mapped[str | None] = mapped_column(Text)
+    model: Mapped[str | None] = mapped_column(Text)  # chosen for this conversation (within policy); null: the project's
+    archived_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
+    busy_until: Mapped[datetime | None] = mapped_column(UtcDateTime())
     created_at: Mapped[datetime] = _now()
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"), onupdate=func.now(), nullable=False
+        UtcDateTime(), server_default=text("CURRENT_TIMESTAMP"), onupdate=func.now(), nullable=False
     )
+
+
+class PersonalToken(Base):
+    """A person's API token (G-13): `Authorization: Bearer act_…` acts as them in one organisation, with at most the
+    role chosen when it was made. Only the SHA-256 of the token is kept; it is shown once."""
+
+    __tablename__ = "personal_token"
+    __table_args__ = (
+        CheckConstraint("role IN ('admin','builder','reviewer','viewer')", name="personal_token_role"),
+        Index("personal_token_owner_idx", "org_id", "user_id"),
+    )
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    org_id: Mapped[str] = mapped_column(ForeignKey("organization.id", ondelete="CASCADE"))
+    user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(Text)
+    token_hash: Mapped[str] = mapped_column(Text, unique=True)
+    prefix: Mapped[str] = mapped_column(Text)  # the first characters, shown to tell tokens apart
+    role: Mapped[str] = mapped_column(Text)  # the most it may do; the person's role now applies when that is lower
+    expires_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
+    last_used_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
+    revoked_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
+    created_at: Mapped[datetime] = _now()
+
+
+class ScimGroup(Base):
+    """A group the identity provider provisions over SCIM (G-13). Its `display_name` is looked up in the organisation's
+    groups table (`organization.sso_groups`) for the role its members get."""
+
+    __tablename__ = "scim_group"
+    __table_args__ = (UniqueConstraint("org_id", "display_name"),)
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    org_id: Mapped[str] = mapped_column(ForeignKey("organization.id", ondelete="CASCADE"), index=True)
+    display_name: Mapped[str] = mapped_column(Text)
+    external_id: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = _now()
+    updated_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(), server_default=text("CURRENT_TIMESTAMP"), onupdate=func.now(), nullable=False
+    )
+
+
+class ScimGroupMember(Base):
+    __tablename__ = "scim_group_member"
+    group_id: Mapped[str] = mapped_column(ForeignKey("scim_group.id", ondelete="CASCADE"), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), primary_key=True)
+
+
+class OAuthConnection(Base):
+    """A sign-in to an MCP server that needs one (G-7): one person's (`owner` is their user id) or the organisation's
+    service identity (`owner = 'service'`). The tokens are encrypted with the organisation's data key."""
+
+    __tablename__ = "oauth_connection"
+    __table_args__ = (
+        UniqueConstraint("org_id", "owner", "resource"),
+        CheckConstraint("status IN ('active','reconnect')", name="oauth_connection_status"),
+    )
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    org_id: Mapped[str] = mapped_column(ForeignKey("organization.id", ondelete="CASCADE"), index=True)
+    owner: Mapped[str] = mapped_column(Text)
+    resource: Mapped[str] = mapped_column(Text)  # the MCP server's address, canonical
+    issuer: Mapped[str] = mapped_column(Text)
+    token_endpoint: Mapped[str] = mapped_column(Text)
+    revocation_endpoint: Mapped[str | None] = mapped_column(Text)
+    client_id: Mapped[str] = mapped_column(Text)
+    client_secret_enc: Mapped[bytes | None] = mapped_column(LargeBinary)
+    access_token_enc: Mapped[bytes] = mapped_column(LargeBinary)
+    refresh_token_enc: Mapped[bytes | None] = mapped_column(LargeBinary)
+    expires_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
+    scope: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, server_default=text("'active'"), default="active")
+    created_by: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = _now()
+    updated_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(), server_default=text("CURRENT_TIMESTAMP"), onupdate=func.now(), nullable=False
+    )
+
+
+class OAuthFlow(Base):
+    """A sign-in in progress: made when the browser is sent to the authorization server, used up by the first answer
+    that comes back (or discarded when it expires). `state_hash` is the SHA-256 of the `state` the browser carries."""
+
+    __tablename__ = "oauth_flow"
+    state_hash: Mapped[str] = mapped_column(String, primary_key=True)
+    org_id: Mapped[str] = mapped_column(ForeignKey("organization.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[str] = mapped_column(Text)  # who started it: only they can finish it
+    owner: Mapped[str] = mapped_column(Text)
+    resource: Mapped[str] = mapped_column(Text)
+    issuer: Mapped[str] = mapped_column(Text)
+    token_endpoint: Mapped[str] = mapped_column(Text)
+    revocation_endpoint: Mapped[str | None] = mapped_column(Text)
+    client_id: Mapped[str] = mapped_column(Text)
+    client_secret_enc: Mapped[bytes | None] = mapped_column(LargeBinary)
+    iss_in_response: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    verifier_enc: Mapped[bytes] = mapped_column(LargeBinary)  # the PKCE code verifier
+    return_to: Mapped[str] = mapped_column(Text, server_default=text("'/'"), default="/")
+    expires_at: Mapped[datetime] = mapped_column(UtcDateTime())
+
+
+class OAuthClient(Base):
+    """AgentCanvas's client at an authorization server, once per organisation: a dynamic registration it made itself,
+    or client credentials an admin entered (N-5). Entered credentials are for the MCP servers the admin entered them
+    with (`resources`), never for another server that names the same sign-in server (CP-3)."""
+
+    __tablename__ = "oauth_client"
+    org_id: Mapped[str] = mapped_column(ForeignKey("organization.id", ondelete="CASCADE"), primary_key=True)
+    issuer: Mapped[str] = mapped_column(Text, primary_key=True)
+    redirect_uri: Mapped[str] = mapped_column(Text, primary_key=True)
+    client_id: Mapped[str] = mapped_column(Text)
+    client_secret_enc: Mapped[bytes | None] = mapped_column(LargeBinary)
+    # entered by an admin: the MCP servers (canonical addresses) they are for. None: AgentCanvas registered itself
+    resources: Mapped[list[Any] | None] = mapped_column(Json, nullable=True)
+    created_at: Mapped[datetime] = _now()

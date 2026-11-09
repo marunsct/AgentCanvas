@@ -31,7 +31,7 @@ for example look up an order, then write a reply based on what it found.
 
 ## Build your first workflow in 5 steps
 
-Before you start, pick your AI model once on the home page (**Model**, or the *Set up your model* banner). Every
+Before you start, pick your AI model once (the *Set up your model* banner on Home, or **Settings › Models**). Every
 new AI model block uses it automatically.
 
 1. On the home page, type a name and press **Create empty**.
@@ -55,16 +55,21 @@ through six steps and ticks each one off as you do it.
 ## Try a model first: the Playground
 
 Not sure yet what to build? Open **Playground** (top of the home page, or **Try a model in the playground**).
-Pick a model, write its instructions, and chat with it. When the answers look right, give it a name and press
-**Make it a workflow**: you get a workflow with one AI agent that has those instructions and that model, ready for
-tools, approvals and more steps. Nothing you type in the playground is saved.
+Pick a model, write its instructions, and chat with it. **Temperature** makes the answers more predictable (lower)
+or more varied (higher); models that always use their own sampling, such as current Claude models, have it switched
+off. If the project's [Workspace](workspace.md) has tools, tick the ones the model may call: each call and its
+result show above the answer (tools run for real). When the answers look right, give it a name and press **Make it a workflow**: you get a workflow with one AI
+agent that has those instructions, that model, that temperature and those tools, ready for tools, approvals and more steps.
+Nothing you type in the playground is saved.
 
 ## Simple mode
 
 At the top of the editor, **Simple** shows only what a first workflow needs: the blocks that ask AI, run an agent,
-choose a path, set values or ask a person, with their models and tools; and the Inspector, Copilot and Run panels.
-The power tools (subgraphs, frames, blast radius, versions, code, the workspace) are hidden, not removed: press
-**Full** to see everything again. The editor remembers your choice in this browser.
+choose a path, set values or ask a person, with their models and tools; and the Inspector, Copilot, Run and
+Versions panels, so you can still publish. **Evaluate** stays on the bar and **More** still opens the workspace,
+knowledge and memory. The power tools (subgraphs, maps, frames, blast radius, tests, code) are hidden, not removed:
+press **Full** to see everything again. The editor remembers your choice in this browser and with your account, so it opens
+the same way wherever you sign in (also under **Settings › Appearance › Editor**).
 
 Built something in Langflow, Flowise or n8n before? [Import it](switching.md).
 
@@ -90,7 +95,7 @@ Built something in Langflow, Flowise or n8n before? [Import it](switching.md).
 | *has no outgoing flow edge* | A dead end: nothing comes after this step. | Click its right-hand dot and choose the next step, or Finish. |
 | *refers to unknown state channel* | A step uses a data field that does not exist. | Click empty canvas and add the field with **+ Channel**, using the exact name. |
 | *template error* | A `{{ }}` is not closed. | Every `{{` needs a matching `}}`. |
-| The run says the API key is wrong | The AI provider refused your key. | Re-enter it on the home page under **Model**, or in Workspace → Secrets. |
+| The run says the API key is wrong | The AI provider refused your key. | Re-enter it in **Settings › Models**, or replace the secret in **Settings › Secrets**. |
 | The run says connection refused | The AI model's server could not be reached. | If you use Ollama or LM Studio, make sure it is running. |
 
 Next: browse the [Block reference](widgets.md) or read [Core concepts](concepts.md) for the details.
