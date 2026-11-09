@@ -94,7 +94,7 @@ same one as the [deployment API](publish.md), with the same rate limits.
 | Transport | Streamable HTTP (every answer is one JSON message; no server-sent stream) |
 | Protocol | MCP `2026-07-28` (no handshake: `server/discover`, the version in each request) and the earlier revisions back to `2024-11-05` for clients that open with `initialize` |
 | Sign-in | `Authorization: Bearer <deployment key>` |
-| Tools | one tool named after the workflow, with the workflow's input fields; plus `answer` when the workflow can pause for a person |
+| Tools | one tool named after the workflow, with the workflow's input fields; plus `answer` when the workflow can pause for a person and the client cannot show forms (see below) |
 
 **Claude Desktop** connects to remote servers through [`mcp-remote`](https://www.npmjs.com/package/mcp-remote)
 (needs Node.js). Add this to `claude_desktop_config.json` and restart Claude Desktop:
@@ -119,9 +119,19 @@ Each deployment also has an **MCP Server Card** at `https://<your AgentCanvas>/a
 before connecting. It never contains the key. Its name is the public host reversed and the workflow's tool name
 (`com.example.agents/greeter`), so set `AGENTCANVAS_PUBLIC_URL` for a stable one.
 
-When a run pauses for an approval or a question, the tool's answer says so and gives a `thread_id`; the calling
-agent continues it with `answer` (`approve: true` or `false`, or `text` for a question). To continue a
-conversation, pass the `thread_id` of the earlier run to the workflow's tool.
+When a run pauses for an approval or a question, who answers depends on the client:
+
+- **Clients that show forms** (MCP `2026-07-28` clients declaring `elicitation`): the client shows the person a
+  form (approve or reject with a comment, or the answer to the question, shaped by the question's answer schema)
+  and sends the answer back by retrying the call, and the run goes on. The calling model never answers for the
+  person, so it cannot approve its own tool calls; these clients get no `answer` tool. The form's answer is tied
+  to the deployment key that started the call, to that call and its arguments, and to 15 minutes; a pause is
+  answered once. Declining an approval rejects it; closing the form leaves the run waiting (it can still be
+  answered in the **Inbox**). Each answer that leads to another pause asks again.
+- **Other clients**: the tool's answer says the run paused and gives a `thread_id`; the calling agent continues
+  it with `answer` (`approve: true` or `false`, or `text` for a question).
+
+To continue a conversation, pass the `thread_id` of the earlier run to the workflow's tool.
 
 A tool call waits up to 5 minutes for the run. A longer run answers `running` with its `run_id` and the address
 of its result (`GET /v1/deployments/<id>/runs/<run_id>` with the deployment key, see

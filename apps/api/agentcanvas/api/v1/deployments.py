@@ -332,13 +332,13 @@ class ApiRunIn(BaseModel):
     metadata: dict[str, Annotated[str, StringConstraints(max_length=200)]] = Field(
         default_factory=dict, max_length=20, description="labels for this run; online evaluators can filter on them"
     )
-    callback_url: str | None = Field(None, max_length=2000, description=CALLBACK_HELP)
+    callback_url: str | None = Field(default=None, max_length=2000, description=CALLBACK_HELP)
 
 
 class ApiResumeIn(BaseModel):
     value: Any = None
     interrupt_id: str | None = None
-    callback_url: str | None = Field(None, max_length=2000, description=CALLBACK_HELP)
+    callback_url: str | None = Field(default=None, max_length=2000, description=CALLBACK_HELP)
 
 
 class ApiResult(BaseModel):

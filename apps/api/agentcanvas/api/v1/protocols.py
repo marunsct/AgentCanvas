@@ -21,6 +21,7 @@ import contextlib
 import hashlib
 import json
 import re
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -30,8 +31,10 @@ from pydantic import ValidationError
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from agentcanvas.api.audit import note, payload_hash
 from agentcanvas.api.deps import get_session, get_settings_dep
 from agentcanvas.api.urls import api_base, api_url
+from agentcanvas.api.v1 import mcp_input
 from agentcanvas.api.v1.deployments import (
     ApiResult,
     ApiRunIn,
@@ -77,6 +80,8 @@ V1_STATES = {
     "canceled": "TASK_STATE_CANCELED", "failed": "TASK_STATE_FAILED",
 }  # fmt: skip
 CANCEL_WAIT_S = 5.0  # how long CancelTask waits for a run stopped on this server to save its outcome
+PAUSES_ANSWERED = " It can pause for a person: then call `answer`."
+PAUSES_ASKED = " It can pause for a person: your client then asks you, and the run goes on with your answer."
 TEXT_FIELDS = ("message", "question", "query", "input", "text", "request", "prompt", "ticket")
 
 
@@ -196,7 +201,17 @@ async def _resume(
 
 
 # ---------------------------------------------------------------------------------------------- MCP ----
-def _mcp_tools(wf: Workflow, c: Contract) -> list[dict[str, Any]]:
+@dataclass(frozen=True)
+class Caller:
+    """What a 2026-07-28 client declared on the request (F-1)."""
+
+    ask: bool = False  # it takes form elicitation: a pause asks the person through the client (input_required)
+
+
+LEGACY = Caller()
+
+
+def _mcp_tools(wf: Workflow, c: Contract, caller: Caller = LEGACY) -> list[dict[str, Any]]:
     props: dict[str, Any] = {k: dict(v) for k, v in c.input.items()}
     if c.context:
         props["context"] = {"type": "object", "properties": c.context, "description": "run context fields"}
@@ -208,12 +223,12 @@ def _mcp_tools(wf: Workflow, c: Contract) -> list[dict[str, Any]]:
             "title": wf.name,
             "description": (wf.description or f"Runs the {wf.name} workflow.")
             + (f" Returns: {', '.join(c.output)}." if c.output else "")
-            + (" It can pause for a person: then call `answer`." if c.pauses else ""),
+            + ((PAUSES_ASKED if caller.ask else PAUSES_ANSWERED) if c.pauses else ""),
             "inputSchema": {"type": "object", "properties": props, "required": required},
             "annotations": {"title": wf.name, "readOnlyHint": False, "openWorldHint": True},
         }
     ]
-    if c.pauses:
+    if c.pauses and not caller.ask:  # a client that shows forms asks the person; the calling model does not answer
         tools.append(
             {
                 "name": "answer",
@@ -260,13 +275,23 @@ def _result_url(request: Request, dep: Deployment, res: ApiResult) -> str:
 
 
 async def _mcp_call(
-    request: Request, session: AsyncSession, dep: Deployment, wf: Workflow, params: dict[str, Any], auth: str | None
+    request: Request,
+    session: AsyncSession,
+    dep: Deployment,
+    wf: Workflow,
+    params: dict[str, Any],
+    auth: str | None,
+    caller: Caller = LEGACY,
 ) -> dict[str, Any]:
     name, args = params.get("name"), params.get("arguments") or {}
     if not isinstance(args, dict):
         raise RpcError(-32602, "arguments must be an object")
     c = contract(wf)
     try:
+        if params.get("requestState") is not None or params.get("inputResponses") is not None:
+            if not caller.ask or name not in (tool_name(wf), "answer"):
+                raise RpcError(-32602, "requestState and inputResponses answer a pause this server asked about")
+            return await _answer_asked(request, session, dep, wf, str(name), args, params)
         if name == tool_name(wf):
             fields = {k: v for k, v in args.items() if k not in ("thread_id", "context")}
             try:
@@ -277,17 +302,95 @@ async def _mcp_call(
                 raise RpcError(-32602, f"invalid arguments: {exc.errors()[0]['msg']}") from None
             h = await _start(request, session, dep.id, body, auth, caller=(dep, wf))
             await session.close()
-            res = await _result(h)
-            return _tool_result(res, _result_url(request, dep, res))
+            return _call_result(request, dep, wf, await _result(h), str(name), args, caller)
         if name == "answer" and c.pauses:
             thread_id, iid = str(args.get("thread_id") or ""), args.get("interrupt_id")
             pending = await _pending(request, session, thread_id, iid)
             value = answer_value(pending, args.get("approve"), args.get("text"), args.get("value"))
             res = await _resume(request, session, dep, wf, thread_id, value, iid)
-            return _tool_result(res, _result_url(request, dep, res))
+            return _call_result(request, dep, wf, res, str(name), args, caller)
     except (InvalidInput, NotFound, Conflict) as exc:  # the caller's mistake: tell the model, it can correct it
         return {"content": [{"type": "text", "text": exc.detail}], "isError": True}
     raise RpcError(-32602, f"unknown tool '{name}'")
+
+
+def _call_result(
+    request: Request, dep: Deployment, wf: Workflow, res: ApiResult, tool: str, args: dict[str, Any], caller: Caller
+) -> dict[str, Any]:
+    """A tool call's answer: a pause asks the person through a client that shows forms, else the run's result."""
+    if caller.ask and res.status == "interrupted" and res.interrupts:
+        return _input_required(request, dep, wf, res.thread_id, res.interrupts[0], tool, args)
+    return _tool_result(res, _result_url(request, dep, res))
+
+
+def _input_required(
+    request: Request,
+    dep: Deployment,
+    wf: Workflow,
+    thread_id: str,
+    interrupt: dict[str, Any],
+    tool: str,
+    args: dict[str, Any],
+) -> dict[str, Any]:
+    """MRTR: one form for the pause (the next one, if several wait: each answer asks the next), and the signed state
+    the client echoes when it retries the call with the person's answer."""
+    state = mcp_input.issue(
+        request.app.state.settings.secret_key, deployment_id=dep.id, key=mcp_input.key_fingerprint(dep.api_key_hash),
+        thread_id=thread_id, interrupt_id=str(interrupt["id"]), tool=tool, arguments=args,
+    )  # fmt: skip
+    return {
+        "resultType": "input_required",
+        "inputRequests": {str(interrupt["id"]): mcp_input.form(interrupt, wf.name)},
+        "requestState": state,
+    }
+
+
+async def _answer_asked(
+    request: Request,
+    session: AsyncSession,
+    dep: Deployment,
+    wf: Workflow,
+    tool: str,
+    args: dict[str, Any],
+    params: dict[str, Any],
+) -> dict[str, Any]:
+    """The retry of a call that paused: verify the state it echoes, then resume the run with the person's answer.
+    The pause must still be open (answered once); an answer that does not fit asks again."""
+    try:
+        state = mcp_input.verify(
+            request.app.state.settings.secret_key, params.get("requestState"), deployment_id=dep.id,
+            key=mcp_input.key_fingerprint(dep.api_key_hash), tool=tool, arguments=args,
+        )  # fmt: skip
+    except mcp_input.InvalidState as exc:
+        raise RpcError(-32602, f"{exc}; call the tool again without it") from None
+    q = select(InterruptTask).where(InterruptTask.id == state.interrupt_id, InterruptTask.thread_id == state.thread_id)
+    row = await session.scalar(q.where(InterruptTask.status == "pending"))
+    if row is None:  # answered already (this retry repeated, or someone answered in the app): where the run is now
+        latest = await session.scalar(
+            select(Run.id).where(Run.thread_id == state.thread_id).order_by(Run.started_at.desc(), Run.id.desc())
+        )
+        found = await ResultRepo(session, request.app.state.runner).of(latest or "", dep.id)
+        if found is None:
+            raise RpcError(-32602, "the paused run is gone (its conversation was deleted)")
+        return _call_result(request, dep, wf, api_result(found), tool, args, Caller(ask=True))
+    interrupt = {"id": row.id, "kind": row.kind, "payload": row.payload}
+    responses = params.get("inputResponses")
+    response = responses.get(row.id) if isinstance(responses, dict) else None
+    outcome, value = mcp_input.answer(interrupt, response, lambda ok, why: answer_value(interrupt, ok, why, None))
+    if outcome == "ask_again":
+        return _input_required(request, dep, wf, state.thread_id, interrupt, tool, args)
+    if outcome in ("declined", "dismissed"):
+        what = "declined to answer" if outcome == "declined" else "closed the question without answering"
+        paused = ApiResult(run_id=row.run_id, thread_id=state.thread_id, status="interrupted", interrupts=[interrupt])
+        return {
+            "content": [{"type": "text", "text": f"The person {what}. The run still waits (thread_id "
+                         f"{state.thread_id}); it can also be answered in AgentCanvas's Inbox."}],
+            "structuredContent": paused.model_dump(exclude_none=True),
+            "isError": True,
+        }  # fmt: skip
+    note(request, interrupt_id=row.id, payload_sha256=payload_hash(value))
+    res = await _resume(request, session, dep, wf, state.thread_id, value, row.id)
+    return _call_result(request, dep, wf, res, tool, args, Caller(ask=True))
 
 
 def _mcp_transport_refusal(request: Request, settings: Settings) -> JSONResponse | None:
@@ -475,9 +578,9 @@ async def _mcp_modern(
                 **cached,
             }  # fmt: skip
         elif method == "tools/list":
-            result = {"tools": _mcp_tools(wf, contract(wf)), **cached}
+            result = {"tools": _mcp_tools(wf, contract(wf), _modern_caller(params)), **cached}
         elif method == "tools/call":
-            result = await _mcp_call(request, session, dep, wf, params, auth)
+            result = await _mcp_call(request, session, dep, wf, params, auth, _modern_caller(params))
         elif method in ("resources/list", "prompts/list", "resources/templates/list"):
             result = {method.split("/")[0] if method != "resources/templates/list" else "resourceTemplates": [],
                       **cached}  # fmt: skip
@@ -487,6 +590,10 @@ async def _mcp_modern(
         return JSONResponse(_rpc_error(id_, e.code, e.message, e.data))
     result = {"resultType": "complete", **result, "_meta": {META_SERVER: server}}
     return JSONResponse({"jsonrpc": "2.0", "id": id_, "result": result}, headers=_marking(method))
+
+
+def _modern_caller(params: dict[str, Any]) -> Caller:
+    return Caller(ask=mcp_input.elicits(params))
 
 
 @router.get("/deployments/{dep_id}/mcp")
