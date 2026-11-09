@@ -7,6 +7,7 @@ vi.mock("../api/client", () => ({
   API_BASE: "/api/v1",
   apiFetch: vi.fn(async (path: string) =>
     path.endsWith("/triggers") ? [{ id: "tr1", kind: "cron", enabled: true, config: { schedule: "0 9 * * 1-5", timezone: "Europe/Berlin" },
+      last_error: "the trigger's deployment is unpublished", failures: 3,
       warnings: ["'github' signs in as the person who started the run, but a trigger's runs have no person"] }] : []),
 }));
 
@@ -31,5 +32,12 @@ describe("TriggersSection (C-10)", () => {
   it("shows what would stop a trigger's runs from working (N-5)", async () => {
     render(<QueryClientProvider client={new QueryClient()}><TriggersSection wfId="wf_1" /></QueryClientProvider>);
     expect((await screen.findByRole("note")).textContent).toContain("'github' signs in as the person who started the run");
+  });
+
+  it("shows a schedule whose runs keep failing to start, and why", async () => {
+    render(<QueryClientProvider client={new QueryClient()}><TriggersSection wfId="wf_1" /></QueryClientProvider>);
+    expect((await screen.findByRole("status")).textContent).toContain(
+      "The last 3 scheduled runs could not start: the trigger's deployment is unpublished",
+    );
   });
 });

@@ -828,6 +828,11 @@ class Trigger(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, server_default=text("true"), default=True)
     # cron: the UTC minute ("YYYY-mm-ddTHH:MM") it last fired for, claimed atomically so replicas fire it once
     last_fired: Mapped[str | None] = mapped_column(String(16))
+    # cron: the run it last started (no foreign key: retention deletes runs), and why its runs could not start, how
+    # many times in a row (cleared by the next run that starts)
+    last_run_id: Mapped[str | None] = mapped_column(String)
+    last_error: Mapped[str | None] = mapped_column(Text)
+    failures: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
     created_at: Mapped[datetime] = _now()
 
 

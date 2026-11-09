@@ -29,6 +29,9 @@ class TriggerOut(BaseModel):
     url: str | None = None  # webhooks: where to POST
     created_at: datetime
     warnings: list[str] = Field(default_factory=list, description="what would stop this trigger's runs from working")
+    last_run_id: str | None = Field(default=None, description="cron: the run it last started")
+    last_error: str | None = Field(default=None, description="cron: why its last run could not start, if it failed")
+    failures: int = Field(default=0, description="cron: runs that could not start in a row")
 
 
 class TriggerCreated(TriggerOut):
@@ -44,6 +47,7 @@ def _out(t: Trigger) -> dict[str, Any]:
         "id": t.id, "kind": t.kind, "deployment_id": t.deployment_id, "enabled": t.enabled,
         "config": {k: v for k, v in t.config.items() if k != "secret"}, "created_at": t.created_at,
         "url": f"/v1/hooks/{t.id}" if t.kind == "webhook" else None,
+        "last_run_id": t.last_run_id, "last_error": t.last_error, "failures": t.failures or 0,
     }  # fmt: skip
 
 

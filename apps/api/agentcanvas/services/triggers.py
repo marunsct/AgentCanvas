@@ -417,9 +417,22 @@ class CronScheduler:
                     )
                     started.append(h.run_id)
                     log.info("cron.fired", trigger=trig.id, run=h.run_id, minute=minute)
+                    outcome: dict[str, Any] = {"last_run_id": h.run_id, "last_error": None, "failures": 0}
                 except Exception as exc:  # noqa: BLE001
                     log.warning("cron.failed", trigger=trig.id, error=str(exc))
+                    outcome = {"last_error": str(exc)[:500] or type(exc).__name__, "failures": Trigger.failures + 1}
+                await self._outcome(trig.id, outcome)
         return started
+
+    async def _outcome(self, trigger_id: str, values: dict[str, Any]) -> None:
+        """Keep how the trigger's last start went, for the trigger list: a schedule that keeps failing is seen, not
+        only logged. Its own session: the scheduler's may hold a failed transaction."""
+        try:
+            async with self.db.sessionmaker() as s:
+                await s.execute(update(Trigger).where(Trigger.id == trigger_id).values(**values))
+                await s.commit()
+        except Exception:  # the run started (or not) whatever this says
+            log.warning("cron.outcome_not_saved", trigger=trigger_id, exc_info=True)
 
     @staticmethod
     async def _claim(s: AsyncSession, trigger_id: str, minute: str) -> bool:

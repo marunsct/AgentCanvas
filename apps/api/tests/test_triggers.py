@@ -290,3 +290,26 @@ async def test_a_cron_trigger_keeps_its_time_zone(app, api_client):
     fired = await app.state.cron.tick(at("2027-07-16T06:00"))  # 08:00 in Berlin
     assert len(fired) == 1
     await _finish(app, fired)
+
+
+async def test_a_schedule_that_cannot_start_its_run_says_why_in_the_trigger_list(app, api_client):
+    """A failed start (the deployment unpublished, a security gate) was only a warning in the server log: a nightly
+    job could fail for weeks without anyone seeing it."""
+    wf = await make_greeter(api_client)
+    pub = (await api_client.post(f"/v1/workflows/{wf}/publish", json={})).json()
+    r = await api_client.post(
+        f"/v1/workflows/{wf}/triggers",
+        json={"kind": "cron", "deployment_id": pub["deployment"]["id"], "config": {"schedule": "* * * * *"}},
+    )
+    assert r.status_code == 201, r.text
+    assert (r.json()["last_run_id"], r.json()["last_error"], r.json()["failures"]) == (None, None, 0)
+    fired = await app.state.cron.tick(at("2026-10-06T09:00"))
+    await _finish(app, fired)
+    [trig] = (await api_client.get(f"/v1/workflows/{wf}/triggers")).json()
+    assert (trig["last_run_id"], trig["last_error"], trig["failures"]) == (fired[0], None, 0)
+
+    await api_client.delete(f"/v1/deployments/{pub['deployment']['id']}")
+    for minute in ("09:01", "09:02"):
+        assert await app.state.cron.tick(at(f"2026-10-06T{minute}")) == []
+    [trig] = (await api_client.get(f"/v1/workflows/{wf}/triggers")).json()
+    assert "unpublished" in trig["last_error"] and trig["failures"] == 2 and trig["last_run_id"] == fired[0]

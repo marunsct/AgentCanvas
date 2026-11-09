@@ -2,7 +2,10 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { API_BASE, apiFetch } from "../api/client";
-import type { DeploymentOut, TriggerCreated, TriggerOut } from "../api/generated";
+import type { DeploymentOut, TriggerCreated, TriggerOut as GeneratedTriggerOut } from "../api/generated";
+
+/** With a cron trigger's last outcome, which the generated API types do not have yet. */
+type TriggerOut = GeneratedTriggerOut & { last_run_id?: string | null; last_error?: string | null; failures?: number };
 
 export function TriggersSection({ wfId }: { wfId: string }) {
   const qc = useQueryClient();
@@ -81,6 +84,11 @@ export function TriggersSection({ wfId }: { wfId: string }) {
               <button type="button" className="link small" aria-label={`delete trigger ${t.id}`} onClick={() => void remove(t)}>✕</button>
             </div>
             {(t.warnings ?? []).map((w) => <p key={w} className="small warn-text" role="note">⚠ {w}</p>)}
+            {t.kind === "cron" && t.last_error && (
+              <p className="small error-text" role="status">
+                ⚠ {(t.failures ?? 1) > 1 ? `The last ${t.failures} scheduled runs` : "The last scheduled run"} could not start: {t.last_error}
+              </p>
+            )}
           </li>
         ))}
       </ul>
