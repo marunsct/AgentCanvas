@@ -1,4 +1,4 @@
-"""Framework versions are written in several places; they must not drift apart (see HARDENING.md).
+"""Framework versions are written in several places; they must not drift apart (see docs/developer/hardening.md).
 
 `designs.AGENT_FRAMEWORKS` is the source for what an export installs; the others are checked against it.
 """

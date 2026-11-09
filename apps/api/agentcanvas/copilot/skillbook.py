@@ -1,5 +1,5 @@
-"""The Copilot's skills (PLAN.md section 2.2): `skills/<name>/SKILL.md`, which the Deep Agents engine lists by name
-and description and reads when one applies.
+"""The Copilot's skills (product-plan-2026-10.md §2.2): `skills/<name>/SKILL.md`, which the Deep Agents engine
+lists by name and description and reads when one applies.
 
 The `build-for-<framework>` skills say what a framework runs on the canvas. Their advice is written by hand; their
 facts are filled in here from the adapters' manifests (`registry/adapters/*.json`), the agent frameworks

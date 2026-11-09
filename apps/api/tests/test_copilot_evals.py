@@ -85,7 +85,7 @@ def test_min_pass_fails_a_suite_below_it(monkeypatch):
 def test_the_make_target_is_documented_and_runs_both_suites():
     out = subprocess.run(["make", "-n", "copilot-evals"], cwd=ROOT, capture_output=True, text=True, check=True).stdout
     assert re.search(r"--suite both .*--fallback-to-demo", out) and "ollama:qwen3" in out
-    pages = [ROOT / "docs/user-guide/copilot.md", ROOT / "docs/agent-canvas-spec/build-guide/14-copilot-evaluation.md"]
+    pages = [ROOT / "docs/user-guide/copilot.md", ROOT / "docs/developer/build-guide/14-copilot-evaluation.md"]
     assert all("make copilot-evals" in p.read_text() for p in pages)
 
 

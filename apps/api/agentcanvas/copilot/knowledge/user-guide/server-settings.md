@@ -51,7 +51,7 @@ Lists are JSON (`["a", "b"]`), booleans `true` or `false`. Settings whose names 
 | `AGENTCANVAS_LANGSMITH_SANDBOX_ENDPOINT` |  | None = the SDK default (LANGSMITH_ENDPOINT) |
 | `AGENTCANVAS_LANGSMITH_IDLE_S` | `600` | idle sandboxes stop after this (a multiple of 60) |
 | `AGENTCANVAS_RECURSION_LIMIT` | `50` | steps one run may take before it stops (LangGraph's recursion limit) |
-| `AGENTCANVAS_COPILOT_ENGINE` | `"loop"` | the Copilot's engine: our own tool loop, or LangChain's Deep Agents harness (PLAN.md section 2; the loop stays the default until Deep Agents has passed the same suite and the real-model evaluation) |
+| `AGENTCANVAS_COPILOT_ENGINE` | `"loop"` | the Copilot's engine: our own tool loop, or LangChain's Deep Agents harness (the loop stays the default until Deep Agents has passed the same suite and the real-model evaluation) |
 | `AGENTCANVAS_CORS_ORIGINS` | `['http://localhost:5173']` | browser origins allowed to call the API |
 | `AGENTCANVAS_PUBLIC_URL` |  | where people reach the web app, e.g. https://canvas.example.com: OAuth sign-ins to app connectors return to <public_url>/oauth/callback and (https only) authorization servers fetch our client metadata document from <public_url>/api/v1/oauth/client-metadata.json. Unset: the first CORS origin (the development server). |
 | `AGENTCANVAS_REFUSE_CLIENTS` | `[]` | networks whose requests get 403: the one the API shares with the sandbox service (compose: sandbox-control), so workspace code there cannot call the API from inside |
