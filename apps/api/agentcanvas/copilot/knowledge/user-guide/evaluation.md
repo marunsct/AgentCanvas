@@ -36,6 +36,7 @@ An evaluator scores one run from 0 to 1, passes or fails it at a threshold (*pas
 | **workspace code** | your own function in `scripts/` |
 | **retrieval** | the passages a Search knowledge block found against the example's relevant documents (recall, precision, hit or MRR at *k*; see [Knowledge](knowledge.md#measure-retrieval)) |
 | **composite** | a weighted mix of other evaluators, or all/any must pass. A part that cannot score (no reference, no model) is left out of the weighted mix, but counts as failed for all/any |
+| **AI classification** | a model puts the output in one of your categories (polite or rude, on topic or not), asked the way a **Decide with AI** block asks; it passes in a category you mark as passing, and with a **minimum confidence** only when the model is that sure. A failed run's comment says which category it chose and why |
 | **red team** | whether the workflow held against an attack example: no secret phrase or personal data in the reply, a refusal, or a safety block that stopped the run (see [Red team](#red-team)) |
 | **pairwise judge** | which of two answers is better (asked twice with the answers swapped to avoid position bias); reports a win rate with a confidence interval |
 
