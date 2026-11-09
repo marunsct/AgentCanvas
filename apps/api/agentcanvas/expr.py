@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import json
+import math
 from functools import lru_cache
 from typing import Any
 
@@ -107,9 +108,10 @@ def decision(text: str, choices: list[str] | dict[str, str]) -> dict[str, Any]:
     choice = str(found.get("choice", "")).strip()
     raw = found.get("confidence")
     try:
-        confidence = min(1.0, max(0.0, float(raw))) if isinstance(raw, int | float | str) else None
+        value = float(raw) if isinstance(raw, int | float | str) else math.nan
     except ValueError:
-        confidence = None
+        value = math.nan
+    confidence = min(1.0, max(0.0, value)) if math.isfinite(value) else None
     return {"choice": choice if choice in choices else None, "confidence": confidence,
             "reason": str(found.get("reason") or "")[:500]}  # fmt: skip
 

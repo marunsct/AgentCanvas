@@ -157,6 +157,19 @@ def _step(wf: Workflow, n: Node, fn: str, names: _Names) -> str:
         )  # fmt: skip
     if n.type == "core.agent":
         return _agent(wf, n, names, head)
+    if n.type == "core.decide":
+        prompt, choices = names.take(f"{n.name}_prompt", "upper"), names.take(f"{n.name}_choices", "upper")
+        options = {case["route"]: case.get("description", "") for case in c.get("cases", [])}
+        agent = (
+            f'new Agent({{ id: {_js(_agent_id(n.name))}, name: {_js(n.name)}, instructions: "", '
+            f"model: {_model(wf, n)} }})"
+        )
+        return (
+            f"const {prompt} = {_text(c['prompt'])};\nconst {choices}: Record<string, string> = {_js(options)};\n\n"
+            + head + f"  const agent = {agent};\n"
+            + f"  const reply = await run.text(agent, run.decidePrompt(rt.render({prompt}, state), {choices}));\n"
+            + f"  return run.decision(reply, {choices}, {{ output: {_js(c['output'])} }});\n}}"
+        )  # fmt: skip
     if n.type == "core.approval":
         return head + f"  return run.approval(state, {{ show: {_js(c['show'])}, output: {_js(c['output'])} }});\n}}"
     if n.type == "core.human_input":
@@ -264,15 +277,19 @@ def _flow(wf: Workflow, fns: dict[str, str]) -> str:
         if n.type == "core.router":
             cases = [[case["when"], case["route"]] for case in n.config.get("cases", [])]
             kw.append(f"cases: {_js(cases)}")
-            if n.config.get("default", "default") != "default":
-                kw.append(f"default: {_js(n.config['default'])}")
+        if n.type == "core.decide":
+            kw.append(f"decides: {_js(n.config['output'])}")
+            if n.config.get("min_confidence") is not None:
+                kw.append(f"minConfidence: {_js(n.config['min_confidence'])}")
+        if n.type in ("core.router", "core.decide") and n.config.get("default", "default") != "default":
+            kw.append(f"default: {_js(n.config['default'])}")
         if n.disabled:
             kw.append("disabled: true")
         marker = f" // @canvas-node {one_line(n.id)} ({n.type})" if n.id not in fns else ""
         steps.append(f"    {_js(n.id)}: {{ {', '.join(kw)} }},{marker}")
     for n in wf.nodes:
         edges = [e for e in wf.flow_edges() if e.source.node == n.id and e.target.node != "END"]
-        if n.type == "core.router":
+        if n.type in ("core.router", "core.decide"):
             routes: dict[str, list[str]] = {}
             for e in [e for e in wf.flow_edges() if e.source.node == n.id]:
                 targets = routes.setdefault(e.source.route, [])

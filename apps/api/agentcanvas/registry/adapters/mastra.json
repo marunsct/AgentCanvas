@@ -22,6 +22,7 @@
     "core.script": "emulated",
     "knowledge.search": "emulated",
     "mw.model_call_limit": "emulated",
+    "core.decide": "emulated",
     "*": "unsupported"
   },
   "notes": {
@@ -35,6 +36,7 @@
     "core.llm": "a Mastra Agent with the block's model, asked once with agent.generate",
     "core.agent": "a Mastra Agent (instructions, an AI SDK model, createTool tools, structuredOutput with a Zod schema); tools named in 'Ask before using' get requireApproval: the agent's run suspends, its snapshot is saved with the pause, and it continues with approveToolCallGenerate or declineToolCallGenerate once a person approves, edits or rejects the call (one call per pause)",
     "mw.model_call_limit": "Mastra's own maxSteps: past the limit the agent stops with a note, or the run fails when the block says so",
-    "tool.python": "your workspace tool (Python) runs on the server inside AgentCanvas, and with python3 in exports"
+    "tool.python": "your workspace tool (Python) runs on the server inside AgentCanvas, and with python3 in exports",
+    "core.decide": "a Mastra Agent with the block's model is asked once to pick a path and say how sure it is; the decision {choice, confidence, reason} is saved and the TypeScript flow engine follows the choice (the default path when there is none or it is below the minimum confidence)"
   }
 }
