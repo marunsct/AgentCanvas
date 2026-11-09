@@ -344,7 +344,8 @@ async def test_timeout_routes_to_error_handler(api_client):
     wf = await make(api_client, ir)
     evs = events((await api_client.post(f"/v1/workflows/{wf}/runs/stream", json={"input": {"seconds": 5}})).text)
     fin = evs[-1]
-    assert any(e.get("name") == "ac.warning" for e in evs)
+    # langgraph 1.2.20 runs error handlers while streaming tokens: no more "token streaming is off" warning
+    assert not any(e.get("name") == "ac.warning" and e["value"].get("code") == "tokens_disabled" for e in evs)
     assert fin["status"] == "success" and fin["output"]["out"] == "recovered"
     assert "NodeTimeoutError" in fin["output"]["last_error"] and fin["output"]["last_error"].startswith("slow:")
 

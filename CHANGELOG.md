@@ -117,6 +117,8 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
   and metadata addresses are never reached, and a list naming one is refused (HARDENING S-1).
 
 ### Fixed
+- The memory inspector answers 422 for a namespace label with a period or a control character instead of a server error.
+- Workflows with error routes stream tokens again: LangGraph 1.2.20 runs error handlers in every stream mode, so the "token streaming is off" warning and its workaround are gone.
 - Accessibility (WCAG 2.5.3, Label in Name, found by axe-core 4.14): each block in the palette is now a button named by its visible label, with its description read separately, and the Workspace page's sandbox.json button is named by its visible text.
 - The web image starts with several `TRUSTED_PROXIES` ranges (the Helm chart's default lists three); nginx refused to start with "invalid number of the geo parameters".
 - A request that conflicts with a change saved at the same moment now gets a 409 Conflict asking to retry, instead of an
@@ -913,6 +915,7 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
 - An e2e check that every control in the inspector has an accessible name and stays in the tab order.
 
 ### Changed
+- The server runs LangGraph 1.2.20, LangChain 1.4.9 (core 1.7.6), Deep Agents 0.7.34, the MCP SDK 2.3.0 and FastMCP 4.1.6.
 - The support triage example starts on GPT-5.6 Luna instead of the retiring GPT-5 mini.
 - A temperature set on any Claude model (including Haiku 4.5, Sonnet 4.5 and ids the catalog does not list) is no longer
   sent, so those runs stop failing with a 400; W020 says so in the editor.

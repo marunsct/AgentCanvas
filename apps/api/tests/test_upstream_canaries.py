@@ -39,12 +39,13 @@ async def test_error_handler_works_with_updates_stream():
     assert parts[-1] == {"recover": None} or any("n" in p for p in parts)
 
 
-@pytest.mark.xfail(
-    strict=True, reason="langgraph 1.2.12: error_handler bypassed with stream_mode='messages' (FAQ P-15)"
-)
-async def test_upstream_error_handler_with_messages_stream():
-    async for _ in graph().astream({}, stream_mode="messages"):
-        pass
+@pytest.mark.parametrize("subgraphs", [False, True])
+async def test_upstream_error_handler_with_every_stream_mode(subgraphs):
+    """FAQ P-15, fixed in langgraph 1.2.20: error handlers ran only with "updates"/"tasks", so workflows with error
+    routes streamed no tokens. The adapter now streams every mode for them; this fails if the bug comes back."""
+    modes = ["tasks", "updates", "messages", "custom"]
+    parts = [p async for p in graph().astream({}, stream_mode=modes, subgraphs=subgraphs)]  # used to raise "boom"
+    assert any("recover" in str(p) for p in parts)
 
 
 def test_upstream_savers_do_not_implement_copy_thread():
