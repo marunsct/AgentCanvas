@@ -91,7 +91,7 @@ jobs:
           - { check: google_adk, with: "google-adk==2.14.0 litellm==1.105.7" }
           - { check: pydantic_ai, with: "pydantic-ai-slim[openai]==2.66.0" }
           - { check: agno, with: "agno==3.1.11 openai==2.54.0" }
-          - { check: strands, with: "strands-agents[openai]==1.62.0" }
+          - { check: strands, with: "strands-agents[openai]==1.64.0 openai==2.54.0" }
           - { check: llamaindex, with: "llama-index-workflows==2.25.0 llama-index-core==0.14.25 llama-index-llms-openai-like==0.8.1" }
           - { check: microsoft_agent_framework, with: "agent-framework-core==1.25.0 agent-framework-openai==1.18.1" }
           - { check: claude_agent_sdk, with: "claude-agent-sdk==0.2.174" }

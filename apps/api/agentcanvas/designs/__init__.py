@@ -53,7 +53,7 @@ AGENT_FRAMEWORKS: dict[str, AgentFramework] = {
                        own_env=True),
         AgentFramework("pydantic_ai", "Pydantic AI", ("pydantic-ai-slim[openai]==2.66.0",), "pydantic_ai", "openai"),
         AgentFramework("agno", "Agno", ("agno==3.1.11", "openai==2.54.0"), "agno", "openai", own_env=True),
-        AgentFramework("strands", "Strands Agents", ("strands-agents[openai]==1.62.0",), "strands", "openai",
+        AgentFramework("strands", "Strands Agents", ("strands-agents[openai]==1.64.0", "openai==2.54.0"), "strands", "openai",
                        own_env=True),
         AgentFramework(
             "llamaindex", "LlamaIndex",

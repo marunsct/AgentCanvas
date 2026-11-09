@@ -38,7 +38,7 @@ PINS = {
     "pydantic_ai": "pydantic-ai-slim[openai]==2.66.0",
     "agno": "agno==3.1.11",
     "microsoft_agent_framework": "agent-framework-core==1.25.0",
-    "strands": "strands-agents[openai]==1.62.0",
+    "strands": "strands-agents[openai]==1.64.0",
     "llamaindex": "llama-index-core==0.14.25",
 }
 MODEL = {"id": "r_model", "type": "model.chat", "name": "model", "config": {"model": "openai:gpt-5.5"}}
@@ -532,3 +532,21 @@ def test_export_is_a_project_of_its_own(framework, tmp_path):
                            capture_output=True, text=True, timeout=180, check=False)  # fmt: skip
     if "No module named pytest" not in tests.stderr:
         assert tests.returncode == 0, tests.stdout + tests.stderr
+
+
+@installed("strands")
+async def test_a_blank_ask_ai_prompt_names_the_step_on_strands():
+    """Strands 1.63 refuses a blank prompt ("Input prompt is blank"); the run says which step and why instead."""
+    wf = Workflow.model_validate({
+        "id": "wf_ask", "name": "Ask", "framework": "strands",
+        "state": {"channels": [{"name": "question"}, {"name": "answer"}]},
+        "resources": [MODEL],
+        "nodes": [{"id": "n_ask", "type": "core.llm", "name": "ask_it",
+                   "config": {"prompt": "{{ state.question }}", "output": "answer"}}],
+        "edges": [_flow("START", "n_ask"), _flow("n_ask", "END"), _wire("r_model", "n_ask")],
+    })  # fmt: skip
+    a = create_adapter("strands")
+    async with a.persistence(None):
+        [events] = await _run(a, wf, {"question": "   "}, {"model": ["never asked"]})
+    end = events[-1]
+    assert end["type"] == "RUN_ERROR" and "ask_it" in end["message"] and "prompt is empty" in end["message"], end

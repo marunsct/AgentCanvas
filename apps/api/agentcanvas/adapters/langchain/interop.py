@@ -38,7 +38,7 @@ FRAMEWORKS: dict[str, Framework] = {
     "google_adk": Framework("Google ADK", "google-adk==2.14.0", "google.adk", "InMemoryRunner(agent).run_async"),
     "pydantic_ai": Framework("Pydantic AI", "pydantic-ai-slim==2.66.0", "pydantic_ai", "agent.run(input)"),
     "agno": Framework("Agno", "agno==3.1.11", "agno", "agent.arun(input)"),
-    "strands": Framework("Strands Agents", "strands-agents==1.62.0", "strands", "agent.invoke_async(input)"),
+    "strands": Framework("Strands Agents", "strands-agents==1.64.0", "strands", "agent.invoke_async(input)"),
     "llamaindex": Framework(
         "LlamaIndex Workflows", "llama-index-workflows==2.25.0", "workflows", "workflow.run(input=…)"
     ),

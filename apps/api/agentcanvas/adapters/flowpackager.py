@@ -283,7 +283,7 @@ TARGETS = {
     "strands": Target(
         label="Strands Agents",
         slug="strands",
-        pins=[f"strands-agents[openai]=={STRANDS_VERSION}"],
+        pins=[f"strands-agents[openai]=={STRANDS_VERSION}", f"openai=={OPENAI_VERSION}"],  # 1.63+ allows openai 3
         docs="https://strandsagents.com/",
         how="a Strands `Agent` for each AI block (an `OpenAIModel`, tools, an `AskBefore` hook for approvals, a "
         "`structured_output_model` for typed answers)",

@@ -88,7 +88,10 @@ class Run(supersteps.Run):
 
     # ---- AI ----
     async def text(self, agent: Agent, prompt: str) -> str:
-        """One answer from `agent` to `prompt` (an "Ask AI" step)."""
+        """One answer from `agent` to `prompt` (an "Ask AI" step). Strands refuses a blank prompt (1.63, "Input
+        prompt is blank"): say which step and why instead."""
+        if not str(prompt).strip():
+            raise StopRun("empty_prompt", f"'{self.name}': its prompt is empty once the state is filled in")
         return str(await agent.invoke_async(prompt)).strip()
 
     async def agent(

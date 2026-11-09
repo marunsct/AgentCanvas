@@ -16,5 +16,5 @@ openai==2.54.0
 openai-agents==0.24.0
 pyagentspec==26.3.1
 pydantic-ai-slim==2.66.0
-strands-agents==1.62.0
+strands-agents==1.64.0
 wayflowcore==26.3.1
