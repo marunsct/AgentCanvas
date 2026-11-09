@@ -1676,8 +1676,11 @@ def moderation_guard_node(
             prompt = guard.fill(guard.MODERATION_PROMPT, categories=", ".join(categories), text=text)
             scores = guard.model_moderation_scores(await _ask(model, prompt), categories)
             source = "model" if scores is not None else "keywords (the model's reply could not be read)"
+        phrases = guard.keyword_scores(text)
         if scores is None:
-            scores = guard.keyword_scores(text)
+            scores = phrases
+        elif (floored := guard.with_sure_phrases(scores, phrases)) != scores:
+            scores, source = floored, "model, and phrases too sure for it to clear"
         verdict = guard.moderation_verdict(scores, categories, threshold, source)
         return _guard_outputs(
             verdict,
