@@ -195,6 +195,8 @@ PUBLIC = {
     ("GET", "/v1/deployments/{dep_id}/a2a/.well-known/agent-card.json"),
     ("GET", "/v1/deployments/{dep_id}/a2a/.well-known/agent.json"),
     ("GET", "/v1/deployments/{dep_id}/mcp"),
+    # F-2: the MCP Server Card, read before connecting (it names the key, never contains it)
+    ("GET", "/v1/deployments/{dep_id}/mcp/server-card"),
     # S23: share links are public; the token in the path is the capability (an unknown one answers 404)
     ("GET", "/v1/share/{token}"),
     ("POST", "/v1/share/{token}/runs/stream"),

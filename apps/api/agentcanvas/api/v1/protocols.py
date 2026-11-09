@@ -16,6 +16,7 @@ conversation (`thread_id` / A2A `contextId`).
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from datetime import UTC, datetime
@@ -28,7 +29,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.deps import get_session, get_settings_dep
-from agentcanvas.api.urls import api_url
+from agentcanvas.api.urls import api_base, api_url
 from agentcanvas.api.v1.deployments import ApiResult, ApiRunIn, _caller, _continue_on, _result, _start, own_thread
 from agentcanvas.db.models import Deployment, InterruptTask, Run, Thread, WorkflowVersion
 from agentcanvas.db.repositories import LIGHT_RUN
@@ -49,6 +50,9 @@ META_VERSION = "io.modelcontextprotocol/protocolVersion"
 META_SERVER = "io.modelcontextprotocol/serverInfo"
 LIST_TTL_MS = 300_000  # a deployment's tools change only when it is published again
 HEADER_MISMATCH, UNSUPPORTED_VERSION = -32020, -32022
+CARD_MAX_AGE = 300  # seconds a client or cache may keep a card: a republished deployment shows within five minutes
+SERVER_CARD_SCHEMA = "https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json"
+SERVER_CARD_TYPE = "application/mcp-server-card+json"
 A2A_VERSION = "0.3.0"  # what a client that sends no `A2A-Version` header speaks (the spec's rule)
 A2A_V1 = "1.0"
 A2A_V1_METHODS = ("SendMessage", "GetTask", "CancelTask", "ListTasks", "SendStreamingMessage", "SubscribeToTask",
@@ -315,7 +319,66 @@ def _modern_refusal(request: Request, msg: dict[str, Any], version: str) -> JSON
     return None
 
 
-@router.post("/deployments/{dep_id}/mcp")
+def _card_response(
+    request: Request, card: dict[str, Any], media_type: str, *, vary: str | None = None, cors: bool = False
+) -> Response:
+    """A public card with HTTP caching (A2A 1.0 section 8.6, the MCP Server Card's discovery rules): `Cache-Control`,
+    an `ETag` from its content, and 304 for an `If-None-Match` that still matches."""
+    raw = json.dumps(card, separators=(",", ":"), ensure_ascii=False).encode()
+    etag = '"' + hashlib.sha256(raw).hexdigest()[:32] + '"'
+    headers = {"Cache-Control": f"public, max-age={CARD_MAX_AGE}", "ETag": etag}
+    if vary:
+        headers["Vary"] = vary
+    if cors:  # public metadata, read-only: browser clients may read it from anywhere
+        headers |= {"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET",
+                    "Access-Control-Allow-Headers": "Content-Type, If-None-Match",
+                    "Access-Control-Expose-Headers": "ETag"}  # fmt: skip
+    sent = request.headers.get("if-none-match")
+    if sent is not None and (sent.strip() == "*" or etag in (t.strip().removeprefix("W/") for t in sent.split(","))):
+        return Response(status_code=304, headers=headers)
+    return Response(raw, media_type=media_type, headers=headers)
+
+
+def _namespace(request: Request) -> str:
+    """The Server Card name's namespace: the public host, reversed as reverse-DNS names are (agents.acme.com ->
+    com.acme.agents); a host that is not a DNS name (an IPv6 address) gives `local.agentcanvas`."""
+    from urllib.parse import urlparse
+
+    host = (urlparse(api_base(request)).hostname or "").lower()
+    if not re.fullmatch(r"[a-z0-9.-]+", host) or not host.strip("."):
+        return "local.agentcanvas"
+    labels = host.strip(".").split(".")
+    return host if all(x.isdigit() for x in labels) else ".".join(reversed(labels))
+
+
+def server_card(request: Request, dep_id: str, wf: Workflow, semver: str) -> dict[str, Any]:
+    """The deployment's MCP Server Card (SEP-2127): who it is and where to connect, read before connecting. Its
+    tools are not listed (clients list them once connected), and the key is only described, never included."""
+    return {
+        "$schema": SERVER_CARD_SCHEMA,
+        "name": f"{_namespace(request)}/{tool_name(wf)}",
+        "title": wf.name[:100],
+        "description": wf.description or f"Tools of the {wf.name} workflow, published with AgentCanvas.",
+        "version": semver,
+        "remotes": [{
+            "type": "streamable-http",
+            "url": api_url(request, "mcp_endpoint", dep_id=dep_id),
+            "supportedProtocolVersions": list(MCP_VERSIONS),
+            "headers": [{"name": "Authorization", "description": "Bearer and the deployment's key",
+                         "isRequired": True, "isSecret": True, "placeholder": "Bearer ac_..."}],
+        }],
+    }  # fmt: skip
+
+
+@router.get("/deployments/{dep_id}/mcp/server-card")
+async def mcp_server_card(dep_id: str, request: Request, session: AsyncSession = Depends(get_session)) -> Response:
+    """The deployment's MCP Server Card, at the place the MCP Server Card extension reserves for it
+    (`<streamable-http-url>/server-card`). Public, like the A2A card: discovery happens before authentication."""
+    _, wf, semver = await _deployment(session, dep_id)
+    return _card_response(request, server_card(request, dep_id, wf, semver), SERVER_CARD_TYPE, cors=True)
+
+
+@router.post("/deployments/{dep_id}/mcp", name="mcp_endpoint")
 async def mcp_endpoint(
     dep_id: str,
     request: Request,
@@ -464,12 +527,14 @@ def _card_v03(wf: Workflow, semver: str, url: str) -> dict[str, Any]:
 
 @router.get("/deployments/{dep_id}/a2a/.well-known/agent-card.json")
 @router.get("/deployments/{dep_id}/a2a/.well-known/agent.json")
-async def a2a_card(dep_id: str, request: Request, session: AsyncSession = Depends(get_session)) -> dict[str, Any]:
+async def a2a_card(dep_id: str, request: Request, session: AsyncSession = Depends(get_session)) -> Response:
     """The deployment's A2A agent card. Public, as A2A clients read it before they authenticate: it names the
-    workflow and its input fields; running it needs the key."""
+    workflow and its input fields; running it needs the key. Cached as A2A 1.0 section 8.6 asks; its shape depends
+    on `A2A-Version`, so caches keep one per version."""
     _, wf, semver = await _deployment(session, dep_id)
     url = api_url(request, "a2a_endpoint", dep_id=dep_id)  # as callers reach it, e.g. behind nginx's /api
-    return agent_card(wf, semver, url, request.headers.get("a2a-version"))
+    card = agent_card(wf, semver, url, request.headers.get("a2a-version"))
+    return _card_response(request, card, "application/json", vary="A2A-Version")
 
 
 def _parts(message: dict[str, Any]) -> tuple[dict[str, Any], str | None]:

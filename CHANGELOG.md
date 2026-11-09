@@ -593,6 +593,10 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
   1.9.1 and dnspython 2.9.0.
 
 ### Added
+- Each deployment has an MCP Server Card (`…/deployments/<id>/mcp/server-card`, SEP-2127): its name, version, address
+  and required header, readable without the key, so registries and MCP clients can find it before connecting.
+- Agent cards and Server Cards are cached: `Cache-Control: public, max-age=300`, an `ETag`, and 304 for an unchanged
+  card (A2A 1.0 section 8.6); the A2A card varies by `A2A-Version`.
 - The OpenAI Agents SDK importer also reads code written with `from agents.classic import ...`, where the SDK's next major release keeps today's API.
 - Framework upgrades: `make framework-versions` lists every agent framework pin with its latest release and changelog, `make framework-bump PKG= VERSION=` moves a pin everywhere it is written, Dependabot watches a generated list of the pins (one pull request per framework), and the build guide has the upgrade procedure.
 - Costs and budgets count GPT-5.6 Sol, Terra and Luna (with their price above 272K prompt tokens) and Gemini 3.8 Flash, at the providers' published prices (Gemini at its price from 2027-01-01; it is half that until then).

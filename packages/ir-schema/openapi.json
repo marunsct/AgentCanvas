@@ -17160,7 +17160,7 @@
     },
     "/v1/deployments/{dep_id}/a2a/.well-known/agent-card.json": {
       "get": {
-        "description": "The deployment's A2A agent card. Public, as A2A clients read it before they authenticate: it names the\nworkflow and its input fields; running it needs the key.",
+        "description": "The deployment's A2A agent card. Public, as A2A clients read it before they authenticate: it names the\nworkflow and its input fields; running it needs the key. Cached as A2A 1.0 section 8.6 asks; its shape depends\non `A2A-Version`, so caches keep one per version.",
         "operationId": "a2a_card_v1_deployments__dep_id__a2a__well_known_agent_card_json_get",
         "parameters": [
           {
@@ -17177,11 +17177,7 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response A2A Card V1 Deployments  Dep Id  A2A  Well Known Agent Card Json Get",
-                  "type": "object"
-                }
+                "schema": {}
               }
             },
             "description": "Successful Response"
@@ -17205,7 +17201,7 @@
     },
     "/v1/deployments/{dep_id}/a2a/.well-known/agent.json": {
       "get": {
-        "description": "The deployment's A2A agent card. Public, as A2A clients read it before they authenticate: it names the\nworkflow and its input fields; running it needs the key.",
+        "description": "The deployment's A2A agent card. Public, as A2A clients read it before they authenticate: it names the\nworkflow and its input fields; running it needs the key. Cached as A2A 1.0 section 8.6 asks; its shape depends\non `A2A-Version`, so caches keep one per version.",
         "operationId": "a2a_card_v1_deployments__dep_id__a2a__well_known_agent_json_get",
         "parameters": [
           {
@@ -17222,11 +17218,7 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response A2A Card V1 Deployments  Dep Id  A2A  Well Known Agent Json Get",
-                  "type": "object"
-                }
+                "schema": {}
               }
             },
             "description": "Successful Response"
@@ -17408,6 +17400,47 @@
           }
         },
         "summary": "Mcp Endpoint",
+        "tags": [
+          "agent protocols"
+        ]
+      }
+    },
+    "/v1/deployments/{dep_id}/mcp/server-card": {
+      "get": {
+        "description": "The deployment's MCP Server Card, at the place the MCP Server Card extension reserves for it\n(`<streamable-http-url>/server-card`). Public, like the A2A card: discovery happens before authentication.",
+        "operationId": "mcp_server_card_v1_deployments__dep_id__mcp_server_card_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dep_id",
+            "required": true,
+            "schema": {
+              "title": "Dep Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Mcp Server Card",
         "tags": [
           "agent protocols"
         ]

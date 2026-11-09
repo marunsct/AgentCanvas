@@ -107,6 +107,11 @@ same one as the [deployment API](publish.md), with the same rate limits.
 Clients that support remote MCP servers with headers (Cursor, VS Code, agent frameworks such as LangChain's MCP
 adapter or the OpenAI Agents SDK) take the address and the header directly.
 
+Each deployment also has an **MCP Server Card** at `https://<your AgentCanvas>/api/v1/deployments/<id>/mcp/server-card`
+(no key needed): its name, version, address and the header it needs, for registries and clients that discover servers
+before connecting. It never contains the key. Its name is the public host reversed and the workflow's tool name
+(`com.example.agents/greeter`), so set `AGENTCANVAS_PUBLIC_URL` for a stable one.
+
 When a run pauses for an approval or a question, the tool's answer says so and gives a `thread_id`; the calling
 agent continues it with `answer` (`approve: true` or `false`, or `text` for a question). To continue a
 conversation, pass the `thread_id` of the earlier run to the workflow's tool.
@@ -129,6 +134,8 @@ conversation, pass the `thread_id` of the earlier run to the workflow's tool.
   parts without `kind`); the agent card comes in 1.0's form when read with `A2A-Version: 1.0`, and lists both
   versions either way.
 - Not supported: streaming (`message/stream`, `SendStreamingMessage`), push notifications and cancelling a task.
+- The agent card (and the MCP Server Card) may be cached for five minutes and carry an `ETag`: a republished
+  deployment's new card reaches clients that cache it within that time.
 
 Runs started over MCP or A2A are ordinary runs of the deployment: they appear under **Runs**, count towards online
 evaluation and keep their conversations.

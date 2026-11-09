@@ -12,6 +12,14 @@ Merging, deleting branches and anything outward-facing stay with you: work is de
 
 ## 2026-11-09
 
+### Cards are cached for five minutes; the Server Card's name comes from the public host
+A2A 1.0 (section 8.6) and the MCP Server Card rules ask for `Cache-Control` and an `ETag`; the Server Card example
+uses an hour. I chose 300 seconds so a republished or stopped deployment's card is not stale for long. The Server
+Card must have a reverse-DNS name, so it is the public host reversed (`com.example.agents/<tool>`), which changes if
+the address does: set `AGENTCANVAS_PUBLIC_URL`. `application/a2a+json` is the media type of A2A's REST binding, which
+we do not serve; the JSON-RPC endpoint keeps answering `application/json` and already reads requests sent with
+`a2a+json`. *Reverse:* `CARD_MAX_AGE` in `api/v1/protocols.py`.
+
 ### The OpenAI client for Agno and Strands moves to 3.46.0
 This replaces "stays at 2.54.0" below. OpenAI's httpx2 migration guide says an injected legacy httpx client still works
 at runtime, and Agno 3.1.12 only passes on an `httpx.AsyncClient` (it ignores any other client), so Agno's scripted test
