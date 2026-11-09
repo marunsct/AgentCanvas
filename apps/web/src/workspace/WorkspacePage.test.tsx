@@ -2,7 +2,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { EditorView } from "codemirror";
-import { MemoryRouter, Route, Routes } from "react-router";
+import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 type Init = { method?: string; json?: unknown; headers?: Record<string, string> };
@@ -15,6 +15,7 @@ vi.mock("../api/client", () => ({ ApiError, apiFetch: (p: string, i?: Init) => a
 vi.mock("./CodeHelp", () => ({ CodeHelp: () => null }));
 
 const { WorkspacePage } = await import("./WorkspacePage");
+const { DialogHost } = await import("../ui/dialog");
 
 // CodeMirror measures text ranges, which jsdom does not lay out
 const empty = () => Object.assign([], { item: () => null }) as unknown as DOMRectList;
@@ -50,13 +51,18 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+let router: ReturnType<typeof createMemoryRouter>;
 function renderPage(file = "tools/a.py") {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  router = createMemoryRouter([
+    { path: "/", element: <p>Home</p> },
+    { path: "/workspace", element: <WorkspacePage /> },
+    { path: "/settings/:section", element: <p>Settings page</p> },
+  ], { initialEntries: ["/", `/workspace?file=${file}`], initialIndex: 1 });
   render(
     <QueryClientProvider client={qc}>
-      <MemoryRouter initialEntries={[`/workspace?file=${file}`]}>
-        <Routes><Route path="/workspace" element={<WorkspacePage />} /></Routes>
-      </MemoryRouter>
+      <DialogHost />
+      <RouterProvider router={router} />
     </QueryClientProvider>,
   );
   return qc;
@@ -124,5 +130,30 @@ describe("WorkspacePage", () => {
     await waitFor(() => expect(text()).toBe("x = 2\n"));
     expect(screen.queryByText("unsaved")).toBeNull();
     expect(screen.queryByTestId("file-changed")).toBeNull();
+  });
+
+  it("asks before another page replaces unsaved changes, and stays when told to keep editing", async () => {
+    renderPage();
+    await screen.findByTestId("code-editor");
+    type("y = 1\n");
+    fireEvent.click(screen.getByTestId("secrets-link"));
+    const ask = await screen.findByRole("dialog", { name: /Discard your changes/ });
+    fireEvent.click(within(ask).getByRole("button", { name: "Keep editing" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(router.state.location.pathname).toBe("/workspace");
+    expect(text()).toBe("x = 1\ny = 1\n");
+    expect(screen.getByText("unsaved")).toBeTruthy();
+    // browser Back is asked about too; discarding leaves
+    await act(() => router.navigate(-1));
+    fireEvent.click(within(await screen.findByRole("dialog", { name: /Discard your changes/ })).getByRole("button", { name: "Discard changes" }));
+    expect(await screen.findByText("Home")).toBeTruthy();
+  });
+
+  it("leaves without asking when nothing is unsaved", async () => {
+    renderPage();
+    await screen.findByTestId("code-editor");
+    fireEvent.click(screen.getByTestId("secrets-link"));
+    expect(await screen.findByText("Settings page")).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 });

@@ -12,7 +12,9 @@ Each project has a **workspace**: a git repository of Python code used by its wo
 | `nodes/` | Custom widgets declared with `@canvas_node(...)` | New widgets in the palette, in the category you choose |
 | `events/` | Event handlers declared with `@on("type")`; JSON schemas in `events/schemas/` | The **Events** page |
 
-Click a file to edit it (with lint markers), **New file** to add one. Every save is a git commit, and a workflow
+Click a file to edit it (with lint markers), **New file** to add one. Changes are kept only when you press **Save**
+(or Ctrl/Cmd+S): leaving a file with unsaved changes (opening another file, going to another page, **Back to
+workflow**, the browser's Back, or closing the tab) asks first. Every save is a git commit, and a workflow
 **version** pins the workspace commit it was made with.
 
 If the file changes elsewhere while it is open (a teammate saves it, you accept a Copilot proposal that edits it, or a

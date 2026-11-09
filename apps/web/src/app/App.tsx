@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { lazy, Suspense } from "react";
-import { BrowserRouter, Link, Navigate, Route, Routes } from "react-router";
+import { lazy, Suspense, useState } from "react";
+import { createBrowserRouter, createRoutesFromElements, Link, Navigate, Outlet, Route, RouterProvider } from "react-router";
 import { DialogHost } from "../ui/dialog";
 import { GlobalErrors } from "../ui/GlobalErrors";
 import { shouldRetry } from "../api/retry";
@@ -31,6 +31,54 @@ function NotFound() {
   return <div className="page"><h2>Page not found</h2><Link to="/">Go home</Link></div>;
 }
 
+/** What every signed-in page sits in: the "?" key, the page's error boundary and the loading fallback. */
+function Root() {
+  return (
+    <>
+      <ShortcutKey />
+      <RouteBoundary label="This page">
+        <Suspense fallback={<div className="page muted" role="status">Loading…</div>}>
+          <Outlet />
+        </Suspense>
+      </RouteBoundary>
+    </>
+  );
+}
+
+// a data router: the Workspace asks before another page or Back drops unsaved code (useBlocker needs one)
+const routes = createRoutesFromElements(
+  <Route element={<Root />}>
+    <Route path="/workflows/:id" element={<EditorPage />} />
+    <Route element={<AppShell />}>
+      <Route path="/" element={<HomePage />} />
+      <Route path="/workflows/:id/evaluation" element={<EvaluationPage />} />
+      <Route path="/workflows/:id/workspace" element={<WorkspacePage />} />
+      <Route path="/settings/:section?" element={<SettingsPage />} />
+      <Route path="/oauth/callback" element={<OAuthCallback />} />
+      <Route path="/playground" element={<PlaygroundPage />} />
+      <Route path="/runs" element={<RunsPage />} />
+      <Route path="/inbox" element={<InboxPage />} />
+      <Route path="/memory" element={<MemoryPage />} />
+      <Route path="/knowledge" element={<KnowledgePage />} />
+      <Route path="/workspace" element={<WorkspacePage />} />
+      <Route path="/events" element={<EventsPage />} />
+      <Route path="/guide/:page?" element={<GuidePage />} />
+      {/* the addresses these had before Settings existed */}
+      <Route path="/setup" element={<Navigate to="/settings/models" replace />} />
+      <Route path="/members" element={<Navigate to="/settings/members" replace />} />
+      <Route path="/audit" element={<Navigate to="/settings/audit" replace />} />
+      <Route path="/policies" element={<Navigate to="/settings/policies" replace />} />
+      <Route path="*" element={<NotFound />} />
+    </Route>
+  </Route>,
+);
+
+/** Made once signed in (a share page never makes one): it starts following the address bar when created. */
+function Pages() {
+  const [router] = useState(() => createBrowserRouter(routes));
+  return <RouterProvider router={router} />;
+}
+
 export function App() {
   // S23: a share link's chat page (/s/<token>) is public: no sign-in, no project, none of the app around it
   if (location.pathname.startsWith("/s/")) {
@@ -46,37 +94,7 @@ export function App() {
     <GlobalErrors />
     <DialogHost />
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <ShortcutKey />
-        <RouteBoundary label="This page">
-        <Suspense fallback={<div className="page muted" role="status">Loading…</div>}>
-        <Routes>
-          <Route path="/workflows/:id" element={<EditorPage />} />
-          <Route element={<AppShell />}>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/workflows/:id/evaluation" element={<EvaluationPage />} />
-            <Route path="/workflows/:id/workspace" element={<WorkspacePage />} />
-            <Route path="/settings/:section?" element={<SettingsPage />} />
-            <Route path="/oauth/callback" element={<OAuthCallback />} />
-            <Route path="/playground" element={<PlaygroundPage />} />
-            <Route path="/runs" element={<RunsPage />} />
-            <Route path="/inbox" element={<InboxPage />} />
-            <Route path="/memory" element={<MemoryPage />} />
-            <Route path="/knowledge" element={<KnowledgePage />} />
-            <Route path="/workspace" element={<WorkspacePage />} />
-            <Route path="/events" element={<EventsPage />} />
-            <Route path="/guide/:page?" element={<GuidePage />} />
-            {/* the addresses these had before Settings existed */}
-            <Route path="/setup" element={<Navigate to="/settings/models" replace />} />
-            <Route path="/members" element={<Navigate to="/settings/members" replace />} />
-            <Route path="/audit" element={<Navigate to="/settings/audit" replace />} />
-            <Route path="/policies" element={<Navigate to="/settings/policies" replace />} />
-            <Route path="*" element={<NotFound />} />
-          </Route>
-        </Routes>
-        </Suspense>
-        </RouteBoundary>
-      </BrowserRouter>
+      <Pages />
     </QueryClientProvider>
     </AuthGate>
   );

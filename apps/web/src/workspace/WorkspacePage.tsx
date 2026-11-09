@@ -3,8 +3,8 @@
  * S17: opened from a workflow (`/workflows/:id/workspace`) it shows that workflow's own code folder and the shared
  * code, offers a way back to the workflow, starter code for new files and the Copilot's help with code. */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type BlockerFunction, Link, useBlocker, useParams, useSearchParams } from "react-router";
 import { ApiError, apiFetch } from "../api/client";
 import { PROJECT_ID } from "../api/queries";
 import { CodeEditor, type EditorApi, type LintItem } from "./CodeEditor";
@@ -148,7 +148,7 @@ export function WorkspacePage() {
     onSuccess: () => { setParams({}); void qc.invalidateQueries({ queryKey: ["files", PROJECT_ID] }); },
   });
   const dirty = draft !== null && draft !== file.data?.content;
-  // leaving a file with unsaved changes (another file, a new one, or closing the tab) asks first
+  // leaving a file with unsaved changes (another file, a new one, another page, Back, or closing the tab) asks first
   useEffect(() => {
     if (!dirty) return;
     const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); };
@@ -159,6 +159,18 @@ export function WorkspacePage() {
     title: `Discard your changes to ${selected}?`, body: "They are not saved yet.", confirm: "Discard changes",
     cancel: "Keep editing", danger: true,
   });
+  // another page (a link, the crumb, Cmd+K) or Back/Forward; this page's own file switches asked already (`leave`)
+  const shouldBlock = useCallback<BlockerFunction>(
+    ({ currentLocation, nextLocation, historyAction }) =>
+      dirty && (currentLocation.pathname !== nextLocation.pathname || historyAction === "POP"),
+    [dirty],
+  );
+  const blocker = useBlocker(shouldBlock);
+  useEffect(() => {
+    if (blocker.state !== "blocked") return;
+    void leave().then((ok) => (ok ? blocker.proceed() : blocker.reset()));
+    // oxlint-disable-next-line react-hooks/exhaustive-deps -- once per blocked navigation
+  }, [blocker.state]);
   const open = async (path: string) => { if (path !== selected && await leave()) setParams({ file: path }); };
   const doSave = () => {
     if (selected && draft !== null && dirty && !save.isPending && origin?.path === selected) {
