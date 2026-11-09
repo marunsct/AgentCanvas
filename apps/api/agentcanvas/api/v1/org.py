@@ -83,6 +83,50 @@ async def remove_member(
     return Response(status_code=204)
 
 
+class EraseMemberIn(BaseModel):
+    reason: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)] = Field(
+        description="why (the request you are answering), for the audit log"
+    )
+    conversations: bool = Field(
+        False, description="also delete the conversations they started and the files they attached"
+    )
+
+
+class ErasedMemberOut(BaseModel):
+    tokens: int = Field(description="API tokens revoked")
+    connections: int = Field(description="app-connector sign-ins removed")
+    memories: int = Field(description="long-term memories deleted (namespaces that carry their user id)")
+    copilot_conversations: int
+    conversations: int = Field(0, description="conversations deleted (with `conversations: true`)")
+    files: int = Field(0, description="files they attached, deleted (with `conversations: true`)")
+    account_erased: bool = Field(
+        description="their email and name were removed; false when they still belong to another organisation"
+    )
+
+
+@router.post("/members/{user_id}/erase", response_model=ErasedMemberOut, dependencies=[Depends(members_here)])
+async def erase_member(
+    user_id: str,
+    body: EraseMemberIn,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    user: CurrentUser = Depends(current_user),
+) -> dict[str, Any]:
+    """Erase a member (GDPR Art. 17): remove them, revoke their API tokens and app-connector sign-ins, delete their
+    long-term memories and Copilot chats, and, when asked, the conversations they started. Their account's email and
+    name are removed when they belong to no other organisation; audit entries keep their id. Also for someone already
+    removed who belongs nowhere else. Admins, with a real sign-in."""
+    from agentcanvas.services import data_subjects
+
+    refuse_token(user, "erase people")
+    data_subjects.refuse_self(user.id, user_id)
+    counts = await data_subjects.erase_member(
+        session, request.app.state.runner, user.org_id, user_id, conversations=body.conversations
+    )
+    note(request, target=f"user_id={user_id}", reason=body.reason, **counts)
+    return counts
+
+
 class StopRunsIn(BaseModel):
     reason: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)] = Field(
         description="why, for the audit log"

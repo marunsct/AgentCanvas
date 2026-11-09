@@ -137,11 +137,8 @@ below is the services **you** choose, each of which processes data under your ow
 
 Details are in [Retention, restore and disaster recovery](operations.md#retention-restore-and-disaster-recovery).
 
-**Erasing one person's data** has no single action yet. Today an admin can: remove the person from the organisation
-(Settings › Members, or through SCIM); delete their conversations on the **Runs** page; erase their memory
-namespace on the **Memory** page ([The Memory page](memory.md#the-memory-page)); and remove what they added to
-datasets, knowledge bases and workspaces. Their account record (email and name) stays, and so do their audit-log
-entries until the audit log's retention removes them; removing either sooner needs direct access to the database.
+**Erasing one person's data** is one action for a member ([Your data](#your-data)). What they added to datasets,
+knowledge bases and workspaces is the project's and stays; remove it by hand if it names them.
 
 ## Your data
 
@@ -151,6 +148,7 @@ counts, never the content.
 
 | Request | How |
 |---|---|
+| Erase a member (Art. 17) | `POST /v1/org/members/{user_id}/erase`: removes them with their tokens, sign-ins, memories and Copilot chats (and, if asked, the conversations they started), and pseudonymises their account when they belong to no other organisation ([Members](accounts.md#members)) |
 | Delete the whole organisation (end of contract) | `DELETE /v1/org`: suspended at once, deleted for good after a grace period of 7 days (`AGENTCANVAS_ORG_DELETION_GRACE_DAYS`), which an admin can take back until then ([Deleting the organisation](settings.md#deleting-the-organisation)) |
 
 ## Backups and recovery

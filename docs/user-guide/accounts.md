@@ -40,6 +40,17 @@ Admins open **Settings › Members**, enter an email, pick a role and click **In
 first sign-in with that (verified) email. Admins can change roles or remove people. An organisation can never be left without an admin who
 has signed in.
 
+Removing someone keeps their account (name and email) and what they made. To **erase** a person instead (a request
+under GDPR Art. 17), an admin sends `POST /v1/org/members/{user_id}/erase` with the request as the `reason`, signed
+in (an API token cannot): they are removed, their API tokens and app-connector sign-ins go, and so do their
+long-term memories (every memory namespace that carries their user id) and Copilot chats. With
+`"conversations": true` the conversations they started and the files they attached go too; otherwise those stay
+with the project. When they belong to no other organisation their account is pseudonymised: email, name and
+preferences are removed and their next sign-in makes a new account. The audit log keeps their user id, which then
+leads to no one. The answer and the audit entry give the counts. Someone already removed can be erased the same
+way, as long as they belong to no other organisation. You cannot erase yourself; with Matura, people are removed
+in Matura.
+
 To bootstrap a new install, list the first admins' emails in `AGENTCANVAS_BOOTSTRAP_ADMIN_EMAILS`; they become
 admins of the default organisation on first sign-in.
 
