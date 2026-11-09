@@ -63,11 +63,12 @@ Python file written with the [OpenAI Agents SDK](https://openai.github.io/openai
 | In the code | In AgentCanvas |
 |---|---|
 | `Agent(name=…, instructions=…, model=…)` | **AI agent** step with its instructions and an AI model block (`openai:<model>`); `model_settings` keep `max_tokens` (and `temperature` for models that take one) |
+| instructions written as a function (Agent Builder writes one when they use variables) | the text the function returns; the workflow input is the chat message the agent already gets, other variables are listed in the notes |
 | `output_type=SomeModel` (a Pydantic class in the file) | the agent's **answer shape**, written to `structured_response` |
 | `@function_tool` functions | **Python tool** blocks; their code goes to the workspace as `tools/<workflow>_tools.py`, as LangChain `@tool`s |
 | `handoffs=[…]`, `other.as_tool(…)` | the agent becomes a **Planning Agent** with the others as its specialists (their answers come back to it) |
 | the `Runner.run(…)` calls | the order of the steps |
-| `WebSearchTool`, `FileSearchTool`, code interpreter, hosted MCP | listed in the notes with what to use instead (an HTTP tool, a knowledge base, a script, an App connector) |
+| `WebSearchTool`, `FileSearchTool`, code interpreter, hosted MCP (inline or assigned to a name, as Agent Builder writes them) | listed in the notes with what to use instead (an HTTP tool, a knowledge base, a script, an App connector at the MCP server's address) |
 | guardrails, `if`/`else` between agents | listed in the notes: add a safety step or a **Choose a path** step |
 
 Agent Builder's file search used OpenAI vector stores: upload the same files to a [knowledge base](knowledge.md).

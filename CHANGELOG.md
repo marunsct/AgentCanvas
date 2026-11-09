@@ -117,6 +117,16 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
   and metadata addresses are never reached, and a list naming one is refused (HARDENING S-1).
 
 ### Fixed
+- Importing n8n: workflows started by the old Cron or Interval nodes start with their input instead of a placeholder
+  step; nodes n8n 3.0 removed (LangChain Code, Function, AI Transform, vector store Insert/Load, the document loaders,
+  SerpApi), the AI Agent v1 modes and the OpenAI Assistant are named in the notes with the block to use instead.
+- Importing Langflow 1.13: the Research Translation Loop starter (a step reading one listed after it) imports, a Loop's
+  hand-back no longer makes a workflow with no end, the new model selector is read for models and agents, and
+  components with no counterpart (vector stores, Knowledge, File, Loop, Parser, web search, Memory Base, Chroma DB,
+  Local DB, ALTK) name what to use instead. All 27 Langflow 1.13 starter projects import without errors.
+- Importing Agent Builder code: hosted tools assigned to a name (`web_search_preview = WebSearchTool(...)`) and
+  instructions written as a function now carry over instead of being reported as missing; agents built by a function
+  and instructions kept in a constant import too.
 - The Copilot evaluation checks a template that has blocks of its own (Lead scoring with research) against a registry that knows them; its cases could never pass before.
 - Models on OpenAI-compatible servers (LM Studio, vLLM, llama.cpp, any OpenAI-compatible address) and OpenAI at an address of its own now report their tokens when they stream, so runs, budgets, the spending report and the Copilot count their tokens and cost; they had read zero. Found by the Copilot evaluation on LM Studio.
 - The memory inspector answers 422 for a namespace label with a period or a control character instead of a server error.

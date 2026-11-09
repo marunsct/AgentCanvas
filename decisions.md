@@ -12,6 +12,15 @@ Merging, deleting branches and anything outward-facing stay with you: work is de
 
 ## 2026-11-09
 
+### Importer upkeep checked against real files, not a fresh Agent Builder export
+A fresh Agent Builder export needs your OpenAI account, so I used what is public: Langflow's own 27 starter projects at
+v1.13.0, n8n's 3.0 breaking-changes page, and 34 Agent Builder exports people committed to GitHub (read with `ast`, never
+run; kept only in my scratchpad, not the repository). The fixtures in `tests/importers/` are written or trimmed by hand
+in the same shape. Nodes with no counterpart still become placeholders: the notes now name the block to use instead
+rather than mapping, say, a vector store to a knowledge base automatically (the documents are not in the file).
+*Reverse:* nothing to reverse; if you can export one of your own Agent Builder workflows before 30 November, import
+it once to be sure.
+
 ### Every agent framework on its latest release, with two held back
 Read from each project's own releases and changelog (links in `make framework-versions`): LangGraph 1.2.20,
 LangChain 1.4.9, Deep Agents 0.7.34, MCP SDK 2.3.0, Pydantic AI 2.66.0, Microsoft Agent Framework 1.25.0 (its OpenAI
