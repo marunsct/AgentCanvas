@@ -155,6 +155,22 @@ evidence AgentCanvas provides for your own assessments (GDPR, SOC 2, ISO 27001).
 The terms under which AgentCanvas and the code it exports may be used have not been published yet: the repository
 has no licence file. Ask the maintainers before you rely on any rights to it.
 
+## EU AI Act
+
+When you publish an agent to people in the EU, Article 50 of the AI Act applies to you as its provider or deployer:
+people must be told they are interacting with an AI system unless it is obvious (since 2 August 2026), and content
+an AI system generates must be marked as such in a machine-readable way (systems already on the market have until
+2 December 2026). What AgentCanvas does by default:
+
+- **Marking.** Every answer a deployment gives through its API, MCP, A2A or share link has the header
+  `X-AI-Generated: true`, and API results carry `generated_by` with the models that answered
+  ([Call a deployment](publish.md#call-a-deployment)).
+
+What stays yours: deciding whether your use is high-risk (Annex III) or needs more than Article 50, labelling deep
+fakes and AI-written text published on matters of public interest, keeping the mark when you pass content on, and
+telling people about AI in channels AgentCanvas does not render (your own app built on the API, emails or messages
+your workflow sends).
+
 ## Reporting a vulnerability
 
 Report it privately through GitHub's private vulnerability reporting, as the

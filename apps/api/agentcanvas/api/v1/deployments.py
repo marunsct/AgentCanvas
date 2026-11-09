@@ -11,6 +11,7 @@ from datetime import datetime
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, File, Header, Request, Response, UploadFile
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, StringConstraints
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,7 +21,7 @@ from agentcanvas.api.deps import CurrentUser, current_user, get_session
 from agentcanvas.api.v1.files import FileOut, file_out, file_service, read_upload
 from agentcanvas.api.v1.gates import gate_for
 from agentcanvas.api.v1.gitsync import GitSyncOut, sync_after_version
-from agentcanvas.api.v1.runs import _context, _respond
+from agentcanvas.api.v1.runs import SSE_HEADERS, _context, _sse
 from agentcanvas.api.v1.versions import workspace_commit
 from agentcanvas.api.v1.workflows import service
 from agentcanvas.db.models import Deployment, Organization, Project, Run, RunScore, Thread, WorkflowVersion
@@ -33,6 +34,7 @@ from agentcanvas.runtime.runner import RunHandle
 from agentcanvas.runtime.types import ResumeSpec
 from agentcanvas.services import annotation, gates
 from agentcanvas.services.deployments import Check, DeploymentService
+from agentcanvas.services.disclosure import AI_HEADER, GeneratedBy, generated_by, marked
 from agentcanvas.services.projects import PROJECT_OF
 from agentcanvas.services.redeploy import thread_version
 from agentcanvas.services.testcases import TestCaseService
@@ -229,6 +231,9 @@ class ApiResult(BaseModel):
     output: dict[str, Any] | None = None
     interrupts: list[dict[str, Any]] = Field(default_factory=list)
     error: str | None = None
+    generated_by: GeneratedBy = Field(
+        default_factory=GeneratedBy, description="marks the output as AI-generated (AI Act Art. 50)"
+    )
 
 
 async def _caller(
@@ -321,7 +326,7 @@ async def _result(h: RunHandle) -> ApiResult:
         await asyncio.wait_for(h.done.wait(), WAIT_TIMEOUT_S)
     except TimeoutError:
         return ApiResult(run_id=h.run_id, thread_id=h.thread_id, status="running")
-    res = ApiResult(run_id=h.run_id, thread_id=h.thread_id, status="error")
+    res = ApiResult(run_id=h.run_id, thread_id=h.thread_id, status="error", generated_by=generated_by(h.events))
     for ev in h.events:
         if ev["type"] == "RUN_FINISHED":
             res.status, res.output = ev.get("status") or "success", ev.get("output")
@@ -339,11 +344,13 @@ async def api_run_wait(
     dep_id: str,
     body: ApiRunIn,
     request: Request,
+    response: Response,
     authorization: str | None = Header(None),
     session: AsyncSession = Depends(get_session),
 ) -> ApiResult:
     """Run the published version and return its final state (or its pending interrupts)."""
     h = await _start(request, session, dep_id, body, authorization)
+    response.headers.update(AI_HEADER)
     await session.close()  # no connection held while the run works
     return await _result(h)
 
@@ -395,9 +402,13 @@ async def api_run_stream(
     authorization: str | None = Header(None),
     session: AsyncSession = Depends(get_session),
 ) -> Response:
-    """Run the published version, streaming canonical events (SSE)."""
+    """Run the published version, streaming canonical events (SSE); RUN_FINISHED carries `generated_by`."""
     h = await _start(request, session, dep_id, body, authorization)
-    return _respond(request.app.state.runner, h, True)
+    return StreamingResponse(
+        _sse(marked(request.app.state.runner.subscribe(h.run_id))),
+        media_type="text/event-stream",
+        headers={**SSE_HEADERS, "x-run-id": h.run_id, "x-thread-id": h.thread_id, **AI_HEADER},
+    )
 
 
 class FeedbackIn(BaseModel):
@@ -458,11 +469,13 @@ async def api_resume(
     thread_id: str,
     body: ApiResumeIn,
     request: Request,
+    response: Response,
     authorization: str | None = Header(None),
     session: AsyncSession = Depends(get_session),
 ) -> ApiResult:
     """Answer a pending interrupt (approval, input) of a conversation this deployment started."""
     dep, wf = await _caller(request, session, dep_id, authorization)
+    response.headers.update(AI_HEADER)
     await own_thread(session, dep, thread_id)
     note(request, interrupt_id=body.interrupt_id, payload_sha256=payload_hash(body.value))
     wf, version_id = await _continue_on(session, dep, wf, thread_id)

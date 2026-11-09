@@ -49,6 +49,7 @@ from agentcanvas.runtime.runner import RunHandle
 from agentcanvas.runtime.types import ResumeSpec
 from agentcanvas.services import annotation
 from agentcanvas.services.deployments import DeploymentService
+from agentcanvas.services.disclosure import AI_HEADER
 from agentcanvas.services.files import FileService, ref_of
 from agentcanvas.services.share import (
     AttachShape,
@@ -406,6 +407,7 @@ def _visitor_events(h: RunHandle, runner: Any, shape: InputShape, wf: Workflow, 
                     "type": "RUN_FINISHED", "runId": h.run_id, "threadId": h.thread_id,
                     "status": "interrupted" if paused else (ev.get("status") or "success"),
                     "answer": "" if interrupts else answer, "interrupts": interrupts,
+                    "generated_by": {"kind": "ai"},  # which models answered stays inside, like the workflow
                 })  # fmt: skip
             elif kind == "RUN_ERROR":
                 busy = ev.get("code") == "redeploy"
@@ -419,7 +421,7 @@ def _visitor_events(h: RunHandle, runner: Any, shape: InputShape, wf: Workflow, 
 
 
 def _stream(request: Request, h: RunHandle, shape: InputShape, wf: Workflow) -> Response:
-    headers = {**SSE_HEADERS, "x-run-id": h.run_id, "x-thread-id": h.thread_id}
+    headers = {**SSE_HEADERS, "x-run-id": h.run_id, "x-thread-id": h.thread_id, **AI_HEADER}
     db = request.app.state.db
 
     async def record(entry: dict[str, Any]) -> None:

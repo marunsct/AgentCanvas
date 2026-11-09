@@ -38,6 +38,7 @@ from agentcanvas.ir.contract import Contract, contract
 from agentcanvas.ir.models import Workflow
 from agentcanvas.runtime import nesting
 from agentcanvas.runtime.types import ResumeSpec
+from agentcanvas.services.disclosure import AI_HEADER
 from agentcanvas.settings import Settings
 
 router = APIRouter(tags=["agent protocols"])
@@ -372,6 +373,14 @@ def server_card(request: Request, dep_id: str, wf: Workflow, semver: str) -> dic
     }  # fmt: skip
 
 
+RUN_METHODS = {"tools/call", "SendMessage", "message/send"}  # MCP and A2A methods that answer with a run's output
+
+
+def _marking(method: str) -> dict[str, str] | None:
+    """`X-AI-Generated: true` on an answer that carries what the deployment generated (AI Act Art. 50(2))."""
+    return AI_HEADER if method in RUN_METHODS else None
+
+
 @router.get("/deployments/{dep_id}/mcp/server-card")
 async def mcp_server_card(dep_id: str, request: Request, session: AsyncSession = Depends(get_session)) -> Response:
     """The deployment's MCP Server Card, at the place the MCP Server Card extension reserves for it
@@ -426,7 +435,7 @@ async def mcp_endpoint(
             raise RpcError(-32601, f"method '{method}' is not supported")
     except RpcError as e:
         return JSONResponse(_rpc_error(id_, e.code, e.message, e.data))
-    return JSONResponse({"jsonrpc": "2.0", "id": id_, "result": result})
+    return JSONResponse({"jsonrpc": "2.0", "id": id_, "result": result}, headers=_marking(method))
 
 
 async def _mcp_modern(
@@ -457,7 +466,7 @@ async def _mcp_modern(
     except RpcError as e:
         return JSONResponse(_rpc_error(id_, e.code, e.message, e.data))
     result = {"resultType": "complete", **result, "_meta": {META_SERVER: server}}
-    return JSONResponse({"jsonrpc": "2.0", "id": id_, "result": result})
+    return JSONResponse({"jsonrpc": "2.0", "id": id_, "result": result}, headers=_marking(method))
 
 
 @router.get("/deployments/{dep_id}/mcp")
@@ -741,4 +750,4 @@ async def a2a_endpoint(
         raise  # HTTP 429 / 401, so clients back off or fix their key
     except DomainError as e:
         return JSONResponse(_rpc_error(id_, -32602, e.detail))
-    return JSONResponse({"jsonrpc": "2.0", "id": id_, "result": result})
+    return JSONResponse({"jsonrpc": "2.0", "id": id_, "result": result}, headers=_marking(method))
