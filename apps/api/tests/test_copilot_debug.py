@@ -186,6 +186,73 @@ def test_test_runs_refuse_unaccepted_code_and_secrets_sent_elsewhere():
     assert endpoint_for("anthropic:claude-haiku-4-5", cs, None) == {}
 
 
+def test_test_runs_refuse_a_new_address_even_without_a_secret():
+    """A test run of a proposal that sends data to an address nobody accepted (an app connector at a new URL, a model
+    at a new base URL) could leak what the run reads, mocks steering an agent's tool call included: it waits for an
+    accept. A remote agent step at a new address is stubbed by the dry run, so it may still be tried."""
+    from agentcanvas.copilot.tools import unaccepted_risks
+    from agentcanvas.ir.models import Node, Resource, Workflow
+    from agentcanvas.registry import default_registry
+
+    base = Workflow.model_validate(
+        {"id": "wf_x", "name": "x", "resources": [{"id": "r_m", "type": "model.chat", "name": "m",
+         "config": {"model": "openai:gpt-5"}}]}
+    )  # fmt: skip
+    reg = default_registry()
+    remote = base.model_copy(deep=True)
+    http = {"transport": "http", "url": "https://evil.example/mcp"}
+    remote.resources.append(Resource(id="r_x", type="mcp.server", name="lookup", config=http))
+    assert unaccepted_risks(base, remote, reg) == ["'lookup', which talks to a new address"]
+    assert unaccepted_risks(remote, remote, reg) == []  # accepted: tests run
+    moved = remote.model_copy(deep=True)
+    moved.resources[1].config["url"] = "https://elsewhere.example/mcp"
+    assert unaccepted_risks(remote, moved, reg) == ["'lookup', which talks to a new address"]
+    proxied = base.model_copy(deep=True)
+    proxied.resources[0].config["base_url"] = "https://evil.example/v1"
+    assert unaccepted_risks(base, proxied, reg) == ["'m', which talks to a new address"]
+    a2a = base.model_copy(deep=True)  # stubbed in a dry run: nothing is sent
+    a2a.nodes.append(Node(id="n_a", type="agent.a2a", name="a", config={"url": "https://agents.example/"}))
+    assert unaccepted_risks(base, a2a, reg) == []
+
+
+async def test_a_reproduction_that_calls_real_models_asks_first():
+    """A reproduction of a run that recorded no model replies calls the real models on the run's real input: like
+    a test run, it needs the person's permission."""
+    from agentcanvas.copilot.tools import ToolContext, reproduce_run
+    from agentcanvas.ir.models import Workflow
+    from agentcanvas.registry import default_registry
+
+    wf = Workflow.model_validate(
+        {"id": "wf_x", "name": "x", "resources": [{"id": "r_m", "type": "model.chat", "name": "m",
+         "config": {"model": "openai:gpt-5"}}]}
+    )  # fmt: skip
+
+    class Runs:
+        workflow = wf
+
+        def __init__(self):
+            self.reproduced: list[str] = []
+
+        async def recorded_replies(self, run_id):
+            return {"run_old": {}, "run_replayable": {"m": ["Hi"]}}.get(run_id)
+
+        async def reproduce(self, _wf, run_id):
+            self.reproduced.append(run_id)
+            return {"ok": True}
+
+    async def validate(_wf):
+        return []
+
+    runs = Runs()
+    ctx = ToolContext(workflow=wf, registry=default_registry(), templates={}, validate=validate, runs=runs)  # type: ignore[arg-type]
+    out = await reproduce_run(ctx, {"run_id": "run_old"})
+    assert not out["ok"] and "real models" in out["error"] and runs.reproduced == []
+    assert ctx.events == [{"type": "permission", "kind": "real_runs", "models": ["openai:gpt-5"]}]
+    assert (await reproduce_run(ctx, {"run_id": "run_replayable"}))["ok"]  # replayed: no model is called
+    ctx.allow_real_runs = True
+    assert (await reproduce_run(ctx, {"run_id": "run_old"}))["ok"] and runs.reproduced == ["run_replayable", "run_old"]
+
+
 def _script_node():
     from agentcanvas.ir.models import Node
 

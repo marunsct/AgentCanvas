@@ -30,6 +30,7 @@ from agentcanvas.services.knowledge import used_knowledge_bases
 from agentcanvas.services.testcases import Expect
 from agentcanvas.services.workflows import without_gallery
 from agentcanvas.validation import Diagnostic
+from agentcanvas.validation.blast import RISKY, stubbed_in_dry_run
 from agentcanvas.validation.help import diagnostic_help
 from agentcanvas.validation.policies import CODES as POLICY_CODES
 from agentcanvas.workspace.store import Workspace, WorkspaceError
@@ -285,8 +286,9 @@ ENDPOINT_KEYS = ("base_url", "url", "headers", "endpoint", "azure_endpoint", "co
 
 def unaccepted_risks(saved: Workflow, working: Workflow, registry: Any) -> list[str]:
     """What the working copy would run that the person has not accepted and a dry run does not stub: new or changed
-    code (script steps, Python tools, custom code steps, local MCP server commands), and secrets sent to a new or
-    changed address."""
+    code (script steps, Python tools, custom code steps, local MCP server commands), secrets sent to a new or
+    changed address, and anything else that talks to a new or changed address (an app connector's URL, a model's
+    base URL): a test run must not send what it reads somewhere nobody chose."""
     old_nodes = {n.id: n for n in _flat(saved)[0]}
     old_resources = {r.name: r for r in _flat(saved)[1]}
     out: list[str] = []
@@ -301,6 +303,8 @@ def unaccepted_risks(saved: Workflow, working: Workflow, registry: Any) -> list[
         elif changed and secret_refs(n.config) and _endpoint(n.config) != _endpoint(old.config if old else {}):
             # a remote agent step (A2A) with a secret header: a dry run stubs it, but never risk the secret
             out.append(f"'{n.name}', which sends a secret to a new address")
+        elif changed and _new_address(n.config, old.config if old else {}) and not stubbed_in_dry_run(n, registry):
+            out.append(f"'{n.name}', which talks to a new address")
     for r in resources:
         old = old_resources.get(r.name)
         if old is not None and old.type == r.type and old.config == r.config:
@@ -311,7 +315,20 @@ def unaccepted_risks(saved: Workflow, working: Workflow, registry: Any) -> list[
             out.append(f"the new or changed local app connector '{r.name}', which starts a program")
         elif secret_refs(r.config) and _endpoint(r.config) != (_endpoint(old.config) if old else _endpoint({})):
             out.append(f"'{r.name}', which sends a secret to a new address")
+        elif _new_address(r.config, old.config if old else {}) and not _stubbed_tool(r, registry):
+            out.append(f"'{r.name}', which talks to a new address")
     return out
+
+
+def _new_address(config: dict[str, Any], old: dict[str, Any]) -> bool:
+    """Whether `config` names an address (URL, base URL, headers...) other than `old` does."""
+    return any(v not in (None, "", [], {}) for v in _endpoint(config)) and _endpoint(config) != _endpoint(old)
+
+
+def _stubbed_tool(r: Any, registry: Any) -> bool:
+    """A tool kind a dry run always replaces by a recorder (an HTTP request tool): its address is never called."""
+    m = registry.get(r.type) if registry else None
+    return bool(m and set(m.side_effects or []) & RISKY)
 
 
 def secret_refs(value: Any) -> set[str]:
@@ -365,7 +382,19 @@ async def reproduce_run(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any
         return {"ok": False, "error": "runs are not available here"}
     if problem := await _runnable(ctx):
         return {"ok": False, "error": problem}
-    return await ctx.runs.reproduce(ctx.workflow, str(args.get("run_id") or ""))
+    run_id = str(args.get("run_id") or "")
+    replies = await ctx.runs.recorded_replies(run_id)
+    if replies is not None and not ctx.allow_real_runs and (real := real_models(ctx.workflow, replies)):
+        # the models the recording has no replies for are called for real, on the run's real input
+        ctx.events.append({"type": "permission", "kind": "real_runs", "models": real})
+        return {
+            "ok": False,
+            "error": "reproducing this run calls real models ("
+            + ", ".join(real)
+            + ") because it recorded no replies for them; ask the person to allow test runs that call real "
+            "models in the panel, or use run_test with `mocks`",
+        }
+    return await ctx.runs.reproduce(ctx.workflow, run_id)
 
 
 async def propose_tests(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:

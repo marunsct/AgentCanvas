@@ -146,6 +146,15 @@ class RunAccess:
             out["passed"], out["failures"] = not failures, failures
         return hide_secrets(out, self._secrets(thread_id))
 
+    async def recorded_replies(self, run_id: str) -> dict[str, Any] | None:
+        """The model replies and tool outputs a past run recorded, by name ({} when it kept none); None when there
+        is no such run."""
+        run = await self._run(run_id)
+        if run is None:
+            return None
+        mocks = (run.recording or {}).get("mocks")
+        return mocks if isinstance(mocks, dict) else {}
+
     async def reproduce(self, wf: Workflow, run_id: str) -> dict[str, Any]:
         """Run `wf` on a past run's input, replaying its recorded replies and tool outputs when it has them."""
         run = await self._run(run_id)
