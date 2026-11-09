@@ -102,7 +102,10 @@ class Settings(BaseSettings):
     retention_days: int = 90
     audit_retention_days: int = 400  # audit-log rows older than this are deleted; 0 keeps them forever
     memory_retention_days: int = 0  # long-term memories not updated for this long are deleted; 0 (default): kept
-    # long-term memory's semantic index: "builtin" or "<provider>:<model>"; empty (default): by words.
+    # an event handler's dedup values (`@on(dedup_key=...)`) are kept this many days: the same value delivered again
+    # later runs the handler again. Never longer than the organisation's conversation retention; 0 = only that
+    event_dedup_days: int = Field(default=30, ge=0)
+    # long-term memory's semantic index "builtin" or "<provider>:<model>"; empty (default): by words.
     # One size of vector per server (the pgvector column), so one model for every project; a model other than the
     # built-in or a well-known hosted one needs its size in `memory_embedding_dims` (0: measured at startup)
     memory_embedding: str = ""

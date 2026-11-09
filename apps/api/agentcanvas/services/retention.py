@@ -8,7 +8,8 @@ for a person (interrupted) are kept whatever their age.
 The same job deletes audit-log rows older than `AGENTCANVAS_AUDIT_RETENTION_DAYS` (default 400) and, when
 `AGENTCANVAS_MEMORY_RETENTION_DAYS` is set (off by default), long-term memories not updated for that long (S12).
 Files people attached to runs (G-5) follow conversations: one no run has used for the organisation's conversation
-retention is deleted.
+retention is deleted. So does the event log, which holds what other systems sent (webhook bodies, customer records);
+an event handler's dedup values go after `AGENTCANVAS_EVENT_DEDUP_DAYS` (30), never later than the event log.
 
 Every API replica runs the job. Each conversation is claimed before it is deleted (its row locked, skipping one
 another replica holds, on Postgres) and the age and status are checked again under that lock, so replicas share the
@@ -28,7 +29,7 @@ from sqlalchemy import delete, select
 
 from agentcanvas import observability
 from agentcanvas.adapters.spi import MemoryAbility, supports
-from agentcanvas.db.models import AuditLog, Organization, Project, Thread, WorkflowRow
+from agentcanvas.db.models import AuditLog, EventDedup, EventLog, Organization, Project, Thread, WorkflowRow
 from agentcanvas.db.repositories import delete_thread_rows
 from agentcanvas.log import get_logger
 from agentcanvas.services import org_settings
@@ -38,6 +39,7 @@ from agentcanvas.settings import Settings
 log = get_logger(__name__)
 
 DELETED = Counter("agentcanvas_threads_expired_total", "Conversations deleted by the retention job")
+EVENTS_DELETED = Counter("agentcanvas_events_expired_total", "Event-log rows deleted by the retention job")
 BATCH = 500
 BUDGET_S = 300.0  # the most a tick spends deleting conversations; the rest is the next tick's
 
@@ -143,9 +145,42 @@ class RetentionJob:
             if files:
                 log.info("retention.files_deleted", org_id=org_id, files=files, days=days)
         DELETED.inc(len(deleted))
+        await self.expire_events(now, [(org_id, self.default_days if own is None else own) for org_id, own in orgs])
         await self.expire_audit(now)
         await self.expire_memory(now, [org_id for org_id, _ in orgs])
         return deleted
+
+    async def expire_events(self, now: datetime, orgs: list[tuple[str, int]]) -> int:
+        """Each organisation's event log older than its conversation retention, and its handlers' dedup values older
+        than the dedup window or that retention, whichever is shorter. Returns the event-log rows deleted."""
+        until = time.monotonic() + BUDGET_S
+        dedup_days = self.server.event_dedup_days
+        n = 0
+        for org_id, days in orgs:
+            projects = select(Project.id).where(Project.org_id == org_id)
+            if days > 0:
+                gone = await self._delete_old(EventLog, projects, now - timedelta(days=days), until)
+                if gone:
+                    log.info("retention.events_deleted", org_id=org_id, rows=gone, days=days)
+                n += gone
+            if window := min((d for d in (days, dedup_days) if d > 0), default=0):
+                await self._delete_old(EventDedup, projects, now - timedelta(days=window), until)
+        EVENTS_DELETED.inc(n)
+        return n
+
+    async def _delete_old(self, table: Any, projects: Any, cutoff: datetime, until: float) -> int:
+        """Delete a project-owned table's rows created before `cutoff`, a batch at a time, within the time budget."""
+        gone = 0
+        while time.monotonic() < until:
+            batch = select(table.id).where(table.project_id.in_(projects), table.created_at < cutoff).limit(BATCH)
+            async with self.db.sessionmaker() as s:
+                res = await s.execute(delete(table).where(table.id.in_(batch)))
+                await s.commit()
+            rows = res.rowcount or 0  # type: ignore[attr-defined]
+            gone += rows
+            if rows < BATCH:
+                break
+        return gone
 
     async def _days(self, org_id: str | None, key: str) -> int:
         """The days for `key` that apply to an organisation: its own within the server's ceiling, else the server's."""

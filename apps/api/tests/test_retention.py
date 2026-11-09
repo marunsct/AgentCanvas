@@ -152,3 +152,36 @@ async def test_a_conversation_another_replica_holds_is_skipped(app, api_client):
         await other.execute(select(Thread.id).where(Thread.id == "th_held").with_for_update())
         got = await asyncio.wait_for(app.state.retention.tick(datetime.now(UTC)), 10)
         assert got == ["th_free"]
+
+
+async def test_event_payloads_and_handler_dedup_values_expire(app, api_client):
+    """The event log keeps what other systems sent (webhook bodies, customer records): it follows conversation
+    retention. A handler's dedup values go after the dedup window, never later than conversation retention."""
+    from agentcanvas.db.models import EventDedup, EventLog
+
+    await api_client.put("/v1/org/settings", json={"retention_days": 30})
+    now = datetime.now(UTC)
+    async with app.state.db.sessionmaker() as s:
+        for days in (40, 1):
+            at = now - timedelta(days=days)
+            s.add(EventLog(id=f"evt_{days}", project_id="prj_default", type="crm.lead", data={"email": "a@b.c"},
+                           status="handled", created_at=at))  # fmt: skip
+            s.add(EventDedup(id=f"dd_{days}", project_id="prj_default", handler="events.leads:qualify",
+                             value=f"lead-{days}", event_id=f"evt_{days}", created_at=at))  # fmt: skip
+        await s.commit()
+    job = app.state.retention
+    await job.tick(now)
+    async with app.state.db.sessionmaker() as s:
+        assert list((await s.scalars(select(EventLog.id))).all()) == ["evt_1"]
+        assert list((await s.scalars(select(EventDedup.value))).all()) == ["lead-1"]
+
+    job.server = job.server.model_copy(update={"event_dedup_days": 7})  # a shorter dedup window than retention
+    await job.tick(now + timedelta(days=8))
+    async with app.state.db.sessionmaker() as s:
+        assert list((await s.scalars(select(EventLog.id))).all()) == ["evt_1"]  # still within retention
+        assert list((await s.scalars(select(EventDedup.value))).all()) == []
+
+    await api_client.put("/v1/org/settings", json={"retention_days": 0})  # forever: the event log is kept
+    await job.tick(now + timedelta(days=400))
+    async with app.state.db.sessionmaker() as s:
+        assert list((await s.scalars(select(EventLog.id))).all()) == ["evt_1"]

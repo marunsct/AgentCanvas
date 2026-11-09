@@ -144,6 +144,10 @@ def qualify(event, act):
 Handlers only *describe* actions (`act.start_workflow`, `act.resume`, `act.emit`); the platform performs them, so
 handler code never holds credentials. Steps can emit events during a run with `agentcanvas.sdk.emit(type, data)`.
 
+`dedup_key` runs the handler once per value: the same lead delivered again is skipped. Values are remembered for 30
+days (the operator's `AGENTCANVAS_EVENT_DEDUP_DAYS`), or the organisation's conversation retention when that is
+shorter; after that the same value runs the handler again.
+
 The **Events** page shows the **event map** (which events start or resume which workflows), lets you **Send a
 test event** (or **Dry run** it to see what would happen), and keeps an **event log**. Other systems send events
 with `POST /v1/projects/{project_id}/events`.

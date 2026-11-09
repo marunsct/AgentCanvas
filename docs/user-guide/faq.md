@@ -50,8 +50,8 @@ Build a dataset, add evaluators, run an experiment comparing the live version wi
 gate so publishing is refused when scores drop. See [Evaluation Studio](evaluation.md).
 
 **How do I delete a user's data?**
-Erase their memory namespace on the **Memory** page. Conversations are deleted automatically after the retention
-period (90 days by default).
+Erase their memory namespace on the **Memory** page. Conversations, and the events other systems sent to the
+project, are deleted automatically after the retention period (90 days by default).
 
 **Where do I report a bug or see what's planned?**
 On [GitHub](https://github.com/marunsct/AgentCanvas). The
