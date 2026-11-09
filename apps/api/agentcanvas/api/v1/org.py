@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any, Literal
 
@@ -124,6 +125,45 @@ async def erase_member(
         session, request.app.state.runner, user.org_id, user_id, conversations=body.conversations
     )
     note(request, target=f"user_id={user_id}", reason=body.reason, **counts)
+    return counts
+
+
+class EndUserIn(BaseModel):
+    user_id: str = Field(min_length=1, max_length=500, description="the `user_id` the deployment API was sent")
+    deployment_id: str | None = Field(None, description="only this deployment's end user; null: every deployment")
+    reason: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)] = Field(
+        description="why (the request you are answering), for the audit log"
+    )
+
+
+class ErasedEndUserOut(BaseModel):
+    conversations: int
+    memories: int = Field(description="long-term memories deleted")
+    files: int = Field(description="files given to the deployment that their runs used")
+
+
+def end_user_ref(user_id: str) -> str:
+    """How the audit log names an end user: a hash, so the log does not keep the id an erasure removed."""
+    return "end_user_sha256=" + hashlib.sha256(user_id.encode()).hexdigest()
+
+
+@router.post("/end-users/erase", response_model=ErasedEndUserOut)
+async def erase_end_user(
+    body: EndUserIn,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    user: CurrentUser = Depends(current_user),
+) -> dict[str, int]:
+    """Erase an end user of the organisation's deployments (GDPR Art. 17), by the `user_id` the deployment API was
+    sent: their conversations (with checkpoints, feedback and search index), long-term memories and the files their
+    runs used. Of one deployment, or of every one. Admins; a deployment's key can do the same for its own end users
+    (`POST /v1/deployments/{id}/end-users/erase`)."""
+    from agentcanvas.services import data_subjects
+
+    counts = await data_subjects.erase_end_user(
+        session, request.app.state.runner, user.org_id, body.user_id, body.deployment_id
+    )
+    note(request, target=end_user_ref(body.user_id), deployment_id=body.deployment_id, reason=body.reason, **counts)
     return counts
 
 

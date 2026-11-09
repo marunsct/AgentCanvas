@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import asyncio
 
-from sqlalchemy import func, select
-from test_org_scope import ORG_B, org_b  # noqa: F401 - a fixture
-from test_publish import make_greeter
+from sqlalchemy import func, select, update
+from test_org_scope import ORG_B, act_as_b, org_b  # noqa: F401 - a fixture
+from test_publish import bearer, make_greeter
 
 from agentcanvas.api.deps import CurrentUser, current_user
 from agentcanvas.db.models import (
@@ -16,6 +16,7 @@ from agentcanvas.db.models import (
     Membership,
     OAuthConnection,
     PersonalToken,
+    Run,
     StoredFile,
     Thread,
 )
@@ -120,3 +121,108 @@ async def test_only_this_organisations_people_and_never_yourself(app, api_client
     finally:
         app.dependency_overrides.pop(current_user)
     assert (await api_client.post(f"/v1/org/members/{ANA}/erase", json={})).status_code == 422  # a reason
+
+
+async def published(api) -> tuple[str, str, str]:
+    wf = await make_greeter(api)
+    pub = (await api.post(f"/v1/workflows/{wf}/publish", json={})).json()
+    return wf, pub["deployment"]["id"], pub["api_key"]
+
+
+async def talk(api, dep: str, key: str, user_id: str) -> str:
+    r = await api.post(
+        f"/v1/deployments/{dep}/runs/wait", json={"input": {"who": user_id}, "user_id": user_id}, headers=bearer(key)
+    )
+    assert r.status_code == 200, r.text
+    return r.json()["thread_id"]
+
+
+async def test_a_deployment_erases_its_end_user_by_the_user_id_it_sent(app, api_client):
+    _, dep, key = await published(api_client)
+    bob = [await talk(api_client, dep, key, "bob") for _ in range(3)]
+    carol, lookalike = await talk(api_client, dep, key, "carol"), await talk(api_client, dep, key, "x:bob")
+    async with app.state.db.sessionmaker() as s:
+        thread = await s.get(Thread, bob[0])
+        assert thread is not None and thread.end_user == f"api:{dep}:bob"
+        # a conversation from before threads kept their end user: found by its runs' user
+        await s.execute(update(Thread).where(Thread.id == bob[2]).values(end_user=None))
+        await s.execute(update(Run).where(Run.thread_id == bob[2]).values(context={"uid": f"api:{dep}:bob"}))
+        s.add(
+            StoredFile(
+                id="fil_01BOBSFILE0000000000000000",
+                project_id="prj_default",
+                name="id.png",
+                media_type="image/png",
+                size=1,
+                sha256="x",
+                data=b"x",
+                source="api",
+                deployment_id=dep,
+            )
+        )
+        s.add(
+            StoredFile(
+                id="fil_01CAROLSFILE000000000000000",
+                project_id="prj_default",
+                name="c.png",
+                media_type="image/png",
+                size=1,
+                sha256="x",
+                data=b"x",
+                source="api",
+                deployment_id=dep,
+            )
+        )
+        await s.execute(
+            update(Run).where(Run.thread_id == bob[1]).values(recording={"input": {"f": {"id": "fil_01BOBSFILE0000000000000000"}}})
+        )  # fmt: skip
+        await s.commit()
+    store = app.state.runner.adapter.store
+    await store.aput((f"org:{ORG}", "prefs", "user", f"api:{dep}:bob"), "likes", {"value": "tea"})
+    await store.aput((f"org:{ORG}", "prefs", "user", f"api:{dep}:carol"), "likes", {"value": "coffee"})
+
+    erase = f"/v1/deployments/{dep}/end-users/erase"
+    assert (await api_client.post(erase, json={"user_id": "bob"})).status_code == 401  # the key is required
+    r = await api_client.post(erase, json={"user_id": "bob"}, headers=bearer(key))
+    assert r.status_code == 200, r.text
+    assert r.json() == {"conversations": 3, "memories": 1, "files": 1}
+    async with app.state.db.sessionmaker() as s:
+        for t in bob:
+            assert await s.get(Thread, t) is None
+        assert await s.get(Thread, carol) is not None and await s.get(Thread, lookalike) is not None
+        assert await s.get(StoredFile, "fil_01CAROLSFILE000000000000000") is not None
+        entry = await s.scalar(select(AuditLog).where(AuditLog.action == "api_erase_end_user"))
+        assert entry is not None and entry.target.startswith("end_user_sha256=")
+        assert "bob" not in entry.target + str(entry.detail) and entry.detail["caller"] == "deployment key"
+    assert await store.aget((f"org:{ORG}", "prefs", "user", f"api:{dep}:bob"), "likes") is None
+    assert await store.aget((f"org:{ORG}", "prefs", "user", f"api:{dep}:carol"), "likes") is not None
+    again = await api_client.post(erase, json={"user_id": "bob"}, headers=bearer(key))
+    assert again.json() == {"conversations": 0, "memories": 0, "files": 0}
+
+
+async def test_an_admin_erases_an_end_user_across_every_deployment(app, api_client, org_b):  # noqa: F811
+    _, dep1, key1 = await published(api_client)
+    _, dep2, key2 = await published(api_client)
+    t1, t2 = await talk(api_client, dep1, key1, "carol"), await talk(api_client, dep2, key2, "carol")
+    body = {"user_id": "carol", "reason": "DSAR 7"}
+    r = await api_client.post("/v1/org/end-users/erase", json={**body, "deployment_id": dep1})
+    assert r.status_code == 200 and r.json()["conversations"] == 1
+    r = await api_client.post("/v1/org/end-users/erase", json=body)
+    assert r.status_code == 200 and r.json()["conversations"] == 1
+    async with app.state.db.sessionmaker() as s:
+        assert await s.get(Thread, t1) is None and await s.get(Thread, t2) is None
+    assert (
+        await api_client.post("/v1/org/end-users/erase", json={**body, "deployment_id": "dep_x"})
+    ).status_code == 404
+    act_as_b(app)
+    try:  # another organisation's admin: not their deployment, and nothing of theirs to erase
+        assert (
+            await api_client.post("/v1/org/end-users/erase", json={**body, "deployment_id": dep1})
+        ).status_code == 404
+    finally:
+        app.dependency_overrides.pop(current_user)
+    app.dependency_overrides[current_user] = lambda: CurrentUser(id="usr_dev", org_id=ORG, role="builder")
+    try:
+        assert (await api_client.post("/v1/org/end-users/erase", json=body)).status_code == 403
+    finally:
+        app.dependency_overrides.pop(current_user)

@@ -501,6 +501,7 @@ class Runner:
         queue_key: str | None = None,
         handed_over: bool = False,
         caller_run_id: str | None = None,
+        end_user: str | None = None,
     ) -> RunHandle:
         """Start a run. `context=None` reuses the context of the last run on `context_from` (default: this thread).
         A deployment's run takes only files given to that deployment (`visitor_hash`: a share link's visitor, whose
@@ -510,7 +511,8 @@ class Runner:
         when a concurrent-run limit holds it back (default: low for test runs, else normal); `queue_key`: the run a
         hand-over continues, whose place in that queue it keeps; `handed_over`: started by the hand-over;
         `caller_run_id`: the run of the organisation that called this deployment run (it takes no place in the
-        queue while that run holds a slot: runtime/nesting.py)."""
+        queue while that run holds a slot: runtime/nesting.py). `end_user`: the deployment API's end user a new
+        conversation belongs to (kept for erasure and export requests)."""
         if self.draining:
             raise Unavailable("this server is restarting; retry the request", retry_after=5)
         adapter = self.adapter_for(wf)
@@ -549,6 +551,7 @@ class Runner:
                             status="running",
                             created_by=user_id,
                             title=_title(input),
+                            end_user=end_user,
                         )
                     )
                 elif thread.workflow_id != wf.id:

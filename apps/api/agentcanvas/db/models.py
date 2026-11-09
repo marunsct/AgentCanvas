@@ -309,7 +309,10 @@ class Thread(Base):
         Index("thread_created_idx", "created_at", "id"),  # the Conversations list, newest first
         Index("thread_workflow_created_idx", "workflow_id", "created_at", "id"),
         Index("thread_deployment_idx", "deployment_id"),  # deleting a deployment (SET NULL), the kill switch
-    )
+        # an end user's conversations (E-7: erasure and export requests)
+        Index("thread_end_user_idx", "end_user", postgresql_where=text("end_user IS NOT NULL"),
+              sqlite_where=text("end_user IS NOT NULL")),
+    )  # fmt: skip
     id: Mapped[str] = mapped_column(String, primary_key=True)  # == LangGraph thread_id
     workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"))
     deployment_id: Mapped[str | None] = mapped_column(ForeignKey("deployment.id", ondelete="SET NULL"))
@@ -322,6 +325,8 @@ class Thread(Base):
     )
     # a paused run of a framework without its own checkpoints (runtime/paused.py), as that framework's JSON
     paused_state: Mapped[str | None] = mapped_column(Text)
+    # the deployment API's end user ("api:<deployment>:<user_id>") who started it, when the caller named one
+    end_user: Mapped[str | None] = mapped_column(Text)
 
 
 class Run(Base):

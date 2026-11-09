@@ -149,6 +149,7 @@ counts, never the content.
 | Request | How |
 |---|---|
 | Erase a member (Art. 17) | `POST /v1/org/members/{user_id}/erase`: removes them with their tokens, sign-ins, memories and Copilot chats (and, if asked, the conversations they started), and pseudonymises their account when they belong to no other organisation ([Members](accounts.md#members)) |
+| Erase a deployment's end user (Art. 17) | by the `user_id` the deployment API was sent: `POST /v1/org/end-users/erase` (admins; one deployment or every one) or `POST /v1/deployments/{id}/end-users/erase` with the deployment's key, so your own systems can answer the request. Their conversations, long-term memories and the files their runs used are deleted. The audit log names them by a hash of the id ([Call a deployment](publish.md#call-a-deployment)) |
 | Delete the whole organisation (end of contract) | `DELETE /v1/org`: suspended at once, deleted for good after a grace period of 7 days (`AGENTCANVAS_ORG_DELETION_GRACE_DAYS`), which an admin can take back until then ([Deleting the organisation](settings.md#deleting-the-organisation)) |
 
 ## Backups and recovery

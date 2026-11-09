@@ -52,7 +52,7 @@ SECURITY_ACTIONS = frozenset({
     "put_spending_caps", "spend_cap_warning", "spend_cap_reached",  # spending caps, and spending reaching them
     "mcp_tool_drift",  # an app connector's server changed tools a deployment pinned (runs leave them out)
     "delete_organization", "cancel_organization_deletion", "purge_organization",  # offboarding (E-7)
-    "erase_member",  # data-subject erasure (E-7)
+    "erase_member", "erase_end_user", "api_erase_end_user",  # data-subject erasure (E-7)
 })  # fmt: skip
 
 

@@ -23,6 +23,7 @@ from agentcanvas.api.urls import api_url
 from agentcanvas.api.v1.files import FileOut, file_out, file_service, read_upload
 from agentcanvas.api.v1.gates import gate_for
 from agentcanvas.api.v1.gitsync import GitSyncOut, sync_after_version
+from agentcanvas.api.v1.org import ErasedEndUserOut, end_user_ref
 from agentcanvas.api.v1.runs import SSE_HEADERS, _context, _sse, stop_run
 from agentcanvas.api.v1.tools import refresh_pins
 from agentcanvas.api.v1.versions import workspace_commit
@@ -47,6 +48,7 @@ from agentcanvas.runtime import nesting
 from agentcanvas.runtime.runner import RunHandle
 from agentcanvas.runtime.types import ResumeSpec
 from agentcanvas.services import annotation, approvers, callbacks, gates, networks
+from agentcanvas.services.data_subjects import end_user_label
 from agentcanvas.services.deployments import Check, DeploymentService
 from agentcanvas.services.disclosure import AI_HEADER, GeneratedBy, generated_by, marked
 from agentcanvas.services.projects import PROJECT_OF
@@ -408,7 +410,7 @@ async def _api_context(session: AsyncSession, dep: Deployment, wf: Workflow, bod
 
     row = await session.get(WorkflowRow, dep.workflow_id)
     project = await session.get(Project, row.project_id) if row else None
-    end_user = f"api:{dep.id}:{body.user_id}" if body.user_id else f"api:{dep.id}"
+    end_user = end_user_label(dep.id, body.user_id) if body.user_id else f"api:{dep.id}"
     user = CurrentUser(id=end_user, org_id=project.org_id if project else "", role="api")
     return _context(wf, body.context, user)
 
@@ -434,6 +436,7 @@ async def _start(
         wf, thread_id=body.thread_id, input=body.input, context=await _api_context(session, dep, wf, body),
         deployment_id=dep.id, version_id=version_id, labels={**body.metadata, **(labels or {})},
         caller_run_id=nesting.caller(request.headers.get(nesting.HEADER)),
+        end_user=end_user_label(dep.id, body.user_id) if body.user_id else None,
     )  # fmt: skip
     await _add_callback(session, dep, h, callback)
     return h
@@ -659,6 +662,29 @@ async def api_feedback(
     if down:
         await annotation.route(session, dep.workflow_id, run_id, thread_id, thumbs_down=True)
     return Response(status_code=204)
+
+
+class ApiEndUserIn(BaseModel):
+    user_id: str = Field(min_length=1, max_length=500, description="the `user_id` you sent with their runs")
+
+
+@public_router.post("/deployments/{dep_id}/end-users/erase", response_model=ErasedEndUserOut)
+async def api_erase_end_user(
+    body: ApiEndUserIn,
+    request: Request,
+    dep: Deployment = Depends(_key_holder),
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, int]:
+    """Erase one of your end users (GDPR Art. 17), by the `user_id` you sent with their runs: their conversations on
+    this deployment (with feedback), long-term memories and the files their runs used. Answers the counts; an
+    end user with nothing left answers zeros."""
+    from agentcanvas.db.repositories import ScopeRepo
+    from agentcanvas.services.data_subjects import erase_end_user
+
+    org_id = await ScopeRepo(session).org_of("deployment", dep.id) or ""
+    counts = await erase_end_user(session, request.app.state.runner, org_id, body.user_id, dep.id)
+    note(request, target=end_user_ref(body.user_id), **counts)
+    return counts
 
 
 @public_router.post("/deployments/{dep_id}/threads/{thread_id}/resume", response_model=ApiResult)

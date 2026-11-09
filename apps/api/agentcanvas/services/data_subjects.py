@@ -13,9 +13,12 @@ account; only what they left in this organisation goes.
 
 from __future__ import annotations
 
+import json
+import re
 from typing import Any, cast
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import Text, delete, func, select
+from sqlalchemy import cast as sa_cast
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.adapters.spi import MemoryAbility, supports
@@ -28,13 +31,14 @@ from agentcanvas.db.models import (
     PersonalToken,
     Presence,
     Project,
+    Run,
     ScimGroup,
     ScimGroupMember,
     StoredFile,
     Thread,
     WorkflowRow,
 )
-from agentcanvas.db.repositories import MemberRepo, delete_thread_rows
+from agentcanvas.db.repositories import MemberRepo, ScopeRepo, delete_thread_rows
 from agentcanvas.errors import Conflict, NotFound
 from agentcanvas.services.offboarding import erase_profile
 
@@ -145,3 +149,109 @@ async def erase_member(
 def refuse_self(caller_id: str, user_id: str) -> None:
     if caller_id == user_id:
         raise Conflict("you cannot erase yourself: ask another admin")
+
+
+# ---------------------------------------------------------------------------------------- end users ----
+FILE_ID = re.compile(r"fil_[0-9A-Za-z]{10,40}")
+
+
+def end_user_label(deployment_id: str, user_id: str) -> str:
+    """The id a deployment's end user has in runs, memories and conversations."""
+    return f"api:{deployment_id}:{user_id}"
+
+
+def _is_end_user(label: Any, user_id: str, deployments: set[str] | None) -> bool:
+    """`label` names `user_id` of one of `deployments` (None: of any). A user id may hold colons: compared whole."""
+    if not isinstance(label, str):
+        return False
+    parts = label.split(":", 2)
+    return (
+        len(parts) == 3
+        and parts[0] == "api"
+        and parts[2] == user_id
+        and (deployments is None or parts[1] in deployments)
+    )
+
+
+async def scope_deployment(session: AsyncSession, org_id: str, deployment_id: str | None) -> set[str] | None:
+    """The deployments a request is about: one (404 unless it is the organisation's), or None for every one,
+    including those deleted since, which conversations and memories still name."""
+    if deployment_id is None:
+        return None
+    if await ScopeRepo(session).org_of("deployment", deployment_id) != org_id:
+        raise NotFound(f"deployment '{deployment_id}' not found")
+    return {deployment_id}
+
+
+def _like(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+async def end_user_threads(session: AsyncSession, org_id: str, user_id: str, deployments: set[str] | None) -> list[str]:
+    """The conversations of a deployment end user in the organisation: those that name them, and older ones (from
+    before conversations kept their end user) whose runs had them as the run's user."""
+    workflows = org_workflows(org_id)
+    named = select(Thread.id, Thread.end_user).where(
+        Thread.workflow_id.in_(workflows), Thread.end_user.like(f"api:%:{_like(user_id)}", escape="\\")
+    )
+    found = {tid for tid, label in (await session.execute(named)).all() if _is_end_user(label, user_id, deployments)}
+    # the run context's JSON text as each database writes it (SQLite escapes non-ASCII characters, Postgres does not)
+    needle = json.dumps(f":{user_id}", ensure_ascii=session.get_bind().dialect.name != "postgresql")[1:]
+    older = (
+        select(Run.thread_id, Run.context)
+        .join(Thread, Thread.id == Run.thread_id)
+        .where(
+            Thread.workflow_id.in_(workflows),
+            Thread.end_user.is_(None),
+            Thread.deployment_id.is_not(None),
+            sa_cast(Run.context, Text).like(f"%{_like(needle)}%", escape="\\"),
+        )
+    )
+    for tid, context in (await session.execute(older)).all():
+        if isinstance(context, dict) and any(_is_end_user(v, user_id, deployments) for v in context.values()):
+            found.add(tid)
+    return sorted(found)
+
+
+async def end_user_files(session: AsyncSession, org_id: str, thread_ids: list[str]) -> list[str]:
+    """The files given to a deployment (not the project's own) that the end user's runs used: their ids appear in the
+    runs' input."""
+    ids: set[str] = set()
+    for i in range(0, len(thread_ids), 500):
+        rows = await session.execute(
+            select(Run.recording, Run.pending).where(Run.thread_id.in_(thread_ids[i : i + 500]))
+        )
+        for recording, pending in rows.all():
+            ids |= set(FILE_ID.findall(json.dumps([recording, pending], default=str)))
+    if not ids:
+        return []
+    q = select(StoredFile.id).where(
+        StoredFile.id.in_(ids), StoredFile.deployment_id.is_not(None), StoredFile.project_id.in_(org_projects(org_id))
+    )
+    return list((await session.scalars(q)).all())
+
+
+async def end_user_namespaces(
+    runner: Any, org_id: str, user_id: str, deployments: set[str] | None
+) -> list[tuple[str, ...]]:
+    if not supports(runner.adapter, "memory_store"):
+        return []
+    found = await cast(MemoryAbility, runner.adapter).memory_namespaces((f"org:{org_id}",), limit=NAMESPACES)
+    return [tuple(ns) for ns in found if any(_is_end_user(lb, user_id, deployments) for lb in tuple(ns)[1:])]
+
+
+async def erase_end_user(
+    session: AsyncSession, runner: Any, org_id: str, user_id: str, deployment_id: str | None = None
+) -> dict[str, int]:
+    """Delete a deployment end user's conversations, long-term memories and the files their runs used: of one
+    deployment, or of every deployment of the organisation. Returns counts. Commits."""
+    deployments = await scope_deployment(session, org_id, deployment_id)
+    threads = await end_user_threads(session, org_id, user_id, deployments)
+    files = await end_user_files(session, org_id, threads)
+    counts = {"conversations": await delete_conversations(session, runner, threads)}
+    res = await session.execute(delete(StoredFile).where(StoredFile.id.in_(files)))
+    counts["files"] = res.rowcount or 0  # type: ignore[attr-defined]
+    await session.commit()
+    namespaces = await end_user_namespaces(runner, org_id, user_id, deployments)
+    counts["memories"] = sum([await cast(MemoryAbility, runner.adapter).memory_erase(ns) for ns in namespaces])
+    return counts
