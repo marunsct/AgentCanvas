@@ -167,7 +167,9 @@ field such as `answer`, `reply` or `response`, else the only text output.
   subdomains) and only those sites, plus this app, can frame it; others see a blocked frame. The link itself still
   opens for anyone who has it.
 - **Reloading keeps the conversation.** The chat page shows a visitor's latest conversation again after a reload and
-  carries on in the same thread (a question the assistant was waiting on is still open). It is kept on the server
+  carries on in the same thread (a question the assistant was waiting on is still open). An answer still being
+  written at the reload appears when it is ready (the page checks every 2 seconds, for up to 3 minutes); the checks
+  leave a visitor who scrolled up to re-read where they are. It is kept on the server
   under the visitor's id, which their browser remembers, and goes when conversations expire (Settings › Organisation).
   **New conversation** closes it for good; a new link (**New link**) ends every saved conversation. A visitor who
   clears their browser data or uses another browser starts afresh; you still see the earlier runs in **Runs**.

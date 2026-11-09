@@ -8,6 +8,7 @@ import {
 import { originAllowed, parseCommand, postToParent } from "./embedApi";
 import type { FileRef } from "../ir/files";
 import { FilePicker } from "../ui/FilePicker";
+import { useFollowBottom } from "../ui/useFollowBottom";
 
 interface Message {
   id: number;
@@ -22,6 +23,11 @@ interface Message {
 }
 
 let nextId = 1;
+
+const sameMessage = (a: Message, b: Message) =>
+  a.role === b.role && a.text === b.text && a.runId === b.runId && a.error === b.error
+  && a.question?.id === b.question?.id && a.question?.kind === b.question?.kind && a.question?.question === b.question?.question
+  && (a.attached ?? []).join("\n") === (b.attached ?? []).join("\n");
 
 /** A saved conversation still being answered is checked every AWAY_POLL_MS, at most AWAY_POLLS times (3 minutes). */
 export const AWAY_POLL_MS = 2000;
@@ -41,16 +47,20 @@ export function SharePage() {
   const [away, setAway] = useState(false); // a saved conversation whose last message is still being answered
   const abort = useRef<AbortController | null>(null);
   const started = useRef(false); // this page sent something: a saved conversation no longer replaces what is shown
-  const logEnd = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
 
-  // the visitor's saved conversation (kept on the server under their browser's secret): shown again after a reload
+  // the visitor's saved conversation (kept on the server under their browser's secret): shown again after a reload.
+  // While an answer is still being written it is fetched again every 2 s: a message keeps its id (the log is
+  // append-only), and an unchanged conversation keeps the same state, so the live region does not announce it again
   const restore = useCallback((saved: SavedConversation) => {
     if (started.current) return;
-    setMessages(saved.messages.map((m) => ({
-      id: nextId++, role: m.role, text: m.text, runId: m.run_id ?? undefined, error: m.error,
-      attached: m.attached, question: m.question ?? undefined,
-    })));
+    setMessages((prev) => {
+      const next = saved.messages.map((m, i): Message => ({
+        id: prev[i]?.id ?? nextId++, role: m.role, text: m.text, runId: m.run_id ?? undefined, error: m.error,
+        attached: m.attached, question: m.question ?? undefined, rating: prev[i]?.rating,
+      }));
+      return next.length === prev.length && next.every((m, i) => sameMessage(m, prev[i])) ? prev : next;
+    });
     setThreadId(saved.thread_id);
     setAway(saved.busy);
   }, []);
@@ -92,7 +102,8 @@ export function SharePage() {
     return () => window.removeEventListener("message", onMessage);
   }, [embed, info, allowed]);
 
-  useEffect(() => { logEnd.current?.scrollIntoView?.({ block: "end" }); }, [messages]);
+  // follows the end only while the visitor is at it: one who scrolled up to re-read is left there
+  const { end: logEnd, onScroll, follow } = useFollowBottom([messages]);
 
   const allowedRef = useRef<readonly string[] | undefined>(undefined);
   allowedRef.current = info?.frame_origins;
@@ -106,6 +117,7 @@ export function SharePage() {
     setMessages((ms) => [...ms, ...(userText !== null ? [{ id: nextId++, role: "user" as const, text: userText, attached }] : []), reply]);
     setBusy(true);
     setNotice(null);
+    follow();
     started.current = true;
     const ctrl = new AbortController();
     abort.current = ctrl;
@@ -136,7 +148,7 @@ export function SharePage() {
       if (abort.current === ctrl) { abort.current = null; setBusy(false); }
       input.current?.focus();
     }
-  }, [embed]);
+  }, [embed, follow]);
 
   const send = (text: string) => {
     const t = text.trim();
@@ -205,7 +217,7 @@ export function SharePage() {
         <h1>{info.title}</h1>
         <button type="button" className="share-new" onClick={restart} disabled={messages.length === 0}>New conversation</button>
       </header>
-      <div className="share-log" role="log" aria-live="polite" aria-label="Conversation">
+      <div className="share-log" role="log" aria-live="polite" aria-label="Conversation" onScroll={onScroll}>
         {info.greeting && <p className="share-msg assistant share-greeting">{info.greeting}</p>}
         {messages.length === 0 && info.suggestions.length > 0 && (
           <ul className="share-suggestions" aria-label="Suggestions">

@@ -181,3 +181,38 @@ describe("share page, a saved message still being answered", () => {
     }
   });
 });
+
+describe("share page, checking on a saved answer", () => {
+  it("leaves the messages and the reader's scroll alone while nothing changed", async () => {
+    const { AWAY_POLL_MS } = await import("./SharePage");
+    const scroll = vi.fn();
+    Element.prototype.scrollIntoView = scroll;
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      loadConversation.mockResolvedValue({
+        thread_id: "th_1", busy: true,
+        messages: [{ role: "user", text: "hi" }, { role: "assistant", text: "Hello!", run_id: "run_1" }],
+      });
+      render(<SharePage />);
+      const first = await screen.findByText("Hello!");
+      const before = scroll.mock.calls.length;
+      await act(async () => { vi.advanceTimersByTime(AWAY_POLL_MS * 2 + 10); });
+      expect(loadConversation.mock.calls.length).toBeGreaterThanOrEqual(3);
+      expect(screen.getByText("Hello!")).toBe(first); // the same element: not announced again by the log
+      expect(scroll.mock.calls.length).toBe(before); // not pulled back to the end every 2 seconds
+
+      loadConversation.mockResolvedValue({
+        thread_id: "th_1", busy: false,
+        messages: [{ role: "user", text: "hi" }, { role: "assistant", text: "Hello!", run_id: "run_1" },
+          { role: "user", text: "more" }, { role: "assistant", text: "Done.", run_id: "run_2" }],
+      });
+      await act(async () => { vi.advanceTimersByTime(AWAY_POLL_MS + 10); });
+      expect(await screen.findByText("Done.")).toBeTruthy();
+      expect(screen.getByText("Hello!")).toBe(first);
+    } finally {
+      vi.useRealTimers();
+      loadConversation.mockResolvedValue({ thread_id: null, busy: false, messages: [] });
+      delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    }
+  });
+});
