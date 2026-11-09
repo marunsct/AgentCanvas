@@ -104,7 +104,7 @@ async def test_a_budget_check_reads_only_this_months_conversations(app, api_clie
     with executed(app) as seen:
         async with app.state.db.sessionmaker() as s:
             await workflow_spend(s, wf)
-    [(q, args)] = [(q, a) for q, a in seen if "sum(" in q.lower()]
+    [(q, args)] = [(q, a) for q, a in seen if "sum(" in q.lower() and "FROM run" in q]
     assert "thread_workflow_idx (workflow_id=? AND updated_at>?)" in await plan(app, q, args)
 
 

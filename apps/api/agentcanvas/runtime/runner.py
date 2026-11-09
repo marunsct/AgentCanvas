@@ -22,7 +22,7 @@ from sqlalchemy import case, func, select, update
 from sqlalchemy.exc import IntegrityError
 
 from agentcanvas.adapters.spi import FrameworkAdapter, ModelService, ThreadStateAbility, supports
-from agentcanvas.db.models import CostAlert, InterruptTask, Run, RunScore, Thread, WorkflowRow
+from agentcanvas.db.models import CostAlert, InterruptTask, Run, RunScore, SpendArchive, Thread, WorkflowRow
 from agentcanvas.db.repositories import ScopeRepo
 from agentcanvas.db.session import Database
 from agentcanvas.errors import Conflict, NotFound, Unavailable
@@ -278,7 +278,13 @@ async def workflow_spend(s: Any, workflow_id: str, *, exclude_run: str | None = 
     if exclude_run is not None:
         q = q.where(Run.id != exclude_run)
     today, this_month = (await s.execute(q)).one()
-    return float(today), float(this_month)
+    # and what conversations deleted since spent (retention, or deleted by hand): deleting does not reset a budget
+    gone = select(
+        func.coalesce(func.sum(case((SpendArchive.hour >= day, SpendArchive.cost_usd), else_=0)), 0),
+        func.coalesce(func.sum(SpendArchive.cost_usd), 0),
+    ).where(SpendArchive.workflow_id == workflow_id, SpendArchive.hour >= month)
+    gone_today, gone_month = (await s.execute(gone)).one()
+    return float(today) + float(gone_today), float(this_month) + float(gone_month)
 
 
 class Runner:

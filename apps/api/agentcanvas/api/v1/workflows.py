@@ -16,7 +16,7 @@ from agentcanvas import agentspec, importers
 from agentcanvas.adapters import framework_adapter
 from agentcanvas.api.deps import CurrentUser, current_user, get_session, get_settings_dep, if_match
 from agentcanvas.api.v1.workspace import _off_loop
-from agentcanvas.db.models import CostAlert, Run, Thread, WorkflowRow
+from agentcanvas.db.models import CostAlert, Run, SpendArchive, Thread, WorkflowRow
 from agentcanvas.errors import InvalidInput
 from agentcanvas.ids import new_id
 from agentcanvas.ir.commands import Command
@@ -309,6 +309,15 @@ async def get_spend(
             .where(Run.started_at >= start)
         )  # fmt: skip
         runs, tokens, cost, hits, fallbacks = (await session.execute(q)).one()
+        gone = select(  # what conversations deleted since spent (as workflow_spend)
+            func.coalesce(func.sum(SpendArchive.runs), 0),
+            func.coalesce(func.sum(SpendArchive.tokens_in + SpendArchive.tokens_out), 0),
+            func.coalesce(func.sum(SpendArchive.cost_usd), 0), func.coalesce(func.sum(SpendArchive.cache_hits), 0),
+            func.coalesce(func.sum(SpendArchive.fallbacks), 0),
+        ).where(SpendArchive.workflow_id == wf_id, SpendArchive.hour >= start)  # fmt: skip
+        g_runs, g_tokens, g_cost, g_hits, g_fallbacks = (await session.execute(gone)).one()
+        runs, tokens, hits, fallbacks = runs + g_runs, tokens + g_tokens, hits + g_hits, fallbacks + g_fallbacks
+        cost = float(cost) + float(g_cost)
         out[period] = SpendPeriod(
             period=period, period_start=label, spent_usd=round(float(cost), 6), limit_usd=limits[period],
             runs=int(runs), tokens=int(tokens), cache_hits=int(hits), fallbacks=int(fallbacks),

@@ -79,7 +79,8 @@ Prometheus rules in `infra/observability/alerts.yaml` turn it into a ticket).
 the number of runs, model answers taken from the cache and calls a backup model answered (see
 [Models](models.md#backup-models-and-reusing-answers)). Runs still going count what they have spent so far, on
 every server, and each run looks at the others' spending after every model call: runs going together can pass a day
-or month budget by no more than one model call each.
+or month budget by no more than one model call each. Conversations deleted since, by hand or by the retention
+period, still count: deleting them does not reset a budget.
 
 ## Structure: subgraphs and frames
 

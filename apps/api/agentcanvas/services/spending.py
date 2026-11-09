@@ -1,6 +1,7 @@
 """What an organisation's runs spent in a period, by project, workflow, person and deployment (G-8, N-9).
 
-Read from the runs' own columns (`cost_usd`, tokens, `cache_hits`, `fallbacks`), so it counts what the budgets count:
+Read from the runs' own columns (`cost_usd`, tokens, `cache_hits`, `fallbacks`), and for conversations deleted since
+(retention, or by hand) from `spend_archive`, by the hour their runs started, so it counts what the budgets count:
 the cost of models with a catalog price (a model with none adds tokens but no USD). A run belongs to the person who
 started its conversation; conversations started by a deployment, a schedule or an event have no person, and the
 per-deployment list says which deployment (a published workflow's environment) they came through.
@@ -15,7 +16,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agentcanvas.db.models import AppUser, Deployment, Project, Run, Thread, WorkflowRow
+from agentcanvas.db.models import AppUser, Deployment, Project, Run, SpendArchive, Thread, WorkflowRow
 
 
 @dataclass
@@ -61,14 +62,27 @@ async def spending(
         .group_by(Project.id, Project.name, WorkflowRow.id, WorkflowRow.name, person, Thread.deployment_id,
                   Deployment.environment)
     )  # fmt: skip
+    a = SpendArchive  # and what conversations deleted since spent, by the hour their runs started ('' is none)
+    gone = (
+        select(
+            Project.id, Project.name, WorkflowRow.id, WorkflowRow.name, func.nullif(a.person, ""),
+            func.nullif(a.deployment_id, ""), Deployment.environment, func.sum(a.runs), func.sum(a.tokens_in),
+            func.sum(a.tokens_out), func.sum(a.cost_usd), func.sum(a.cache_hits), func.sum(a.fallbacks),
+        )
+        .join(WorkflowRow, WorkflowRow.id == a.workflow_id)
+        .join(Project, Project.id == WorkflowRow.project_id)
+        .outerjoin(Deployment, Deployment.id == a.deployment_id)
+        .where(Project.org_id == org_id, a.hour >= since, a.hour < until)
+        .group_by(Project.id, Project.name, WorkflowRow.id, WorkflowRow.name, a.person, a.deployment_id,
+                  Deployment.environment)
+    )  # fmt: skip
     total = Total()
     projects: dict[str, tuple[str, Total]] = {}
     workflows: dict[str, tuple[str, str, Total]] = {}
     people: dict[str | None, Total] = {}
     deployments: dict[str | None, tuple[str, str | None, Total]] = {}
-    for pid, pname, wid, wname, who, dep, env, runs, tin, tout, cost, hits, fallbacks in (
-        await session.execute(q)
-    ).all():
+    rows = [*(await session.execute(q)).all(), *(await session.execute(gone)).all()]
+    for pid, pname, wid, wname, who, dep, env, runs, tin, tout, cost, hits, fallbacks in rows:
         row = Total(int(runs), int(tin), int(tout), float(cost), int(hits), int(fallbacks))
         total.add(row)
         projects.setdefault(pid, (pname, Total()))[1].add(row)

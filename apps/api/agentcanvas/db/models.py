@@ -336,6 +336,25 @@ class Run(Base):
     ended_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
 
 
+class SpendArchive(Base):
+    """What the runs of deleted conversations spent (retention, or deleted by hand), per workflow, UTC hour, deployment
+    and person, so day and month budgets and the spending report still count it. Written by `delete_thread_rows`;
+    it goes with its workflow. '' is no deployment or no person."""
+
+    __tablename__ = "spend_archive"
+    __table_args__ = (Index("spend_archive_hour_idx", "hour"),)
+    workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"), primary_key=True)
+    hour: Mapped[datetime] = mapped_column(UtcDateTime(), primary_key=True)  # when the runs started, to the hour
+    deployment_id: Mapped[str] = mapped_column(String, primary_key=True, default="")
+    person: Mapped[str] = mapped_column(String, primary_key=True, default="")  # who started the conversation
+    runs: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    tokens_in: Mapped[int] = mapped_column(BigInteger, server_default=text("0"), default=0)
+    tokens_out: Mapped[int] = mapped_column(BigInteger, server_default=text("0"), default=0)
+    cost_usd: Mapped[Decimal] = mapped_column(Numeric(14, 6), server_default=text("0"), default=Decimal(0))
+    cache_hits: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    fallbacks: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+
+
 class RunSearch(Base):
     """G-10: a finished run's input and answer, embedded for "find conversations where …". One row per run; it goes
     with its run (retention, deleting the conversation or the workflow). `model` is the embedding model that made
