@@ -41,6 +41,7 @@ from agentcanvas import observability
 from agentcanvas.db.models import (
     ApprovalNotice,
     AppUser,
+    AuditLog,
     InterruptTask,
     Membership,
     OrgNotifier,
@@ -66,6 +67,10 @@ NOTICES = Counter(
     "agentcanvas_approval_notifications_total",
     "Approval notifications by channel and outcome (sent, retry, failed, dropped: decided before it was sent)",
     ["channel", "outcome"],
+)
+ESCALATED = Counter(
+    "agentcanvas_approvals_escalated_total",
+    "Inbox items handed to their step's escalation role: nobody decided in time",
 )
 CHANNELS = ("email", "slack", "webhook")
 MAX_ATTEMPTS = 6
@@ -175,11 +180,13 @@ class Notice:
     created_at: datetime
     expires_at: datetime | None
     link: str
+    escalates_at: datetime | None = None  # when nobody deciding sends it to `escalate_to`
+    escalate_to: str | None = None
 
     @property
     def subject(self) -> str:
         what = "Question" if self.kind == "input" else "Approval"
-        lead = "escalated to you" if self.event == "escalated" else "waiting"
+        lead = "escalated" if self.event == "escalated" else "waiting"
         return _one_line(f"{what} {lead}: {self.workflow_name}, {self.step}")
 
     @property
@@ -189,7 +196,9 @@ class Notice:
             f'{self.workflow_name} (project {self.project_name}) is waiting for {what} at the step "{self.step}".',
             *(["Nobody decided it in time, so it was escalated."] if self.event == "escalated" else []),
             f"Who may decide: {self.deciders}.",
-            f"It expires on {self.expires_at:%Y-%m-%d %H:%M} UTC unless someone decides it."
+            f"If nobody decides it by {self.escalates_at:%Y-%m-%d %H:%M} UTC, it goes to the {self.escalate_to} role."
+            if self.escalates_at
+            else f"It expires on {self.expires_at:%Y-%m-%d %H:%M} UTC unless someone decides it."
             if self.expires_at
             else "It waits until someone decides it.",
             f"Open it in the Inbox: {self.link}",
@@ -203,7 +212,9 @@ class Notice:
             "workflow": {"id": self.workflow_id, "name": self.workflow_name}, "step": self.step,
             "thread_id": self.thread_id, "run_id": self.run_id, "deciders": self.deciders,
             "created_at": self.created_at.isoformat(),
-            "expires_at": self.expires_at.isoformat() if self.expires_at else None, "url": self.link,
+            "expires_at": self.expires_at.isoformat() if self.expires_at else None,
+            "escalates_at": self.escalates_at.isoformat() if self.escalates_at else None,
+            "escalate_to": self.escalate_to if self.escalates_at else None, "url": self.link,
         }  # fmt: skip
 
 
@@ -305,6 +316,45 @@ def send_email(settings: Settings, to: list[str], subject: str, text: str) -> No
 Mailer = Callable[[Settings, list[str], str, str], None]
 
 
+# ---------------------------------------------------------------------------------------------- escalation ---
+async def escalate(s: AsyncSession, items: list[tuple[str, str, str]], now: datetime, smtp: bool) -> int:
+    """Hand each Inbox item (id, role, why) to its step's escalation role: members with that role may decide it too
+    and its expiry counts from now. Claimed with a conditional update, so one server escalates it once, whatever the
+    number of servers and jobs (the notifier at the step's own time, retention at the expiry); the item is audited
+    and its "escalated" notifications queued in the same transaction, which the caller commits. Returns how many."""
+    n = 0
+    for interrupt_id, role, why in items:
+        res = await s.execute(
+            update(InterruptTask)
+            .where(
+                InterruptTask.id == interrupt_id,
+                InterruptTask.status == "pending",
+                InterruptTask.escalated_at.is_(None),
+            )
+            .values(assignee_role=role, escalated_at=now, escalate_at=None)
+        )
+        if res.rowcount != 1:  # type: ignore[attr-defined]
+            continue  # decided meanwhile, or another server escalated it
+        q = (
+            select(Project.org_id)
+            .join(WorkflowRow, WorkflowRow.project_id == Project.id)
+            .join(Thread, Thread.workflow_id == WorkflowRow.id)
+            .join(InterruptTask, InterruptTask.thread_id == Thread.id)
+            .where(InterruptTask.id == interrupt_id)
+        )
+        org_id = await s.scalar(q)
+        if org_id is None:
+            continue
+        s.add(AuditLog(org_id=org_id, action="approval_escalated", target=f"interrupt_id={interrupt_id}",
+                       detail={"role": role, "why": why}))  # fmt: skip
+        row = await s.get(OrgNotifier, org_id)
+        NotifierJob._queue(s, org_id, interrupt_id, "escalated", channels_on(row, smtp) if row else [], now)
+        log.info("notifier.escalated", interrupt_id=interrupt_id, role=role, why=why)
+        n += 1
+    ESCALATED.inc(n)
+    return n
+
+
 # -------------------------------------------------------------------------------------------------- people ---
 async def deciders_of(
     session: AsyncSession, org_id: str, policy: Approvers, assignee_role: str | None, started_by: str | None
@@ -363,9 +413,35 @@ class NotifierJob:
             await asyncio.sleep(self.settings.notify_interval_s)
 
     async def tick(self, now: datetime) -> int:
-        """Announce new Inbox items and send what is due; returns the notifications sent."""
+        """Escalate what waited past its step's own time, announce new Inbox items and send what is due; returns
+        the notifications sent."""
+        await self.escalate_due(now)
         await self.announce(now)
         return await self.deliver(now)
+
+    async def escalate_due(self, now: datetime) -> int:
+        """Escalate the items whose step's "escalate after" ran out (an escalation at the approval expiry is the
+        retention job's). Returns how many."""
+        async with self.db.sessionmaker() as s:
+            q = (
+                select(InterruptTask.id, InterruptTask.approvers)
+                .where(
+                    InterruptTask.status == "pending",
+                    InterruptTask.escalate_at <= now,
+                    InterruptTask.escalated_at.is_(None),
+                )
+                .order_by(InterruptTask.escalate_at, InterruptTask.id)
+                .limit(BATCH)
+            )
+            items = []
+            for interrupt_id, stored in (await s.execute(q)).all():
+                policy = Approvers.of(stored)
+                if policy.escalate_to:
+                    why = f"nobody decided within {policy.escalate_after_hours} hours"
+                    items.append((interrupt_id, policy.escalate_to, why))
+            n = await escalate(s, items, now, smtp_ready(self.settings))
+            await s.commit()
+        return n
 
     # ------------------------------------------------------------------------------------------ announce ---
     async def announce(self, now: datetime) -> int:
@@ -454,7 +530,11 @@ class NotifierJob:
             channel, attempts = row.channel, row.attempts
             notice = await self.notice(s, row.interrupt_id, row.event)
             channels = await load(s, self.keyring, row.org_id)
-            to = await self._recipients(s, row.interrupt_id, row.org_id, channels) if channel == "email" else []
+            to = (
+                await self._recipients(s, row.interrupt_id, row.org_id, channels, row.event)
+                if channel == "email"
+                else []
+            )
         outcome, error = "sent", None
         if notice is None:
             outcome = "dropped"  # decided, expired or deleted before it was sent: nothing to tell
@@ -506,13 +586,15 @@ class NotifierJob:
             await post(channels.webhook_url, body, headers, self.settings.notify_allow_private, self.transport)
 
     async def _recipients(
-        self, s: AsyncSession, interrupt_id: str, org_id: str, channels: Channels | None
+        self, s: AsyncSession, interrupt_id: str, org_id: str, channels: Channels | None, event: str
     ) -> list[str]:
         item = await s.get(InterruptTask, interrupt_id)
         if item is None:
             return []
         policy = Approvers.of(item.approvers)
-        if not policy.named and channels is not None and channels.email_to:
+        if event == "escalated" and item.assignee_role:  # the role it went to: the others were told already
+            policy = Approvers(roles=[item.assignee_role], not_initiator=policy.not_initiator)
+        elif not policy.named and channels is not None and channels.email_to:
             return channels.email_to[:MAX_RECIPIENTS]  # the organisation's team address for steps naming nobody
         started_by = item.requested_by or await s.scalar(select(Thread.created_by).where(Thread.id == item.thread_id))
         ids = await deciders_of(s, org_id, policy, item.assignee_role, started_by)
@@ -535,15 +617,17 @@ class NotifierJob:
             return None
         item, workflow_id, workflow_name, ir, project = found
         node = next((n for n in (ir or {}).get("nodes", []) if n.get("id") == item.canvas_node_id), None) or {}
-        days = self.settings.approval_expiry_days
+        policy, days = Approvers.of(item.approvers), self.settings.approval_expiry_days
+        expires = (item.escalated_at or item.created_at) + timedelta(days=days) if days > 0 else None
+        escalates = None if item.escalated_at or not policy.escalate_to else item.escalate_at or expires
         return Notice(
             interrupt_id=item.id, event=event, kind=item.kind, org_id=project.org_id, project_id=project.id,
             project_name=project.name, workflow_id=workflow_id, workflow_name=workflow_name,
             step=node.get("label") or str(node.get("name") or item.canvas_node_id).replace("_", " "),
             thread_id=item.thread_id, run_id=item.run_id,
-            deciders=Approvers.of(item.approvers).summary(item.assignee_role), created_at=item.created_at,
-            expires_at=item.created_at + timedelta(days=days) if days > 0 else None,
-            link=f"{self.base_url}/inbox?item={item.id}",
+            deciders=policy.summary(item.assignee_role), created_at=item.created_at,
+            expires_at=None if escalates else expires, link=f"{self.base_url}/inbox?item={item.id}",
+            escalates_at=escalates, escalate_to=policy.escalate_to,
         )  # fmt: skip
 
     async def test(self, s: AsyncSession, org_id: str, email: str | None) -> list[dict[str, Any]]:

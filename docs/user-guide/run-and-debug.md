@@ -30,7 +30,7 @@ and the Run tab shows **Approval needed** with the value under review.
 - Paused runs are durable: you can close the browser or restart the server and resume later. A decision nobody
   gives within 90 days (the operator's `AGENTCANVAS_APPROVAL_EXPIRY_DAYS`) expires: the run is cancelled with
   *the approval expired*, the item leaves the Inbox, and the conversation is then deleted with the others once the
-  organisation's retention has passed.
+  organisation's retention has passed. A step can escalate instead ([Who may decide](#who-may-decide)).
 - The **Inbox** (top bar) lists every pending decision across all workflows you can see, so reviewers don't need
   to open the editor. Reviewers (and above) can answer. An admin can have the people who may decide told by e-mail,
   in a Slack channel or through a webhook, with a link to the item ([Approval notifications](settings.md#approval-notifications)).
@@ -64,6 +64,12 @@ published workflow so does its caller. Fill it in to send the decision to partic
 - **Not the person who started the run**: four eyes for this one step, whatever the organisation's setting. The
   caller of a published workflow started its run, so this also keeps the caller from answering (the two boxes
   together are an error, E037).
+- **If nobody decides in time, escalate to** a role, after **Escalate after (hours)** or, left empty, when the
+  approval would expire (the operator's `AGENTCANVAS_APPROVAL_EXPIRY_DAYS`, 90 days). Members with that role may then
+  decide it as well, the Inbox lists it with them (*Decided by: admin role; lee@example.com*), they are notified
+  ([Approval notifications](settings.md#approval-notifications)), and the audit log records `approval_escalated`.
+  The run is not cancelled: the item gets a full expiry period from the escalation, and only then expires. An item
+  escalates once. Without an escalation role the run is cancelled at the expiry, as before.
 
 A step's setting is saved with the pause when the run stops there, so editing the workflow later does not change who
 decides a pause that already waits. In the Inbox each item says who decides it (*Decided by: admin role; group

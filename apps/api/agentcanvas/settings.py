@@ -123,7 +123,8 @@ class Settings(BaseSettings):
     # later runs the handler again. Never longer than the organisation's conversation retention; 0 = only that
     event_dedup_days: int = Field(default=30, ge=0)
     # a decision nobody gave for this many days expires: its run is cancelled and the conversation then follows the
-    # conversation retention like any other. 0 = approvals wait forever (and keep their conversations forever)
+    # conversation retention like any other, unless its step escalates it to a role (then it waits as long again).
+    # 0 = approvals wait forever (and keep their conversations forever)
     approval_expiry_days: int = Field(default=90, ge=0)
     # long-term memory's semantic index: "builtin" or "<provider>:<model>"; empty (default): by words.
     # One size of vector per server (the pgvector column), so one model for every project; a model other than the

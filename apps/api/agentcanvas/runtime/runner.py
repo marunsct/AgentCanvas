@@ -37,7 +37,7 @@ from agentcanvas.runtime.identity import CURRENT, RunIdentity
 from agentcanvas.runtime.tracing import trace_ref
 from agentcanvas.runtime.trajectory import compact
 from agentcanvas.runtime.types import REPLAYABLE, ResumeSpec, RunMode, RunSpec
-from agentcanvas.services.approvers import node_approvers
+from agentcanvas.services.approvers import escalate_at, node_approvers
 from agentcanvas.services.files import DEFAULT_MAX_BYTES, FileService
 from agentcanvas.services.secrets import masker
 from agentcanvas.services.spend_caps import SpendCaps, SpendCapStop, periods
@@ -938,6 +938,8 @@ class Runner:
                         "payload": _as_object(intr["payload"]), "requested_by": h.requested_by,
                         "approvers": h.approvers.get(intr.get("canvas_node_id") or ""), "assignee_role": None,
                         "noticed": None,  # announced again when asked again
+                        "escalate_at": escalate_at(h.approvers.get(intr.get("canvas_node_id") or "")),
+                        "escalated_at": None,
                     }  # fmt: skip
                     row = await s.get(InterruptTask, intr["id"])
                     if row is None:

@@ -107,12 +107,17 @@ personal data. A conversation is announced once, whatever the number of API serv
   token: it is stored encrypted with the organisation's key and never shown again; paste a new one to replace it.
 - **Webhook**: an `https` address of your own gets a JSON `POST` for every waiting item:
   `{"type": "approval.waiting", "id", "interrupt_id", "kind", "organisation_id", "project": {"id", "name"},
-  "workflow": {"id", "name"}, "step", "thread_id", "run_id", "deciders", "created_at", "expires_at", "url"}`. It is
+  "workflow": {"id", "name"}, "step", "thread_id", "run_id", "deciders", "created_at", "expires_at", "escalates_at",
+  "escalate_to", "url"}`, and `"type": "approval.escalated"` when its step escalates it. It is
   signed like webhook triggers: `X-AgentCanvas-Signature: sha256=<hex HMAC-SHA256 of "<X-AgentCanvas-Timestamp>." +
   body>` with the signing secret shown once when you save the address (send `webhook_secret` to set your own, 24
   characters or more). `X-AgentCanvas-Delivery` is the same on a retry: use it to ignore a repeat. Private and internal
   addresses are refused unless the operator sets `AGENTCANVAS_NOTIFY_ALLOW_PRIVATE=true`; link-local and cloud
   metadata addresses always are. Redirects are not followed.
+
+When a step escalates an item nobody decided ([Who may decide](run-and-debug.md#who-may-decide)), the escalation
+role's members get an e-mail of their own, and Slack and the webhook get the item again as *escalated*. A message
+before the escalation says when it will happen instead of when the item expires.
 
 A notification that fails (a refused address, a server error) is tried again after 30 s, 2 min, 10 min, 30 min and
 2 h, then given up; an item decided meanwhile is not announced any more. Draft runs you start in the editor are not

@@ -490,6 +490,13 @@ class InterruptTask(Base):
         Index("interrupt_pending_idx", "status", "created_at"),
         Index("interrupt_thread_idx", "thread_id"),  # deleting a conversation or a run (cascade, retention)
         Index("interrupt_run_idx", "run_id"),
+        # what the notifier escalates next (a step's own "escalate after"): only items that have such a time
+        Index(
+            "interrupt_escalate_idx",
+            "escalate_at",
+            postgresql_where=text("escalate_at IS NOT NULL"),
+            sqlite_where=text("escalate_at IS NOT NULL"),
+        ),
     )
     id: Mapped[str] = mapped_column(String, primary_key=True)  # LangGraph interrupt id
     thread_id: Mapped[str] = mapped_column(ForeignKey("thread.id", ondelete="CASCADE"))
@@ -512,6 +519,10 @@ class InterruptTask(Base):
     # which announcement of it the notifier claimed (services/notifier.py): NULL not yet, "waiting" (or "off": its
     # organisation sends none, "quiet": a draft run its starter watches)
     noticed: Mapped[str | None] = mapped_column(Text)
+    # escalation (services/notifier.py): when its step's "escalate after" runs out (NULL: at the approval expiry, if
+    # the step escalates at all), and when it was escalated to `assignee_role` (its expiry counts from then)
+    escalate_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
+    escalated_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
 
 
 class ApprovalNotice(Base):

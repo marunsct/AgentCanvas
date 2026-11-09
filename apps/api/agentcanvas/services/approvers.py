@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -38,6 +39,8 @@ class Approvers(BaseModel):
     people: list[str] = Field(default_factory=list)
     caller: bool = False
     not_initiator: bool = False
+    escalate_to: str | None = None
+    escalate_after_hours: int | None = None
 
     @classmethod
     def of(cls, stored: Any) -> Approvers:
@@ -85,6 +88,15 @@ def node_approvers(wf: Workflow) -> dict[str, dict[str, Any]]:
 
     walk(wf.nodes)
     return out
+
+
+def escalate_at(stored: Any, now: datetime | None = None) -> datetime | None:
+    """When an item paused now escalates by its step's own "escalate after" (None: at the approval expiry, or never
+    when the step does not escalate)."""
+    policy = Approvers.of(stored)
+    if not policy.escalate_to or not policy.escalate_after_hours:
+        return None
+    return (now or datetime.now(UTC)) + timedelta(hours=policy.escalate_after_hours)
 
 
 @dataclass(frozen=True)

@@ -5,7 +5,9 @@ longer than its organisation keeps conversations: `Organization.retention_days`,
 (default 90) when the organisation sets none; 0 keeps them forever. Conversations that are running or waiting
 for a person (interrupted) are kept whatever their age, but a decision nobody gives for
 `AGENTCANVAS_APPROVAL_EXPIRY_DAYS` (default 90) expires: the Inbox item is marked expired, the run that asked is
-cancelled, and the conversation becomes idle, so retention deletes it once it has been inactive long enough.
+cancelled, and the conversation becomes idle, so retention deletes it once it has been inactive long enough. An item
+whose step names an escalation role is escalated instead (E-6, `notifier.escalate`): the run keeps waiting and the
+expiry counts again from the escalation.
 
 The same job deletes audit-log rows older than `AGENTCANVAS_AUDIT_RETENTION_DAYS` (default 400) and, when
 `AGENTCANVAS_MEMORY_RETENTION_DAYS` is set (off by default), long-term memories not updated for that long (S12).
@@ -27,7 +29,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
 from prometheus_client import Counter
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 
 from agentcanvas import observability
 from agentcanvas.adapters.spi import MemoryAbility, supports
@@ -45,7 +47,9 @@ from agentcanvas.db.models import (
 from agentcanvas.db.repositories import delete_thread_rows
 from agentcanvas.log import get_logger
 from agentcanvas.services import org_settings
+from agentcanvas.services.approvers import Approvers
 from agentcanvas.services.files import expire_files
+from agentcanvas.services.notifier import escalate, smtp_ready
 from agentcanvas.settings import Settings
 
 log = get_logger(__name__)
@@ -171,23 +175,37 @@ class RetentionJob:
         days = self.server.approval_expiry_days
         if days <= 0:
             return 0
-        cutoff, until, n = now - timedelta(days=days), time.monotonic() + BUDGET_S, 0
+        cutoff, until, n, escalated = now - timedelta(days=days), time.monotonic() + BUDGET_S, 0, 0
         error = f"no one answered within {days} days: the approval expired"
+        why = f"nobody decided within {days} days"
         while time.monotonic() < until:
             busy = list(self.runner.active_by_thread)  # being answered here right now
             async with self.db.sessionmaker() as s:
-                rows = (
+                found = (
                     await s.execute(
-                        select(InterruptTask.id, InterruptTask.thread_id, InterruptTask.run_id)
+                        select(
+                            InterruptTask.id,
+                            InterruptTask.thread_id,
+                            InterruptTask.run_id,
+                            InterruptTask.approvers,
+                            InterruptTask.escalated_at,
+                        )
                         .where(
                             InterruptTask.status == "pending",
-                            InterruptTask.created_at < cutoff,
+                            # an escalated item gets a full expiry from its escalation
+                            func.coalesce(InterruptTask.escalated_at, InterruptTask.created_at) < cutoff,
+                            InterruptTask.escalate_at.is_(None),  # one its step escalates first, at its own time
                             InterruptTask.thread_id.not_in(busy),
                         )
-                        .order_by(InterruptTask.created_at)
+                        .order_by(InterruptTask.created_at, InterruptTask.id)
                         .limit(BATCH)
                     )
                 ).all()
+                # a step that escalates hands its item to a role instead of cancelling the run (once)
+                late = [(r.id, Approvers.of(r.approvers).escalate_to, r.escalated_at) for r in found]
+                handed = [(i, role, why) for i, role, at in late if role and at is None]
+                escalated += await escalate(s, handed, now, smtp_ready(self.server))
+                rows = [r for r in found if r.id not in {i for i, _, _ in handed}]
                 res = await s.execute(
                     update(InterruptTask)  # a decision that won the race keeps its item
                     .where(InterruptTask.id.in_([r.id for r in rows]), InterruptTask.status == "pending")
@@ -222,9 +240,11 @@ class RetentionJob:
             n += gone
             if gone:
                 log.info("retention.approvals_expired", items=gone, days=days)
-            if len(rows) < BATCH:
+            if len(found) < BATCH:
                 break
         APPROVALS_EXPIRED.inc(n)
+        if escalated:
+            log.info("retention.approvals_escalated", items=escalated, days=days)
         return n
 
     async def expire_events(self, now: datetime, orgs: list[tuple[str, int]]) -> int:

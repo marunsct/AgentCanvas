@@ -204,3 +204,73 @@ async def test_an_admin_sends_a_test_notification(app, api_client, smtp):
     assert "answered HTTP 404" in next(r["error"] for r in results if r["channel"] == "slack")
     [(to, subject, _)] = wire.mails
     assert to == ["dev@localhost"] and "Notification test" in subject  # e-mail goes to the admin who asked
+
+
+async def test_an_item_nobody_decides_in_its_steps_time_is_escalated_and_told(app, triage_api, smtp):  # noqa: F811
+    from agentcanvas.db.models import AuditLog
+    from agentcanvas.services.notifier import escalate
+
+    api, wf = triage_api, triage_api.wf_id
+    await _configure(api, email=True, slack_url=SLACK)
+    await _member(app, "usr_lee", "lee@example.com", "reviewer")
+    await edit_node(
+        api, wf, "n_ag", approvers={"people": ["lee@example.com"], "escalate_to": "admin", "escalate_after_hours": 4}
+    )
+    item = await _waiting(api, wf, "th_escalate")
+    async with app.state.db.sessionmaker() as s:
+        row = await s.get(InterruptTask, item["id"])
+        assert row is not None and row.escalate_at is not None
+        due = row.escalate_at
+    job = app.state.notifier
+    wire = Wire(job)
+    await job.tick(due - timedelta(hours=1))
+    [(to, _, text)] = wire.mails
+    assert to == ["lee@example.com"] and "it goes to the admin role" in text
+    r = await api.post(f"/v1/inbox/{item['id']}/decision", json={"value": {"decisions": [{"type": "approve"}]}})
+    assert r.status_code == 403  # the admin (the default user here) is not named yet
+
+    await job.tick(due + timedelta(minutes=1))
+    async with app.state.db.sessionmaker() as s:
+        row = await s.get(InterruptTask, item["id"])
+        assert row is not None and (row.assignee_role, row.status) == ("admin", "pending") and row.escalated_at
+        audit = (await s.scalars(select(AuditLog).where(AuditLog.action == "approval_escalated"))).one()
+        assert audit.target == f"interrupt_id={item['id']}" and audit.detail["role"] == "admin"
+        assert await escalate(s, [(item["id"], "admin", "again")], datetime.now(UTC), True) == 0  # once
+    (to, subject, text) = wire.mails[-1]
+    assert to == ["dev@localhost"] and subject.startswith("Approval escalated") and "admin role" in text
+    assert "Approval escalated" in wire.to(SLACK)[-1].content.decode()
+    [mine] = [i for i in (await api.get("/v1/inbox")).json() if i["id"] == item["id"]]
+    assert mine["deciders"] == "admin role; lee@example.com" and mine["may_decide"] is True
+    r = await api.post(f"/v1/inbox/{item['id']}/decision", json={"value": {"decisions": [{"type": "approve"}]}})
+    assert r.status_code == 202, r.text  # the run continues
+
+
+async def test_at_the_expiry_a_step_that_escalates_is_handed_on_instead_of_cancelled(app, triage_api):  # noqa: F811
+    api, wf = triage_api, triage_api.wf_id
+    await edit_node(api, wf, "n_ag", approvers={"roles": ["admin"], "escalate_to": "builder"})
+    item = await _waiting(api, wf, "th_expiry_escalates")
+    async with app.state.db.sessionmaker() as s:
+        assert (await s.get(InterruptTask, item["id"])).escalate_at is None  # at the expiry
+    job, later = app.state.retention, datetime.now(UTC) + timedelta(days=91)
+    assert await job.expire_approvals(later) == 0
+    async with app.state.db.sessionmaker() as s:
+        row = await s.get(InterruptTask, item["id"])
+        assert row is not None and (row.status, row.assignee_role) == ("pending", "builder")
+    assert (await api.get("/v1/threads/th_expiry_escalates")).json()["status"] == "interrupted"  # the run waits on
+    assert await job.expire_approvals(later + timedelta(days=89)) == 0  # a full expiry from the escalation
+    assert await job.expire_approvals(later + timedelta(days=91)) == 1  # then it expires like any other
+    [run] = (await api.get("/v1/threads/th_expiry_escalates/runs")).json()
+    assert run["status"] == "cancelled" and "expired" in run["error"]
+
+
+def test_escalating_after_hours_needs_a_role():
+    from test_approvers import _wf
+
+    from agentcanvas.registry import default_registry
+    from agentcanvas.validation.engine import validate
+
+    ask = {"id": "n_a", "type": "core.approval", "name": "sign",
+           "config": {"show": "out", "output": "ok", "approvers": {"escalate_after_hours": 4}}}  # fmt: skip
+    assert "E004" in {d.code for d in validate(_wf("v", [ask], ["out", "ok"]), default_registry())}
+    ask["config"]["approvers"]["escalate_to"] = "admin"
+    assert "E004" not in {d.code for d in validate(_wf("v", [ask], ["out", "ok"]), default_registry())}
