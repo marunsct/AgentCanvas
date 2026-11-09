@@ -532,6 +532,20 @@ async def test_the_import_route_takes_agents_sdk_code_and_writes_its_tools(app, 
     assert both.status_code == 422
 
 
+async def test_a_refused_agents_sdk_import_takes_its_tools_back_out(app, api_client, monkeypatch):
+    from agentcanvas.errors import InvalidInput
+    from agentcanvas.services.workflows import WorkflowService
+
+    async def refuse(*_a, **_k):
+        raise InvalidInput("the imported workflow is not valid")
+
+    monkeypatch.setattr(WorkflowService, "create_from_ir", refuse)
+    r = await api_client.post("/v1/projects/prj_default/workflows/import", json={"code": SDK_CODE, "name": "Support"})
+    assert r.status_code == 422, r.text
+    tools = app.state.projects.workspace("prj_default").root / "tools"
+    assert not tools.exists() or not list(tools.glob("*_tools.py"))
+
+
 def test_agents_sdk_code_written_against_agents_classic_imports_too():
     """The Agents SDK's next major release keeps today's API under `agents.classic` (its root package becomes a new
     runtime). Code written that way is the same workflow."""

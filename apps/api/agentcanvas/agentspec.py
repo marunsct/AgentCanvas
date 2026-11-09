@@ -412,6 +412,8 @@ def import_flow(
     kept = ours.get("ir") if isinstance(ours, dict) else None
     if doc["component_type"] == "Flow" and isinstance(ours, dict) and isinstance(kept, dict):
         ir = {**kept, "id": wf_id, "name": _title(name or kept.get("name") or doc.get("name"))}
+        if isinstance(kept.get("metadata"), dict):  # a template's kit writes workspace code: never from a shared file
+            ir["metadata"] = {k: v for k, v in kept["metadata"].items() if k != "kit"}
         layout = ours.get("layout")
         from agentcanvas.importers import position  # the importers import this module
 

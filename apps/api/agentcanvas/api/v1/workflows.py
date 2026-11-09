@@ -8,7 +8,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import PlainTextResponse
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, ValidationError, model_validator
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -414,15 +414,29 @@ async def import_file(
         raise InvalidInput(str(exc)) from exc
     except RecursionError as exc:
         raise InvalidInput("the file is nested too deeply to import") from exc
-    kit = template_kit.kit_of(ir)
+    kit = template_kit.Kit()
+    if kind == "openai_agents":  # the one importer that brings code, read from the code itself; never a file's kit
+        try:
+            kit = template_kit.kit_of(ir)
+        except ValidationError as exc:
+            raise InvalidInput(f"the imported code's workspace files are not valid: {exc}") from exc
+    if isinstance(ir.get("metadata"), dict):
+        ir["metadata"].pop(template_kit.KIT, None)
+    written: list[str] = []
     if kit.files:  # code the workflow calls (an Agents SDK file's function tools): into the workspace first
         await svc.projects.require(project_id)
         ws = request.app.state.projects.workspace(project_id)
         added = await _off_loop(ws, lambda: template_kit.write_files(ws, kit, wf_id, f"import of {kind}"))
+        written = added.files_written
         report = [*report, *(f"Added {p} to the workspace." for p in added.files_written)]
         report += [f"Kept your own {p}; the imported code needs its functions." for p in added.files_kept]
-        ir["metadata"].pop(template_kit.KIT, None)
-    view = await svc.create_from_ir(project_id, ir, layout, user.id)
+    try:
+        view = await svc.create_from_ir(project_id, ir, layout, user.id)
+    except Exception:  # a refused import leaves nothing behind in the workspace either
+        if written:
+            here = request.app.state.projects.workspace(project_id)
+            await _off_loop(here, lambda: [here.delete(rel) for rel in written])
+        raise
     response.headers["Location"] = f"/v1/workflows/{view.row.id}"
     return Imported(**_out(view, response).model_dump(), format=kind, report=report)
 

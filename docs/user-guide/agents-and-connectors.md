@@ -76,7 +76,8 @@ which shows what will be sent on an approval card; a rejection skips the agent.
 - **Import**: on the home page, **Import an Agent Spec file** reads a flow, or a single agent, as a new workflow and
   lists what it approximated before you open it. Steps AgentCanvas cannot run become placeholders to replace.
 - A file AgentCanvas exported carries the whole workflow, so importing it back gives exactly the same workflow,
-  layout included.
+  layout included. Importing a file never adds code to your project's workspace: a template's extra files (event
+  handlers, custom blocks) come only from the gallery, not from a file someone shared.
 
 ## Call a workflow from other agents
 
