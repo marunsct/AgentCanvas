@@ -66,6 +66,15 @@ async def _run(api, wf_id: str, reply: str) -> dict:
         ('{"choice": "billing", "confidence": 7}', ("billing", 1.0)),  # clipped to 0-1
         ("billing, I think", (None, None)),  # no JSON
         ('{"choice": "billing", "confidence": "very"}', ("billing", None)),
+        ('```json\n{"choice": "Billing", "confidence": 0.9}\n```', ("billing", 0.9)),  # any case: the option's name
+        ('{"choice": " TECH "}', ("tech", None)),
+        ('The ticket mentions {order 123}. {"choice": "billing", "confidence": 0.8}', ("billing", 0.8)),
+        ('```json\n{"choice": "tech"}\n``` note: {x}', ("tech", None)),  # braces before or after the JSON
+        ('{"choice": "billing"} :}', ("billing", None)),
+        ('Thinking {"step": 1}. {"choice": "tech", "confidence": 0.7}', ("tech", 0.7)),  # the object with a choice
+        ('{"choice": null, "confidence": 0.5}', (None, 0.5)),
+        ('{"choice": "tech", "confidence": "1_0"}', ("tech", None)),  # numbers as JSON writes them, as in TypeScript
+        ('{"choice": "tech", "confidence": NaN}', (None, None)),  # not JSON (TypeScript cannot read it either)
     ],
 )
 def test_the_decision_in_a_model_answer(text, made):
@@ -193,7 +202,10 @@ def test_the_generated_flow_reads_like_the_canvas():
     "text",
     ['{"choice": "tech", "confidence": "0.4"}', "no", '{"choice": "x", "confidence": 2, "reason": 1}',
      '{"choice": null, "confidence": true}', '{"choice": " billing ", "confidence": "nan", "reason": "r"}',
-     'ok {"confidence": ".5e0", "choice": "tech"} done', '{"choice": "tech", "confidence": "very"}', "[1, 2]"],
+     'ok {"confidence": ".5e0", "choice": "tech"} done', '{"choice": "tech", "confidence": "very"}', "[1, 2]",
+     '```json\n{"choice": "Billing", "confidence": 0.9}\n```', 'It mentions {order 123}. {"choice": "tech"} :}',
+     'Thinking {"step": 1}. {"choice": "TECH", "reason": {"a": [1, 2]}}', '{"choice": "tech", "confidence": "1_0"}',
+     '{"choice": "tech", "confidence": NaN}', '{"choice": 1, "reason": 0}', '{"a": "}{", "choice": "billing"}'],
 )  # fmt: skip
 async def test_mastra_reads_an_answer_as_python_does(text, tmp_path):
     """The TypeScript twin asks the same words and reads each answer the same way."""

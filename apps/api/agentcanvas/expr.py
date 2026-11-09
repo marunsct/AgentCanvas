@@ -387,24 +387,56 @@ DECIDE_INSTRUCTIONS = (
 )
 
 
+MAX_OBJECTS = 100  # `{` the answer is read from at most: a decision is near the start, not after pages of code
+_NUMBER = re.compile(r"[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?")  # a number as JSON writes it
+
+
+def _reject(name: str) -> Any:
+    raise ValueError(f"{name} is not JSON")  # NaN and Infinity: TypeScript's JSON.parse refuses them too
+
+
+_DECODER = json.JSONDecoder(parse_constant=_reject)
+
+
+def _decision_object(text: str) -> dict[str, Any]:
+    """The JSON object in a model's answer that holds a `choice` (else the first object): read at each `{` in turn,
+    so reasoning, a code fence or braces around the JSON do not hide it."""
+    first: dict[str, Any] | None = None
+    start = text.find("{")
+    for _ in range(MAX_OBJECTS):
+        if start < 0:
+            break
+        try:
+            found, _end = _DECODER.raw_decode(text, start)
+        except ValueError:
+            found = None
+        if isinstance(found, dict):
+            if "choice" in found:
+                return found
+            first = found if first is None else first
+        start = text.find("{", start + 1)
+    return first or {}
+
+
 def decision(text: str, choices: list[str] | dict[str, str]) -> dict[str, Any]:
     """The decision in a model's answer: {choice, confidence, reason}; `choice` is None when the answer names no
-    option (no JSON, or a name that is not one of `choices`)."""
-    start, end = text.find("{"), text.rfind("}")
-    try:
-        found = json.loads(text[start : end + 1]) if 0 <= start < end else {}
-    except ValueError:
-        found = {}
-    found = found if isinstance(found, dict) else {}
-    choice = str(found.get("choice", "")).strip()
-    raw = found.get("confidence")
-    try:
-        value = float(raw) if isinstance(raw, int | float | str) else math.nan
-    except ValueError:
-        value = math.nan
+    option (no JSON, or a name that is none of `choices`, in any case). The TypeScript twin (Mastra's flow.ts) reads
+    every answer the same way."""
+    found = _decision_object(text)
+    raw = found.get("choice")
+    choice = raw.strip() if isinstance(raw, str) else ""
+    names = list(choices)
+    folded = {n.lower(): n for n in reversed(names)}  # the first option of a name, whatever its case
+    name = choice if choice in names else folded.get(choice.lower()) if choice else None
+    given = found.get("confidence")
+    value = math.nan
+    if isinstance(given, int | float):  # a bool too: true is 1
+        value = float(given) if not isinstance(given, int) or abs(given) < 2**1000 else math.inf
+    elif isinstance(given, str) and _NUMBER.fullmatch(given.strip()):
+        value = float(given.strip())
     confidence = min(1.0, max(0.0, value)) if math.isfinite(value) else None
-    return {"choice": choice if choice in choices else None, "confidence": confidence,
-            "reason": str(found.get("reason") or "")[:500]}  # fmt: skip
+    reason = found.get("reason")
+    return {"choice": name, "confidence": confidence, "reason": reason[:500] if isinstance(reason, str) else ""}
 
 
 def chosen(made: Any, default: str, min_confidence: float | None) -> str:
