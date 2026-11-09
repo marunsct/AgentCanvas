@@ -316,3 +316,25 @@ def test_steps_that_start_side_by_side_export_one_after_another():
     edges = [refs[e["$component_ref"]] if "$component_ref" in e else e for e in doc["control_flow_connections"]]
     assert len([e for e in edges if e["from_node"]["$component_ref"] == start]) == 1
     assert any("one after another" in line for line in report)
+
+
+async def test_api_takes_or_refuses_damaged_numbers_plainly(api_client):
+    """A position too large for a number, or a timeout that is not one, is dropped or refused (422), never a 500; on
+    both import routes."""
+    wf = (await api_client.post(f"{P}/workflows", json={"name": "Triage", "template": "classify_and_route"})).json()
+    await api_client.put(f"/v1/workflows/{wf['id']}/layout", json={"positions": {"n_route": {"x": 5, "y": 6}}})
+    spec = (await api_client.get(f"/v1/workflows/{wf['id']}/agent-spec")).json()["spec"]
+    spec["metadata"]["agentcanvas"]["layout"]["n_route"]["x"] = 10**400
+    for url, body in ((f"{P}/workflows/agent-spec", {"spec": spec}), (f"{P}/workflows/import", {"file": spec})):
+        res = await api_client.post(url, json=body)
+        assert res.status_code == 201, res.text
+        assert res.json()["layout"] == {}  # the position it could not read is left out
+
+    damaged = json.dumps(SAMPLE).replace('"timeout": 90.0', '"timeout": "soon"')
+    damaged = damaged.replace('"timeout": 60.0', '"timeout": 1e999')
+    for url, key in ((f"{P}/workflows/agent-spec", "spec"), (f"{P}/workflows/import", "file")):
+        body = f'{{"{key}": {damaged}}}'  # as sent: 1e999 reads as infinity
+        res = await api_client.post(url, content=body, headers={"content-type": "application/json"})
+        assert res.status_code in (201, 422), res.text
+        if res.status_code == 201:
+            assert res.json()["ir"]["nodes"]  # stored as plain JSON

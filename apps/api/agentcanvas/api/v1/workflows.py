@@ -361,9 +361,11 @@ async def import_agent_spec(
     user: CurrentUser = Depends(current_user),
 ) -> AgentSpecImported:
     """A new workflow from an Open Agent Spec flow or agent."""
-    try:
-        ir, report, layout = agentspec.import_flow(body.spec, wf_id=new_id("wf"), name=body.name)
-    except agentspec.AgentSpecError as exc:
+    try:  # off the event loop, as the import route: a large or strange file must not stop the server answering
+        ir, report, layout = await asyncio.to_thread(
+            importers.import_agentspec, body.spec, wf_id=new_id("wf"), name=body.name
+        )
+    except importers.ImportError_ as exc:
         raise InvalidInput(str(exc)) from exc
     view = await svc.create_from_ir(project_id, ir, layout, user.id)
     response.headers["Location"] = f"/v1/workflows/{view.row.id}"

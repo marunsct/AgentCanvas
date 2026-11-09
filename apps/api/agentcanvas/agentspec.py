@@ -413,11 +413,11 @@ def import_flow(
     if doc["component_type"] == "Flow" and isinstance(ours, dict) and isinstance(kept, dict):
         ir = {**kept, "id": wf_id, "name": _title(name or kept.get("name") or doc.get("name"))}
         layout = ours.get("layout")
-        positions = {
-            str(k): {"x": float(v["x"]), "y": float(v["y"])}
-            for k, v in (layout.items() if isinstance(layout, dict) else [])
-            if isinstance(v, dict) and all(isinstance(v.get(c), int | float) for c in ("x", "y"))
-        }
+        from agentcanvas.importers import position  # the importers import this module
+
+        found = ((str(k), position(v.get("x"), v.get("y")))
+                 for k, v in (layout.items() if isinstance(layout, dict) else []) if isinstance(v, dict))  # fmt: skip
+        positions = {k: p for k, p in found if p is not None}  # a damaged position is left out
         return ir, ["Restored exactly from the AgentCanvas data inside the file."], positions
     if doc["component_type"] in ("Agent", "A2AAgent"):
         doc = _wrap_agent(doc)
@@ -638,8 +638,10 @@ class _Importer:
             if agent.get("component_type") == "A2AAgent":
                 out.update(type="agent.a2a", config={"url": agent.get("agent_url", ""), "output": "messages"})
                 timeout = (self.deref(agent.get("connection_config")) or {}).get("timeout")
-                if timeout:
-                    out["config"]["timeout"] = min(float(timeout), 3600.0)
+                from agentcanvas.importers import number  # the importers import this module
+
+                if (seconds := number(timeout)) and seconds > 0:  # a damaged timeout keeps the block's default
+                    out["config"]["timeout"] = min(seconds, 3600.0)
             elif agent.get("component_type") == "Agent":
                 out.update(type="core.agent", config={"system_prompt": agent.get("system_prompt") or ""})
                 self.wire(out, agent.get("llm_config"))

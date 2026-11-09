@@ -106,6 +106,40 @@ def test_damaged_files_import_or_are_refused_plainly(name):
     assert not failures, f"{name}: " + "\n".join(f"{k} ({v})" for k, v in failures.items())
 
 
+HUGE = [10**400, -(10**400), float("inf"), float("nan")]  # JSON allows the first two; Python's parser all four
+
+
+@pytest.mark.parametrize("name", NAMES)
+def test_huge_or_endless_numbers_import_or_are_refused_plainly(name):
+    """Every number in the file in turn becomes one too large for a float, or infinite: a position, a temperature, a
+    limit. The import works (dropping what it cannot use) or is refused with a plain message, never a 500."""
+    original = json.loads((FILES / f"{name}.json").read_text())
+    numbers = [p for p in _paths(original) if p and isinstance(_at(original, p), int | float)
+               and not isinstance(_at(original, p), bool)]  # fmt: skip
+    assert numbers
+    failures: dict[str, str] = {}
+    for path in numbers:
+        for value in HUGE:
+            doc = copy.deepcopy(original)
+            *parents, last = path
+            _at(doc, tuple(parents))[last] = value
+            try:
+                _, ir, _, layout = import_document(doc, wf_id="wf_new")
+                Workflow.model_validate(ir)
+                json.dumps([ir, layout], allow_nan=False)  # what the database stores is plain JSON
+            except ImportError_:
+                continue
+            except Exception as exc:  # noqa: BLE001 - anything else is the finding
+                failures.setdefault(_where(exc), "/".join(map(str, path)))
+    assert not failures, f"{name}: " + "\n".join(f"{k} ({v})" for k, v in failures.items())
+
+
+def _at(doc: Any, path: tuple) -> Any:
+    for key in path:
+        doc = doc[key]
+    return doc
+
+
 def _loop_back(doc: Any, rng: random.Random) -> Any:
     """The same file with one connection wired back to an earlier node: a cycle, which real files have (n8n
     `noOp` chains, Langflow loops) and the random damage above never makes."""

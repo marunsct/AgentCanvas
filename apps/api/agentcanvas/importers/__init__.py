@@ -406,10 +406,20 @@ def route_name(text: Any, index: int) -> str:
     return name if name and name[0].isalpha() else f"branch_{index + 1}"
 
 
+def number(v: Any) -> float | None:
+    """`v` as a finite float, else None: a file may hold a number too large for a float, infinity or NaN."""
+    try:
+        out = float(v)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return out if math.isfinite(out) else None
+
+
 def position(x: Any, y: Any) -> dict[str, float] | None:
-    if isinstance(x, int | float) and isinstance(y, int | float) and not isinstance(x, bool):
-        return {"x": float(x), "y": float(y)}
-    return None
+    if any(not isinstance(v, int | float) or isinstance(v, bool) for v in (x, y)):
+        return None
+    px, py = number(x), number(y)
+    return {"x": px, "y": py} if px is not None and py is not None else None
 
 
 # ------------------------------------------------------------------ entry point ----
@@ -440,6 +450,10 @@ def detect(doc: Any) -> str | None:
     return None
 
 
+# what reading a damaged file raises: a list where an object belongs, a number too large for a float...
+_DAMAGED = (AttributeError, KeyError, TypeError, ValueError, IndexError, OverflowError)
+
+
 def import_document(doc: Any, *, wf_id: str, name: str | None = None) -> tuple[str, dict[str, Any], list[str],
                                                                               dict[str, Any]]:  # fmt: skip
     """(format, IR document, report, layout) for a Langflow, Flowise, n8n or Agent Spec file, or OpenAI Agents SDK
@@ -450,32 +464,42 @@ def import_document(doc: Any, *, wf_id: str, name: str | None = None) -> tuple[s
             "this file is not a Langflow, Flowise, n8n or Agent Spec export (expected the JSON each one downloads) or "
             "OpenAI Agents SDK code"
         )
-    if kind == "openai_agents":
-        from agentcanvas.importers import openai_agents
-
-        builder, files = openai_agents.read(doc if isinstance(doc, str) else doc["code"], wf_id=wf_id, name=name)
-        ir, report, layout = builder.build()
-        if files:
-            ir["metadata"]["kit"] = {"files": files}
-        return kind, ir, report, layout
-    if kind == "agentspec":
-        from agentcanvas import agentspec
-
-        try:
-            ir, report, layout = agentspec.import_flow(doc, wf_id=wf_id, name=name)
-        except agentspec.AgentSpecError as exc:
-            raise ImportError_(str(exc)) from exc
-        return kind, ir, report, layout
-    from agentcanvas.importers import flowise, langflow, n8n
-
-    module = {"langflow": langflow, "flowise": flowise, "n8n": n8n}[kind]
     try:
+        if kind == "openai_agents":
+            from agentcanvas.importers import openai_agents
+
+            builder, files = openai_agents.read(doc if isinstance(doc, str) else doc["code"], wf_id=wf_id, name=name)
+            ir, report, layout = builder.build()
+            if files:
+                ir["metadata"]["kit"] = {"files": files}
+            return kind, ir, report, layout
+        if kind == "agentspec":
+            ir, report, layout = import_agentspec(doc, wf_id=wf_id, name=name)
+            return kind, ir, report, layout
+        from agentcanvas.importers import flowise, langflow, n8n
+
+        module = {"langflow": langflow, "flowise": flowise, "n8n": n8n}[kind]
         builder = module.read(doc, wf_id=wf_id, name=name)
         ir, report, layout = builder.build()
+        return kind, ir, report, layout
     except ImportError_:
         raise
-    except (AttributeError, KeyError, TypeError, ValueError, IndexError) as exc:  # a list where an object belongs...
+    except _DAMAGED as exc:
         raise ImportError_(f"the {FORMATS[kind]} file could not be read ({type(exc).__name__}: {exc})") from exc
     except RecursionError as exc:  # nesting deeper than any real file
         raise ImportError_(f"the {FORMATS[kind]} file is nested too deeply to import") from exc
-    return kind, ir, report, layout
+
+
+def import_agentspec(doc: Any, *, wf_id: str, name: str | None = None) -> tuple[dict[str, Any], list[str],
+                                                                                dict[str, Any]]:  # fmt: skip
+    """`agentspec.import_flow`, with a damaged file refused as `ImportError_` (both import routes use this)."""
+    from agentcanvas import agentspec
+
+    try:
+        return agentspec.import_flow(doc, wf_id=wf_id, name=name)
+    except agentspec.AgentSpecError as exc:
+        raise ImportError_(str(exc)) from exc
+    except _DAMAGED as exc:
+        raise ImportError_(f"the Open Agent Spec file could not be read ({type(exc).__name__}: {exc})") from exc
+    except RecursionError as exc:
+        raise ImportError_("the Open Agent Spec file is nested too deeply to import") from exc

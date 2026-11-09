@@ -582,3 +582,9 @@ async def main(text: str):
     (node,) = ir["nodes"]
     assert node["name"] == "planner" and node["config"]["system_prompt"] == "You plan carousels."
     assert not [r for r in report if "computed by code" in r or "left out" in r]
+
+
+def test_agents_sdk_code_nested_too_deeply_is_refused_plainly():
+    code = 'from agents import Agent\na = Agent(name="a")\nx = ' + "-" * 200_000 + "1\n"
+    with pytest.raises(ImportError_, match="nested too deeply"):
+        import_document(code, wf_id="wf_new")

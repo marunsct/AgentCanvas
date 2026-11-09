@@ -22,6 +22,7 @@ from agentcanvas.importers import (
     brace_template,
     compare,
     model_id,
+    number,
     obj,
     position,
     route_name,
@@ -196,16 +197,13 @@ def _prompt(b: Builder, n: dict[str, Any], chat: str) -> str:
 
 
 def _number(v: Any) -> float | None:
-    try:
-        return float(v) if v not in (None, "") else None
-    except (TypeError, ValueError):
-        return None
+    return number(v) if v not in (None, "") else None
 
 
 def _int(v: Any) -> int | None:
     try:
         return int(v) if v not in (None, "") else None
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):  # int(inf) overflows
         return None
 
 

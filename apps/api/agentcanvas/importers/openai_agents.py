@@ -131,6 +131,8 @@ class _Reader:
             self.tree = ast.parse(source)
         except SyntaxError as exc:
             raise ImportError_(f"the code is not valid Python (line {exc.lineno}: {exc.msg})") from None
+        except (MemoryError, RecursionError):  # "parser stack overflowed": far deeper than any real code
+            raise ImportError_("the code is nested too deeply to import") from None
         self.agents: dict[str, ast.Call] = {}  # variable -> Agent(...) call
         self.functions: dict[str, ast.FunctionDef | ast.AsyncFunctionDef] = {}
         self.classes: dict[str, ast.ClassDef] = {}
