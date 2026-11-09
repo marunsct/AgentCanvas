@@ -12,7 +12,8 @@ describe("confirmDialog", () => {
       let answer: Promise<boolean> = Promise.resolve(false);
       act(() => { answer = confirmDialog({ title: "Delete it?", confirm: "Delete", danger: true }); });
       const dialog = screen.getByRole("dialog", { name: "Delete it?" });
-      expect(document.activeElement).toBe(screen.getByRole("button", { name: "Delete" })); // focus goes to the dialog
+      // focus goes to the dialog, on the least destructive choice: a stray or repeated Enter cancels
+      expect(document.activeElement).toBe(screen.getByRole("button", { name: "Cancel" }));
       act(() => {
         if (how === "confirm") screen.getByRole("button", { name: "Delete" }).click();
         if (how === "cancel") screen.getByRole("button", { name: "Cancel" }).click();
@@ -29,6 +30,7 @@ describe("confirmDialog", () => {
     let a: Promise<boolean> = Promise.resolve(false), b: Promise<boolean> = Promise.resolve(false);
     act(() => { a = confirmDialog({ title: "First" }); b = confirmDialog({ title: "Second" }); });
     expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "OK" })); // not destructive: Enter confirms
     act(() => screen.getByRole("button", { name: "OK" }).click());
     expect(await a).toBe(true);
     expect(screen.getByRole("dialog", { name: "Second" })).toBeTruthy();
