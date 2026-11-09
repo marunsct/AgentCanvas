@@ -19,7 +19,7 @@ services:
 
   keycloak:                                  # OIDC login for M7 (optional before that)
     profiles: ["auth"]
-    image: quay.io/keycloak/keycloak:26.0
+    image: quay.io/keycloak/keycloak:26.8
     command: ["start-dev"]
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
