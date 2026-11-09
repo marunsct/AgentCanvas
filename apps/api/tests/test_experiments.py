@@ -63,6 +63,12 @@ async def test_experiment_compares_versions_and_variants(app, api_client):
     assert draft["pass_rate"] == 0.0 and draft["evaluators"][1]["pass_rate"] == 1.0
     assert variant["pass_rate"] == round(1 / 3, 4)
     assert v1["latency_p50_ms"] is not None and v1["tokens"] == 0 and v1["cost_usd"] == 0.0
+    # why runs failed: alike comments group, with the examples they failed on
+    (why,) = v1["failures"]
+    assert why["examples"][0].startswith("ex_")
+    assert why == {"evaluator": "exact", "reason": "differs: out", "runs": 1, "examples": why["examples"], "sample": ""}
+    assert v1["failure_summary"] == "1 of 3 runs failed. Most often: exact (1): differs: out."
+    assert draft["failures"][0]["runs"] == 3 and len(draft["failures"][0]["examples"]) == 3
 
     results = (await api_client.get(f"/v1/experiments/{exp['id']}/results")).json()
     assert len(results) == 9 and [r["target"] for r in results[:3]] == [0, 1, 2]
@@ -236,3 +242,40 @@ async def test_experiments_stay_in_their_organisation(app, api_client, org_b):  
             assert (await api_client.request(method, path)).status_code == 404, path
     finally:
         app.dependency_overrides.pop(current_user)
+
+
+def test_failures_group_alike_reasons():
+    from types import SimpleNamespace
+
+    from agentcanvas.services.experiments import failure_text, failures
+
+    specs = [
+        {"name": "exact", "kind": "exact"},
+        {"name": "judge", "kind": "llm_judge"},
+        {"name": "pw", "kind": "pairwise"},
+    ]
+
+    def row(ex: str, status: str = "success", error: str | None = None, **scores: tuple) -> SimpleNamespace:
+        listed = [{"evaluator": k, "score": v[0], "passed": v[1], "comment": v[2]} for k, v in scores.items()]
+        return SimpleNamespace(example_id=ex, run_status=status, error=error, scores=listed)
+
+    done = [
+        row("a", exact=(0.0, False, "differs: out"), judge=(0.2, False, "Rude, says 'go away'"), pw=(0.0, False, "")),
+        row("b", exact=(0.0, False, "differs: out"), judge=(0.9, True, "fine")),
+        row("c", "timeout", "no result after 120 s"),
+        row("d", "timeout", "no result after 120 s"),
+        row("e", exact=(None, False, "the example has no reference output"), judge=(0.1, False, "Wrong 'x'")),
+    ]
+    groups = failures(done, specs)
+    assert [(g.evaluator, g.reason, g.runs, g.examples) for g in groups] == [
+        (None, "no result after N s", 2, ["c", "d"]),
+        ("exact", "differs: out", 2, ["a", "b"]),
+        ("judge", "scored below its threshold", 2, ["a", "e"]),
+        ("exact", "could not score: the example has no reference output", 1, ["e"]),
+    ]  # the pairwise verdict is not a failure of the target's own answer
+    assert groups[2].sample == "Rude, says 'go away'"
+    assert failure_text(groups, 4, 5) == (
+        "4 of 5 runs failed. Most often: run error (2): no result after N s; exact (2): differs: out; "
+        "judge (2): scored below its threshold."
+    )
+    assert failure_text([], 0, 5) == ""

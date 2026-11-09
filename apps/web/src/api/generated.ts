@@ -1026,6 +1026,31 @@ export type Evaluators2 = EvaluatorSummary[];
  */
 export type Examples4 = number;
 /**
+ * the failures in a sentence or two; empty when nothing failed
+ */
+export type FailureSummary = string;
+/**
+ * the evaluator that failed the runs; None: the run itself did not succeed
+ */
+export type Evaluator3 = string | null;
+/**
+ * the examples (at most 10)
+ */
+export type Examples5 = string[];
+/**
+ * what they have in common: the evaluator's comment or the run's error
+ */
+export type Reason = string;
+export type Runs2 = number;
+/**
+ * one failed run's full comment, for evaluators that write their own
+ */
+export type Sample = string;
+/**
+ * why runs failed, grouped, most runs first (at most 10)
+ */
+export type Failures1 = FailureGroup[];
+/**
  * repeated runs: examples that passed in some runs and failed in others (at most 100)
  */
 export type Flaky = string[];
@@ -1056,7 +1081,7 @@ export type Repetitions2 = number;
 /**
  * runs in all: examples x repetitions
  */
-export type Runs2 = number;
+export type Runs3 = number;
 export type Target1 = number;
 export type Tokens = number;
 export type Summary4 = TargetSummary[];
@@ -1081,7 +1106,7 @@ export type Repetition = number;
 export type RunId3 = string | null;
 export type RunStatus = string | null;
 export type Comment2 = string;
-export type Evaluator3 = string;
+export type Evaluator4 = string;
 export type Passed1 = boolean;
 export type Score1 = number | null;
 export type Scores2 = Score[];
@@ -1168,8 +1193,8 @@ export type Split4 = string | null;
  * the system message; default the workflow's own prompt
  */
 export type System = string | null;
-export type Examples5 = number;
-export type Reason = string;
+export type Examples6 = number;
+export type Reason1 = string;
 export type Ref = string;
 export type Skipped = Skipped1[];
 export type AsNode = string | null;
@@ -1412,7 +1437,7 @@ export type Output3 = {
   [k: string]: unknown;
 } | null;
 export type QueueId = string;
-export type Reason1 = string;
+export type Reason2 = string;
 export type ReviewedByMe = boolean;
 export type Reviews = number;
 export type RunId5 = string;
@@ -1420,7 +1445,7 @@ export type RunStatus1 = string;
 export type Comment4 = string;
 export type CreatedAt20 = string;
 export type CreatedBy1 = string | null;
-export type Evaluator4 = string;
+export type Evaluator5 = string;
 export type Id38 = string;
 export type JudgeCostUsd2 = number;
 export type JudgeTokens = number;
@@ -1438,7 +1463,7 @@ export type ThreadId6 = string;
 export type CreatedAt21 = string;
 export type Id39 = string;
 export type QueueId1 = string;
-export type Reason2 = string;
+export type Reason3 = string;
 export type ReviewedByMe1 = boolean;
 export type Reviews1 = number;
 export type RunId7 = string;
@@ -1458,7 +1483,7 @@ export type Name35 = string;
 /**
  * load a sample knowledge base instead
  */
-export type Sample = "handbook" | null;
+export type Sample1 = "handbook" | null;
 export type Chunks1 = number;
 export type CreatedAt22 = string;
 export type Description11 = string;
@@ -1673,7 +1698,7 @@ export type AlertBelow1 = number | null;
 export type AlertDrop1 = number | null;
 export type CreatedAt24 = string;
 export type DeploymentId1 = string;
-export type Evaluator5 = string;
+export type Evaluator6 = string;
 export type EvaluatorId1 = string;
 export type Id45 = string;
 /**
@@ -2829,7 +2854,7 @@ export type Fallbacks = number;
  */
 export type Id51 = string | null;
 export type Name55 = string;
-export type Runs3 = number;
+export type Runs4 = number;
 export type TokensIn2 = number;
 export type TokensOut2 = number;
 /**
@@ -2842,7 +2867,7 @@ export type Fallbacks1 = number;
 export type LimitUsd1 = number | null;
 export type Period1 = string;
 export type PeriodStart1 = string;
-export type Runs4 = number;
+export type Runs5 = number;
 export type SpentUsd1 = number;
 export type Tokens1 = number;
 /**
@@ -2860,7 +2885,7 @@ export type Fallbacks2 = number;
  */
 export type Id52 = string | null;
 export type Name56 = string;
-export type Runs5 = number;
+export type Runs6 = number;
 export type TokensIn3 = number;
 export type TokensOut3 = number;
 /**
@@ -2877,7 +2902,7 @@ export type Fallbacks3 = number;
  */
 export type Id53 = string | null;
 export type Name57 = string;
-export type Runs6 = number;
+export type Runs7 = number;
 export type TokensIn4 = number;
 export type TokensOut4 = number;
 /**
@@ -2889,7 +2914,7 @@ export type CostUsd7 = number;
  * model calls a backup model answered
  */
 export type Fallbacks4 = number;
-export type Runs7 = number;
+export type Runs8 = number;
 export type TokensIn5 = number;
 export type TokensOut5 = number;
 /**
@@ -2907,7 +2932,7 @@ export type Fallbacks5 = number;
 export type Id54 = string | null;
 export type Name58 = string;
 export type ProjectId5 = string;
-export type Runs8 = number;
+export type Runs9 = number;
 export type TokensIn6 = number;
 export type TokensOut6 = number;
 export type ByDeployment = SpendDeployment[];
@@ -2929,7 +2954,7 @@ export type DeploymentId3 = string | null;
 /**
  * why, for the audit log
  */
-export type Reason3 = string;
+export type Reason4 = string;
 /**
  * only the runs of this workflow (drafts and deployments)
  */
@@ -2996,7 +3021,7 @@ export type LastEndedAt = string | null;
 export type LastError1 = string | null;
 export type LastRunId = string | null;
 export type LastStartedAt = string | null;
-export type Runs9 = number;
+export type Runs10 = number;
 export type Status15 = string;
 export type Title9 = string | null;
 export type Tokens2 = number;
@@ -3034,7 +3059,7 @@ export type Tokens3 = number;
 /**
  * one per run of the conversation, oldest first
  */
-export type Runs10 = TrajectoryNode[];
+export type Runs11 = TrajectoryNode[];
 export type ThreadId14 = string;
 export type WorkflowId12 = string;
 export type CreatedAt33 = string;
@@ -3449,6 +3474,7 @@ export interface ApiSchemas {
   ExportTargetOut?: ExportTargetOut;
   ExpressionCheck?: ExpressionCheck;
   ExpressionResult?: ExpressionResult;
+  FailureGroup?: FailureGroup;
   FeedbackIn?: FeedbackIn;
   FieldChange?: FieldChange;
   FileContent?: FileContent;
@@ -5214,6 +5240,8 @@ export interface TargetSummary {
   errors: Errors;
   evaluators: Evaluators2;
   examples: Examples4;
+  failure_summary?: FailureSummary;
+  failures?: Failures1;
   flaky?: Flaky;
   judge_cost_usd?: JudgeCostUsd1;
   judge_unpriced?: JudgeUnpriced;
@@ -5224,9 +5252,20 @@ export interface TargetSummary {
   pass_at_k?: PassAtK;
   pass_rate: PassRate2;
   repetitions?: Repetitions2;
-  runs?: Runs2;
+  runs?: Runs3;
   target: Target1;
   tokens: Tokens;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "FailureGroup".
+ */
+export interface FailureGroup {
+  evaluator: Evaluator3;
+  examples: Examples5;
+  reason: Reason;
+  runs: Runs2;
+  sample?: Sample;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -5272,7 +5311,7 @@ export interface ExperimentResultOut {
  */
 export interface Score {
   comment?: Comment2;
-  evaluator: Evaluator3;
+  evaluator: Evaluator4;
   passed: Passed1;
   score: Score1;
 }
@@ -5411,7 +5450,7 @@ export interface FinetuneIn {
  * via the `definition` "FinetunePreview".
  */
 export interface FinetunePreview {
-  examples: Examples5;
+  examples: Examples6;
   skipped: Skipped;
 }
 /**
@@ -5419,7 +5458,7 @@ export interface FinetunePreview {
  * via the `definition` "Skipped".
  */
 export interface Skipped1 {
-  reason: Reason;
+  reason: Reason1;
   ref: Ref;
 }
 /**
@@ -5804,7 +5843,7 @@ export interface ItemDetail {
   input: Input6;
   output: Output3;
   queue_id: QueueId;
-  reason: Reason1;
+  reason: Reason2;
   reviewed_by_me: ReviewedByMe;
   reviews: Reviews;
   run_id: RunId5;
@@ -5821,7 +5860,7 @@ export interface ScoreOut {
   comment: Comment4;
   created_at: CreatedAt20;
   created_by: CreatedBy1;
-  evaluator: Evaluator4;
+  evaluator: Evaluator5;
   id: Id38;
   judge_cost_usd: JudgeCostUsd2;
   judge_tokens: JudgeTokens;
@@ -5839,7 +5878,7 @@ export interface ItemOut {
   created_at: CreatedAt21;
   id: Id39;
   queue_id: QueueId1;
-  reason: Reason2;
+  reason: Reason3;
   reviewed_by_me: ReviewedByMe1;
   reviews: Reviews1;
   run_id: RunId7;
@@ -5869,7 +5908,7 @@ export interface KnowledgeBaseIn {
   description?: Description10;
   embedding?: Embedding | null;
   name?: Name35;
-  sample?: Sample;
+  sample?: Sample1;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -6256,7 +6295,7 @@ export interface OnlineOut {
   alert_drop?: AlertDrop1;
   created_at: CreatedAt24;
   deployment_id: DeploymentId1;
-  evaluator: Evaluator5;
+  evaluator: Evaluator6;
   evaluator_id: EvaluatorId1;
   filter?: FilterIn;
   id: Id45;
@@ -7007,7 +7046,7 @@ export interface SpendDeployment {
   fallbacks: Fallbacks;
   id: Id51;
   name: Name55;
-  runs: Runs3;
+  runs: Runs4;
   tokens_in: TokensIn2;
   tokens_out: TokensOut2;
   workflow_id: WorkflowId9;
@@ -7031,7 +7070,7 @@ export interface SpendPeriod {
   limit_usd: LimitUsd1;
   period: Period1;
   period_start: PeriodStart1;
-  runs: Runs4;
+  runs: Runs5;
   spent_usd: SpentUsd1;
   tokens: Tokens1;
 }
@@ -7046,7 +7085,7 @@ export interface SpendPerson {
   fallbacks: Fallbacks2;
   id: Id52;
   name: Name56;
-  runs: Runs5;
+  runs: Runs6;
   tokens_in: TokensIn3;
   tokens_out: TokensOut3;
 }
@@ -7060,7 +7099,7 @@ export interface SpendProject {
   fallbacks: Fallbacks3;
   id: Id53;
   name: Name57;
-  runs: Runs6;
+  runs: Runs7;
   tokens_in: TokensIn4;
   tokens_out: TokensOut4;
 }
@@ -7072,7 +7111,7 @@ export interface SpendTotal {
   cache_hits: CacheHits4;
   cost_usd: CostUsd7;
   fallbacks: Fallbacks4;
-  runs: Runs7;
+  runs: Runs8;
   tokens_in: TokensIn5;
   tokens_out: TokensOut5;
 }
@@ -7087,7 +7126,7 @@ export interface SpendWorkflow {
   id: Id54;
   name: Name58;
   project_id: ProjectId5;
-  runs: Runs8;
+  runs: Runs9;
   tokens_in: TokensIn6;
   tokens_out: TokensOut6;
 }
@@ -7129,7 +7168,7 @@ export interface StopOut {
  */
 export interface StopRunsIn {
   deployment_id?: DeploymentId3;
-  reason: Reason3;
+  reason: Reason4;
   workflow_id?: WorkflowId10;
 }
 /**
@@ -7263,7 +7302,7 @@ export interface ThreadOut {
   last_error?: LastError1;
   last_run_id?: LastRunId;
   last_started_at?: LastStartedAt;
-  runs?: Runs9;
+  runs?: Runs10;
   status: Status15;
   title: Title9;
   tokens?: Tokens2;
@@ -7284,7 +7323,7 @@ export interface ThreadPage {
  * via the `definition` "ThreadTrajectory".
  */
 export interface ThreadTrajectory {
-  runs: Runs10;
+  runs: Runs11;
   thread_id: ThreadId14;
   workflow_id: WorkflowId12;
 }

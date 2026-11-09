@@ -598,6 +598,8 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
 - [Server settings](docs/user-guide/server-settings.md): every server setting with its default and what it does, generated from the code (a test keeps it current).
 - **Decide with AI** block (`core.decide`, LangGraph): a model picks one of the paths you describe and saves
   `{choice, confidence, reason}`; an answer outside the choices, or below a minimum confidence, takes the default path.
+- Each experiment target says why its runs failed: run errors and evaluator comments grouped (numbers and quoted values
+  taken out), with the examples of each group and a one-line summary (`failures`, `failure_summary`).
 - The tool trajectory evaluator can check arguments: an example's expected call can be `{"name", "args"}`, an argument
   matched by value or by `{"$regex": …}`, and the evaluator's **arguments** setting compares them as a subset, exactly or
   not at all. In any order and subset modes each expected call is paired with a different run call.

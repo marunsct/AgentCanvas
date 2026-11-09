@@ -12,6 +12,14 @@ Merging, deleting branches and anything outward-facing stay with you: work is de
 
 ## 2026-11-09
 
+### The failure summary groups comments; it does not ask a model
+Each target's failures are grouped by rule (a run's error, or an evaluator's comment with numbers and quoted values
+taken out) and written as one line, with no model call: it costs nothing, gives the same answer every time, and
+needs no judge model or keys. Judges' free-text reasoning is grouped by evaluator only, with one reasoning shown,
+because no two read alike. An AI-written analysis on top (AgentCore style) can come later, opt-in, if people want it.
+Argument matchers: an expected call names only the arguments that matter (subset by default), so examples keep
+passing when a tool gains an optional argument. *Reverse:* `failures()` in `services/experiments.py`.
+
 ### Decide with AI asks for JSON, and starts on LangGraph only
 The decision is a JSON answer the step parses ({choice, confidence, reason}) rather than the provider's structured
 output, so every model and the canvas's scripted replies work the same; a wrong or missing answer takes the default

@@ -4633,6 +4633,53 @@
         "title": "ExpressionResult",
         "type": "object"
       },
+      "FailureGroup": {
+        "properties": {
+          "evaluator": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the evaluator that failed the runs; None: the run itself did not succeed",
+            "title": "Evaluator"
+          },
+          "examples": {
+            "description": "the examples (at most 10)",
+            "items": {
+              "type": "string"
+            },
+            "title": "Examples",
+            "type": "array"
+          },
+          "reason": {
+            "description": "what they have in common: the evaluator's comment or the run's error",
+            "title": "Reason",
+            "type": "string"
+          },
+          "runs": {
+            "title": "Runs",
+            "type": "integer"
+          },
+          "sample": {
+            "default": "",
+            "description": "one failed run's full comment, for evaluators that write their own",
+            "title": "Sample",
+            "type": "string"
+          }
+        },
+        "required": [
+          "evaluator",
+          "reason",
+          "runs",
+          "examples"
+        ],
+        "title": "FailureGroup",
+        "type": "object"
+      },
       "FeedbackIn": {
         "properties": {
           "comment": {
@@ -12464,6 +12511,20 @@
             "description": "examples of the dataset (each runs `repetitions` times)",
             "title": "Examples",
             "type": "integer"
+          },
+          "failure_summary": {
+            "default": "",
+            "description": "the failures in a sentence or two; empty when nothing failed",
+            "title": "Failure Summary",
+            "type": "string"
+          },
+          "failures": {
+            "description": "why runs failed, grouped, most runs first (at most 10)",
+            "items": {
+              "$ref": "#/components/schemas/FailureGroup"
+            },
+            "title": "Failures",
+            "type": "array"
           },
           "flaky": {
             "description": "repeated runs: examples that passed in some runs and failed in others (at most 100)",
