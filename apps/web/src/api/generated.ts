@@ -1138,6 +1138,10 @@ export type Message7 = string;
 export type Diagnostics2 = LintItem[];
 export type Path3 = string;
 /**
+ * send it back as If-Match when saving: a file changed since is not overwritten
+ */
+export type Version7 = string;
+/**
  * the file to move
  */
 export type Path4 = string;
@@ -1223,7 +1227,7 @@ export type Ready = boolean;
  */
 export type Setup = string | null;
 export type Tier = "T1" | "T2" | "T3" | "community";
-export type Version7 = string;
+export type Version8 = string;
 export type Name30 = string;
 /**
  * @minItems 1
@@ -1281,7 +1285,7 @@ export type Target3 = "local" | "server" | "kubernetes" | "cloudrun" | "aws" | "
  * project secret
  */
 export type TokenSecret = string;
-export type Version8 = string | null;
+export type Version9 = string | null;
 export type Branch1 = string;
 export type Commit = string;
 export type CreatedBranch = boolean;
@@ -1338,10 +1342,6 @@ export type Page1 = string;
 export type Title2 = string;
 export type Page2 = string;
 export type Title3 = string;
-export type Location = (string | number)[];
-export type Message9 = string;
-export type ErrorType = string;
-export type Detail3 = ValidationError[];
 /**
  * hostnames, or `*.example.com`; no scheme, port or path
  *
@@ -1358,7 +1358,7 @@ export type SeenAt = string;
 export type Selected1 = string | null;
 export type Session1 = string;
 export type UserId1 = string;
-export type Version9 = number | null;
+export type Version10 = number | null;
 export type Peers = Peer[];
 /**
  * OpenAI Agents SDK Python (an Agent Builder export, or written by hand)
@@ -1393,7 +1393,7 @@ export type Name34 = string;
 export type ProjectId2 = string;
 export type Report2 = string[];
 export type UpdatedAt7 = string;
-export type Version10 = number;
+export type Version11 = number;
 export type NodeId2 = string;
 /**
  * true: the field is a message list; each message is appended to it
@@ -1432,7 +1432,7 @@ export type Annotations = AnnotationOut[];
 export type CreatedAt19 = string;
 export type Error5 = string | null;
 export type Id37 = string;
-export type Input6 = {
+export type Input5 = {
   [k: string]: unknown;
 } | null;
 export type Output3 = {
@@ -1511,7 +1511,7 @@ export type Sitemaps = string[];
  */
 export type Stale = boolean;
 export type UpdatedAt8 = string;
-export type Version11 = number;
+export type Version12 = number;
 export type Description12 = string | null;
 export type Name37 = string | null;
 export type Replace = boolean;
@@ -1659,7 +1659,7 @@ export type SideEffects = ("external_write" | "message_send" | "code_exec" | "sp
 export type Stability = "stable" | "beta" | "experimental";
 export type TemplateFields = string[];
 export type Type7 = string;
-export type Version12 = string;
+export type Version13 = string;
 export type Writes1 = string[];
 /**
  * the same calls with their arguments (default: the trajectory's names, no arguments)
@@ -1722,6 +1722,10 @@ export type WindowMinutes2 = number | null;
  */
 export type AllowLocalMcp = boolean | null;
 /**
+ * false: nobody approves or answers an Inbox item of a run they started
+ */
+export type ApproveOwnRuns = boolean | null;
+/**
  * not below the server's; 0 = forever
  */
 export type AuditRetentionDays = number | null;
@@ -1729,6 +1733,10 @@ export type AuditRetentionDays = number | null;
  * runs in flight at once; past it runs wait in a queue by priority
  */
 export type MaxConcurrentRuns = number | null;
+/**
+ * the longest an API token may live, in days; none may never expire
+ */
+export type MaxTokenDays = number | null;
 /**
  * 0 = forever
  */
@@ -2022,7 +2030,7 @@ export type Notes3 = string;
 export type OptionalKeyEnv = string | null;
 export type Package = string;
 export type Environment2 = string;
-export type Message10 = string;
+export type Message9 = string;
 /**
  * admins: publish although the release gate fails (audited)
  */
@@ -2044,7 +2052,7 @@ export type Summary6 = string;
 /**
  * the draft's version after the import
  */
-export type Version13 = number;
+export type Version14 = number;
 export type Base = string;
 export type Branch4 = string;
 /**
@@ -2623,6 +2631,10 @@ export type Modified1 = number;
 export type Path6 = string;
 export type Size2 = number;
 /**
+ * the saved text's version, for the next save's If-Match
+ */
+export type Version15 = string;
+/**
  * true when people sign in with OpenID Connect (not dev or Matura mode)
  */
 export type Available = boolean;
@@ -2817,7 +2829,7 @@ export type Files4 =
 /**
  * may be empty when files are attached
  */
-export type Message11 = string;
+export type Message10 = string;
 /**
  * continue one of this visitor's conversations
  */
@@ -2997,11 +3009,11 @@ export type SampleInput = {
   [k: string]: unknown;
 } | null;
 export type Tags = string[];
-export type Context6 = {
+export type Context5 = {
   [k: string]: unknown;
 } | null;
 export type Name61 = string;
-export type Context7 = {
+export type Context6 = {
   [k: string]: unknown;
 } | null;
 export type CreatedAt31 = string;
@@ -3014,7 +3026,7 @@ export type Ids1 = string[] | null;
 /**
  * run against a version instead of the draft
  */
-export type Version14 = string | null;
+export type Version16 = string | null;
 export type Failed2 = number;
 export type Passed3 = number;
 export type Results2 = CaseResult[];
@@ -3045,7 +3057,7 @@ export type Children = TrajectoryNode[];
 /**
  * what the row shows when opened: arguments, replies, …
  */
-export type Detail4 = {
+export type Detail3 = {
   [k: string]: unknown;
 } | null;
 export type DurationMs1 = number | null;
@@ -3146,8 +3158,20 @@ export type MissingSecrets = string[];
 export type CreatedAt35 = string;
 export type DeploymentId5 = string | null;
 export type Enabled11 = boolean;
+/**
+ * cron: runs that could not start in a row
+ */
+export type Failures2 = number;
 export type Id61 = string;
 export type Kind11 = string;
+/**
+ * cron: why its last run could not start, if it failed
+ */
+export type LastError2 = string | null;
+/**
+ * cron: the run it last started
+ */
+export type LastRunId1 = string | null;
 export type Secret = string | null;
 export type Url4 = string | null;
 /**
@@ -3159,8 +3183,20 @@ export type Kind12 = "webhook" | "cron";
 export type CreatedAt36 = string;
 export type DeploymentId7 = string | null;
 export type Enabled12 = boolean;
+/**
+ * cron: runs that could not start in a row
+ */
+export type Failures3 = number;
 export type Id62 = string;
 export type Kind13 = string;
+/**
+ * cron: why its last run could not start, if it failed
+ */
+export type LastError3 = string | null;
+/**
+ * cron: the run it last started
+ */
+export type LastRunId2 = string | null;
 export type Url5 = string | null;
 /**
  * what would stop this trigger's runs from working
@@ -3175,22 +3211,11 @@ export type CreatedAt37 = string;
 export type CreatedBy2 = string | null;
 export type Id63 = string;
 export type IrHash4 = string;
-export type Message12 = string;
+export type Message11 = string;
 export type Semver1 = string;
 export type WorkspaceCommit = string | null;
 export type Bump = "major" | "minor" | "patch";
-export type Message13 = string;
-/**
- * the Copilot proposals accepted since the version before, and by whom
- */
-export type CopilotChanges1 = CopilotChange[];
-export type CreatedAt38 = string;
-export type CreatedBy3 = string | null;
-export type Id64 = string;
-export type IrHash5 = string;
-export type Message14 = string;
-export type Semver2 = string;
-export type WorkspaceCommit1 = string | null;
+export type Message12 = string;
 export type Model13 = string | null;
 export type Name66 = string;
 export type SystemPrompt1 = string;
@@ -3333,29 +3358,29 @@ export type Tools4 =
       string,
       string
     ];
-export type CreatedAt39 = string;
+export type CreatedAt38 = string;
 export type Diagnostics5 = Diagnostic[];
-export type Id65 = string;
-export type IrHash6 = string;
+export type Id64 = string;
+export type IrHash5 = string;
 export type Name67 = string;
 export type ProjectId6 = string;
 export type UpdatedAt12 = string;
-export type Version15 = number;
-export type Id66 = string;
+export type Version17 = number;
+export type Id65 = string;
 export type Name68 = string;
 export type UpdatedAt13 = string;
-export type Version16 = number;
+export type Version18 = number;
 export type Items3 = WorkflowSummary[];
 export type NextCursor1 = string | null;
 export type Name69 = string;
-export type Id67 = string;
+export type Id66 = string;
 export type IsDefault = boolean;
 export type Name70 = string;
 /**
  * default: the latest version
  */
-export type Version17 = number | null;
-export type Id68 = string;
+export type Version19 = number | null;
+export type Id67 = string;
 export type Kind14 = string;
 /**
  * what the content is, read from its first bytes
@@ -3366,7 +3391,7 @@ export type Size3 = number;
 /**
  * the commit message
  */
-export type Message15 = string | null;
+export type Message13 = string | null;
 /**
  * replace changes made on the branch since the last sync
  */
@@ -3374,12 +3399,31 @@ export type Overwrite1 = boolean;
 /**
  * a version's semver; the draft when left out
  */
-export type Version18 = string | null;
+export type Version20 = string | null;
+/**
+ * the git commit the server's image was built from, when it was given
+ */
+export type Commit2 = string | null;
+/**
+ * the release, e.g. 0.33.0
+ */
+export type Version21 = string;
 export type Error11 = string | null;
 export type Ok4 = boolean;
 export type Reply1 = string | null;
-export type Detail5 = string;
+export type Detail4 = string;
 export type Ok5 = boolean;
+/**
+ * the Copilot proposals accepted since the version before, and by whom
+ */
+export type CopilotChanges1 = CopilotChange[];
+export type CreatedAt39 = string;
+export type CreatedBy3 = string | null;
+export type Id68 = string;
+export type IrHash6 = string;
+export type Message14 = string;
+export type Semver2 = string;
+export type WorkspaceCommit1 = string | null;
 
 export interface ApiSchemas {
   AddNode?: AddNode;
@@ -3510,7 +3554,6 @@ export interface ApiSchemas {
   GroupMapping?: GroupMapping;
   GuidePage?: GuidePage;
   GuidePageRef?: GuidePageRef;
-  HTTPValidationError?: HTTPValidationError;
   HeaderRule?: HeaderRule;
   Here?: Here;
   ImportFile?: ImportFile;
@@ -3568,6 +3611,7 @@ export interface ApiSchemas {
   PortSpec?: PortSpec;
   PortabilityOut?: PortabilityOut;
   Preferences?: Preferences;
+  Problem?: Problem2;
   Progress?: Progress;
   ProjectIn?: ProjectIn;
   ProjectOut?: ProjectOut;
@@ -3679,10 +3723,8 @@ export interface ApiSchemas {
   UpdateResource?: UpdateResource;
   UpdateSettings?: UpdateSettings;
   UrlIn?: UrlIn;
-  ValidationError?: ValidationError;
   VersionDetail?: VersionDetail;
   VersionIn?: VersionIn;
-  VersionOut?: VersionOut;
   WorkflowIn?: WorkflowIn;
   WorkflowOut?: WorkflowOut;
   WorkflowPage?: WorkflowPage;
@@ -3692,8 +3734,10 @@ export interface ApiSchemas {
   agentcanvas__api__v1__datasets__PushIn?: PushIn;
   agentcanvas__api__v1__files__FileOut?: FileOut1;
   agentcanvas__api__v1__gitsync__PushIn?: PushIn1;
+  agentcanvas__api__v1__server__VersionOut?: VersionOut;
   agentcanvas__api__v1__setup__TestOut?: TestOut;
   agentcanvas__api__v1__traces__TestOut?: TestOut1;
+  agentcanvas__api__v1__versions__VersionOut?: VersionOut1;
   agentcanvas__api__v1__workspace__FileOut?: FileOut;
 }
 /**
@@ -5380,6 +5424,7 @@ export interface FileContent {
   content: Content2;
   diagnostics?: Diagnostics2;
   path: Path3;
+  version: Version7;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -5498,7 +5543,7 @@ export interface FrameworkOut {
   ready?: Ready;
   setup?: Setup;
   tier: Tier;
-  version: Version7;
+  version: Version8;
 }
 export interface Nodes2 {
   [k: string]: "native" | "emulated" | "unsupported";
@@ -5575,7 +5620,7 @@ export interface GitHubPushIn {
   repo: Repo;
   target?: Target3;
   token_secret?: TokenSecret;
-  version?: Version8;
+  version?: Version9;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -5664,28 +5709,6 @@ export interface GuidePageRef {
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
- * via the `definition` "HTTPValidationError".
- */
-export interface HTTPValidationError {
-  detail?: Detail3;
-}
-/**
- * This interface was referenced by `ApiSchemas`'s JSON-Schema
- * via the `definition` "ValidationError".
- */
-export interface ValidationError {
-  ctx?: Context4;
-  input?: Input4;
-  loc: Location;
-  msg: Message9;
-  type: ErrorType;
-}
-export interface Context4 {}
-export interface Input4 {
-  [k: string]: unknown;
-}
-/**
- * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "HeaderRule".
  */
 export interface HeaderRule {
@@ -5717,7 +5740,7 @@ export interface Peer {
   selected?: Selected1;
   session: Session1;
   user_id: UserId1;
-  version?: Version9;
+  version?: Version10;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -5749,14 +5772,14 @@ export interface ImportIn {
  * via the `definition` "Mapping".
  */
 export interface Mapping {
-  input?: Input5;
+  input?: Input4;
   reference?: Reference3;
   split?: Split5;
 }
 /**
  * input field -> column
  */
-export interface Input5 {
+export interface Input4 {
   [k: string]: string;
 }
 /**
@@ -5785,7 +5808,7 @@ export interface Imported {
   project_id: ProjectId2;
   report: Report2;
   updated_at: UpdatedAt7;
-  version: Version10;
+  version: Version11;
 }
 export interface Ir2 {
   [k: string]: unknown;
@@ -5850,7 +5873,7 @@ export interface ItemDetail {
   created_at: CreatedAt19;
   error: Error5;
   id: Id37;
-  input: Input6;
+  input: Input5;
   output: Output3;
   queue_id: QueueId;
   reason: Reason2;
@@ -5937,7 +5960,7 @@ export interface KnowledgeBaseOut {
   recrawl: RecrawlOut;
   stale: Stale;
   updated_at: UpdatedAt8;
-  version: Version11;
+  version: Version12;
 }
 export interface Embedding1 {
   [k: string]: unknown;
@@ -6236,7 +6259,7 @@ export interface NodeManifest {
   targets?: Targets4;
   template_fields?: TemplateFields;
   type: Type7;
-  version?: Version12;
+  version?: Version13;
   writes?: Writes1;
 }
 export interface ConditionalWrites {
@@ -6268,13 +6291,13 @@ export interface Observation {
   calls?: Calls;
   error?: Error6;
   expected_trajectory?: ExpectedTrajectory;
-  input?: Input7;
+  input?: Input6;
   output?: Output4;
   reference?: Reference4;
   status?: Status11;
   trajectory?: Trajectory3;
 }
-export interface Input7 {
+export interface Input6 {
   [k: string]: unknown;
 }
 export interface Output4 {
@@ -6333,8 +6356,10 @@ export interface OnlinePatch {
  */
 export interface OrgLimits {
   allow_local_mcp?: AllowLocalMcp;
+  approve_own_runs?: ApproveOwnRuns;
   audit_retention_days?: AuditRetentionDays;
   max_concurrent_runs?: MaxConcurrentRuns;
+  max_token_days?: MaxTokenDays;
   memory_retention_days?: MemoryRetentionDays;
   rate_limit_per_deployment?: RateLimitPerDeployment;
   rate_limit_per_project?: RateLimitPerProject;
@@ -6361,8 +6386,10 @@ export interface Effective {
  */
 export interface OrgLimits1 {
   allow_local_mcp?: AllowLocalMcp;
+  approve_own_runs?: ApproveOwnRuns;
   audit_retention_days?: AuditRetentionDays;
   max_concurrent_runs?: MaxConcurrentRuns;
+  max_token_days?: MaxTokenDays;
   memory_retention_days?: MemoryRetentionDays;
   rate_limit_per_deployment?: RateLimitPerDeployment;
   rate_limit_per_project?: RateLimitPerProject;
@@ -6464,6 +6491,55 @@ export interface PortabilityOut {
   ok: Ok2;
 }
 /**
+ * An RFC 9457 problem document, sent as application/problem+json with every error status.
+ *
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "Problem".
+ */
+export interface Problem2 {
+  /**
+   * what went wrong with this request, in plain words
+   */
+  detail: string;
+  /**
+   * with a 422: the invalid fields (`loc`, `msg`) or the workflow's errors (`code`, `message`)
+   */
+  errors?: {
+    /**
+     * a workflow error's rule, e.g. E001
+     */
+    code?: string;
+    /**
+     * an invalid field, as a dotted path: body.nodes.0.name
+     */
+    loc?: string;
+    message?: string;
+    msg?: string;
+    [k: string]: unknown;
+  }[];
+  /**
+   * a 500's request id, to quote when reporting it
+   */
+  request_id?: string | null;
+  /**
+   * a 429's seconds to wait (also the Retry-After header)
+   */
+  retry_after?: number;
+  /**
+   * the HTTP status
+   */
+  status: number;
+  /**
+   * a short summary of the kind of error
+   */
+  title: string;
+  /**
+   * identifies the kind of error, e.g. .../errors/not-found
+   */
+  type: string;
+  [k: string]: unknown;
+}
+/**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "Progress".
  */
@@ -6541,7 +6617,7 @@ export interface ProviderInfo {
  */
 export interface PublishIn {
   environment?: Environment2;
-  message?: Message10;
+  message?: Message9;
   override_reason?: OverrideReason;
 }
 /**
@@ -6571,7 +6647,7 @@ export interface PullIn {
 export interface PullOut {
   outcome: Outcome;
   summary: Summary6;
-  version: Version13;
+  version: Version14;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -6740,10 +6816,10 @@ export interface RunOut {
  */
 export interface RunRequest {
   breakpoints?: Breakpoints | null;
-  context?: Context5;
+  context?: Context4;
   dry_run?: DryRun2;
   durability?: Durability;
-  input?: Input8;
+  input?: Input7;
   mocks?: Mocks2;
   mode?: Mode4;
   pins?: Pins2;
@@ -6751,10 +6827,10 @@ export interface RunRequest {
   stream?: Stream2;
   thread_id?: ThreadId10;
 }
-export interface Context5 {
+export interface Context4 {
   [k: string]: unknown;
 }
-export interface Input8 {
+export interface Input7 {
   [k: string]: unknown;
 }
 /**
@@ -6823,6 +6899,7 @@ export interface SavedFile {
   modified: Modified1;
   path: Path6;
   size: Size2;
+  version: Version15;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -7026,7 +7103,7 @@ export interface ShareResumeIn {
  */
 export interface ShareRunIn {
   files?: Files4;
-  message: Message11;
+  message: Message10;
   thread_id?: ThreadId13;
   visitor: Visitor3;
 }
@@ -7221,14 +7298,14 @@ export interface TemplateInfo {
  * via the `definition` "TestCaseIn".
  */
 export interface TestCaseIn {
-  context?: Context6;
+  context?: Context5;
   expect?: Expect;
-  input?: Input9;
+  input?: Input8;
   mocks?: Mocks3;
   name: Name61;
   pins?: Pins3;
 }
-export interface Input9 {
+export interface Input8 {
   [k: string]: unknown;
 }
 /**
@@ -7250,17 +7327,17 @@ export interface Pins3 {
  * via the `definition` "TestCaseOut".
  */
 export interface TestCaseOut {
-  context?: Context7;
+  context?: Context6;
   created_at: CreatedAt31;
   expect?: Expect;
   id: Id56;
-  input?: Input10;
+  input?: Input9;
   last_result?: CaseResult | null;
   mocks?: Mocks4;
   name: Name62;
   pins?: Pins4;
 }
-export interface Input10 {
+export interface Input9 {
   [k: string]: unknown;
 }
 /**
@@ -7283,7 +7360,7 @@ export interface Pins4 {
  */
 export interface TestRunIn {
   ids?: Ids1;
-  version?: Version14;
+  version?: Version16;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -7347,7 +7424,7 @@ export interface ThreadTrajectory {
 export interface TrajectoryNode {
   canvas_node_id?: CanvasNodeId1;
   children?: Children;
-  detail?: Detail4;
+  detail?: Detail3;
   duration_ms?: DurationMs1;
   id: Id58;
   kind: Kind9;
@@ -7450,8 +7527,11 @@ export interface TriggerCreated {
   created_at: CreatedAt35;
   deployment_id: DeploymentId5;
   enabled: Enabled11;
+  failures?: Failures2;
   id: Id61;
   kind: Kind11;
+  last_error?: LastError2;
+  last_run_id?: LastRunId1;
   secret?: Secret;
   url?: Url4;
   warnings?: Warnings;
@@ -7480,8 +7560,11 @@ export interface TriggerOut {
   created_at: CreatedAt36;
   deployment_id: DeploymentId7;
   enabled: Enabled12;
+  failures?: Failures3;
   id: Id62;
   kind: Kind13;
+  last_error?: LastError3;
+  last_run_id?: LastRunId2;
   url?: Url5;
   warnings?: Warnings1;
 }
@@ -7507,7 +7590,7 @@ export interface VersionDetail {
   ir: Ir4;
   ir_hash: IrHash4;
   layout: Layout3;
-  message: Message12;
+  message: Message11;
   semver: Semver1;
   workspace_commit: WorkspaceCommit;
 }
@@ -7523,21 +7606,7 @@ export interface Layout3 {
  */
 export interface VersionIn {
   bump?: Bump;
-  message?: Message13;
-}
-/**
- * This interface was referenced by `ApiSchemas`'s JSON-Schema
- * via the `definition` "VersionOut".
- */
-export interface VersionOut {
-  copilot_changes?: CopilotChanges1;
-  created_at: CreatedAt38;
-  created_by: CreatedBy3;
-  id: Id64;
-  ir_hash: IrHash5;
-  message: Message14;
-  semver: Semver2;
-  workspace_commit: WorkspaceCommit1;
+  message?: Message12;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -7555,11 +7624,11 @@ export interface WorkflowIn {
  * via the `definition` "WorkflowOut".
  */
 export interface WorkflowOut {
-  created_at: CreatedAt39;
+  created_at: CreatedAt38;
   diagnostics: Diagnostics5;
-  id: Id65;
+  id: Id64;
   ir: Ir5;
-  ir_hash: IrHash6;
+  ir_hash: IrHash5;
   /**
    * created from a template: the files, dataset, evaluators, tests and schedule it added
    */
@@ -7568,7 +7637,7 @@ export interface WorkflowOut {
   name: Name67;
   project_id: ProjectId6;
   updated_at: UpdatedAt12;
-  version: Version15;
+  version: Version17;
 }
 export interface Ir5 {
   [k: string]: unknown;
@@ -7589,10 +7658,10 @@ export interface WorkflowPage {
  * via the `definition` "WorkflowSummary".
  */
 export interface WorkflowSummary {
-  id: Id66;
+  id: Id65;
   name: Name68;
   updated_at: UpdatedAt13;
-  version: Version16;
+  version: Version18;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -7606,7 +7675,7 @@ export interface WorkflowPatch {
  * via the `definition` "WorkspaceOut".
  */
 export interface WorkspaceOut {
-  id: Id67;
+  id: Id66;
   is_default: IsDefault;
   name: Name70;
 }
@@ -7615,7 +7684,7 @@ export interface WorkspaceOut {
  * via the `definition` "agentcanvas__api__v1__datasets__PushIn".
  */
 export interface PushIn {
-  version?: Version17;
+  version?: Version19;
 }
 /**
  * A file reference, as a run's input carries it.
@@ -7624,7 +7693,7 @@ export interface PushIn {
  * via the `definition` "agentcanvas__api__v1__files__FileOut".
  */
 export interface FileOut1 {
-  id: Id68;
+  id: Id67;
   kind?: Kind14;
   media_type: MediaType;
   name: Name71;
@@ -7635,9 +7704,17 @@ export interface FileOut1 {
  * via the `definition` "agentcanvas__api__v1__gitsync__PushIn".
  */
 export interface PushIn1 {
-  message?: Message15;
+  message?: Message13;
   overwrite?: Overwrite1;
-  version?: Version18;
+  version?: Version20;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "agentcanvas__api__v1__server__VersionOut".
+ */
+export interface VersionOut {
+  commit: Commit2;
+  version: Version21;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -7653,6 +7730,20 @@ export interface TestOut {
  * via the `definition` "agentcanvas__api__v1__traces__TestOut".
  */
 export interface TestOut1 {
-  detail: Detail5;
+  detail: Detail4;
   ok: Ok5;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "agentcanvas__api__v1__versions__VersionOut".
+ */
+export interface VersionOut1 {
+  copilot_changes?: CopilotChanges1;
+  created_at: CreatedAt39;
+  created_by: CreatedBy3;
+  id: Id68;
+  ir_hash: IrHash6;
+  message: Message14;
+  semver: Semver2;
+  workspace_commit: WorkspaceCommit1;
 }

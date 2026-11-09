@@ -1,6 +1,6 @@
 # Template gallery
 
-On **Home**, under **…or start from a template**, the gallery holds 36 ready-to-run workflows for common jobs, at
+On **Home**, under **…or start from a template**, the gallery holds 37 ready-to-run workflows for common jobs, at
 three levels: **beginner**, **intermediate** and **advanced**. Search by name, description or tag (for example
 `email`, `sql` or `approval`), pick a level, or click a category chip to narrow the list. Each card shows the
 category, a short description, tags, how many blocks the workflow has, its level and what else it adds to your
@@ -36,6 +36,7 @@ fields. Templates that pause for a person (an approval or a tool call) show the 
 | **Approval workflow** | An LLM drafts, a human approves (or edits) the draft, and only approved drafts are published. | beginner |
 | **Chat assistant** | A single tool-less agent that chats over the `messages` channel. Start here and add tools. | beginner |
 | **Classify and route** | An LLM classifies the input, a router picks a branch, each branch writes a reply. | beginner |
+| **AI triage with a confidence check** | An AI decides whether a message is a question or a complaint, says how sure it is and why, and sends anything it is unsure about to a person. | intermediate |
 
 ## Customer support
 
@@ -82,6 +83,7 @@ fields. Templates that pause for a person (an approval or a tool call) show the 
 | **Research brief** | Map-reduce research: one LLM call per topic in parallel, then a Deep Agent writes the brief and keeps findings in the user's long-term /memories/ folder. | intermediate |
 | **Web research agent** | Plans search queries for a question, then an agent researches it with a Wikipedia search tool and writes a sourced answer. Every web call waits for your approval. | intermediate |
 | **Resilient research agent** | A research agent built to keep going: a to-do list, long-term memory, shorter long chats, retries and backup models; a writer drafts in scratch files and must pass a quality check. | advanced |
+| **Mixed-framework team** | Two agents from two frameworks in one flow: an OpenAI Agents SDK researcher hands its notes to a CrewAI writer, whose typed answer (a title and a summary) is checked where the two meet. Exports as one project that installs each framework. Runs need CrewAI on the server (`make crewai`). | intermediate |
 
 ## HR
 

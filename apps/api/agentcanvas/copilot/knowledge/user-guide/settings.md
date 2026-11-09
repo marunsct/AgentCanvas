@@ -14,7 +14,8 @@ Links your role cannot use are not shown: viewers see no Playground, for example
 
 **Workflows** (Home) lists your workflows five to a page, newest change first: search by name, filter by when they
 changed (last 7 days, last 30 days, older) and sort; each row's **⋯** menu renames, duplicates or deletes it (deleting
-asks first). Below the list is the template gallery.
+asks first). Deleting a workflow, or its project, stops its running conversations and deletes them with their saved
+state, so a new conversation that reuses one of their ids starts empty. Below the list is the template gallery.
 
 **Runs** lists the project's conversations, newest first: status (done, running, waiting for a person, failed),
 which workflow, where the run came from (the editor, a deployment, a schedule, an event), how long it took and what
@@ -36,12 +37,13 @@ cannot change are shown read-only, with a sentence saying who can; sections your
 | Project › **Sandbox** | Time and memory limits for workspace code, and the hosts it may reach, where the server can enforce that ([Workspace › Sandbox](workspace.md#sandbox)) | builders |
 | Project › **Knowledge** | How new knowledge bases split their documents (by heading, paragraph, sentence or fixed windows; passage size; overlap). Existing knowledge bases keep their own ([Knowledge](knowledge.md#chunking-and-embeddings)) | builders |
 | Project › **Observability** | Sending traces to Langfuse, Phoenix or any OpenTelemetry collector | admins |
-| Organisation › **General** | The organisation's name, how long conversations are kept (the server's default, a number of days, or forever), and the **Environments** workflows can be published to (publishing to a name not on the list is refused). Below it, **Limits and policies**: this organisation's own setting for local MCP servers, the four rate limits, how many runs may be in flight at once, and how long the audit log and long-term memories are kept (see below). Last, **Stop all runs**: the kill switch for an emergency; every run in flight in the organisation stops within about 10 seconds on every server (runs waiting to be handed over are cancelled), with a reason kept in the audit log. It does not refuse new runs: stop a deployment on its page for that. `POST /v1/org/runs/stop` takes the same `reason`, and optionally a `deployment_id` or `workflow_id` to stop only those runs | admins |
-| Organisation › **Spending** | What the organisation's runs cost over a date range (the last 30 days to start with; **Last 7 / 30 / 90 days** buttons), in total and by project, by workflow, by person and by deployment, with runs, tokens, answers taken from the cache and answers from backup models. A person is whoever started the conversation; runs from deployments, schedules and events are listed as no person, and the deployment table shows which deployment (the workflow and its environment) they came through, with the rest listed as not through a deployment. Cost counts models with a price. The same report is `GET /v1/org/spending?since=&until=` | admins |
+| Organisation › **General** | The organisation's name, how long conversations are kept (the server's default, a number of days, or forever), and the **Environments** workflows can be published to (publishing to a name not on the list is refused). Below it, **Limits and policies**: this organisation's own setting for local MCP servers, approving your own runs, the four rate limits, how many runs may be in flight at once, the longest an API token may live, and how long the audit log and long-term memories are kept (see below). Last, **Stop all runs**: the kill switch for an emergency; every run in flight in the organisation stops within about 10 seconds on every server (runs waiting to be handed over are cancelled), with a reason kept in the audit log. It does not refuse new runs: stop a deployment on its page for that. `POST /v1/org/runs/stop` takes the same `reason`, and optionally a `deployment_id` or `workflow_id` to stop only those runs | admins |
+| Organisation › **Spending** | What the organisation's runs cost over a date range (the last 30 days to start with; **Last 7 / 30 / 90 days** buttons), in total and by project, by workflow, by person and by deployment, with runs, tokens, answers taken from the cache and answers from backup models. A person is whoever started the conversation; runs from deployments, schedules and events are listed as no person, and the deployment table shows which deployment (the workflow and its environment) they came through, with the rest listed as not through a deployment. Cost counts models with a price. Conversations deleted since (by hand or by the retention period) still count, by the hour their runs started. The same report is `GET /v1/org/spending?since=&until=` | admins |
 | Organisation › **Members**, **Policies**, **Audit log** | See [Organisations, roles and policies](accounts.md) | admins |
 | Organisation › **Server** | How this server is set up (sign-in, where workspace code runs, frameworks offered, limits, retention), each with the environment variable an operator sets it with. Read-only | admins can read |
 | You › **Appearance** | Your colour theme, and whether the editor opens in Simple or Full mode (both saved with your account) | you |
 | You › **Keyboard shortcuts** | Every shortcut of the editor and the canvas (Ctrl/⌘+K opens the command palette) | read only |
+| You › **About** | The release the server runs and the commit its image was built from, and the same for the web app; quote them when you report a problem. If the two releases differ, reload the page; if they still differ, an upgrade is not finished. The same is `GET /v1/version` | everyone |
 
 The addresses pages had before Settings existed (`/setup`, `/members`, `/audit`, `/policies`) still work and open
 the matching section.
@@ -54,8 +56,10 @@ runs the server decides how much an organisation may ask of it.
 | Setting | The organisation may | Never |
 |---|---|---|
 | Local MCP servers (`AGENTCANVAS_ALLOW_LOCAL_MCP`) | switch them off for itself | switch them on when the server has them off |
+| Approving your own runs (`AGENTCANVAS_APPROVE_OWN_RUNS`, allowed by default) | switch it off: someone else must approve a run you started ([Run and debug](run-and-debug.md)) | switch it on when the server has it off |
 | The four rate limits (`AGENTCANVAS_RATE_LIMIT_PER_DEPLOYMENT`, `_PER_WEBHOOK`, `_PER_PROJECT`, `_PER_SHARE_CLIENT`) | set a lower limit | set one above the server's (unless the server's is 0, no limit) |
 | Runs at once (`AGENTCANVAS_MAX_CONCURRENT_RUNS`) | set a lower limit | set one above the server's (unless the server's is 0, no limit) |
+| Longest API token lifetime (`AGENTCANVAS_MAX_TOKEN_DAYS`, in days) | set a shorter one: tokens then must expire within it | set one above the server's (unless the server's is 0, no limit) |
 | Audit log kept (`AGENTCANVAS_AUDIT_RETENTION_DAYS`) | keep it longer, or forever | keep it shorter than the server does |
 | Long-term memories kept (`AGENTCANVAS_MEMORY_RETENTION_DAYS`) | choose any number of days, or forever | |
 

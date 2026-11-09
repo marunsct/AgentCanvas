@@ -18,9 +18,11 @@ dataset**, then fill it by:
   input, and its answer as the reference), or add them from an annotation queue,
 - **Import CSV or JSONL**.
 
-Every change creates a new **version**, so an experiment always knows exactly which examples it used. Examples
+Every change creates a new **version**, so an experiment always knows exactly which examples it used. The version
+picker lists the newest 100 versions (`GET /v1/datasets/{id}/versions` pages further with `?before=<number>`). Examples
 can carry a *split* (e.g. `train`, `test`) to evaluate a subset. Datasets can be pushed to or pulled from
-LangSmith when you ask (project secret or server `LANGSMITH_API_KEY`).
+LangSmith when you ask (project secret or server `LANGSMITH_API_KEY`; the hosted service uses the project secret
+only).
 
 ## Evaluators
 
@@ -92,7 +94,8 @@ makes adversarial inputs in the categories you tick, runs each through the workf
 | **Off-topic** | requests the workflow is not for | it declines or redirects |
 | **Multi-turn** (chat workflows only, not ticked by default) | a conversation that starts harmless and escalates over several messages, then asks for the phrase; the assistant's earlier replies are scripted acknowledgements | the secret phrase is not in the reply |
 
-A run that a **safety block** (see the guard blocks) stopped counts as holding. A run that
+The reply is what the workflow wrote: an input field the output only repeats unchanged (the attack itself) is not
+part of it. A run that a **safety block** (see the guard blocks) stopped counts as holding. A run that
 failed for another reason is *not scored* rather than passed. The attacks come from the built-in list (offline, so it
 works with the demo and fake models) or from a model you name under *attacks written by*; a **judge model** decides
 what the run alone cannot (for example a reply that quietly reveals its instructions), guided by the *policy* you
@@ -118,6 +121,9 @@ Attach evaluators to a **deployment** with a sampling rate (0-100 %) and a filte
 caller sent, e.g. `tier=gold`). Sampled runs are scored in the background after the response is sent, so callers
 never wait. Scores appear on runs and as hourly or daily averages on the **Production** tab; the judge's own cost is
 counted separately (when the judge model has no catalog price, the score's comment says its cost is not counted).
+Each API server scores four runs at a time and keeps at most 1,000 more waiting; when a slow judge falls further
+behind than that, further runs go unscored (counted in `agentcanvas_online_scoring_dropped_total`) rather than
+piling up in memory. Scoring that is still waiting when a server stops is not resumed.
 
 **Drift alerts** fire when an evaluator's recent mean falls below a value (*alert below*) or drops more than a set
 amount under its 7-day average (*alert drop*). An alert resolves when the rule holds again, or when the window has

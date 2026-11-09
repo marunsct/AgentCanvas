@@ -44,8 +44,11 @@ a memory space.
 Ask "write tests for this and run them", or let the Copilot do it after building from a brief with success
 criteria. It turns the criteria into test cases (input plus the expected status, field values or steps), tries the
 workflow with them, and fixes what fails. Test runs use the workflow *as it would be with the proposal* and are
-**dry runs**: tools that send or write to outside systems are stubbed. When no model key is set it can script the
-model's replies instead of calling a model. Proposed tests are saved as the workflow's
+**dry runs**: tools that send or write to outside systems are stubbed. A test run that would call real models asks
+you first, once per conversation. A test run never runs what you have not accepted yet: new or changed code, and
+anything that talks to a new address (an app connector's URL, a model's base URL). Accept that change first, then
+the Copilot can test it. When no model key is set it can script the model's replies instead of calling a model.
+Proposed tests are saved as the workflow's
 [test cases](publish.md) when you accept.
 
 ## Debugging
@@ -58,7 +61,7 @@ The Copilot can find, explain and fix problems:
   in plain words. **✦ Ask the Copilot why** under a run error asks about that run.
 - **Fixes it can check:** after proposing a fix it reruns the failed run's input on the fixed workflow, replaying
   that run's recorded model replies and tool outputs when it has them, so you see whether the fix works before you
-  accept it.
+  accept it. A run that recorded no replies calls the real models again, so it asks you first, like a test run.
 
 Ask "explain" to get only an explanation; ask "fix" to get a proposal. In Ask mode it never changes or runs anything.
 

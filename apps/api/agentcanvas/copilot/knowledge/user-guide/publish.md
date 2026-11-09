@@ -75,8 +75,8 @@ Request fields: `input` (the workflow's input channels), `thread_id` (continue a
 run is waiting for.
 
 Through the web server (production setups) the same paths are under `/api/`. The public API is rate-limited per
-key, per webhook and per project (`429` with `Retry-After` when exceeded). Full, interactive API reference:
-`http://localhost:8000/docs` in development.
+key, per webhook and per project (`429` with `Retry-After` when exceeded). Errors, versioning and where to get the
+full OpenAPI reference (production included): [API reference](api.md).
 
 ## Share as an app or a chat widget
 
@@ -87,7 +87,8 @@ Once a workflow is published, people who are not developers can use it from a li
 2. Give the page a **Title**, a **Greeting** (the first thing visitors read) and up to six **Suggested questions**
    (one per line; visitors click one to start). Press **Save**.
 3. **Copy link** and send it to people, or **Open the page** to try it yourself. The page works on phones and
-   follows the visitor's light or dark setting.
+   follows the visitor's light or dark setting. Each message, the greeting and the message box take the direction
+   of their own text, so Arabic or Hebrew reads right to left; the page's own buttons and notes are in English.
 
 Visitors need no account. Each message they send runs the published version, and the answer streams in as it is
 written (when the workflow has a safety block, the answer appears once it has passed the checks). **New
@@ -167,7 +168,9 @@ field such as `answer`, `reply` or `response`, else the only text output.
   subdomains) and only those sites, plus this app, can frame it; others see a blocked frame. The link itself still
   opens for anyone who has it.
 - **Reloading keeps the conversation.** The chat page shows a visitor's latest conversation again after a reload and
-  carries on in the same thread (a question the assistant was waiting on is still open). It is kept on the server
+  carries on in the same thread (a question the assistant was waiting on is still open). An answer still being
+  written at the reload appears when it is ready (the page checks every 2 seconds, for up to 3 minutes); the checks
+  leave a visitor who scrolled up to re-read where they are. It is kept on the server
   under the visitor's id, which their browser remembers, and goes when conversations expire (Settings › Organisation).
   **New conversation** closes it for good; a new link (**New link**) ends every saved conversation. A visitor who
   clears their browser data or uses another browser starts afresh; you still see the earlier runs in **Runs**.
@@ -182,8 +185,18 @@ On the Versions tab:
   Senders sign each request: header `X-AgentCanvas-Timestamp: <unix seconds>` and
   `X-AgentCanvas-Signature: sha256=<hex HMAC-SHA256 of "<timestamp>." + body>` using the trigger's secret.
   Requests older than five minutes are refused.
-- **+ Cron** runs the workflow on a 5-field schedule in UTC (e.g. `*/5 9-17 * * 1-5`) with a fixed **Cron input
-  (JSON)**. Each scheduled minute fires once, however many API replicas run.
+- **+ Cron** runs the workflow on a 5-field schedule (minute hour day month weekday, e.g. `*/5 9-17 * * 1-5` or
+  `0 8 * * MON-FRI`; `@hourly`, `@daily`, `@weekly`, `@monthly` and `@yearly` work too) with a fixed **Cron input
+  (JSON)**. The schedule is read in the **time zone** next to it (an IANA name such as `Europe/Berlin`; the field
+  starts with your browser's, and `UTC` is used when none is sent), so `0 8 * * *` stays 08:00 there through
+  daylight saving changes. When the clocks go forward, a time that does not happen that day does not fire; when
+  they go back, a set time in the repeated hour fires once (a schedule that runs every hour keeps running through
+  both passes). Each scheduled minute fires once, however many API replicas run. When a scheduled run cannot
+  start (its deployment was unpublished, a security check refused it), the trigger shows why and how many times in
+  a row, until a run starts again. An occurrence missed while no server
+  was running (a restart or an outage at that minute) fires once when one is back, if it is less than an hour old
+  (the operator's `AGENTCANVAS_CRON_CATCHUP_S`); older ones are skipped, as is anything due while the trigger was
+  switched off.
 
 A trigger runs its deployment's pinned version when it is attached to one, otherwise the draft (the panel says
 which). For starting

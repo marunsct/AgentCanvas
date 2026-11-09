@@ -228,7 +228,9 @@ CREATE TABLE public.dataset_version (
     message text DEFAULT ''::text NOT NULL,
     examples jsonb NOT NULL,
     created_by character varying,
-    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    example_count integer DEFAULT 0 NOT NULL,
+    splits jsonb DEFAULT '{}'::jsonb NOT NULL
 );
 
 ALTER TABLE ONLY public.dataset_version FORCE ROW LEVEL SECURITY;
@@ -437,6 +439,7 @@ CREATE TABLE public.interrupt_task (
     decided_by character varying,
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     decided_at timestamp with time zone,
+    requested_by text,
     CONSTRAINT interrupt_kind CHECK ((kind = ANY (ARRAY['tool_approval'::text, 'approval'::text, 'input'::text]))),
     CONSTRAINT interrupt_status CHECK ((status = ANY (ARRAY['pending'::text, 'decided'::text, 'expired'::text])))
 );
@@ -902,6 +905,7 @@ CREATE TABLE public.run (
     stop_requested boolean DEFAULT false NOT NULL,
     priority smallint DEFAULT 0 NOT NULL,
     queued boolean DEFAULT false NOT NULL,
+    stop_reason text,
     CONSTRAINT run_mode CHECK ((mode = ANY (ARRAY['normal'::text, 'debug'::text]))),
     CONSTRAINT run_status CHECK ((status = ANY (ARRAY['running'::text, 'success'::text, 'interrupted'::text, 'error'::text, 'cancelled'::text])))
 );
@@ -1007,6 +1011,25 @@ CREATE TABLE public.share_thread (
 ALTER TABLE ONLY public.share_thread FORCE ROW LEVEL SECURITY;
 
 --
+-- Name: spend_archive; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.spend_archive (
+    workflow_id character varying NOT NULL,
+    hour timestamp with time zone NOT NULL,
+    deployment_id character varying NOT NULL,
+    person character varying NOT NULL,
+    runs integer DEFAULT 0 NOT NULL,
+    tokens_in bigint DEFAULT 0 NOT NULL,
+    tokens_out bigint DEFAULT 0 NOT NULL,
+    cost_usd numeric(14,6) DEFAULT 0 NOT NULL,
+    cache_hits integer DEFAULT 0 NOT NULL,
+    fallbacks integer DEFAULT 0 NOT NULL
+);
+
+ALTER TABLE ONLY public.spend_archive FORCE ROW LEVEL SECURITY;
+
+--
 -- Name: stored_file; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1080,6 +1103,9 @@ CREATE TABLE public.trigger (
     enabled boolean DEFAULT true NOT NULL,
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     last_fired character varying(16),
+    last_run_id character varying,
+    last_error text,
+    failures integer DEFAULT 0 NOT NULL,
     CONSTRAINT trigger_kind CHECK ((kind = ANY (ARRAY['webhook'::text, 'cron'::text])))
 );
 
@@ -1691,6 +1717,13 @@ ALTER TABLE ONLY public.share_thread
     ADD CONSTRAINT share_thread_pkey PRIMARY KEY (thread_id);
 
 --
+-- Name: spend_archive spend_archive_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.spend_archive
+    ADD CONSTRAINT spend_archive_pkey PRIMARY KEY (workflow_id, hour, deployment_id, person);
+
+--
 -- Name: stored_file stored_file_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1746,6 +1779,12 @@ ALTER TABLE ONLY public.workflow_version
 CREATE INDEX annotation_item_queue_idx ON public.annotation_item USING btree (queue_id, status, created_at);
 
 --
+-- Name: annotation_item_run_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX annotation_item_run_idx ON public.annotation_item USING btree (run_id);
+
+--
 -- Name: answer_cache_expires_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1776,6 +1815,12 @@ CREATE UNIQUE INDEX copilot_conversation_open_once ON public.copilot_conversatio
 CREATE INDEX cost_alert_workflow_idx ON public.cost_alert USING btree (workflow_id, created_at);
 
 --
+-- Name: deployment_version_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX deployment_version_idx ON public.deployment USING btree (version_id);
+
+--
 -- Name: eval_alert_one_open; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1804,6 +1849,18 @@ CREATE INDEX experiment_status_idx ON public.experiment USING btree (status, hea
 --
 
 CREATE INDEX interrupt_pending_idx ON public.interrupt_task USING btree (status, created_at);
+
+--
+-- Name: interrupt_run_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX interrupt_run_idx ON public.interrupt_task USING btree (run_id);
+
+--
+-- Name: interrupt_thread_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX interrupt_thread_idx ON public.interrupt_task USING btree (thread_id);
 
 --
 -- Name: ix_annotation_item_id; Type: INDEX; Schema: public; Owner: -
@@ -2028,6 +2085,12 @@ CREATE INDEX run_score_deployment_idx ON public.run_score USING btree (deploymen
 CREATE INDEX run_search_project_idx ON public.run_search USING btree (project_id, created_at);
 
 --
+-- Name: run_started_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX run_started_idx ON public.run USING btree (started_at);
+
+--
 -- Name: run_status_queued_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2040,10 +2103,40 @@ CREATE INDEX run_status_queued_idx ON public.run USING btree (status, queued);
 CREATE INDEX run_thread_idx ON public.run USING btree (thread_id, started_at);
 
 --
+-- Name: run_version_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX run_version_idx ON public.run USING btree (workflow_version_id);
+
+--
+-- Name: spend_archive_hour_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX spend_archive_hour_idx ON public.spend_archive USING btree (hour);
+
+--
+-- Name: stored_file_deployment_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX stored_file_deployment_idx ON public.stored_file USING btree (deployment_id);
+
+--
 -- Name: stored_file_project_idx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX stored_file_project_idx ON public.stored_file USING btree (project_id, last_used_at);
+
+--
+-- Name: thread_created_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX thread_created_idx ON public.thread USING btree (created_at, id);
+
+--
+-- Name: thread_deployment_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX thread_deployment_idx ON public.thread USING btree (deployment_id);
 
 --
 -- Name: thread_updated_idx; Type: INDEX; Schema: public; Owner: -
@@ -2052,10 +2145,22 @@ CREATE INDEX stored_file_project_idx ON public.stored_file USING btree (project_
 CREATE INDEX thread_updated_idx ON public.thread USING btree (updated_at);
 
 --
+-- Name: thread_workflow_created_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX thread_workflow_created_idx ON public.thread USING btree (workflow_id, created_at, id);
+
+--
 -- Name: thread_workflow_idx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX thread_workflow_idx ON public.thread USING btree (workflow_id, updated_at);
+
+--
+-- Name: trigger_workflow_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX trigger_workflow_idx ON public.trigger USING btree (workflow_id);
 
 --
 -- Name: a2a_reply a2a_reply_thread_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -2604,6 +2709,13 @@ ALTER TABLE ONLY public.share_thread
     ADD CONSTRAINT share_thread_thread_id_fkey FOREIGN KEY (thread_id) REFERENCES public.thread(id) ON DELETE CASCADE;
 
 --
+-- Name: spend_archive spend_archive_workflow_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.spend_archive
+    ADD CONSTRAINT spend_archive_workflow_id_fkey FOREIGN KEY (workflow_id) REFERENCES public.workflow(id) ON DELETE CASCADE;
+
+--
 -- Name: stored_file stored_file_deployment_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3011,6 +3123,14 @@ CREATE POLICY agentcanvas_tenant ON public.share_thread USING (((current_setting
   WHERE ((p.id)::text = (share_thread.deployment_id)::text)))));
 
 --
+-- Name: spend_archive agentcanvas_tenant; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY agentcanvas_tenant ON public.spend_archive USING (((current_setting('agentcanvas.all_tenants'::text, true) = 'on'::text) OR (EXISTS ( SELECT 1
+   FROM public.workflow p
+  WHERE ((p.id)::text = (spend_archive.workflow_id)::text)))));
+
+--
 -- Name: stored_file agentcanvas_tenant; Type: POLICY; Schema: public; Owner: -
 --
 
@@ -3297,6 +3417,12 @@ ALTER TABLE public.secret ENABLE ROW LEVEL SECURITY;
 --
 
 ALTER TABLE public.share_thread ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: spend_archive; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.spend_archive ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: stored_file; Type: ROW SECURITY; Schema: public; Owner: -
