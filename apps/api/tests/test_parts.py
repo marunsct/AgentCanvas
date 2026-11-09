@@ -7,6 +7,7 @@ The stand-in agent (tests/test_designs.py) runs as a part with this test's own P
 
 from __future__ import annotations
 
+import asyncio
 import sys
 from pathlib import Path
 from typing import Annotated, Any, TypedDict
@@ -122,6 +123,97 @@ async def test_a_broken_part_says_why():
     part = PartModule(sys.executable, source="raise SystemExit('no agent here')")
     with pytest.raises(PartError, match=r"SystemExit: no agent here"):
         await part.ask(part.build([]), "hi")
+
+
+@pytest.fixture
+def fresh(monkeypatch):
+    """Parts started by this test only (workers are shared per Python otherwise), stopped afterwards."""
+    from agentcanvas.adapters.langchain import parts
+
+    started: dict = {}
+    monkeypatch.setattr(parts, "_PROCESSES", started)
+    yield parts
+    for p in started.values():
+        p.proc.kill()
+
+
+ENV_AGENT = """import os
+
+
+def build(tools=(), **kw):
+    return None
+
+
+async def ask(agent, text):
+    return {k: os.environ.get(k) for k in text.split()}
+"""
+
+
+async def test_a_part_sees_none_of_the_servers_secrets(fresh, monkeypatch):
+    """Launch review: the worker got the server's whole environment (database URL, keys, cloud credentials) and
+    framework telemetry on, which the framework adapters' workers have not had since the 2026-10-18 review."""
+    monkeypatch.setenv("AGENTCANVAS_SECRET_KEY", "k" * 64)
+    monkeypatch.setenv("DATABASE_URL", "postgresql://owner:pw@db/agentcanvas")
+    part = PartModule(sys.executable, source=ENV_AGENT)
+    seen = await part.ask(part.build([]), "AGENTCANVAS_SECRET_KEY DATABASE_URL CREWAI_DISABLE_TELEMETRY AGNO_TELEMETRY")
+    assert seen == {"AGENTCANVAS_SECRET_KEY": None, "DATABASE_URL": None, "CREWAI_DISABLE_TELEMETRY": "true",
+                    "AGNO_TELEMETRY": "false"}  # fmt: skip
+
+
+async def test_a_part_that_never_starts_is_given_up(fresh, monkeypatch, tmp_path):
+    monkeypatch.setattr(fresh, "READY_TIMEOUT_S", 0.5)
+    silent = tmp_path / "worker.py"
+    silent.write_text("import time\n\ntime.sleep(60)\n")
+    part = PartModule(sys.executable, source=ENV_AGENT, worker=silent)
+    with pytest.raises(PartError, match="did not start"):
+        await asyncio.wait_for(part.ask(part.build([]), "HOME"), 10)
+
+
+STUCK = """import asyncio
+import pathlib
+
+
+def build(tools=(), **kw):
+    return None
+
+
+async def ask(agent, text):
+    try:
+        await asyncio.sleep(3600)
+    except asyncio.CancelledError:
+        pathlib.Path(text).write_text("stopped")
+        raise
+"""
+
+
+async def test_a_stopped_step_stops_its_part(fresh, tmp_path):
+    """A cancelled ask was never told to the worker, whose coroutine then waited forever."""
+    mark = tmp_path / "stopped"
+    part = PartModule(sys.executable, source=STUCK)
+    asking = asyncio.create_task(part.ask(part.build([]), str(mark)))
+    await asyncio.sleep(1.0)
+    asking.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await asking
+    for _ in range(100):
+        if mark.exists():
+            break
+        await asyncio.sleep(0.05)
+    assert mark.read_text() == "stopped"
+
+
+async def test_a_part_that_goes_quiet_is_given_up(fresh, monkeypatch, tmp_path):
+    """A hung framework call left the run 'running' for good unless its workflow had a time limit."""
+    monkeypatch.setattr(fresh, "IDLE_TIMEOUT_S", 0.5)
+    part = PartModule(sys.executable, source=STUCK)
+    with pytest.raises(PartError, match=r"said nothing for 0\.5 s"):
+        await asyncio.wait_for(part.ask(part.build([]), str(tmp_path / "stopped")), 10)
+    (worker,) = fresh._PROCESSES.values()
+    for _ in range(100):  # nothing else was asking it: a fresh worker starts on next use
+        if not worker.alive:
+            break
+        await asyncio.sleep(0.05)
+    assert not worker.alive
 
 
 def test_contracts():
