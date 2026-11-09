@@ -22,9 +22,10 @@ CREWAI_VERSION = "1.15.39"
 RUNTIME_IMPORT = "from agentcanvas.adapters.crewai import runtime as rt"
 STEP_TYPES = {
     "core.set", "core.router", "core.join", "core.approval", "core.human_input", "core.script", "core.llm",
-    "core.agent", "knowledge.search", "crewai.crew", "crewai.task",
+    "core.agent", "knowledge.search", "crewai.crew", "crewai.task", "core.decide",
 }  # fmt: skip
 RESOURCE_TYPES = {"model.chat", "tool.python", "mw.model_call_limit"}
+PATH_STEPS = ("core.router", "core.decide")  # CrewAI `@router` methods: they return the path to follow
 _TAKEN = {"rt", "Agent", "Crew", "Task", "Process", "Flow", "BaseModel", "Field", "Any", "Literal", "CANVAS",
           "annotations", "and_", "or_", "listen", "router", "start", "begin"}  # fmt: skip
 # what a Flow already has (crewai 1.15): a step may not take these names
@@ -125,7 +126,7 @@ def _marker(n: Node) -> str:
 
 
 def _triggers(wf: Workflow, n: Node, fns: dict[str, str], defined: set[str]) -> list[str]:
-    routers = {x.id for x in wf.nodes if x.type == "core.router"}
+    routers = {x.id for x in wf.nodes if x.type in PATH_STEPS}
     out: list[str] = []
     for e in wf.flow_edges():
         if e.target.node != n.id:
@@ -152,9 +153,9 @@ def _method(wf: Workflow, n: Node, fns: dict[str, str], body: str, defined: set[
         when = triggers[0]
     else:
         when = ("and_" if n.type == "core.join" else "or_") + f"({', '.join(triggers)})"
-    deco = "router" if n.type == "core.router" else "listen"
+    deco = "router" if n.type in PATH_STEPS else "listen"
     step_args = _py(n.id) + (", disabled=True" if n.disabled else "")
-    returns = "str" if n.type == "core.router" else "dict[str, Any]"
+    returns = "str" if n.type in PATH_STEPS else "dict[str, Any]"
     lines = [
         f"    {_marker(n)}",
         *([f"    @{deco}({when})"] if when else []),
@@ -190,6 +191,18 @@ def _step(wf: Workflow, n: Node, fn: str, names: _Names) -> tuple[str, str, str]
         return "", f"return run.route({_py(cases)}{tail}", ""
     if n.type == "core.join":
         return "", '"""Waits for every branch before going on."""\nreturn {}', ""
+    if n.type == "core.decide":
+        prompt, choices = names.take(f"{n.name}_prompt".upper()), names.take(f"{n.name}_choices".upper())
+        options = {case["route"]: case.get("description", "") for case in c.get("cases", [])}
+        kw = [f"output={_py(c['output'])}"]
+        kw += [f"default={_py(c['default'])}"] if c.get("default", "default") != "default" else []
+        kw += [f"min_confidence={_py(c['min_confidence'])}"] if c.get("min_confidence") is not None else []
+        return (
+            f"{prompt} = {_lit(c['prompt'])}\n{choices} = {_py(options)}",
+            f"reply = await run.text({_llm(wf, n)}, run.decide_prompt(rt.render({prompt}, self.state), {choices}))\n"
+            f"return run.decide(reply, {choices}, {', '.join(kw)})",
+            "",
+        )
     if n.type == "core.set":
         items = ", ".join(
             f"{_py(k)}: " + (f"rt.render({_py(v)}, self.state)" if isinstance(v, str) else _py(v))

@@ -24,6 +24,7 @@
     "core.script": "emulated",
     "knowledge.search": "emulated",
     "mw.model_call_limit": "emulated",
+    "core.decide": "emulated",
     "*": "unsupported"
   },
   "notes": {
@@ -36,6 +37,7 @@
     "core.human_input": "the flow stops with CrewAI's HumanFeedbackPending and asks again when an answer does not fit",
     "core.script": "your workspace function is called from the flow",
     "knowledge.search": "the flow searches the knowledge base; exports search its file with the built-in embedder",
-    "mw.model_call_limit": "becomes the agent's max_iter (model calls in one run of the agent); a per-conversation limit is not kept"
+    "mw.model_call_limit": "becomes the agent's max_iter (model calls in one run of the agent); a per-conversation limit is not kept",
+    "core.decide": "a CrewAI @router method: the block's LLM is asked once to pick a path and say how sure it is, the decision {choice, confidence, reason} is saved in the state and the method returns the chosen path (the default one when there is none or it is below the minimum confidence)"
   }
 }

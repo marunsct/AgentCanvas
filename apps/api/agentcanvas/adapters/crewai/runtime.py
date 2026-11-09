@@ -41,7 +41,7 @@ from crewai import LLM, Agent
 from crewai.flow import Flow, HumanFeedbackPending, PendingFeedbackContext
 from jsonschema import Draft202012Validator
 
-from agentcanvas.expr import eval_condition, render_template
+from agentcanvas.expr import chosen, decide_prompt, decision, eval_condition, render_template
 
 YES_WORDS = {"yes", "y", "true", "approve", "approved", "ok", "okay"}
 ROLES = {"human": "user", "user": "user", "ai": "assistant", "assistant": "assistant", "system": "system"}
@@ -215,8 +215,11 @@ class _Execution:
                 "task_id": f"{node_id}#{n}", "duration_ms": _ms(started),
             })  # fmt: skip
             raise
-        route = out if isinstance(out, str) else None
-        update = out if isinstance(out, dict) else {}
+        if isinstance(out, tuple):  # a Decide with AI step: the decision it saves, and the path it picks
+            update, route = out
+        else:
+            route = out if isinstance(out, str) else None
+            update = out if isinstance(out, dict) else {}
         state = flow.state
         for k, v in update.items():
             state[k] = _reduce(self.canvas.channels.get(k, ("replace", None))[0], state.get(k), v)
@@ -232,7 +235,8 @@ class _Execution:
 
 def step(node_id: str, *, disabled: bool = False) -> Callable[[Callable[..., Awaitable[Any]]], Any]:
     """Make `async def method(self, run)` a step of the canvas: events, field merging, pauses and replay. Put it
-    under CrewAI's `@start`/`@listen`/`@router`. The method returns the fields it sets (a path step: its label)."""
+    under CrewAI's `@start`/`@listen`/`@router`. The method returns the fields it sets (a path step: its label; a
+    Decide with AI step: both, as a pair)."""
 
     def decorate(fn: Callable[..., Awaitable[Any]]) -> Any:
         async def method(self: Flow[Any], *_trigger: Any) -> Any:  # CrewAI passes what triggered it: not needed
@@ -367,6 +371,19 @@ class Run:
         values = _values(self.flow.state)
         chosen = next((r for when, r in cases if eval_condition(when, values)), default)
         return f"{self.method}:{chosen}"
+
+    def decide_prompt(self, prompt: str, choices: dict[str, str]) -> str:
+        """What a Decide with AI step asks its model: the rendered question, the options and the answer's shape."""
+        return decide_prompt(prompt, choices)
+
+    def decide(
+        self, reply: str, choices: dict[str, str], *, output: str, default: str = "default",
+        min_confidence: float | None = None,
+    ) -> tuple[dict[str, Any], str]:  # fmt: skip
+        """The model's decision, saved in `output`, and the path it picks: its choice, or `default` when it made none
+        or is less sure than `min_confidence`."""
+        made = decision(reply, choices)
+        return {output: made}, f"{self.method}:{chosen(made, default, min_confidence)}"
 
     # ---- people ----
     def approval(self, *, show: str, output: str) -> dict[str, Any]:
