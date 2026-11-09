@@ -51,8 +51,8 @@ RUN --mount=type=cache,target=/root/.cache/uv if [ "$WITH_AGNO" = "true" ] || ec
 ARG WITH_MICROSOFT_AGENT_FRAMEWORK=false
 RUN --mount=type=cache,target=/root/.cache/uv if [ "$WITH_MICROSOFT_AGENT_FRAMEWORK" = "true" ] || echo " $FRAMEWORKS " | tr , " " | grep -Eq " (all|microsoft_agent_framework) "; then \
       uv venv .frameworks/microsoft_agent_framework && uv pip install \
-      --python .frameworks/microsoft_agent_framework/bin/python agent-framework-core==1.23.0 \
-      agent-framework-openai==1.17.0 cel-python==0.5.0 jinja2==3.1.6 jsonschema==4.26.0; fi
+      --python .frameworks/microsoft_agent_framework/bin/python agent-framework-core==1.25.0 \
+      agent-framework-openai==1.18.1 cel-python==0.5.0 jinja2==3.1.6 jsonschema==4.26.0; fi
 # 7) optional (S35): Strands Agents and LlamaIndex, each in an environment of its own:
 #   docker build --build-arg WITH_STRANDS=true --build-arg WITH_LLAMAINDEX=true ...
 ARG WITH_STRANDS=false

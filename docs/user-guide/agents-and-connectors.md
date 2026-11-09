@@ -38,7 +38,7 @@ which shows what will be sent on an approval card; a rejection skips the agent.
 | Agno | `agno==3.1.11` | an `Agent` or `Team` |
 | Strands Agents | `strands-agents==1.62.0` | an `Agent` |
 | LlamaIndex Workflows | `llama-index-workflows==2.25.0` | a `Workflow` (it gets `input=` and the other fields) |
-| Microsoft Agent Framework | `agent-framework-core==1.23.0` | an agent (`client.as_agent(...)`) |
+| Microsoft Agent Framework | `agent-framework-core==1.25.0` | an agent (`client.as_agent(...)`) |
 | Claude Agent SDK | `claude-agent-sdk==0.2.174` | a `ClaudeAgentOptions` |
 | Python function | none | `async def run(input, ctx)`: return text, or a dict to set several fields |
 

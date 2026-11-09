@@ -37,7 +37,7 @@ CODEGEN = {"pydantic_ai": pai_codegen, "agno": agno_codegen, "microsoft_agent_fr
 PINS = {
     "pydantic_ai": "pydantic-ai-slim[openai]==2.66.0",
     "agno": "agno==3.1.11",
-    "microsoft_agent_framework": "agent-framework-core==1.23.0",
+    "microsoft_agent_framework": "agent-framework-core==1.25.0",
     "strands": "strands-agents[openai]==1.62.0",
     "llamaindex": "llama-index-core==0.14.25",
 }

@@ -43,7 +43,7 @@ FRAMEWORKS: dict[str, Framework] = {
         "LlamaIndex Workflows", "llama-index-workflows==2.25.0", "workflows", "workflow.run(input=…)"
     ),
     "microsoft_agent_framework": Framework(
-        "Microsoft Agent Framework", "agent-framework-core==1.23.0", "agent_framework", "agent.run(input)"
+        "Microsoft Agent Framework", "agent-framework-core==1.25.0", "agent_framework", "agent.run(input)"
     ),
     "claude_agent_sdk": Framework(
         "Claude Agent SDK", "claude-agent-sdk==0.2.174", "claude_agent_sdk", "query(prompt, options)"

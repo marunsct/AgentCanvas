@@ -46,6 +46,16 @@ CHANGELOGS = {
 }
 # files a pin is written in besides `pkg==version` (a code generator's constant, a manifest's "framework" line)
 REQUIREMENTS = ROOT / "infra" / "frameworks" / "requirements.txt"
+# a code generator's constant that holds a package's bare version (tests/test_framework_pins.py checks each)
+CONSTANTS = {
+    "openai-agents": "SDK_VERSION", "crewai": "CREWAI_VERSION", "google-adk": "ADK_VERSION",
+    "litellm": "LITELLM_VERSION", "pydantic-ai-slim": "PYDANTIC_AI_VERSION", "agno": "AGNO_VERSION",
+    "openai": "OPENAI_VERSION", "strands-agents": "STRANDS_VERSION", "llama-index-core": "LLAMA_INDEX_CORE_VERSION",
+    "llama-index-workflows": "WORKFLOWS_VERSION", "llama-index-llms-openai-like": "OPENAI_LIKE_VERSION",
+    "agent-framework-core": "AGENT_FRAMEWORK_VERSION", "agent-framework-openai": "AGENT_FRAMEWORK_OPENAI_VERSION",
+    "@mastra/core": "MASTRA_VERSION",
+}  # fmt: skip
+TEXT_NAMES = {"Makefile"}  # files without a suffix that pins are written in (and Dockerfile.*)
 TEXT_SUFFIXES = {".py", ".json", ".yml", ".yaml", ".md", ".sh", ".toml", ".txt", ".ts", ".tmpl", ".j2"}
 SKIP_DIRS = {"node_modules", ".venv", ".frameworks", ".git", "dist", "site", "test-results", ".ci-tmp"}
 SKIP_FILES = {"CHANGELOG.md", "uv.lock", "pnpm-lock.yaml", "package-lock.json", "decisions.md"}  # history and locks
@@ -124,7 +134,8 @@ def report() -> list[Row]:
 def _files(root: Path) -> list[Path]:
     out = []
     for path in root.rglob("*"):
-        if path.is_file() and path.suffix in TEXT_SUFFIXES and path.name not in SKIP_FILES:
+        text_file = path.suffix in TEXT_SUFFIXES or path.name in TEXT_NAMES or path.name.startswith("Dockerfile")
+        if path.is_file() and text_file and path.name not in SKIP_FILES:
             if not SKIP_DIRS.intersection(path.relative_to(root).parts):
                 out.append(path)
     return out
@@ -141,16 +152,15 @@ def bump(package: str, old: str, new: str, root: Path = ROOT) -> list[Path]:
         (re.compile(rf'("{name}":\s*"){re.escape(old)}"'), "\\g<1>" + new + '"'),
         (re.compile(rf"(`{name}(?:\[[^\]]*\])?==){re.escape(old)}`"), rf"\g<1>{new}`"),
     ]
-    constant = re.compile(rf'^([A-Z_]*VERSION\s*=\s*"){re.escape(old)}"', re.M)
+    if package in CONSTANTS:  # the code generator's constant for this package, by its name
+        constant = re.compile(rf'^(\s*{CONSTANTS[package]}\s*=\s*"){re.escape(old)}"', re.M)
+        rules.append((constant, "\\g<1>" + new + '"'))
     changed = []
     for path in _files(root):
         text = path.read_text(encoding="utf-8", errors="replace")
         out = text
         for rule, repl in rules:
             out = rule.sub(repl, out)
-        # a constant holding just the version: only in a file that names this package
-        if constant.search(out) and re.search(rf"\b{name}\b", out, re.I):
-            out = constant.sub("\\g<1>" + new + '"', out)
         if out != text:
             path.write_text(out, encoding="utf-8")
             changed.append(path)
@@ -193,7 +203,6 @@ def main(argv: list[str] | None = None) -> int:
         changed = bump(args.package.lower(), current, args.version)
         for path in changed:
             print(path.relative_to(ROOT))
-        REQUIREMENTS.write_text(requirements_text())
         print(f"{args.package} {current} -> {args.version} in {len(changed)} files; now run the checklist in "
               "docs/agent-canvas-spec/build-guide/16-framework-upgrades.md")  # fmt: skip
         return 0

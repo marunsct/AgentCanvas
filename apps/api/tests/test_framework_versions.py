@@ -23,7 +23,9 @@ def test_every_pinned_package_names_its_changelog():
 def test_bump_rewrites_every_form_and_nothing_else(tmp_path):
     files = {
         "designs.py": 'AgentFramework("crewai", "CrewAI", ("crewai==1.15.33",), "crewai")\nOTHER = "agno==1.15.33"\n',
-        "codegen.py": 'import crewai\nCREWAI_VERSION = "1.15.33"\n',
+        "codegen.py": 'CREWAI_VERSION = "1.15.33"\n',  # the constant, in a file that does not name the package
+        "Dockerfile.api": "RUN uv pip install crewai==1.15.33 jinja2==3.1.6\n",  # no suffix: still a pin
+        "requirements.txt": "crewai==1.15.33\n",
         "unrelated.py": 'LITELLM_VERSION = "1.15.33"\n',  # same number, another package: left alone
         "manifest.json": '{"framework": "crewai 1.15.33"}\n',
         "ci.yml": 'with: "crewai[tools]==1.15.33 litellm==1.105.7"\n',
@@ -33,10 +35,12 @@ def test_bump_rewrites_every_form_and_nothing_else(tmp_path):
     for name, text in files.items():
         (tmp_path / name).write_text(text)
     changed = {p.name for p in fv.bump("crewai", "1.15.33", "1.15.39", root=tmp_path)}
-    assert changed == {"designs.py", "codegen.py", "manifest.json", "ci.yml", "guide.md"}
+    assert changed == {"designs.py", "codegen.py", "Dockerfile.api", "requirements.txt", "manifest.json", "ci.yml",
+                       "guide.md"}  # fmt: skip
     read = {name: (tmp_path / name).read_text() for name in files}
     assert "crewai==1.15.39" in read["designs.py"] and "agno==1.15.33" in read["designs.py"]
     assert 'CREWAI_VERSION = "1.15.39"' in read["codegen.py"]
+    assert "crewai==1.15.39 jinja2==3.1.6" in read["Dockerfile.api"] and read["requirements.txt"] == "crewai==1.15.39\n"
     assert read["unrelated.py"] == files["unrelated.py"]
     assert '"crewai 1.15.39"' in read["manifest.json"]
     assert "crewai[tools]==1.15.39 litellm==1.105.7" in read["ci.yml"]
