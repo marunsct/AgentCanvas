@@ -14,6 +14,10 @@ const daysAgo = (n: number) => isoDay(new Date(Date.now() - n * DAY));
 export const usd = (v: number) => `$${v >= 1 ? v.toFixed(2) : v === 0 ? "0.00" : v.toFixed(4)}`;
 const count = (n: number) => n.toLocaleString("en-US");
 
+// model calls outside runs, until the generated API types are regenerated (`outside_runs` of GET /v1/org/spending)
+interface OutsideRuns { kind: "copilot" | "judge"; calls: number; tokens_in: number; tokens_out: number; cost_usd: number }
+const KIND = { copilot: "The Copilot", judge: "AI judges" } as const;
+
 export function SpendingSettings() {
   const [from, setFrom] = useState(daysAgo(29));
   const [to, setTo] = useState(isoDay(new Date()));
@@ -25,7 +29,7 @@ export function SpendingSettings() {
       const p = new URLSearchParams();
       p.set("since", new Date(`${from}T00:00:00`).toISOString());
       p.set("until", new Date(new Date(`${to}T00:00:00`).getTime() + DAY).toISOString()); // the whole last day
-      return apiFetch<SpendingOut>(`/org/spending?${p}`);
+      return apiFetch<SpendingOut & { outside_runs?: OutsideRuns[] }>(`/org/spending?${p}`);
     },
   });
   const preset = (days: number) => { setFrom(daysAgo(days - 1)); setTo(isoDay(new Date())); };
@@ -33,7 +37,8 @@ export function SpendingSettings() {
     <section className="settings-card" aria-label="Spending">
       <h2>Spending</h2>
       <p className="muted small">
-        What this organisation's runs cost, by day of the range in your time zone. The cost counts models with a price
+        What this organisation's runs cost, by day of the range in your time zone (the Copilot and AI judges are listed
+        apart, under Outside runs). The cost counts models with a price
         (the catalog's, or <code>AGENTCANVAS_MODEL_PRICES</code>); a person is whoever started the conversation, and
         runs started by deployments, schedules and events belong to no one, and the deployment table shows which
         deployment they came through.
@@ -55,6 +60,7 @@ export function SpendingSettings() {
             extra={{ head: "Email", cell: (r: SpendPerson) => r.email }} />
           <Breakdown title="By deployment" what="Deployment" rows={q.data.by_deployment} testid="spend-deployments"
             extra={{ head: "Workflow id", cell: (r: SpendDeployment) => r.workflow_id }} />
+          <Outside rows={q.data.outside_runs ?? []} />
         </>
       )}
     </section>
@@ -70,6 +76,28 @@ function Totals({ total }: { total: SpendTotal }) {
       <span>{count(total.cache_hits)} answers from the cache</span>
       <span>{count(total.fallbacks)} from backup models</span>
     </p>
+  );
+}
+
+/** The Copilot's answers and AI judges: not runs, so not in the totals above, but counted by the spending caps. */
+function Outside({ rows }: { rows: OutsideRuns[] }) {
+  return (
+    <div>
+      <h3>Outside runs</h3>
+      {rows.length === 0 ? <p className="muted small">No Copilot answers or AI judges in this range.</p> : (
+        <table className="table" data-testid="spend-outside">
+          <thead><tr><th>What</th><th>Cost</th><th>Model calls</th><th>Tokens in</th><th>Tokens out</th></tr></thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.kind}>
+                <td>{KIND[r.kind] ?? r.kind}</td><td>{usd(r.cost_usd)}</td><td>{count(r.calls)}</td>
+                <td>{count(r.tokens_in)}</td><td>{count(r.tokens_out)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
   );
 }
 
