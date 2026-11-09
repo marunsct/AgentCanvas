@@ -117,6 +117,7 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
   and metadata addresses are never reached, and a list naming one is refused (HARDENING S-1).
 
 ### Fixed
+- The Copilot evaluation checks a template that has blocks of its own (Lead scoring with research) against a registry that knows them; its cases could never pass before.
 - Models on OpenAI-compatible servers (LM Studio, vLLM, llama.cpp, any OpenAI-compatible address) and OpenAI at an address of its own now report their tokens when they stream, so runs, budgets, the spending report and the Copilot count their tokens and cost; they had read zero. Found by the Copilot evaluation on LM Studio.
 - The memory inspector answers 422 for a namespace label with a period or a control character instead of a server error.
 - Workflows with error routes stream tokens again: LangGraph 1.2.20 runs error handlers in every stream mode, so the "token streaming is off" warning and its workaround are gone.

@@ -17,6 +17,7 @@ import argparse
 import asyncio
 import json
 import os
+import tempfile
 import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
@@ -29,6 +30,7 @@ from agentcanvas.copilot.tools import ToolContext
 from agentcanvas.ir.commands import apply_batch, parse_commands
 from agentcanvas.ir.models import Workflow
 from agentcanvas.registry import Registry, default_registry
+from agentcanvas.services.template_kit import kit_registry
 from agentcanvas.services.workflows import list_templates
 from agentcanvas.settings import Settings
 from agentcanvas.validation import validate
@@ -82,6 +84,7 @@ async def run_case(
     engine: type[CopilotTurn] = CopilotTurn,
 ) -> CaseResult:
     started = time.monotonic()
+    registry = case.get("registry") or registry  # a template case knows its template's own blocks
     templates = list_templates(settings)
     pack = build_pack(registry, templates)
     empty = case.get("start") or Workflow(id="wf_eval", name=case["id"])
@@ -145,6 +148,9 @@ def debug_cases(settings: Settings, registry: Registry) -> list[dict[str, Any]]:
         if name.startswith(("demo", "dev")):
             continue
         wf = Workflow.model_validate({**doc, "id": f"wf_{name}"})
+        # a template with blocks of its own (its kit's code) is checked against a registry that knows them, as a
+        # project that opened it would be; otherwise every case of it fails on "unknown node type"
+        own, _ = kit_registry(wf, registry, tempfile.mkdtemp(prefix="ac-eval-kit-"))
         to_end = next((e for e in wf.edges if e.kind == "flow" and e.target.node == "END"), None)
         wiring = next((e for e in wf.edges if e.kind == "wiring" and e.target.port == "model"), None)
         writer = next((n for n in wf.nodes if isinstance(n.config.get("output"), str)), None)
@@ -174,9 +180,10 @@ def debug_cases(settings: Settings, registry: Registry) -> list[dict[str, Any]]:
                 broken_wf, _ = apply_batch(wf, parse_commands(commands))
             except Exception:  # noqa: BLE001 - a mutation that does not fit this template is skipped
                 continue
-            if any(d.severity == "error" for d in validate(broken_wf, registry)):
+            if any(d.severity == "error" for d in validate(broken_wf, own)):
                 keep = [n.id for n in broken_wf.nodes]  # a fix repairs the steps, it does not delete them
-                cases.append({"id": f"{name}/{bug}", "request": FIX_REQUEST, "start": broken_wf, "keep": keep})
+                cases.append({"id": f"{name}/{bug}", "request": FIX_REQUEST, "start": broken_wf, "keep": keep,
+                              "registry": own})  # fmt: skip
     return cases
 
 
