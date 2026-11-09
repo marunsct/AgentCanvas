@@ -157,6 +157,46 @@ async def test_a_resumed_run_is_indexed_with_the_question_that_started_it(app, t
     assert len(recorded) == 1  # the first run's; the resume's is NULL
 
 
+async def test_indexing_holds_no_database_connection_while_it_embeds(app, api_client):
+    """A hosted embedding model takes a while: a burst of finished runs must not pin the connection pool."""
+    import asyncio
+
+    from sqlalchemy import event
+
+    entered, release, held = asyncio.Event(), asyncio.Event(), [0]
+
+    def factory(spec, secrets):
+        async def embed(texts):
+            entered.set()
+            await release.wait()
+            return [[1.0] for _ in texts]
+
+        return embed
+
+    pool = app.state.db.engine.sync_engine.pool
+    out = lambda *_: held.__setitem__(0, held[0] + 1)  # noqa: E731
+    back = lambda *_: held.__setitem__(0, held[0] - 1)  # noqa: E731
+    app.state.run_search.embedder = factory
+    wf = await make_chat(api_client)
+    app.state.resources_factory = lambda thread_id, w: DemoResources().with_mocks({"model": ["Five days."]})
+    event.listen(pool, "checkout", out)
+    event.listen(pool, "checkin", back)
+    try:
+        body = {"input": {"messages": [{"role": "user", "content": "refund?"}]}, "thread_id": "th_slow"}
+        assert "RUN_FINISHED" in (await api_client.post(f"/v1/workflows/{wf}/runs/stream", json=body)).text
+        await asyncio.wait_for(entered.wait(), 5)
+        await asyncio.sleep(0.05)
+        assert held[0] == 0  # the embedding call is made with no connection checked out
+        release.set()
+        await app.state.run_search.drain()
+    finally:
+        release.set()
+        event.remove(pool, "checkout", out)
+        event.remove(pool, "checkin", back)
+    async with app.state.db.sessionmaker() as s:
+        assert await s.scalar(select(func.count()).select_from(RunSearch).where(RunSearch.thread_id == "th_slow")) == 1
+
+
 def test_json_nulls_written_before_become_sql_null(tmp_path):
     import sqlite3
 
