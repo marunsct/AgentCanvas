@@ -87,10 +87,7 @@ The settings to decide first are in [Deploy and operate](deploy.md#essential-set
   | `agentcanvas_online_score_mean` | `deployment`, `evaluator` | mean online score over the evaluator's alert window (S13) |
   | `agentcanvas_eval_alert_open` | `deployment`, `evaluator`, `kind` (below, drop) | 1 while a drift alert is open; every pod refreshes it from the database once a minute |
   | `agentcanvas_eval_alerts_total` | `kind` | drift alerts opened |
-  | `agentcanvas_build_info` | `version`, `commit` | always 1: the release and commit this pod runs (`unknown` commit when the image was built without `GIT_SHA`) |
-  | `agentcanvas_runs_queued` | | runs of this pod waiting for a slot under a runs-at-once limit (sum over pods for the whole queue) |
-  | `agentcanvas_job_failures_total` | `job` (handover, cron, retention, knowledge_crawl, experiments, online_metrics, secrets, matura_feed) | background job rounds that failed |
-  | `agentcanvas_job_last_success_timestamp_seconds` | `job` | when the job last finished a round in this pod (its start until the first one does) |
+  | `agentcanvas_online_scoring_dropped_total` | | deployment runs left unscored because the pod's scoring queue (1,000 runs) was full: the judges are too slow for the traffic or the sampling rate |
 
 - **Traces:** OpenTelemetry spans for FastAPI, the control database (SQLAlchemy) and outgoing httpx calls when `OTEL_EXPORTER_OTLP_ENDPOINT` is set (OTLP/HTTP; the standard `OTEL_*` variables configure it; Helm: `observability.otlpEndpoint`). Request spans carry `request.id`. LLM traces go to LangSmith when `LANGSMITH_TRACING=true` (runs tagged with `workflow_id`).
 - **Dashboard and alerts:** `infra/observability/grafana-dashboard.json` (import it and pick the Prometheus data source) and `infra/observability/alerts.yaml`: server errors above 5 % for 10 min, more than 20 % of runs failing, API p95 above 2 s (streams excluded), no API pod scraped, an online evaluator in drift for 5 min (`AgentCanvasEvaluationDrift`, severity ticket), and a background job failing for 15 min or not finishing a round on any pod for 30 min (4 h for retention and the Matura feed) (`AgentCanvasBackgroundJobFailing`, `AgentCanvasBackgroundJobStale`, severity ticket).

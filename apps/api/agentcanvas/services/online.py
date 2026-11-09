@@ -6,6 +6,11 @@ An online evaluator attaches one of the workflow's evaluators to a deployment wi
 observation an experiment does (input, output, tool trajectory, status), scores it, and stores a `RunScore` with
 what the judge itself cost, kept apart from the run's cost.
 
+The hook keeps only what scoring needs, not the run. It routes the run to annotation queues at once, then waits
+for one of `CONCURRENCY` judge slots only when an online evaluator samples it. At most `MAX_PENDING` runs wait or
+are being scored per instance; past that a run goes unscored, counted in `agentcanvas_online_scoring_dropped_total`
+(a slow judge must not grow the server's memory without limit).
+
 **Drift.** After each score the evaluator's rules are checked: the mean over the last `window_minutes` below
 `alert_below`, or more than `alert_drop` below the trailing 7-day mean (before the window). A broken rule opens an
 alert (once; it stays open while the rule holds) and resolves it when the rule holds no longer. Open alerts are
@@ -17,6 +22,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -35,6 +41,7 @@ log = get_logger(__name__)
 
 BASELINE_DAYS = 7
 CONCURRENCY = 4  # scoring tasks at once per instance: judges must not crowd out runs
+MAX_PENDING = 1000  # runs waiting to be scored, or being scored, per instance
 DRIFT_EVERY_S = 10.0  # each instance checks an evaluator's drift rules at most this often (a window is minutes long)
 
 
@@ -67,6 +74,32 @@ def observation(h: Any, status: str, error: str | None, input: dict[str, Any] | 
         status=status,
         error=error,
     )
+
+
+Chosen = list[tuple[OnlineEvaluator, Evaluator]]
+
+
+@dataclass(frozen=True)
+class Finished:
+    """What scoring needs of a finished run, taken when it finishes: the run's handle (every event) is not kept
+    alive while the run waits to be scored."""
+
+    run_id: str
+    thread_id: str
+    workflow_id: str
+    deployment_id: str
+    version_id: str | None
+    fresh: bool  # started with its own input (not a resume or a hand-over)
+    labels: dict[str, str]
+    obs: Observation
+
+    @classmethod
+    def of(cls, h: Any, status: str, error: str | None) -> Finished:
+        return cls(
+            run_id=h.run_id, thread_id=h.thread_id, workflow_id=h.workflow_id, deployment_id=h.deployment_id,
+            version_id=h.version_id, fresh=h.input is not None, labels=dict(h.labels or {}),
+            obs=observation(h, status, error),
+        )  # fmt: skip
 
 
 def judge_cost(usage: dict[str, dict[str, int]]) -> tuple[int, float]:
@@ -107,6 +140,7 @@ class OnlineScorer:
         self.db, self.runner, self.interval_s, self.drift_every_s = db, runner, interval_s, drift_every_s
         self.tasks: set[asyncio.Task] = set()
         self._gate = asyncio.Semaphore(CONCURRENCY)
+        self.pending = 0  # runs waiting for a judge slot or being scored (at most MAX_PENDING)
         self._loop_task: asyncio.Task | None = None
         self._reported: set[tuple[str, str, str]] = set()
         self._workflows: dict[str, Workflow] = {}  # published versions never change: parsed once
@@ -179,7 +213,7 @@ class OnlineScorer:
         """Runner finish hook: schedule the scoring and return at once."""
         if h.deployment_id is None or h.origin == "test" or h.drained or h.superseded:
             return  # a run stopped for a hand-over is scored once, when its continuation finishes
-        task = asyncio.create_task(self._score(h, status, error), name=f"online-score:{h.run_id}")
+        task = asyncio.create_task(self._score(Finished.of(h, status, error)), name=f"online-score:{h.run_id}")
         self.tasks.add(task)
         task.add_done_callback(self.tasks.discard)
 
@@ -188,65 +222,89 @@ class OnlineScorer:
         if self.tasks:
             await asyncio.wait(list(self.tasks), timeout=timeout)
 
-    async def _score(self, h: Any, status: str, error: str | None) -> list[RunScore]:
+    async def _score(self, run: Finished) -> list[RunScore]:
         try:
-            async with self._gate:
-                return await self.score_run(h, status, error)
+            return await self.score_run(run)
         except Exception:
-            log.exception("online.score_failed", run_id=h.run_id)
+            log.exception("online.score_failed", run_id=run.run_id)
             return []
 
-    async def score_run(self, h: Any, status: str, error: str | None) -> list[RunScore]:
-        """Score the run with the online evaluators that sample it, then route it to the annotation queues whose
-        rules it meets (a failed run, a low score)."""
-        out = await self._evaluate(h, status, error)
+    async def score_run(self, run: Finished) -> list[RunScore]:
+        """Route the run to the annotation queues whose rules it meets (a failed run), score it with the online
+        evaluators that sample it, then route it again for the rules on scores (a low score)."""
         from agentcanvas.services import annotation
 
-        async with self.db.sessionmaker() as s:
-            scores = {r.evaluator: r.score for r in out}
-            await annotation.route(s, h.workflow_id, h.run_id, h.thread_id, status=status, scores=scores)
+        status = run.obs.status
+        async with self.db.sessionmaker() as s:  # never behind the judges: nothing here waits for a slot
+            await annotation.route(s, run.workflow_id, run.run_id, run.thread_id, status=status)
+        chosen = await self._chosen(run)
+        if chosen is None:
+            return []
+        if self.pending >= MAX_PENDING:
+            from agentcanvas import observability
+
+            observability.ONLINE_SCORING_DROPPED.inc()
+            log.warning("online.scoring_dropped", run_id=run.run_id, pending=self.pending)
+            return []
+        self.pending += 1
+        try:
+            async with self._gate:
+                out = await self._evaluate(run, *chosen)
+        finally:
+            self.pending -= 1
+        if out:
+            async with self.db.sessionmaker() as s:
+                scores = {r.evaluator: r.score for r in out}
+                await annotation.route(s, run.workflow_id, run.run_id, run.thread_id, status=status, scores=scores)
         return out
 
-    async def _evaluate(self, h: Any, status: str, error: str | None) -> list[RunScore]:
-        from agentcanvas.services.experiments import scorers
+    async def _chosen(self, run: Finished) -> tuple[Observation, Chosen, Workflow, Any] | None:
+        """What the run is scored on, the online evaluators that sample it, its workflow version and its
+        workflow's evaluators; None when nothing scores it."""
         from agentcanvas.services.projects import PROJECT_OF
 
         async with self.db.sessionmaker() as s:
-            input, labels = h.input, h.labels
-            if input is None:  # a resume or hand-over continues the thread's last fresh run: score with its input
+            labels, obs = run.labels, run.obs
+            if not run.fresh:  # a resume or hand-over continues the thread's last fresh run: score with its input
                 q0 = (
                     select(Run.recording, Run.labels)
-                    .where(Run.thread_id == h.thread_id, Run.id != h.run_id, Run.recording.is_not(None))
+                    .where(Run.thread_id == run.thread_id, Run.id != run.run_id, Run.recording.is_not(None))
                     .order_by(Run.started_at.desc())
                     .limit(1)
                 )
                 first = (await s.execute(q0)).first()
-                input = ((first[0] or {}).get("input") if first else None) or {}
+                obs = obs.model_copy(update={"input": ((first[0] or {}).get("input") if first else None) or {}})
                 labels = labels or (first[1] if first else None) or {}
             q = (
                 select(OnlineEvaluator, Evaluator)
                 .join(Evaluator, Evaluator.id == OnlineEvaluator.evaluator_id)
-                .where(OnlineEvaluator.deployment_id == h.deployment_id)
+                .where(OnlineEvaluator.deployment_id == run.deployment_id)
                 .order_by(OnlineEvaluator.created_at, OnlineEvaluator.id)
             )
             chosen = [
                 (o, e)
                 for o, e in (await s.execute(q)).all()
-                if matches(o.filter or {}, status, labels) and sampled(h.run_id, o.id, o.sampling)
+                if matches(o.filter or {}, run.obs.status, labels) and sampled(run.run_id, o.id, o.sampling)
             ]
             if not chosen:
-                return []
-            version = await s.get(WorkflowVersion, h.version_id) if h.version_id else None
-            row = await s.get(WorkflowRow, h.workflow_id)
+                return None
+            version = await s.get(WorkflowVersion, run.version_id) if run.version_id else None
+            row = await s.get(WorkflowRow, run.workflow_id)
             if version is None or row is None:
-                return []
+                return None
             wf = self._workflows.get(version.id) or Workflow.model_validate(version.ir)
             if len(self._workflows) > 256:
                 self._workflows.clear()
             self._workflows[version.id] = wf
             PROJECT_OF[wf.id] = row.project_id
-            siblings = (await s.scalars(select(Evaluator).where(Evaluator.workflow_id == h.workflow_id))).all()
-        obs = observation(h, status, error, input)
+            siblings = (await s.scalars(select(Evaluator).where(Evaluator.workflow_id == run.workflow_id))).all()
+        return obs, chosen, wf, siblings
+
+    async def _evaluate(
+        self, run: Finished, obs: Observation, chosen: Chosen, wf: Workflow, siblings: Any
+    ) -> list[RunScore]:
+        from agentcanvas.services.experiments import scorers
+
         out: list[RunScore] = []
         for _, e in chosen:
             usage: dict[str, dict[str, int]] = {}
@@ -258,10 +316,10 @@ class OnlineScorer:
             out.append(
                 RunScore(
                     id=new_id("rsc"),
-                    run_id=h.run_id,
-                    thread_id=h.thread_id,
-                    workflow_id=h.workflow_id,
-                    deployment_id=h.deployment_id,
+                    run_id=run.run_id,
+                    thread_id=run.thread_id,
+                    workflow_id=run.workflow_id,
+                    deployment_id=run.deployment_id,
                     evaluator=e.name,
                     source="online",
                     score=sc.score,
@@ -281,7 +339,7 @@ class OnlineScorer:
                 if self.drift_every_s and now - self._checked.get(key, -self.drift_every_s) < self.drift_every_s:
                     continue  # checked a moment ago: the window has barely moved
                 self._checked[key] = now
-                await self.check_drift(s, online, e.name, h.workflow_id)
+                await self.check_drift(s, online, e.name, run.workflow_id)
             await s.commit()
         return out
 

@@ -120,6 +120,9 @@ Attach evaluators to a **deployment** with a sampling rate (0-100 %) and a filte
 caller sent, e.g. `tier=gold`). Sampled runs are scored in the background after the response is sent, so callers
 never wait. Scores appear on runs and as hourly or daily averages on the **Production** tab; the judge's own cost is
 counted separately (when the judge model has no catalog price, the score's comment says its cost is not counted).
+Each API server scores four runs at a time and keeps at most 1,000 more waiting; when a slow judge falls further
+behind than that, further runs go unscored (counted in `agentcanvas_online_scoring_dropped_total`) rather than
+piling up in memory. Scoring that is still waiting when a server stops is not resumed.
 
 **Drift alerts** fire when an evaluator's recent mean falls below a value (*alert below*) or drops more than a set
 amount under its 7-day average (*alert drop*). An alert resolves when the rule holds again, or when the window has

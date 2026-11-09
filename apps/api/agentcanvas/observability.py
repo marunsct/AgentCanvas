@@ -63,6 +63,9 @@ EVAL_ALERT_OPEN = Gauge(
     ["deployment", "evaluator", "kind"],
 )
 EVAL_ALERTS = Counter("agentcanvas_eval_alerts_total", "Drift alerts opened by online evaluators", ["kind"])
+ONLINE_SCORING_DROPPED = Counter(
+    "agentcanvas_online_scoring_dropped_total", "Deployment runs left unscored: the instance's scoring queue was full"
+)
 
 # background jobs (hand-over, cron, retention, ...): a round that raised is only logged by the job, so count it here
 JOB_FAILURES = Counter("agentcanvas_job_failures_total", "Background job rounds that failed", ["job"])

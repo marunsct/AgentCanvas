@@ -215,3 +215,62 @@ def test_sampling_filters_and_costs(monkeypatch):
     assert online.unpriced({"nobody:nothing": {}}) == []  # never called
 
     # the hourly and daily buckets: test_efficiency.py, through the endpoint (the database groups them)
+
+
+async def test_scoring_waits_in_a_bounded_queue_and_routing_never_waits_for_it(app, api_client, monkeypatch):
+    """Every finished deployment run used to queue a task holding the whole run behind 4 judge slots, before it
+    was known whether anything scored it; annotation routing waited in the same queue, and the queue had no bound."""
+    import asyncio
+
+    from test_annotation import queue
+
+    from agentcanvas.services import online as scoring
+
+    release, judged = asyncio.Event(), scoring.score
+
+    async def slow_judge(*args, **kwargs):
+        await release.wait()
+        return await judged(*args, **kwargs)
+
+    monkeypatch.setattr(scoring, "score", slow_judge)
+    monkeypatch.setattr(scoring, "MAX_PENDING", scoring.CONCURRENCY + 1)
+    scorer = app.state.online
+
+    async def until(ok, what: str) -> None:
+        for _ in range(500):
+            if ok():
+                return
+            await asyncio.sleep(0.01)
+        raise AssertionError(f"timed out waiting for {what}")
+
+    _, dep, key, ev = await deployed(api_client)
+    assert (
+        await api_client.post(f"/v1/deployments/{dep}/online-evaluators", json={"evaluator_id": ev["id"]})
+    ).is_success
+    dropped = observability.ONLINE_SCORING_DROPPED._value.get()
+    for who in ("Ada", "Bob", "Cy", "Di", "Ed", "Fa", "Gu"):
+        r = await api_client.post(f"/v1/deployments/{dep}/runs/wait", json={"input": {"who": who}}, headers=bearer(key))
+        assert r.status_code == 200, r.text
+    await until(lambda: observability.ONLINE_SCORING_DROPPED._value.get() - dropped == 2, "2 runs left unscored")
+    assert scorer.pending == scoring.CONCURRENCY + 1  # 4 being judged, 1 waiting: no more are kept
+
+    # another deployment, with no online evaluator: its failed run reaches its queue while the judges are stuck
+    other, dep_b, key_b, _ = await deployed(api_client)
+    aq = await queue(api_client, other, rules={"failed": True})
+    r = await api_client.post(
+        f"/v1/deployments/{dep_b}/runs/wait", json={"input": {"who": "Hu"}}, headers=bearer(key_b)
+    )
+    failed = app.state.runner.handles[r.json()["run_id"]]
+    await scorer.on_run_finished(failed, "error", "boom", [])
+    items = f"/v1/annotation-queues/{aq['id']}/items"
+    for _ in range(200):
+        if (await api_client.get(items)).json():
+            break
+        await asyncio.sleep(0.01)
+    assert [i["reason"] for i in (await api_client.get(items)).json()] == ["failed"]
+    assert scorer.pending == scoring.CONCURRENCY + 1  # nothing to score for it: it never joined the queue
+
+    release.set()
+    await scorer.drain()
+    assert scorer.pending == 0
+    assert len((await api_client.get(f"/v1/deployments/{dep}/scored-runs")).json()) == 5
