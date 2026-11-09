@@ -187,7 +187,10 @@ class TestCase(Base):
 
 class Deployment(Base):
     __tablename__ = "deployment"
-    __table_args__ = (UniqueConstraint("workflow_id", "environment", name="deployment_once"),)
+    __table_args__ = (
+        UniqueConstraint("workflow_id", "environment", name="deployment_once"),
+        Index("deployment_version_idx", "version_id"),  # deleting a version (cascade)
+    )
     id: Mapped[str] = mapped_column(String, primary_key=True)
     workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"))
     version_id: Mapped[str] = mapped_column(ForeignKey("workflow_version.id", ondelete="CASCADE"))
@@ -227,7 +230,10 @@ class StoredFile(Base):
     as the organisation keeps conversations."""
 
     __tablename__ = "stored_file"
-    __table_args__ = (Index("stored_file_project_idx", "project_id", "last_used_at"),)
+    __table_args__ = (
+        Index("stored_file_project_idx", "project_id", "last_used_at"),
+        Index("stored_file_deployment_idx", "deployment_id"),  # deleting a deployment (cascade)
+    )
     id: Mapped[str] = mapped_column(String, primary_key=True)  # fil_<ulid>
     project_id: Mapped[str] = mapped_column(ForeignKey("project.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(Text)  # the uploader's file name, without any folder
@@ -264,6 +270,9 @@ class Thread(Base):
         CheckConstraint("status IN ('idle','running','interrupted','error')", name="thread_status"),
         Index("thread_workflow_idx", "workflow_id", "updated_at"),
         Index("thread_updated_idx", "updated_at"),
+        Index("thread_created_idx", "created_at", "id"),  # the Conversations list, newest first
+        Index("thread_workflow_created_idx", "workflow_id", "created_at", "id"),
+        Index("thread_deployment_idx", "deployment_id"),  # deleting a deployment (SET NULL), the kill switch
     )
     id: Mapped[str] = mapped_column(String, primary_key=True)  # == LangGraph thread_id
     workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"))
@@ -286,6 +295,8 @@ class Run(Base):
         CheckConstraint("status IN ('running','success','interrupted','error','cancelled')", name="run_status"),
         Index("run_thread_idx", "thread_id", "started_at"),
         Index("run_status_queued_idx", "status", "queued"),
+        Index("run_started_idx", "started_at"),  # the spending report's period
+        Index("run_version_idx", "workflow_version_id"),  # deleting a version (SET NULL)
     )
     id: Mapped[str] = mapped_column(String, primary_key=True)
     thread_id: Mapped[str] = mapped_column(ForeignKey("thread.id", ondelete="CASCADE"))
@@ -364,6 +375,8 @@ class InterruptTask(Base):
         CheckConstraint("kind IN ('tool_approval','approval','input')", name="interrupt_kind"),
         CheckConstraint("status IN ('pending','decided','expired')", name="interrupt_status"),
         Index("interrupt_pending_idx", "status", "created_at"),
+        Index("interrupt_thread_idx", "thread_id"),  # deleting a conversation or a run (cascade, retention)
+        Index("interrupt_run_idx", "run_id"),
     )
     id: Mapped[str] = mapped_column(String, primary_key=True)  # LangGraph interrupt id
     thread_id: Mapped[str] = mapped_column(ForeignKey("thread.id", ondelete="CASCADE"))
@@ -743,6 +756,7 @@ class AnnotationItem(Base):
     __table_args__ = (
         UniqueConstraint("queue_id", "run_id", name="annotation_item_once"),
         Index("annotation_item_queue_idx", "queue_id", "status", "created_at"),
+        Index("annotation_item_run_idx", "run_id"),  # deleting a run (cascade)
     )
     id: Mapped[str] = mapped_column(String, primary_key=True)
     queue_id: Mapped[str] = mapped_column(ForeignKey("annotation_queue.id", ondelete="CASCADE"))
@@ -778,7 +792,10 @@ class RateWindow(Base):
 
 class Trigger(Base):
     __tablename__ = "trigger"
-    __table_args__ = (CheckConstraint("kind IN ('webhook','cron')", name="trigger_kind"),)
+    __table_args__ = (
+        CheckConstraint("kind IN ('webhook','cron')", name="trigger_kind"),
+        Index("trigger_workflow_idx", "workflow_id"),
+    )
     id: Mapped[str] = mapped_column(String, primary_key=True)
     workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"))
     deployment_id: Mapped[str | None] = mapped_column(ForeignKey("deployment.id", ondelete="SET NULL"))

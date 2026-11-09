@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import time
 
 from alembic import context
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -23,6 +24,7 @@ def _url() -> str:
 
 
 MIGRATION_LOCK = 0x6163_6D69_6772  # Postgres advisory lock id: one process migrates at a time
+LOCK_POLL_S = 0.5  # how often a replica waiting for another's migration tries the lock again
 DDL_LOCK_TIMEOUT = (
     "60s"  # an ALTER TABLE queued behind a long transaction blocks every query behind it: give up instead
 )
@@ -30,12 +32,16 @@ DDL_LOCK_TIMEOUT = (
 
 def _serialize(connection) -> None:
     """Postgres: replicas that start together take turns (the second finds nothing left to do), and no statement
-    waits for a table lock for ever. Both settings end with the migration's transaction."""
+    waits for a table lock for ever. The lock is the session's, polled outside any transaction, and held until the
+    end: a migration that builds an index CONCURRENTLY commits midway, and its build waits for every open
+    transaction, so a replica waiting for the lock inside one would deadlock it."""
     if connection.dialect.name != "postgresql":
         return
-    connection.exec_driver_sql("SET LOCAL lock_timeout = 0")  # waiting for the other migrator is not a failure
-    connection.exec_driver_sql(f"SELECT pg_advisory_xact_lock({MIGRATION_LOCK})")
-    connection.exec_driver_sql(f"SET LOCAL lock_timeout = '{DDL_LOCK_TIMEOUT}'")
+    while not connection.exec_driver_sql(f"SELECT pg_try_advisory_lock({MIGRATION_LOCK})").scalar():
+        connection.commit()
+        time.sleep(LOCK_POLL_S)
+    connection.exec_driver_sql(f"SET lock_timeout = '{DDL_LOCK_TIMEOUT}'")
+    connection.commit()
 
 
 def _run(connection) -> None:
@@ -45,9 +51,15 @@ def _run(connection) -> None:
         render_as_batch=connection.dialect.name == "sqlite",  # SQLite needs batch mode for ALTER
         compare_type=True,
     )
-    with context.begin_transaction():
-        _serialize(connection)
-        context.run_migrations()
+    _serialize(connection)
+    try:
+        with context.begin_transaction():
+            context.run_migrations()
+    finally:
+        if connection.dialect.name == "postgresql":
+            connection.rollback()  # whatever a failure left open, then the lock goes
+            connection.exec_driver_sql(f"SELECT pg_advisory_unlock({MIGRATION_LOCK})")
+            connection.commit()
 
 
 async def run_async() -> None:

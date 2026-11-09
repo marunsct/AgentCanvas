@@ -36,7 +36,7 @@ How to install it is in [Deploy and operate](deploy.md#option-2-kubernetes-with-
 |--------|-------|
 | `Deployment …-api` | 2 replicas by default; startup and liveness probes on `/healthz`, readiness on `/readyz`; rolling updates never drop below the replica count; `terminationGracePeriodSeconds: 60` and a 5 s `preStop` so open streams can finish; non-root, all capabilities dropped |
 | `Deployment …-web` | nginx; 2 replicas; proxies `/api/` to the API service |
-| `Job …-migrate-<revision>` | `alembic upgrade head` as a `pre-install,pre-upgrade` hook, so new API pods never start against an old schema |
+| `Job …-migrate-<revision>` | `alembic upgrade head` as a `pre-install,pre-upgrade` hook, so new API pods never start against an old schema. Migrations run one at a time however many start together. Indexes on large tables (runs, conversations) are built `CONCURRENTLY`, so the running API keeps writing while they build. Such a build waits for transactions that were already open, so on a large database the hook can take minutes; an index left unfinished by a failed run is rebuilt by the next one |
 | `PersistentVolumeClaim …-workspaces` | project workspaces (git) shared by every API replica: needs a **ReadWriteMany** storage class (EFS, Filestore, Azure Files, NFS); kept on uninstall |
 | `Ingress` | routes everything to the web service; annotations turn proxy buffering off and allow hour-long streams |
 | `NetworkPolicy …-api` | only the web pods reach the API port |

@@ -16,7 +16,7 @@ from typing import Any, Literal, cast
 from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer
 
@@ -457,17 +457,27 @@ async def list_threads(
     order = (Thread.created_at.desc(), Thread.id.desc())
     rows = list((await session.execute(q.order_by(*order).limit(limit + 1))).all())
     page = rows[:limit]
-    runs: dict[str, list[Run]] = {}
-    if page:
-        found = await session.scalars(
-            select(Run).options(*LIGHT_RUN).where(Run.thread_id.in_([t.id for t, _ in page])).order_by(Run.started_at)
+    ids = [t.id for t, _ in page]
+    totals: dict[str, tuple[int, int, float]] = {}
+    last: dict[str, Any] = {}
+    if page:  # added up in SQL: a conversation with thousands of runs does not load them
+        found = await session.execute(
+            select(Run.thread_id, func.count(), func.sum(Run.tokens_in + Run.tokens_out), func.sum(Run.cost_usd))
+            .where(Run.thread_id.in_(ids))
+            .group_by(Run.thread_id)
         )
-        for r in found:
-            runs.setdefault(r.thread_id, []).append(r)
+        totals = {tid: (int(n), int(tokens or 0), float(cost or 0)) for tid, n, tokens, cost in found.tuples()}
+        newest = func.row_number().over(partition_by=Run.thread_id, order_by=(Run.started_at.desc(), Run.id.desc()))
+        ranked = (
+            select(Run.thread_id, Run.id, Run.started_at, Run.ended_at, Run.error, newest.label("n"))
+            .where(Run.thread_id.in_(ids))
+            .subquery()
+        )
+        last = {r.thread_id: r for r in (await session.execute(select(ranked).where(ranked.c.n == 1))).all()}
     items = []
     for t, wf_name in page:
-        mine = runs.get(t.id, [])
-        last = mine[-1] if mine else None
+        n, tokens, cost = totals.get(t.id, (0, 0, 0.0))
+        lr = last.get(t.id)
         items.append(
             ThreadOut(
                 id=t.id,
@@ -478,13 +488,13 @@ async def list_threads(
                 updated_at=t.updated_at,
                 workflow_name=wf_name,
                 deployment_id=t.deployment_id,
-                runs=len(mine),
-                tokens=sum(r.tokens_in + r.tokens_out for r in mine),
-                cost_usd=float(sum(r.cost_usd for r in mine)),
-                last_started_at=last.started_at if last else None,
-                last_ended_at=last.ended_at if last else None,
-                last_error=last.error if last else None,
-                last_run_id=last.id if last else None,
+                runs=n,
+                tokens=tokens,
+                cost_usd=cost,
+                last_started_at=lr.started_at if lr else None,
+                last_ended_at=lr.ended_at if lr else None,
+                last_error=lr.error if lr else None,
+                last_run_id=lr.id if lr else None,
             )
         )
     return ThreadPage(items=items, next_cursor=items[-1].id if len(rows) > limit else None)
