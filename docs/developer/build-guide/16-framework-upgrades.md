@@ -7,8 +7,9 @@ we find out that one exists.
 ## How we find out
 
 - **Dependabot** watches `infra/frameworks/requirements.txt`, a generated list of every Python framework pin, and
-  `apps/api/agentcanvas/adapters/mastra/package.json`. It opens one pull request per framework each week. LiteLLM
-  (held, see [decisions.md](../decisions.md)) and major versions of Agno's OpenAI client are ignored there on purpose.
+  `apps/api/agentcanvas/adapters/mastra/package.json`. It opens one pull request per framework each week, for a
+  release at least 7 days old (14 for a major version). LiteLLM (held, see [decisions.md](../decisions.md)) and
+  major versions of Agno's OpenAI client are ignored there on purpose.
 - **`make framework-versions`** prints every pinned package with its latest stable release, release date and the
   official changelog to read. Run it before a release, or whenever a framework announces something.
 - The pull request Dependabot opens **fails `tests/test_framework_versions.py` by design**: it changed only the

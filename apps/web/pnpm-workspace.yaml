@@ -4,3 +4,7 @@ overrides:
   # once @rjsf and ajv require the fixed releases
   fast-uri@>=3.0.0 <3.1.9: 3.1.9
   fast-uri@>=4.0.0 <4.2.3: 4.2.3
+# a version published less than 7 days ago (in minutes) is not taken when pnpm resolves anew (pnpm add, pnpm update):
+# hijacked releases are usually found and pulled within days. To take an urgent fix sooner, name the package in
+# minimumReleaseAgeExclude for that change.
+minimumReleaseAge: 10080

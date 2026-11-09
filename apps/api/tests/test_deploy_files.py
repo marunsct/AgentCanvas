@@ -443,3 +443,18 @@ def test_the_web_image_ci_and_developers_run_the_pnpm_package_json_names():
     assert "corepack install" in web and "pnpm@" not in web and "PNPM_VERSION" not in web
     workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
     assert "version: 10" not in workflow and workflow.count("package_json_file: apps/web/package.json") == 3
+
+
+def test_dependency_updates_wait_for_a_new_release_to_age_before_taking_it():
+    """A hijacked release is usually found and pulled within days. Without a cooldown, that week's Dependabot pull
+    request could carry it, and local CI cannot know a release is malicious before an advisory exists. Security
+    updates are not delayed by a cooldown."""
+    updates = yaml.safe_load((ROOT / ".github" / "dependabot.yml").read_text())["updates"]
+    late = [
+        u["directory" if "directory" in u else "directories"]
+        for u in updates
+        if u.get("cooldown", {}).get("default-days", 0) < 7
+    ]
+    assert not late, f"no 7-day cooldown: {late}"
+    pnpm = yaml.safe_load((ROOT / "apps" / "web" / "pnpm-workspace.yaml").read_text())
+    assert pnpm.get("minimumReleaseAge", 0) >= 7 * 24 * 60  # minutes; resolving anew locally (pnpm add, pnpm update)
