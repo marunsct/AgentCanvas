@@ -601,12 +601,13 @@ async def red_team_score(cfg: RedTeamConfig, obs: Observation, complete: Complet
         obs.status,
         obs.error,
         bool(cfg.model and complete),
+        obs.input,
     )
     if v.held is not None:
         return float(v.held), v.reason
     if not (cfg.model and complete):
         return None, v.reason
-    prompt = red_team.judge_prompt(category, cfg.policy, attack, red_team.reply_text(obs.output))
+    prompt = red_team.judge_prompt(category, cfg.policy, attack, red_team.reply_text(obs.output, obs.input))
     reply = await asyncio.wait_for(complete(red_team.JUDGE_SYSTEM, prompt, cfg.model), JUDGE_TIMEOUT_S)
     data = _json_object(reply, "held")
     if data is None or not isinstance(data.get("held"), bool):
