@@ -143,3 +143,17 @@ async def test_a_run_whose_conversation_was_deleted_elsewhere_stops(app, api_cli
     h = await asyncio.wait_for(app.state.runner.wait(run_id), 10)
     assert h.status == "cancelled"
     assert forgotten == [thread_id]
+
+
+async def test_following_a_run_on_another_replica_says_where_to_look(app, api_client, settings):
+    """A run's live events are kept by the replica running it; another replica points to the conversation."""
+    wf = await make(api_client, SLOW)
+    run_id = await _start_slow(app, api_client, wf)
+    thread_id = (await run_row(app, run_id)).thread_id
+    async with replica(settings) as (_, b):
+        res = await b.get(f"/v1/runs/{run_id}/events")
+        assert res.status_code == 404
+        assert "another server" in res.json()["detail"] and f"/v1/threads/{thread_id}" in res.json()["detail"]
+        assert (await b.get("/v1/runs/run_none/events")).status_code == 404
+    await app.state.runner.cancel(run_id)
+    await app.state.runner.wait(run_id)

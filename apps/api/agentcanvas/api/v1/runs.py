@@ -1,7 +1,8 @@
 """Runs, threads and the Inbox (tickets M1-T6, M4-T4…T8, M4-T10 — backend).
 
 Run endpoints stream canonical events as Server-Sent Events (ADR 0007). Streams are views of a
-background run: disconnecting does not stop it, `GET /v1/runs/{id}/events?after=<seq>` re-attaches.
+background run: disconnecting does not stop it, `GET /v1/runs/{id}/events?after=<seq>` re-attaches on the replica
+running it (on another one, `GET /v1/threads/{id}` reads the conversation).
 """
 
 from __future__ import annotations
@@ -364,8 +365,21 @@ async def open_trace(
 
 
 @router.get("/runs/{run_id}/events")
-async def run_events(run_id: str, after: int = Query(0, ge=0), r: Runner = Depends(runner)) -> Response:
+async def run_events(
+    run_id: str,
+    after: int = Query(0, ge=0),
+    session: AsyncSession = Depends(get_session),
+    r: Runner = Depends(runner),
+) -> Response:
+    """Follow a run's events. The replica running a run keeps them, and requests are spread over the replicas: on
+    another one this answers 404 with the conversation to read instead (`GET /v1/threads/{id}`)."""
     if run_id not in r.handles:  # a 404 now, not a 200 stream that fails once the response has started
+        row = (await session.execute(select(Run.status, Run.thread_id).where(Run.id == run_id))).first()
+        if row is not None and row.status == "running":
+            raise NotFound(
+                f"run '{run_id}' is running on another server; follow its conversation with "
+                f"GET /v1/threads/{row.thread_id} (and /history) instead"
+            )
         raise NotFound(f"run '{run_id}' is not active on this server (finished runs are kept briefly)")
     return StreamingResponse(_sse(r.subscribe(run_id, after)), media_type="text/event-stream", headers=SSE_HEADERS)
 
