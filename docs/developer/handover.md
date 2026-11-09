@@ -162,6 +162,10 @@ Agent Spec exports loaded with pyagentspec), `images` (Docker builds with every 
 - New public or own-credential routes must be added to the allowlists in `apps/api/tests/test_auth.py`.
   Admin-only routes go in the role exceptions in `api/deps.py`.
 - LangChain/LangGraph imports only under `agentcanvas/adapters/` (`lint-imports` enforces it).
+- A migration that adds an index to a large table (`run`, `thread`, `audit_log`, `event_log`, …) builds it
+  concurrently on Postgres, inside `op.get_context().autocommit_block()` with `postgresql_concurrently=True`, after the
+  migration's other changes; a plain CREATE INDEX blocks every write to the table while the old servers still serve
+  (`tests/test_migration_locks.py` checks). Prefer a partial index when only some rows are read.
 - Commit messages describe the change in plain words; no model names in commits, PRs or code.
 - **Releases.** Tags (`vX.Y.Z`) and version bumps are the owner's. The plan for releases, not yet in place (no image is
   published and GitHub Actions has no runners): merging to `main` builds images tagged with the commit SHA; staging

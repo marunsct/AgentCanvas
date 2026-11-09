@@ -294,7 +294,14 @@ class Run(Base):
         CheckConstraint("mode IN ('normal','debug')", name="run_mode"),
         CheckConstraint("status IN ('running','success','interrupted','error','cancelled')", name="run_status"),
         Index("run_thread_idx", "thread_id", "started_at"),
-        Index("run_status_queued_idx", "status", "queued"),
+        # the run queue and the heartbeat read only runs in flight
+        Index(
+            "run_live_idx",
+            "queued",
+            "priority",
+            postgresql_where=text("status = 'running'"),
+            sqlite_where=text("status = 'running'"),
+        ),
         Index("run_started_idx", "started_at"),  # the spending report's period
         Index("run_version_idx", "workflow_version_id"),  # deleting a version (SET NULL)
     )
