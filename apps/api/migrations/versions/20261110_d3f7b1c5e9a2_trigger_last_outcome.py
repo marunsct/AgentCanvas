@@ -4,7 +4,7 @@ A cron trigger keeps its last run, and when its run could not start (its deploym
 the database), why and how many times in a row, so the trigger list shows a schedule that keeps failing.
 
 Revision ID: d3f7b1c5e9a2
-Revises: b8e2f6a0c4d7
+Revises: 726e0996692d
 Create Date: 2026-11-10 12:00:00
 """
 
@@ -16,7 +16,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "d3f7b1c5e9a2"
-down_revision: str | None = "b8e2f6a0c4d7"
+down_revision: str | None = "726e0996692d"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

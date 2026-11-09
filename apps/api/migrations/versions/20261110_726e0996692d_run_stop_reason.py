@@ -5,7 +5,7 @@ running it stops it at its next heartbeat, wherever the request landed. `stop_re
 with the person's reason ("cancelled by user") rather than the kill switch's.
 
 Revision ID: 726e0996692d
-Revises: b8e2f6a0c4d7
+Revises: af1afc823a01
 Create Date: 2026-11-10 12:00:00
 """
 
@@ -17,7 +17,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "726e0996692d"
-down_revision: str | None = "b8e2f6a0c4d7"
+down_revision: str | None = "af1afc823a01"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
