@@ -61,3 +61,23 @@ groups:
         annotations:
           summary: Backup models are answering model calls; a model provider may be down
           runbook: docs/user-guide/operations.md#runbooks
+      - alert: AgentCanvasBackgroundJobFailing
+        # hand-over, cron triggers, retention, crawls, experiments, secrets sync, online metrics, Matura feed: a round
+        # that raised is only logged by the job, so the counter is what can page
+        expr: sum by (job) (increase(agentcanvas_job_failures_total[15m])) > 0
+        for: 15m
+        labels: { severity: ticket }
+        annotations:
+          summary: "Background job {{ $labels.job }} keeps failing (search the logs for its *_failed event)"
+          runbook: docs/user-guide/operations.md#runbooks
+      - alert: AgentCanvasBackgroundJobStale
+        # no pod finished a round for many intervals (hung, or failing everywhere); retention and the Matura feed run
+        # hourly, the others every minute or less (crawls: 5 min)
+        expr: |
+          (time() - max by (job) (agentcanvas_job_last_success_timestamp_seconds{job!~"retention|matura_feed"})) > 1800
+            or (time() - max by (job) (agentcanvas_job_last_success_timestamp_seconds{job=~"retention|matura_feed"})) > 4 * 3600
+        for: 5m
+        labels: { severity: ticket }
+        annotations:
+          summary: "Background job {{ $labels.job }} has not finished a round on any pod for a long time"
+          runbook: docs/user-guide/operations.md#runbooks

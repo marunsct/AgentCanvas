@@ -271,6 +271,13 @@ def test_the_alerts_watch_series_the_api_exports_and_link_to_runbooks_that_exist
         if link := rule["annotations"].get("runbook"):
             assert link.split("#", 1)[1] in slugs, (rule["alert"], link)
     assert "| API pods crash-loop at startup" in guide and "JWKS outage" in guide
+    exported = set(re.findall(r"^# TYPE (\w+) ", observability.generate_latest().decode(), re.M))
+    for rule in rules:  # a renamed metric would leave an alert that never fires
+        for name in re.findall(r"\b(agentcanvas_\w+)", rule["expr"]):
+            base = re.sub(r"_(total|bucket|count|sum)$", "", name)
+            assert base in exported or name in exported, (rule["alert"], name)
+    jobs = " ".join(r["expr"] for r in rules if r["alert"].startswith("AgentCanvasBackgroundJob"))
+    assert "agentcanvas_job_failures_total" in jobs and "agentcanvas_job_last_success_timestamp_seconds" in jobs
 
 
 def test_postgres_accepts_every_connection_the_default_api_replicas_may_open():

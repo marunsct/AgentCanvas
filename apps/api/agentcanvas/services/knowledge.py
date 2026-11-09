@@ -41,6 +41,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import set_committed_value
 
 from agentcanvas import knowledge_search as ks
+from agentcanvas import observability
 from agentcanvas.db.models import KnowledgeBase, KnowledgeChunk, KnowledgeDocument
 from agentcanvas.errors import Conflict, InvalidInput, NotFound
 from agentcanvas.ids import new_id
@@ -1293,6 +1294,7 @@ class CrawlJob:
         self._task: asyncio.Task | None = None
 
     def start(self) -> None:
+        observability.job_started("knowledge_crawl")
         self._task = asyncio.create_task(self._loop(), name="knowledge-crawl")
 
     async def stop(self) -> None:
@@ -1303,7 +1305,8 @@ class CrawlJob:
     async def _loop(self) -> None:
         while True:
             try:
-                await self.tick(datetime.now(UTC))
+                with observability.job_round("knowledge_crawl"):
+                    await self.tick(datetime.now(UTC))
             except Exception:
                 log.exception("knowledge.crawl_tick_failed")
             await asyncio.sleep(self.interval_s)

@@ -28,6 +28,7 @@ from sqlalchemy import delete, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from agentcanvas import observability
 from agentcanvas.db.models import Deployment, EventDedup, Project, Trigger, WorkflowRow, WorkflowVersion
 from agentcanvas.errors import Conflict, InvalidInput, NotFound, Unauthorized
 from agentcanvas.expr import render_template
@@ -291,6 +292,7 @@ class CronScheduler:
         self._task: asyncio.Task | None = None
 
     def start(self) -> None:
+        observability.job_started("cron")
         self._task = asyncio.create_task(self._loop(), name="cron-scheduler")
 
     async def stop(self) -> None:
@@ -301,7 +303,8 @@ class CronScheduler:
     async def _loop(self) -> None:
         while True:
             try:
-                await self.tick(datetime.now(UTC))
+                with observability.job_round("cron"):
+                    await self.tick(datetime.now(UTC))
             except Exception:
                 log.exception("cron.tick_failed")
             await asyncio.sleep(self.tick_s)

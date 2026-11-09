@@ -26,6 +26,7 @@ from typing import Any, cast
 from prometheus_client import Counter
 from sqlalchemy import delete, select
 
+from agentcanvas import observability
 from agentcanvas.adapters.spi import MemoryAbility, supports
 from agentcanvas.db.models import AuditLog, Organization, Project, Thread, WorkflowRow
 from agentcanvas.db.repositories import delete_thread_rows
@@ -63,6 +64,7 @@ class RetentionJob:
         self._task: asyncio.Task | None = None
 
     def start(self) -> None:
+        observability.job_started("retention")
         self._task = asyncio.create_task(self._loop(), name="retention")
 
     async def stop(self) -> None:
@@ -73,7 +75,8 @@ class RetentionJob:
     async def _loop(self) -> None:
         while True:
             try:
-                await self.tick(datetime.now(UTC))
+                with observability.job_round("retention"):
+                    await self.tick(datetime.now(UTC))
             except Exception:
                 log.exception("retention.tick_failed")
             await asyncio.sleep(self.interval_s)

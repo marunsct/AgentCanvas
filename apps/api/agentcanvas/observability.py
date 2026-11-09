@@ -14,7 +14,8 @@ from __future__ import annotations
 import asyncio
 import os
 import time
-from collections.abc import AsyncIterator, MutableMapping
+from collections.abc import AsyncIterator, Iterator, MutableMapping
+from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
@@ -61,6 +62,15 @@ EVAL_ALERT_OPEN = Gauge(
     ["deployment", "evaluator", "kind"],
 )
 EVAL_ALERTS = Counter("agentcanvas_eval_alerts_total", "Drift alerts opened by online evaluators", ["kind"])
+
+# background jobs (hand-over, cron, retention, ...): a round that raised is only logged by the job, so count it here
+JOB_FAILURES = Counter("agentcanvas_job_failures_total", "Background job rounds that failed", ["job"])
+JOB_LAST_SUCCESS = Gauge(
+    "agentcanvas_job_last_success_timestamp_seconds",
+    "Unix time the background job's last round finished (the pod's start until the first one does)",
+    ["job"],
+)
+RUNS_QUEUED = Gauge("agentcanvas_runs_queued", "Runs of this process waiting for a slot under a runs-at-once limit")
 
 _started: dict[str, float] = {}
 
@@ -130,6 +140,25 @@ def route_label(scope: MutableMapping[str, Any]) -> str:
 def observe_request(method: str, route: str, status: int, seconds: float) -> None:
     HTTP_REQUESTS.labels(method=method, route=route, status=str(status)).inc()
     HTTP_DURATION.labels(method=method, route=route).observe(seconds)
+
+
+def job_started(job: str) -> None:
+    """A background job's loop started: its series exist from now on (a job that never finishes a round still has
+    a last-success time to grow old, and the first failure counts in `increase()`)."""
+    JOB_FAILURES.labels(job=job).inc(0)
+    JOB_LAST_SUCCESS.labels(job=job).set_to_current_time()
+
+
+@contextmanager
+def job_round(job: str) -> Iterator[None]:
+    """One round of a background job: counted as a failure when it raises (the exception goes on to the job's own
+    log line), its time kept when it finishes."""
+    try:
+        yield
+    except Exception:
+        JOB_FAILURES.labels(job=job).inc()
+        raise
+    JOB_LAST_SUCCESS.labels(job=job).set_to_current_time()
 
 
 def metrics_response() -> tuple[bytes, str]:

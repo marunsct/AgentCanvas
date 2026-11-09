@@ -16,6 +16,7 @@ from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from agentcanvas import observability
 from agentcanvas.db.models import Project, Secret
 from agentcanvas.errors import InvalidInput, NotFound
 from agentcanvas.ids import new_id
@@ -153,6 +154,7 @@ class SecretCache:
                 )  # fmt: skip
 
     def start(self) -> None:
+        observability.job_started("secrets")
         self._task = asyncio.create_task(self._loop(), name="secrets")
 
     async def stop(self) -> None:
@@ -164,7 +166,8 @@ class SecretCache:
         while True:
             await asyncio.sleep(self.interval_s)
             try:
-                await self.sync()
+                with observability.job_round("secrets"):
+                    await self.sync()
             except Exception:
                 log.exception("secrets.sync_failed")
 

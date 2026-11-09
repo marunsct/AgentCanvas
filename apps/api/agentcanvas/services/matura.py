@@ -31,6 +31,7 @@ from sqlalchemy import delete, insert, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
+from agentcanvas import observability
 from agentcanvas.db.models import AppUser, Membership, Organization
 from agentcanvas.errors import Forbidden, InvalidInput, Unavailable
 from agentcanvas.log import get_logger
@@ -384,6 +385,7 @@ class MaturaFeed:
         self._task: asyncio.Task | None = None
 
     def start(self) -> None:
+        observability.job_started("matura_feed")
         self._task = asyncio.create_task(self._loop(), name="matura-feed")
 
     async def stop(self) -> None:
@@ -395,7 +397,8 @@ class MaturaFeed:
     async def _loop(self) -> None:
         while True:
             try:
-                await self.tick()
+                with observability.job_round("matura_feed"):
+                    await self.tick()
             except Exception as exc:  # noqa: BLE001 - keep reading on the next round; webhooks still arrive
                 log.warning("matura.feed_failed", error=str(exc))
             await asyncio.sleep(self.interval_s)

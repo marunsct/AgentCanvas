@@ -23,6 +23,7 @@ from typing import Any
 from sqlalchemy import case, func, select, update
 from sqlalchemy.exc import IntegrityError
 
+from agentcanvas import observability
 from agentcanvas.db.models import EvalAlert, Evaluator, OnlineEvaluator, Run, RunScore, WorkflowRow, WorkflowVersion
 from agentcanvas.evaluation import Observation, calls_of, score, spec_of
 from agentcanvas.ids import new_id
@@ -111,6 +112,7 @@ class OnlineScorer:
         self._checked: dict[tuple[str, str], float] = {}  # (deployment, evaluator) -> when drift was last checked
 
     def start(self) -> None:
+        observability.job_started("online_metrics")
         self._loop_task = asyncio.create_task(self._loop(), name="online-metrics")
 
     async def stop(self) -> None:
@@ -122,15 +124,14 @@ class OnlineScorer:
     async def _loop(self) -> None:
         while True:
             try:
-                await self.report()
+                with observability.job_round("online_metrics"):
+                    await self.report()
             except Exception:
                 log.exception("online.report_failed")
             await asyncio.sleep(self.interval_s)
 
     async def report(self) -> set[tuple[str, str, str]]:
         """Set `agentcanvas_eval_alert_open` from the database: 1 for each open alert, 0 for those resolved."""
-        from agentcanvas import observability
-
         async with self.db.sessionmaker() as s:
             await self._resolve_orphans(s)
             await self._recheck_open(s)
@@ -284,8 +285,6 @@ class OnlineScorer:
         return out
 
     async def check_drift(self, s: Any, online: OnlineEvaluator, evaluator: str, workflow_id: str) -> None:
-        from agentcanvas import observability
-
         now = datetime.now(UTC)
         window_start = now - timedelta(minutes=online.window_minutes)
         base = (

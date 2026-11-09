@@ -30,6 +30,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from agentcanvas import observability
 from agentcanvas.db.models import Experiment, ExperimentResult, WorkflowRow
 from agentcanvas.db.repositories import ScopeRepo
 from agentcanvas.errors import Conflict, InvalidInput, NotFound, Unavailable
@@ -471,6 +472,7 @@ class ExperimentJob:
 
     # ------------------------------------------------------------------------------------------- lifecycle ----
     def start(self) -> None:
+        observability.job_started("experiments")
         self._loop_task = asyncio.create_task(self._loop(), name="experiments")
 
     async def stop(self) -> None:
@@ -494,7 +496,8 @@ class ExperimentJob:
     async def _loop(self) -> None:
         while True:
             try:
-                await self.tick()
+                with observability.job_round("experiments"):
+                    await self.tick()
             except Exception:
                 log.exception("experiments.tick_failed")
             await asyncio.sleep(self.interval_s)

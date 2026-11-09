@@ -98,6 +98,23 @@ async def test_a_waiting_run_can_be_stopped(app, api_client, limited):
         assert (await asyncio.wait_for(app.state.runner.wait(run_id), 10)).status == "cancelled"
 
 
+async def test_waiting_runs_are_counted_in_a_gauge(app, api_client, limited):
+    """`agentcanvas_runs_queued`: a queue that only grows (a stuck slot, a limit set too low) shows on a dashboard."""
+    from agentcanvas.observability import RUNS_QUEUED
+
+    before = RUNS_QUEUED._value.get()
+    first = await _start_slow(app, api_client, limited)
+    stopped, admitted = await _start(api_client, limited, 30), await _start(api_client, limited, 0)
+    assert await _queued(app, stopped) and await _queued(app, admitted)
+    assert RUNS_QUEUED._value.get() == before + 2
+    await app.state.runner.cancel(stopped)  # stopped while it waited
+    assert (await asyncio.wait_for(app.state.runner.wait(stopped), 10)).status == "cancelled"
+    assert RUNS_QUEUED._value.get() == before + 1
+    await app.state.runner.cancel(first)  # a slot frees: the other one takes it
+    assert (await asyncio.wait_for(app.state.runner.wait(admitted), 10)).status == "success"
+    assert RUNS_QUEUED._value.get() == before
+
+
 async def test_a_dead_servers_runs_stop_counting(app, api_client, limited):
     """A run in flight on a server that died (no heartbeat for orphan_after_s) no longer holds a slot."""
     from datetime import UTC, datetime, timedelta

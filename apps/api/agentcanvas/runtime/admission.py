@@ -20,6 +20,7 @@ from typing import Any, Literal
 
 from sqlalchemy import and_, func, or_, select, update
 
+from agentcanvas import observability
 from agentcanvas.db.models import Organization, Project, Run, Thread, WorkflowRow
 
 Priority = Literal["high", "normal", "low"]
@@ -71,10 +72,24 @@ class Admission:
         limit = await self.limit_of(project_id)
         if limit <= 0:
             return
-        shown: int | None = None
         async with self.db.sessionmaker() as s:
             await s.execute(update(Run).where(Run.id == run_id).values(queued=True))
             await s.commit()
+        observability.RUNS_QUEUED.inc()
+        try:
+            await self._wait(run_id, org_id, project_id, limit, on_queued)
+        finally:  # it took a slot, the limit was lifted, or it was stopped while it waited
+            observability.RUNS_QUEUED.dec()
+
+    async def _wait(
+        self,
+        run_id: str,
+        org_id: str,
+        project_id: str | None,
+        limit: int,
+        on_queued: Callable[[dict[str, Any]], Awaitable[None]],
+    ) -> None:
+        shown: int | None = None
         while True:
             place = await self._try(run_id, org_id, limit)
             if place is None:

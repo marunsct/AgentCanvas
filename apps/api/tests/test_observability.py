@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 
 import httpx
+import pytest
 from fastapi import FastAPI
 from prometheus_client.parser import text_string_to_metric_families
 from test_publish import make_greeter
@@ -202,3 +203,65 @@ def test_library_and_server_logs_are_json_lines_too(capsys, monkeypatch):
     assert "RuntimeError" in crash["exception"] and "sk-library-secret" not in crash["exception"]
     assert events["deprecated option"]["level"] == "warning" and root.handlers == saved[""][0]
     assert all("timestamp" in e for e in lines)
+
+
+JOBS = [  # app.state attribute, its round, the job label
+    ("handover", "tick", "handover"),
+    ("cron", "tick", "cron"),
+    ("retention", "tick", "retention"),
+    ("crawl", "tick", "knowledge_crawl"),
+    ("experiments", "tick", "experiments"),
+    ("online", "report", "online_metrics"),
+    ("secrets", "sync", "secrets"),
+    ("matura_feed", "tick", "matura_feed"),  # only with Matura sign-in: made here
+]
+
+
+@pytest.mark.parametrize(("attr", "method", "job"), JOBS)
+async def test_background_jobs_count_failed_rounds_and_keep_their_last_success(app, monkeypatch, attr, method, job):
+    """A background job whose round raised was only logged: hand-over or cron could fail on every replica (orphaned
+    runs pile up, triggers stop) with nothing to alert on."""
+    import asyncio
+
+    from prometheus_client import REGISTRY
+
+    def value(name: str) -> float | None:
+        return REGISTRY.get_sample_value(name, {"job": job})
+
+    target = getattr(app.state, attr)
+    if target is None:
+        from types import SimpleNamespace
+
+        from agentcanvas.services.matura import MaturaFeed
+
+        class NoAPI:
+            async def aclose(self):
+                return None
+
+        target = MaturaFeed(app.state.db, SimpleNamespace(matura_sync_interval_s=60), api=NoAPI())  # type: ignore[arg-type]
+    target.start()
+    await target.stop()
+    started = value("agentcanvas_job_last_success_timestamp_seconds")
+    failures = value("agentcanvas_job_failures_total")
+    assert started is not None and failures is not None  # both there from the start, so alerts can see them
+    observability.JOB_LAST_SUCCESS.labels(job=job).set(1.0)  # long ago: the round that finishes moves it
+    seen: list[tuple[float | None, float | None]] = []
+
+    async def round_(*_a, **_k):
+        seen.append((value("agentcanvas_job_failures_total"), value("agentcanvas_job_last_success_timestamp_seconds")))
+        if len(seen) == 1:
+            raise RuntimeError("the database refused")
+        if len(seen) == 3:
+            raise asyncio.CancelledError  # stop the loop
+
+    async def no_wait(_s):
+        return None
+
+    monkeypatch.setattr(target, method, round_)
+    monkeypatch.setattr(asyncio, "sleep", no_wait)
+    with pytest.raises(asyncio.CancelledError):
+        await target._loop()
+    assert seen[0] == (failures, 1.0)
+    assert seen[1] == (failures + 1, 1.0)  # the failed round was counted and is not a success
+    assert seen[2][0] == failures + 1 and (seen[2][1] or 0) >= started  # the next round finished
+    assert value("agentcanvas_job_failures_total") == failures + 1

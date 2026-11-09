@@ -27,6 +27,7 @@ from typing import Any
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from agentcanvas import observability
 from agentcanvas.adapters.spi import supports
 from agentcanvas.db.models import Run, Thread, WorkflowVersion
 from agentcanvas.errors import Conflict, Unavailable
@@ -92,6 +93,7 @@ class HandoverJob:
         self._task: asyncio.Task | None = None
 
     def start(self) -> None:
+        observability.job_started("handover")
         self._task = asyncio.create_task(self._loop(), name="handover")
 
     async def stop(self) -> None:
@@ -102,7 +104,8 @@ class HandoverJob:
     async def _loop(self) -> None:
         while True:
             try:
-                await self.tick()
+                with observability.job_round("handover"):
+                    await self.tick()
             except Exception:
                 log.exception("handover.tick_failed")
             await asyncio.sleep(self.interval_s)
