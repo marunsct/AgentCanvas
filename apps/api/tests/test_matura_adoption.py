@@ -10,7 +10,7 @@ from test_matura import ACME, ANA, BEN, GLOBEX, ISSUER, SECRET, as_user, event, 
 
 from agentcanvas.security.auth import Authenticator
 from agentcanvas.services import matura
-from agentcanvas.services.audit_sink import AuditEvent, MaturaWebhookSink, NoopSink, sink_for
+from agentcanvas.services.audit_sink import AuditEvent, LogSink, MaturaWebhookSink, sink_for
 from agentcanvas.settings import Settings
 from agentcanvas.vendor.matura import verify
 
@@ -121,14 +121,14 @@ def test_portal_address_and_sink_follow_the_settings():
     assert matura.portal_base(
         s.model_copy(update={"matura_public_url": "https://id.example", "matura_portal_url": "https://admin.example"})
     ) == "https://admin.example/"  # fmt: skip
-    assert isinstance(sink_for(s), NoopSink)
+    assert [type(x) for x in sink_for(s).sinks] == [LogSink]  # the log line only
     on = s.model_copy(update={"matura_audit_url": "https://id.example/v1/audit", "matura_webhook_secret": SECRET})
-    assert isinstance(sink_for(on), MaturaWebhookSink)
-    assert isinstance(sink_for(on.model_copy(update={"auth_mode": "oidc"})), NoopSink)
+    assert isinstance(sink_for(on).webhook, MaturaWebhookSink)
+    assert sink_for(on.model_copy(update={"auth_mode": "oidc"})).webhook is None
 
 
 async def test_security_actions_reach_the_audit_sink(app, api_client):
-    assert isinstance(app.state.audit_sink, NoopSink)  # the default: nothing leaves AgentCanvas
+    assert app.state.audit_sink.webhook is None  # the default: a log line, no endpoint
     rec = app.state.audit_sink = Recorder()
     r = await api_client.put("/v1/projects/prj_default/secrets/API_TOKEN", json={"value": "s3cret"})
     assert r.status_code == 204

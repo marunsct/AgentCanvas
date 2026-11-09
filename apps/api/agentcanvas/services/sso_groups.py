@@ -25,6 +25,7 @@ from agentcanvas.db.models import AuditLog, Membership, Organization
 from agentcanvas.db.repositories import AuditRepo, MemberRepo
 from agentcanvas.errors import Conflict
 from agentcanvas.log import get_logger
+from agentcanvas.services.audit_sink import AuditEvent, AuditSink
 
 log = get_logger(__name__)
 RANK = {"viewer": 0, "reviewer": 1, "builder": 2, "admin": 3}
@@ -73,9 +74,13 @@ def role_for(mapping: GroupMapping, groups: set[str]) -> str | None:
     return max(given, key=RANK.__getitem__) if given else None
 
 
-async def apply(session: AsyncSession, user_id: str, claims: dict[str, Any], add_members: bool | None = None) -> bool:
+async def apply(
+    session: AsyncSession, user_id: str, claims: dict[str, Any], add_members: bool | None = None,
+    sink: AuditSink | None = None,
+) -> bool:  # fmt: skip
     """Bring the person's roles in line with the organisations' group tables. True when something changed.
-    `add_members`: whether a table may add someone who is not a member; None: only on a one-organisation server."""
+    `add_members`: whether a table may add someone who is not a member; None: only on a one-organisation server.
+    `sink`: where the audit entries also go (services/audit_sink.py)."""
     q = select(Organization.id, Organization.sso_groups).where(Organization.sso_groups.is_not(None))
     rows = (await session.execute(q)).all()
     if not rows:
@@ -113,8 +118,9 @@ async def apply(session: AsyncSession, user_id: str, claims: dict[str, Any], add
             await session.rollback()
             continue
         changed = True
-        await AuditRepo(session).add(
-            AuditLog(org_id=org_id, actor_id=user_id, action=action, target=f"user_id={user_id}",
-                     detail={**detail, "groups": sorted(groups & set(mapping.roles))})
-        )  # fmt: skip
+        row = AuditLog(org_id=org_id, actor_id=user_id, action=action, target=f"user_id={user_id}",
+                       detail={**detail, "groups": sorted(groups & set(mapping.roles))})  # fmt: skip
+        await AuditRepo(session).add(row)
+        if sink is not None:
+            await sink.emit(AuditEvent(org_id, user_id, action, row.target, row.detail))
     return changed

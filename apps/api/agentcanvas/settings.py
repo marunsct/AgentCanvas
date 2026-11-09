@@ -53,6 +53,10 @@ class Settings(BaseSettings):
     # where security-relevant audit entries are POSTed, signed with the webhook secret (placeholder until
     # Matura has an audit ingest API); unset = kept in AgentCanvas's own audit log only
     matura_audit_url: str | None = None
+    # security-relevant audit entries, also POSTed here as signed CloudEvents (any sign-in mode); each one is also
+    # always logged as `audit.event`. The secret signs them (AgentCanvas-Signature) and is needed with the URL.
+    audit_sink_url: str | None = None
+    audit_sink_secret: str | None = None
     matura_sync_interval_s: int = 3600  # how often the change feed is read (webhooks bring changes in between)
     # emails that become admins of the default organisation on first sign-in (bootstraps an empty install)
     bootstrap_admin_emails: list[str] = []

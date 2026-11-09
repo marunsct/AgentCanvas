@@ -33,6 +33,39 @@ TARGETS = ("interrupt_id", "run_id", "thread_id", "trigger_id", "dep_id", "ex_id
            "project_id")  # fmt: skip
 
 
+# the credentials whose first characters are shown in the app to tell them apart (and are safe to log)
+CREDENTIALS = {"act_": "personal token", "scim_": "SCIM token", "ac_": "deployment key", "sh_": "share link token"}
+
+
+def credential_hint(request: Request) -> str:
+    """What credential a request carried, by kind and the first characters the app shows: never the whole value."""
+    scheme, _, value = (request.headers.get("authorization") or "").partition(" ")
+    value = value.strip()
+    if not value:
+        return "none"
+    if scheme.lower() != "bearer":
+        return f"{scheme.lower()[:10]} credentials"
+    kind = next((k for p, k in CREDENTIALS.items() if value.startswith(p)), None)
+    if kind is not None:
+        return f"{kind} {value[:10]}"
+    return "sign-in token" if value.count(".") == 2 else "unknown bearer token"
+
+
+def log_refusal(request: Request, response: Response) -> None:
+    """A refused sign-in (401) or action (403) is a warning with what was tried (ASVS V16): enough to tell a token
+    spray or a role probe from noise, with the request id already bound to the line."""
+    if response.status_code not in (401, 403):
+        return
+    user = getattr(request.state, "user", None)
+    log.warning(
+        "auth.refused" if response.status_code == 401 else "auth.forbidden",
+        method=request.method, path=request.url.path, route=getattr(request.scope.get("route"), "name", None),
+        credential=credential_hint(request), ip=request.client.host if request.client else None,
+        org_id=user.org_id if user is not None else request.headers.get("x-org-id"),
+        user_id=user.id if user is not None else None,
+    )  # fmt: skip
+
+
 def payload_hash(value: Any) -> str:
     """A stable fingerprint of a decision's payload: the log proves what was approved without storing it."""
     return hashlib.sha256(json.dumps(value, sort_keys=True, default=str).encode()).hexdigest()

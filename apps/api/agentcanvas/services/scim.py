@@ -33,6 +33,7 @@ from agentcanvas.db.repositories import AuditRepo, MemberRepo, pending_subject
 from agentcanvas.errors import Conflict, DomainError
 from agentcanvas.ids import new_id
 from agentcanvas.log import get_logger
+from agentcanvas.services.audit_sink import AuditEvent, AuditSink
 from agentcanvas.services.tokens import RANK, hash_token
 
 log = get_logger(__name__)
@@ -138,9 +139,10 @@ def operations(body: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 class ScimService:
-    def __init__(self, s: AsyncSession, org_id: str):
+    def __init__(self, s: AsyncSession, org_id: str, sink: AuditSink | None = None):
         self.s, self.org_id = s, org_id
         self.members = MemberRepo(s)
+        self.sink = sink  # the audit entries also leave the server (services/audit_sink.py)
 
     # --- helpers ------------------------------------------------------------------------------------------------
 
@@ -218,10 +220,11 @@ class ScimService:
         return out
 
     async def _audit(self, action: str, target: str, **detail: Any) -> None:
-        await AuditRepo(self.s).add(
-            AuditLog(org_id=self.org_id, actor_id=None, action=action, target=target,
-                     detail={"caller": "scim", **detail})
-        )  # fmt: skip
+        row = AuditLog(org_id=self.org_id, actor_id=None, action=action, target=target,
+                       detail={"caller": "scim", **detail})  # fmt: skip
+        await AuditRepo(self.s).add(row)
+        if self.sink is not None:
+            await self.sink.emit(AuditEvent(self.org_id, None, action, target, row.detail))
 
     async def _sync_roles(self, user_ids: set[str]) -> None:
         """Give each person the strongest role of their SCIM groups (`viewer` without one)."""

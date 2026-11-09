@@ -125,6 +125,7 @@ Every setting, with its default, is listed in [Server settings](server-settings.
 | `SANDBOX_REPLICAS` (compose), `sandbox.replicas` (Helm) | How many sandbox containers run (4 by default). Each runs one call at a time and, after it, stops anything the code left running and removes what it wrote (`AGENTCANVAS_SANDBOX_SWEEP=1`), so code of different projects never shares a container at the same moment; more replicas, more calls at once |
 | `AGENTCANVAS_EGRESS_PROXY`, `AGENTCANVAS_EGRESS_SECRET` | The egress proxy the sandbox reaches the hosts of a project's `sandbox.json` through (`egress:3128` in the compose files, the `-egress` Service in the chart), and the secret (32+ random characters) it checks each call's list with. You provide the secret; with `docker` and no proxy set, the API starts an `agentcanvas-egress` container itself. `AGENTCANVAS_EGRESS_PROXY_RESOLVE=true` (set by the chart) hands the sandbox the proxy's address instead of its name, so the sandbox pods need no DNS |
 | `AGENTCANVAS_CORS_ORIGINS` | The web app's origin, as a JSON list |
+| `AGENTCANVAS_AUDIT_SINK_URL`, `AGENTCANVAS_AUDIT_SINK_SECRET` | Optional: where security events are also POSTed as signed CloudEvents, and the secret that signs them ([Security events](#security-events-and-audit-forwarding)) |
 | `AGENTCANVAS_PUBLIC_URL` | Where people reach the web app, e.g. `https://canvas.example.com`. Signing in to app connectors ([App connectors](agents-and-connectors.md#sign-in-per-person)) returns the browser to `<this>/oauth/callback`, and servers that support Client ID Metadata Documents fetch ours from `<this>/api/v1/oauth/client-metadata.json` (it must be https and public for that). Unset: the first CORS origin, which is right for the development server only |
 | `AGENTCANVAS_RETENTION_DAYS` | Delete conversations idle this long (default 90; 0 keeps them). Files people attached to runs go when no conversation has used them for as long |
 | `AGENTCANVAS_MAX_UPLOAD_MB`, `AGENTCANVAS_MAX_PROJECT_FILES_MB` | The largest file a person may attach to a run (default 10, at most 20: the web server accepts 20 MB bodies) and the most attached files a project keeps (default 1024; 0 = no limit) |
@@ -222,14 +223,29 @@ neither sees no rows.
 - LangGraph's own tables (checkpoints, long-term memory) are not covered by the policies; their rows are reached only
   through the conversations and namespaces of the organisation's own rows.
 
-#### Audit forwarding
+### Security events and audit forwarding
 
 AgentCanvas keeps every change in its own audit log (**Settings › Audit log**). Security-relevant ones (publishing and
 unpublishing, deployment keys, secrets, approvals, members, organisation settings and policies, release gates, trace
-export, project workspaces) also go to an audit sink. Matura has no audit ingest API yet, so by default the sink does
-nothing. With `AGENTCANVAS_MATURA_AUDIT_URL` set, each entry is POSTed there as a CloudEvent
-(`agentcanvas.audit.<action>`) signed like Matura's webhooks (`Matura-Signature`, with the webhook secret), once and
-best effort.
+export, project workspaces, API and SCIM tokens, and every change SCIM or the sign-in token's groups make to members
+and roles) also leave the server, in every sign-in mode:
+
+- **Always**, as a JSON log line `audit.event` (logger `agentcanvas.audit`, level info) with `org_id`, `actor_id`,
+  `action`, `target`, `detail`, `ip` and `at`. Ship the API's logs to your SIEM and filter on it.
+- **With `AGENTCANVAS_AUDIT_SINK_URL`** (and `AGENTCANVAS_AUDIT_SINK_SECRET`, which the server refuses to start
+  without), each entry is POSTed there as a CloudEvent (`agentcanvas.audit.<action>`, `tenantid` = the
+  organisation) signed in the `AgentCanvas-Signature` header: `t=<unix time>,v1=<hex HMAC-SHA256 of "<t>.<body>">`
+  with the secret. Check the signature and refuse a `t` older than five minutes.
+- **In Matura mode with `AGENTCANVAS_MATURA_AUDIT_URL`**, the same CloudEvents go to Matura, signed like its webhooks
+  (`Matura-Signature`, with the webhook secret). Matura has no audit ingest API yet: this is for later.
+
+Deliveries happen once, in the background and best effort: a failed one is logged (`audit.forward_failed`) and the
+entry stays in the audit log.
+
+Refused requests are logged too: a 401 (an unknown, revoked or expired API token, SCIM token or deployment key, a
+missing or invalid sign-in) as a warning `auth.refused`, a 403 (a role or organisation refusal) as `auth.forbidden`,
+each with the method, path, route, client address, the organisation and person when known, the request id and the
+credential's kind and first characters (`personal token act_AbCdEf`, as the app shows them); never the credential.
 
 ## Observability
 

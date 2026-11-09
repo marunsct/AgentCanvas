@@ -27,6 +27,7 @@ from agentcanvas.adapters.langchain import interop
 from agentcanvas.adapters.langchain.answer_cache import DatabaseAnswerCache
 from agentcanvas.adapters.langchain.persistence import MemoryEmbedding
 from agentcanvas.adapters.spi import MemoryAbility, require
+from agentcanvas.api.audit import log_refusal
 from agentcanvas.api.audit import record as audit_record
 from agentcanvas.api.deps import release_sessions
 from agentcanvas.api.limits import BodyLimit, RefuseClients
@@ -50,7 +51,7 @@ from agentcanvas.security.auth import check_auth_settings
 from agentcanvas.security.kms import Keyring
 from agentcanvas.services import oauth, routing
 from agentcanvas.services import projects as projects_module
-from agentcanvas.services.audit_sink import MaturaWebhookSink, sink_for
+from agentcanvas.services.audit_sink import sink_for
 from agentcanvas.services.events import EventService
 from agentcanvas.services.experiments import ExperimentJob
 from agentcanvas.services.files import FileStore
@@ -334,7 +335,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 await runner.shutdown()
                 await asyncio.to_thread(app.state.trace_export.exporter.shutdown)  # flushes queued traces
                 await app.state.projects.aclose()
-                if isinstance(app.state.audit_sink, MaturaWebhookSink):
+                if hasattr(app.state.audit_sink, "aclose"):  # tests may put a recorder in its place
                     await app.state.audit_sink.aclose()
                 await db.dispose()
                 paused_runs.install(MemoryPaused())  # this database is gone
@@ -377,6 +378,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         route = observability.route_label(request.scope)
         observability.observe_request(request.method, route, response.status_code, time.perf_counter() - start)
         await audit_record(request, response)
+        log_refusal(request, response)
         response.headers["x-request-id"] = request_id
         log.debug(
             "http.request",
