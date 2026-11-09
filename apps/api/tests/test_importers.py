@@ -126,6 +126,60 @@ def test_n8n_ai_agent():
     assert any("Wikipedia" in r for r in report) and any("Simple Memory" in r for r in report)
 
 
+def _n8n_v2_export() -> dict:
+    """An n8n 2.x workflow using nodes n8n 3.0 removed: a Cron start, a v1 SQL Agent, LangChain Code, an OpenAI
+    Assistant and a Pinecone Load vector store plugged in as a tool."""
+    lc = "@n8n/n8n-nodes-langchain."
+    nodes = [
+        {"name": "Every hour", "type": "n8n-nodes-base.cron", "parameters": {}},
+        {
+            "name": "Ask the DB",
+            "type": lc + "agent",
+            "typeVersion": 1.5,
+            "parameters": {"agent": "sqlAgent", "text": "How many orders today?"},
+        },
+        {"name": "Reshape", "type": lc + "code", "parameters": {}},
+        {
+            "name": "Helper",
+            "type": lc + "openAiAssistant",
+            "parameters": {"instructions": "You help with refunds.", "text": "={{ $json.output }}"},
+        },
+        {"name": "Docs", "type": lc + "vectorStorePineconeLoad", "parameters": {}},
+        {"name": "Chatty", "type": lc + "agent", "parameters": {"agent": "conversationalAgent"}},
+    ]
+    main = lambda *names: {"main": [[{"node": n, "type": "main", "index": 0} for n in names]]}  # noqa: E731
+    return {"nodes": nodes, "connections": {
+        "Every hour": main("Ask the DB"), "Ask the DB": main("Reshape"), "Reshape": main("Helper"),
+        "Helper": main("Chatty"), "Docs": {"ai_tool": [[{"node": "Helper", "type": "ai_tool", "index": 0}]]},
+    }}  # fmt: skip
+
+
+def test_n8n_nodes_removed_in_3_0_say_what_to_use_instead():
+    _, ir, report, _ = import_document(_n8n_v2_export(), wf_id="wf_new")
+    wf = Workflow.model_validate(ir)
+    assert not [d for d in validate(wf) if d.severity == "error"]
+    nodes = {n.name: n for n in wf.nodes}
+    assert "every_hour" not in nodes  # a Cron node starts the workflow (it was a placeholder step)
+    assert ("START", None, "ask_the_db") in _flows(wf)
+    assert nodes["helper"].type == "core.agent"
+    assert nodes["helper"].config["system_prompt"] == "You help with refunds."
+    text = "\n".join(report)
+    assert "'Every hour' (cron) started the n8n workflow" in text
+    assert "SQL Agent (removed in n8n 3.0)" in text and "database tool" in text
+    assert "LangChain Code, removed in n8n 3.0" in text and "placeholder to replace with a Run Python code" in text
+    assert "OpenAI Assistant (removed in n8n 3.0)" in text
+    assert "PineconeLoad vector store, removed in n8n 3.0" in text and "Search knowledge step" in text
+    assert "Conversational Agent mode (removed in n8n 3.0)" in text
+
+
+def test_n8n_3_vector_store_is_not_called_removed():
+    doc = _n8n_v2_export()
+    doc["nodes"][4]["type"] = "@n8n/n8n-nodes-langchain.vectorStorePinecone"
+    _, _, report, _ = import_document(doc, wf_id="wf_new")
+    (line,) = [r for r in report if "Pinecone" in r]
+    assert "removed" not in line and "Search knowledge step" in line
+
+
 def test_n8n_branches_do_not_wait_for_each_other():
     _, wf, report, _ = _imported("n8n_branching")
     nodes = {n.name: n for n in wf.nodes}

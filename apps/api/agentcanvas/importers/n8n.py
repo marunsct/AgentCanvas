@@ -38,6 +38,30 @@ MODELS = {
 }  # fmt: skip
 HTTP_TOOLS = {LC + "toolHttpRequest", BASE + "httpRequestTool"}
 IGNORED = {BASE + "stickyNote", BASE + "noOp"}
+OLD_TRIGGERS = {BASE + "cron", BASE + "interval"}  # schedule starters n8n 3.0 removed (for the Schedule Trigger)
+SCRIPT = "a Run Python code step"
+KNOWLEDGE = "a knowledge base (the Knowledge page) and a Search knowledge step"
+# n8n nodes with no counterpart here: (what it was, what to use instead). Those n8n 3.0 removed say so, since exports
+# from n8n 2.x still contain them (https://docs.n8n.io/changelog/v30-breaking-changes).
+INSTEAD = {
+    LC + "code": ("LangChain Code, removed in n8n 3.0", SCRIPT),
+    BASE + "function": ("Function, removed in n8n 3.0", SCRIPT),
+    BASE + "functionItem": ("Function Item, removed in n8n 3.0", SCRIPT),
+    BASE + "code": ("Code", SCRIPT),
+    BASE + "aiTransform": ("AI Transform, removed in n8n 3.0", f"an Ask AI step or {SCRIPT}"),
+    BASE + "itemLists": ("Item Lists, removed in n8n 3.0", SCRIPT),
+    BASE + "readPDF": ("Read PDF, removed in n8n 3.0", f"{KNOWLEDGE}, or {SCRIPT} that reads it"),
+    LC + "toolSerpApi": ("SerpApi, removed in n8n 3.0", "an HTTP tool for a search API, or an app connector (MCP)"),
+    LC + "toolCode": ("Code Tool", "a Python tool"),
+    LC + "documentBinaryInputLoader": ("Binary Input Loader, removed in n8n 3.0", KNOWLEDGE),
+    LC + "documentJsonInputLoader": ("JSON Input Loader, removed in n8n 3.0", KNOWLEDGE),
+    LC + "documentGithubLoader": ("GitHub Document Loader, removed in n8n 3.0", KNOWLEDGE),
+}
+# AI Agent version 1 modes; n8n 3.0 kept only the Tools Agent, which is how every agent imports here
+AGENT_MODES = {
+    "conversationalAgent": "Conversational Agent", "openAiFunctionsAgent": "OpenAI Functions Agent",
+    "reActAgent": "ReAct Agent", "planAndExecuteAgent": "Plan and Execute Agent", "sqlAgent": "SQL Agent",
+}  # fmt: skip
 _EXPR = re.compile(r"\{\{\s*(.+?)\s*\}\}", re.S)
 _JSON = re.compile(r"^\$json(?:\.([A-Za-z_][A-Za-z0-9_]*)|\[['\"]([^'\"]+)['\"]\])$")
 _NODE = re.compile(r"""^\$\(\s*['"](.+?)['"]\s*\)\.(?:item|first\(\)|last\(\))\.json(?:\.([A-Za-z_][A-Za-z0-9_]*))?$""")
@@ -84,7 +108,7 @@ class _N8n:
 
     def is_trigger(self, name: str) -> bool:
         t = self.type(name)
-        return t in CHAT_TRIGGERS or t.lower().endswith("trigger") or t == BASE + "webhook"
+        return t in CHAT_TRIGGERS or t in OLD_TRIGGERS or t.lower().endswith("trigger") or t == BASE + "webhook"
 
     # ---- expressions ----
     def text(self, value: Any, here: str) -> str:
@@ -173,8 +197,9 @@ class _N8n:
                 and not t.startswith(LC + "lm")
                 and not any(s == n and c == "ai_tool" for s, c, _ in self.ai)
             ):
-                b.note(f"'{n}' ({t.rsplit('.', 1)[-1]}) was plugged into an AI node; it has no counterpart and was "
-                       "left out.")  # fmt: skip
+                about, instead = _instead(t)
+                b.note(f"'{n}' ({t.rsplit('.', 1)[-1]}{', ' + about if about else ''}) was plugged into an AI node; it "
+                       f"has no counterpart and was left out{'; use ' + instead if instead else ''}.")  # fmt: skip
         if not b.outputs:
             later = {k for s in b.steps.values() for k, _ in s.after}
             for key, st in b.steps.items():
@@ -228,7 +253,9 @@ class _N8n:
         elif t == BASE + "set":
             b.step(n, "core.set", n, {"values": {}}, label=n, position=pos)
         else:
-            b.placeholder(n, n, f"the n8n node '{t.rsplit('.', 1)[-1] or t}'", position=pos, label=n)
+            about, instead = _instead(t)
+            what = f"the n8n node '{t.rsplit('.', 1)[-1] or t}'" + (f" ({about})" if about else "")
+            b.placeholder(n, n, what, position=pos, label=n, instead=instead)
 
     def fill(self, n: str) -> None:
         b, t, p = self.b, self.type(n), self.params(n)
@@ -238,7 +265,9 @@ class _N8n:
             options = obj(p.get("options"))
             prompt = self.text(p.get("text"), n) if p.get("promptType") == "define" or p.get("text") else ""
             if t in AGENTS:
-                st.config["system_prompt"] = self.text(options.get("systemMessage") or "", n)
+                system = options.get("systemMessage") or (p.get("instructions") if t == LC + "openAiAssistant" else "")
+                st.config["system_prompt"] = self.text(system or "", n)
+                self.legacy_agent(n, t, p)
                 st.tools = [r for r in (self.tool(s) for s, c, d in self.ai if d == n and c == "ai_tool") if r]
                 if prompt and prompt != b.use_chat():
                     b.note(f"Agent '{st.name}' read '{_short(prompt)}' in n8n; here it answers the chat, so start "
@@ -301,8 +330,26 @@ class _N8n:
             )
             if found:
                 return found
-        self.b.note(f"Tool '{s}' ({t.rsplit('.', 1)[-1]}) was not imported; add a tool block for it on the canvas.")
+        about, instead = _instead(t)
+        self.b.note(f"Tool '{s}' ({t.rsplit('.', 1)[-1]}{', ' + about if about else ''}) was not imported; "
+                    f"{'use ' + instead if instead else 'add a tool block for it on the canvas'}.")  # fmt: skip
         return None
+
+    def legacy_agent(self, n: str, t: str, p: dict[str, Any]) -> None:
+        """Say what an agent n8n 3.0 no longer has (an OpenAI Assistant, an AI Agent v1 mode) became here."""
+        name = self.b.steps[n].name
+        if t == LC + "openAiAssistant":
+            self.b.note(f"Agent '{name}' was an n8n OpenAI Assistant (removed in n8n 3.0); it imports as an agent "
+                        "with the assistant's instructions only when the file has them: check its system prompt, "
+                        "model and tools.")  # fmt: skip
+            return
+        mode = p.get("agent")
+        if mode == "sqlAgent":
+            self.b.note(f"Agent '{name}' was an n8n SQL Agent (removed in n8n 3.0); it imports without its database: "
+                        "give it a database tool (an app connector (MCP) for Postgres or MySQL).")  # fmt: skip
+        elif isinstance(mode, str) and mode in AGENT_MODES:
+            self.b.note(f"Agent '{name}' used the n8n {AGENT_MODES[mode]} mode (removed in n8n 3.0); it imports as a "
+                        "tool-calling agent, like n8n 3.0's Tools Agent.")  # fmt: skip
 
     def rule(self, conditions: Any, here: str) -> str:
         """An If / Switch / Filter condition list (v2: conditions.conditions[], v1: conditions.string[]) as CEL."""
@@ -336,6 +383,18 @@ class _N8n:
                         "step.")  # fmt: skip
             return "false"
         return rule
+
+
+def _instead(t: str) -> tuple[str | None, str | None]:
+    """(what an n8n node was, what to use here instead), for the nodes that have no counterpart; Nones otherwise."""
+    if t in INSTEAD:
+        return INSTEAD[t]
+    kind = t.removeprefix(LC)
+    if kind.startswith("vectorStore") and kind != t:  # one node per store since n8n 3.0; Insert/Load ones removed
+        store = kind.removeprefix("vectorStore")
+        removed = store.endswith(("Insert", "Load")) or store.startswith("Zep")
+        return f"{store} vector store{', removed in n8n 3.0' if removed else ''}", KNOWLEDGE
+    return None, None
 
 
 def _short(text: str) -> str:
