@@ -228,3 +228,17 @@ def test_the_guides_private_network_policy_works():
         config = {**tool["config"], **({} if private is None else {"allow_private_network": private})}
         wf = Workflow.model_validate({"id": "wf_p", "name": "p", **GREETER, "resources": [{**tool, "config": config}]})
         assert bool(check_policies(wf, [policy])) is broken, private
+
+
+def test_a_bypassed_path_step_is_still_checked():
+    """A bypassed Decide with AI step still runs and calls its model, so the policies check it; a bypassed plain
+    step does not run and is not checked."""
+    from test_decide import decide_wf
+
+    doc = decide_wf()
+    for n in doc["nodes"]:
+        n["disabled"] = True
+    no_spending = Policy(name="no spending", require='!node.effects.exists(e, e.effect == "spend")')
+    assert [d.node_id for d in check_policies(Workflow.model_validate(doc), [no_spending])] == ["n_d"]
+    named = Policy(name="named", require='node.name != "tech"')
+    assert check_policies(Workflow.model_validate(doc), [named]) == []

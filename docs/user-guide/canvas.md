@@ -26,8 +26,8 @@
   Conditions (routers, policies, filters) are written in [CEL](https://cel.dev), e.g. `state.urgency == "high"`.
 - **Bypass:** **Bypass this node** (under Runtime policies) skips a step and passes the state on unchanged; the
   card shows *· bypassed*. A step that picks the path (**Choose a path**, **Decide with AI**) or a **Repeat for
-  each item** still runs when bypassed, or the run could not go on past it. This is the same on every framework
-  and in exported code.
+  each item** still runs when bypassed, or the run could not go on past it, so the blast radius and organisation
+  policies still count it. This is the same on every framework and in exported code.
 - **Select several:** drag a selection box or shift-click. Copy and paste with ⌘C / ⌘V (Ctrl on Windows/Linux).
 - **Undo / redo:** ⌘Z and ⇧⌘Z, or the ↶ ↷ buttons.
 - **Tidy** lays the graph out automatically.

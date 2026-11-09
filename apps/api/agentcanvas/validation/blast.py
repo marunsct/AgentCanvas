@@ -103,7 +103,7 @@ def blast_radius(wf: Workflow, registry: Registry | None = None) -> BlastRadius:
         return nb
 
     for n in wf.nodes:
-        if n.disabled:
+        if registry.bypassed(n):  # a bypassed path step still runs
             continue
         nb = analyse(n)
         if n.type == "core.subgraph":  # inner steps count for the subgraph step on this canvas
