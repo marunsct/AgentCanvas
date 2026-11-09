@@ -55,6 +55,13 @@ class PresenceHub:
     def __init__(self, db: Any, ttl_s: float = TTL_S, poll_s: float = POLL_S):
         self.db, self.ttl_s, self.poll_s = db, ttl_s, poll_s
         self._wake: dict[str, asyncio.Event] = {}
+        self.closed = False
+
+    def close(self) -> None:
+        """The server is stopping: every stream ends now (the editor reconnects, to another replica)."""
+        self.closed = True
+        for wake in self._wake.values():
+            wake.set()
 
     def _event(self, wf_id: str) -> asyncio.Event:
         return self._wake.setdefault(wf_id, asyncio.Event())
@@ -127,7 +134,7 @@ class PresenceHub:
         last: str | None = None
         quiet = 0.0
         wake = self._event(wf_id)
-        while True:
+        while not self.closed:
             peers = await self.peers(wf_id)
             frame = json.dumps({"peers": [p.model_dump(mode="json", exclude={"seen_at"}) for p in peers]})
             if frame != last:
@@ -136,6 +143,8 @@ class PresenceHub:
             elif quiet >= KEEPALIVE_S:
                 quiet = 0.0
                 yield ": keepalive\n\n"
+            if self.closed:
+                return
             wake.clear()
             try:
                 await asyncio.wait_for(wake.wait(), self.poll_s)

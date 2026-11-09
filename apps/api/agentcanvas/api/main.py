@@ -32,6 +32,7 @@ from agentcanvas.api.deps import release_sessions
 from agentcanvas.api.limits import BodyLimit, RefuseClients
 from agentcanvas.api.problems import install_problem_handlers
 from agentcanvas.api.scim import router as scim_router
+from agentcanvas.api.shutdown import WindDown
 from agentcanvas.api.v1 import router as v1_router
 from agentcanvas.api.v1 import runs as runs_module
 from agentcanvas.db.repositories import DEV_ORG, retire_dev_user, seed_dev
@@ -305,12 +306,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "api.started", env=settings.env, edition=settings.edition, auth=settings.auth_mode,
                 database=db.engine.dialect.name,
             )  # fmt: skip
-            try:
-                yield
-            finally:
-                oauth.install(None)
+
+            async def wind_down() -> None:
+                """From the stop signal on (api/shutdown.py): no more work starts here, and the runs drain."""
+                app.state.presence.close()  # endless streams end: uvicorn's wait for connections need not last
                 await app.state.experiments.stop()  # before the drain: its runs are handed over with the rest
-                await app.state.handover.stop()
+                await app.state.handover.stop()  # claims no more handed-over runs on a server about to stop
                 await app.state.cron.stop()
                 await app.state.retention.stop()
                 await app.state.crawl.stop()
@@ -318,8 +319,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 if app.state.matura_feed is not None:
                     await app.state.matura_feed.stop()
                 await runner.drain(settings.drain_grace_s)  # FR-X-10: other instances continue what is left
-                await app.state.online.stop()  # after the drain: runs finishing in it are scored too
-                await app.state.run_search.drain()
+
+            app.state.wind_down = WindDown(wind_down)
+            try:
+                with app.state.wind_down.on_signals():
+                    yield
+            finally:
+                oauth.install(None)
+                await app.state.wind_down.begin()  # begun at the signal already, or now
+                # after the drain: runs finishing in it are scored and indexed too, both at once (AFTER_DRAIN_S)
+                await asyncio.gather(app.state.online.stop(), app.state.run_search.drain())
                 await runner.shutdown()
                 await asyncio.to_thread(app.state.trace_export.exporter.shutdown)  # flushes queued traces
                 await app.state.projects.aclose()

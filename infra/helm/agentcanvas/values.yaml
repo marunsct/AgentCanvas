@@ -66,8 +66,9 @@ api:
   resources:
     requests: { cpu: 500m, memory: 1Gi }
     limits: { memory: 2Gi }
-  # long enough for open streams to finish (uvicorn waits up to 30 s after SIGTERM)
-  terminationGracePeriodSeconds: 60
+  # preStop 5 s + max(uvicorn's 30 s wait for open streams, the runs' drain grace, both from SIGTERM) + about 25 s
+  # of work after the drain (online scores, search index, trace exports), with room to spare (api/shutdown.py)
+  terminationGracePeriodSeconds: 90
   # only /tmp, /home/app and the workspaces are writable (as compose prod's API_READ_ONLY); false if a framework
   # needs to write elsewhere
   readOnlyRootFilesystem: true

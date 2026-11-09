@@ -532,3 +532,20 @@ def test_the_documented_production_builds_include_every_framework_like_the_docke
         assert builds, path
         for line in builds:
             assert "--build-arg FRAMEWORKS=all" in line and "--build-arg WITH_MASTRA=true" in line, (path, line)
+
+
+def test_the_grace_period_covers_the_stream_wait_the_drain_and_the_work_after_it():
+    """api/shutdown.py: the pod must not be killed before what the drain left is saved (scores, index, traces)."""
+    from agentcanvas.api.shutdown import AFTER_DRAIN_S, PRESTOP_S, STREAM_WAIT_S
+    from agentcanvas.settings import Settings
+
+    dockerfile = (ROOT / "infra" / "Dockerfile.api").read_text()
+    assert f'"--timeout-graceful-shutdown", "{STREAM_WAIT_S}"' in dockerfile
+    template = (CHART / "templates" / "api.yaml").read_text()
+    assert f'command: ["sleep", "{PRESTOP_S}"]' in template
+    drain = Settings.model_fields["drain_grace_s"].default
+    needed = PRESTOP_S + max(STREAM_WAIT_S, drain) + AFTER_DRAIN_S + 15  # room for a slow database or exporter
+    values = yaml.safe_load((CHART / "values.yaml").read_text())
+    assert values["api"]["terminationGracePeriodSeconds"] >= needed
+    compose = yaml.safe_load((ROOT / "infra" / "compose.prod.yml").read_text())
+    assert int(compose["services"]["api"]["stop_grace_period"].rstrip("s")) >= needed

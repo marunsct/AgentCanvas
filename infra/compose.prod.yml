@@ -147,7 +147,7 @@ services:
     depends_on:
       migrate: { condition: service_completed_successfully }
       sandbox: { condition: service_healthy }
-    stop_grace_period: 60s                     # streams get 30 s to finish, then runs 20 s before hand-over
+    stop_grace_period: 90s                     # streams 30 s while runs drain 20 s, then ~25 s of saving (api/shutdown.py)
     restart: unless-stopped
 
   web:

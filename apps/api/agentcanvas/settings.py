@@ -138,8 +138,9 @@ class Settings(BaseSettings):
     # the largest request body the web server accepts (infra/nginx.conf)
     max_upload_mb: float = Field(default=10, gt=0, le=20)
     max_project_files_mb: float = Field(default=1024, ge=0)  # all of a project's attached files; 0 = no limit
-    # safe redeploys: on shutdown, how long running runs get to finish before they are handed over (keep it
-    # below the pod's terminationGracePeriodSeconds), and how often instances look for runs to continue
+    # FR-X-10 safe redeploy: from SIGTERM, how long running runs get to finish before they are handed over (keep
+    # 5 + max(30, it) + 25 below the pod's terminationGracePeriodSeconds), and how often instances look for runs
+    # to continue
     drain_grace_s: float = 20.0
     handover_interval_s: float = 10.0
     # a running run whose instance has not refreshed it for this long lost its instance and is handed over
