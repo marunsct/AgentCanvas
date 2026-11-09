@@ -141,6 +141,7 @@ class DeploymentService:
                 await self._revoke_all(dep.id, datetime.now(UTC))
                 _, key = self._add_key(dep.id, "default", created_by, None)
             dep.version_id, dep.active = version.id, True
+            dep.tool_drift = None  # the new version pins the tools as they were browsed for it
         await self.s.commit()
         await self.s.refresh(dep)
         return dep, key

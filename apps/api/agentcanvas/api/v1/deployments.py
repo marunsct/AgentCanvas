@@ -77,6 +77,11 @@ class DeploymentOut(BaseModel):
     active: bool
     created_at: datetime
     endpoint: str
+    tool_drift: dict[str, Any] | None = Field(
+        None,
+        description="app connector -> the tools its runs leave out because the server changed them since publishing "
+        "(added, changed, outcome); cleared when the workflow is published again",
+    )
 
 
 class PublishOut(BaseModel):
@@ -126,6 +131,7 @@ def _dep(d: Deployment, v: WorkflowVersion, key_prefix: str | None) -> Deploymen
     return DeploymentOut(
         id=d.id, environment=d.environment, version_id=v.id, semver=v.semver, key_prefix=key_prefix,
         active=d.active, created_at=d.created_at, endpoint=f"/v1/deployments/{d.id}/runs/wait",
+        tool_drift=d.tool_drift,
     )  # fmt: skip
 
 

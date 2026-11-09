@@ -106,7 +106,7 @@ def rule(fn: RuleFn) -> RuleFn:
     return fn
 
 
-_ORDER = {"error": 0, "warning": 1, "info": 2}
+SEVERITY_ORDER = _ORDER = {"error": 0, "warning": 1, "info": 2}
 
 
 def validate(

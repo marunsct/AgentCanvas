@@ -280,6 +280,10 @@
       "what": "The provider stops serving this model on the day shown; after it, every call to it fails.",
       "fix": "Pick a newer model from the list before that day (the provider names a successor)."
     },
+    "W045": {
+      "what": "An app connector’s server added or changed tools since this workflow was published. The deployment leaves those tools out (or stops), because nobody reviewed them.",
+      "fix": "Select the connector, click Browse tools and review what changed. If you trust it, publish again: the new version pins the tools as they are now."
+    },
     "W095": {
       "what": "This goes against a recommended organisation rule.",
       "fix": "Read the rule in the message; consider changing the workflow."

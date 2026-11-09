@@ -9,9 +9,10 @@ from pathlib import Path
 from typing import Any
 
 from pydantic import ValidationError
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agentcanvas.db.models import WorkflowRow
+from agentcanvas.db.models import Deployment, WorkflowRow, WorkflowVersion
 from agentcanvas.db.repositories import PolicyRepo, ProjectRepo, WorkflowRepo
 from agentcanvas.errors import InvalidInput, NotFound
 from agentcanvas.ids import new_id
@@ -23,6 +24,7 @@ from agentcanvas.services import org_settings
 from agentcanvas.services.projects import PROJECT_OF
 from agentcanvas.settings import Settings
 from agentcanvas.validation import Diagnostic, validate
+from agentcanvas.validation.engine import SEVERITY_ORDER, warning
 from agentcanvas.validation.policies import Policy
 
 TEMPLATES = Path(__file__).parents[1] / "registry" / "templates"
@@ -137,11 +139,43 @@ class WorkflowService:
         if project_id and project_id not in self._org:
             self._org[project_id] = await org_settings.of_project(self.repo.s, self.settings, project_id)
         settings = self._org.get(project_id or "", self.settings)
-        return validate(
+        found = validate(
             wf, registry, edition=settings.edition, allow_local_mcp=settings.allow_local_mcp,
             isolated=settings.isolates_workspace_code,
             policies=await self.policies(project_id) if project_id else None, environment=environment,
         )  # fmt: skip
+        if not any(r.type == "mcp.server" for r in wf.resources):
+            return found
+        drift = await self._tool_drift(wf)
+        return sorted(found + drift, key=lambda d: SEVERITY_ORDER[d.severity]) if drift else found
+
+    async def _tool_drift(self, wf: Workflow) -> list[Diagnostic]:
+        """W045: app connectors whose server changed tools a live deployment pinned (its runs leave them out)."""
+        q = (
+            select(Deployment.environment, Deployment.tool_drift, WorkflowVersion.semver)
+            .join(WorkflowVersion, WorkflowVersion.id == Deployment.version_id)
+            .where(Deployment.workflow_id == wf.id, Deployment.active, Deployment.tool_drift.is_not(None))
+        )
+        blocks = {r.name: r for r in wf.resources if r.type == "mcp.server"}
+        out: list[Diagnostic] = []
+        for environment, drift, semver in (await self.repo.s.execute(q)).all():
+            for name, d in sorted((drift or {}).items()):
+                if name not in blocks or not isinstance(d, dict):
+                    continue
+                if d.get("unpinned"):
+                    what = f"v{semver} ({environment}) was published before its tools were browsed, so its runs offer "
+                    what += "whatever the server offers now"
+                else:
+                    parts = [f"new tool(s) {', '.join(d['added'])}"] if d.get("added") else []
+                    parts += [f"changed tool(s) {', '.join(d['changed'])}"] if d.get("changed") else []
+                    then = "stop its runs" if d.get("outcome") == "failed" else "are left out of its runs"
+                    what = f"the server changed since v{semver} was published to {environment}: "
+                    what += f"{'; '.join(parts)} {then}"
+                out.append(warning(
+                    "W045", f"'{name}': {what}", node_id=blocks[name].id,
+                    hint="Browse tools to review the server's tools, then publish again",
+                ))  # fmt: skip
+        return out
 
     async def _view(self, row: WorkflowRow) -> WorkflowView:
         wf = Workflow.model_validate(row.draft_ir)

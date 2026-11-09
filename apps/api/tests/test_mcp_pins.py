@@ -244,3 +244,77 @@ async def test_a_schedule_on_the_draft_is_pinned_too(app, api_client):
     await h.done.wait()
     assert OFFERED == [["close_ticket", "lookup_order"]]
     assert drift_warnings(app, h.run_id)[0]["added"] == ["delete_everything"]
+
+
+# ------------------------------------------------------------------------------- audit and the editor ----
+async def audited(api) -> list[dict]:
+    r = await api.get("/v1/org/audit", params={"action": "mcp_tool_drift"})
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def w045(view: dict) -> list[dict]:
+    return [d for d in view["diagnostics"] if d["code"] == "W045"]
+
+
+async def test_drift_is_audited_once_and_shown_in_the_editor_until_published_again(app, api_client):
+    server = Server(app)
+    sent: list = []
+
+    class Sink:
+        async def emit(self, event):
+            sent.append(event)
+
+    app.state.audit_sink = Sink()
+    wf, dep, key = await published_agent(app, api_client)
+    call, auth = f"/v1/deployments/{dep}/runs/wait", {"Authorization": f"Bearer {key}"}
+    server.now = support_server(description="Rewritten.", extra=True)
+    for _ in range(2):  # every run is warned; the change is audited once
+        res = await api_client.post(call, json={"input": {"messages": []}}, headers=auth)
+        assert res.json()["status"] == "success"
+    [row] = await audited(api_client)
+    assert row["actor_id"] is None and row["target"].startswith("run_id=")
+    assert row["detail"]["deployment_id"] == dep and row["detail"]["resource"] == "support"
+    assert row["detail"]["added"] == ["delete_everything"] and row["detail"]["changed"] == ["lookup_order"]
+    assert [e.action for e in sent] == ["publish", "mcp_tool_drift"]  # forwarded like other security entries
+
+    [listed] = (await api_client.get(f"/v1/workflows/{wf}/deployments")).json()
+    assert listed["tool_drift"]["support"]["changed"] == ["lookup_order"]
+    view = (await api_client.get(f"/v1/workflows/{wf}")).json()
+    [d] = w045(view)
+    assert d["severity"] == "warning" and d["node_id"] == "support"
+    assert "v1.0.0 was published to prod" in d["message"] and "delete_everything" in d["message"]
+
+    # the server changes again: a new entry
+    server.now = support_server(destructive=True)
+    await api_client.post(call, json={"input": {"messages": []}}, headers=auth)
+    assert len(await audited(api_client)) == 2
+
+    # the builder reviews the tools as they are now and publishes again: pinned anew, nothing left out
+    found = await api_client.post("/v1/mcp/inspect?project_id=prj_default", json={"name": "support", "config": CONFIG})
+    cur = (await api_client.get(f"/v1/workflows/{wf}")).json()
+    patch = {"op": "UpdateResource", "id": "support", "patch": {"config": {"discovered": found.json()}}}
+    r = await api_client.post(
+        f"/v1/workflows/{wf}/commands", json={"commands": [patch]}, headers={"If-Match": str(cur["version"])}
+    )
+    assert r.status_code == 200, r.text
+    assert (await api_client.post(f"/v1/workflows/{wf}/publish", json={})).status_code == 200
+    assert w045((await api_client.get(f"/v1/workflows/{wf}")).json()) == []
+    OFFERED.clear()
+    await api_client.post(call, json={"input": {"messages": []}}, headers=auth)
+    assert OFFERED == [["close_ticket", "lookup_order"]] and len(await audited(api_client)) == 2
+    assert (await api_client.get(f"/v1/workflows/{wf}/deployments")).json()[0]["tool_drift"] is None
+
+
+async def test_a_draft_schedule_is_audited_once_per_change(app, api_client):
+    from agentcanvas.ir.models import Workflow
+
+    server = Server(app)
+    wf, _, _ = await published_agent(app, api_client)
+    server.now = support_server(extra=True)
+    draft = Workflow.model_validate((await api_client.get(f"/v1/workflows/{wf}")).json()["ir"])
+    for _ in range(2):
+        h = await app.state.runner.start(draft, input={"messages": []}, origin="trigger")
+        await h.done.wait()
+    [row] = await audited(api_client)
+    assert row["detail"]["deployment_id"] is None and row["detail"]["workflow_id"] == wf

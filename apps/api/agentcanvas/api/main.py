@@ -240,6 +240,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 models=app.state.models,
             )
             app.state.runner = runner
+            # runs report app connector tools changed since publishing (E-4) like any security-relevant entry
+            runner.audit_sink = lambda: getattr(app.state, "audit_sink", None)
             runner.router = lambda session, wf, project_id: routing.route_run(app, session, wf, project_id)
             runner.max_file_bytes = int(settings.max_upload_mb * 1024 * 1024)
             runner.max_project_file_bytes = int(settings.max_project_files_mb * 1024 * 1024)

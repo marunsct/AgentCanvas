@@ -204,6 +204,10 @@ the agent (a "rug pull" or tool poisoning). A published agent does not pick such
   to stop the run instead.
 - The run shows a warning naming what was left out. Runs you start in the editor are not pinned, so you see what
   the server offers now.
+- The editor shows the change on the block (**W045** in Problems) until you publish again, and the deployment list
+  of the API carries it as `tool_drift`. Each change is written once to the audit log (`mcp_tool_drift`, with the
+  run, the deployment and the tool names) and forwarded like other
+  [security events](deploy.md#security-events-and-audit-forwarding).
 - To accept a change, select the block, click **Browse tools**, review the tools, and publish again.
 
 A version published before tools were pinned keeps working: tools browsed then are pinned by name only, and a block

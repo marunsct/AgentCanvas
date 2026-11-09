@@ -279,8 +279,9 @@ neither sees no rows.
 
 AgentCanvas keeps every change in its own audit log (**Settings › Audit log**). Security-relevant ones (publishing and
 unpublishing, deployment keys and callback secrets, secrets, approvals, members, organisation settings and policies, release gates, trace
-export, project workspaces, API and SCIM tokens, and every change SCIM or the sign-in token's groups make to members
-and roles) also leave the server, in every sign-in mode:
+export, project workspaces, API and SCIM tokens, every change SCIM or the sign-in token's groups make to members
+and roles, and app connector servers that changed tools a deployment pinned, `mcp_tool_drift`) also leave the server,
+in every sign-in mode:
 
 - **Always**, as a JSON log line `audit.event` (logger `agentcanvas.audit`, level info) with `org_id`, `actor_id`,
   `action`, `target`, `detail`, `ip` and `at`. Ship the API's logs to your SIEM and filter on it.

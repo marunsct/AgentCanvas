@@ -204,6 +204,9 @@ class Deployment(Base):
     # signs the completion callbacks of its runs (services/callbacks.py), encrypted with the organisation's data key;
     # NULL until a builder creates one: until then runs cannot ask for a callback
     callback_secret: Mapped[str | None] = mapped_column(Text)
+    # app connector name -> the tools its runs left out because the server changed them since publishing (E-4):
+    # {"added", "changed", "outcome", "unpinned", "run_id", "seen_at"}; shown in the editor, cleared on publish
+    tool_drift: Mapped[dict[str, Any] | None] = mapped_column(Json)
 
 
 class DeploymentKey(Base):

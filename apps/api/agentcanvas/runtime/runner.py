@@ -22,7 +22,17 @@ from sqlalchemy import case, func, select, update
 from sqlalchemy.exc import IntegrityError
 
 from agentcanvas.adapters.spi import FrameworkAdapter, ModelService, ThreadStateAbility, supports
-from agentcanvas.db.models import CostAlert, InterruptTask, Run, RunScore, SpendArchive, Thread, WorkflowRow
+from agentcanvas.db.models import (
+    AuditLog,
+    CostAlert,
+    Deployment,
+    InterruptTask,
+    Run,
+    RunScore,
+    SpendArchive,
+    Thread,
+    WorkflowRow,
+)
 from agentcanvas.db.repositories import ScopeRepo
 from agentcanvas.db.session import Database
 from agentcanvas.errors import Conflict, NotFound, Unavailable
@@ -38,6 +48,7 @@ from agentcanvas.runtime.tracing import trace_ref
 from agentcanvas.runtime.trajectory import compact
 from agentcanvas.runtime.types import REPLAYABLE, ResumeSpec, RunMode, RunSpec
 from agentcanvas.services.approvers import escalate_at, node_approvers
+from agentcanvas.services.audit_sink import AuditEvent
 from agentcanvas.services.files import DEFAULT_MAX_BYTES, FileService
 from agentcanvas.services.secrets import masker
 from agentcanvas.services.spend_caps import SpendCaps, SpendCapStop, periods
@@ -384,6 +395,10 @@ class Runner:
         self.draining = False  # shutting down: no new runs (FR-X-10)
         # picks the models of blocks that list `cheapest_of` (db session, workflow, project id -> workflow, notes)
         self.router: Callable[[Any, Workflow, str], Awaitable[tuple[Workflow, list[dict[str, Any]]]]] | None = None
+        self.audit_sink: Callable[[], Any] | None = None  # where security-relevant audit entries also go (TS26)
+        # (workflow, version, connector) -> the tool drift last audited for runs the deployment's record does not
+        # cover: a draft schedule that runs every minute is audited once per change, not once per run (per server)
+        self._drift_seen: OrderedDict[tuple[str, str, str], dict[str, Any]] = OrderedDict()
         # G-5: files sent inline in a run's input (AGENTCANVAS_MAX_UPLOAD_MB, AGENTCANVAS_MAX_PROJECT_FILES_MB)
         self.max_file_bytes, self.max_project_file_bytes = DEFAULT_MAX_BYTES, 0
         self.admission: Admission | None = None  # the run queue, with a concurrent-run limit (runtime/admission.py)
@@ -683,6 +698,47 @@ class Runner:
             raise Conflict(f"inbox item '{resume.interrupt_id}' was already decided")  # a concurrent decision won
         return ids
 
+    async def _tool_drift(self, h: RunHandle, spec: RunSpec, warning: dict[str, Any]) -> None:
+        """An app connector's server changed tools this run's version pinned (E-4): the deployment keeps it for the
+        editor, and the change is audited once (not on every run that meets it). Never fails the run."""
+        resource = str(warning.get("resource") or "")
+        seen = {k: warning[k] for k in ("added", "changed", "outcome", "unpinned") if warning.get(k) is not None}
+        drifted = bool(warning.get("added") or warning.get("changed"))  # an unpinned old version is only shown
+        try:
+            async with self.db.sessionmaker() as s:
+                dep = await s.get(Deployment, h.deployment_id) if h.deployment_id else None
+                if dep is not None and dep.version_id == h.version_id:  # what the deployment serves now
+                    kept = dict(dep.tool_drift or {})
+                    before = {k: v for k, v in (kept.get(resource) or {}).items() if k not in ("run_id", "seen_at")}
+                    new = before != seen
+                    if new:
+                        kept[resource] = {**seen, "run_id": h.run_id, "seen_at": datetime.now(UTC).isoformat()}
+                        dep.tool_drift = kept
+                else:  # a draft schedule, or a conversation still on an older version
+                    key = (h.workflow_id, h.version_id or "", resource)
+                    new = self._drift_seen.get(key) != seen
+                    self._drift_seen[key] = seen
+                    while len(self._drift_seen) > 1000:
+                        self._drift_seen.popitem(last=False)
+                event = None
+                if new and drifted and spec.org_id:
+                    detail = {
+                        "workflow_id": h.workflow_id, "deployment_id": h.deployment_id, "version_id": h.version_id,
+                        "resource": resource, **seen,
+                    }  # fmt: skip
+                    row = AuditLog(
+                        org_id=spec.org_id, actor_id=None, action="mcp_tool_drift", target=f"run_id={h.run_id}",
+                        detail=detail,
+                    )  # fmt: skip
+                    s.add(row)
+                    event = AuditEvent(spec.org_id, None, "mcp_tool_drift", row.target, detail)
+                await s.commit()
+            sink = self.audit_sink() if self.audit_sink is not None else None
+            if event is not None and sink is not None:
+                await sink.emit(event)
+        except Exception:
+            log.exception("run.tool_drift_not_recorded", run_id=h.run_id, resource=resource)
+
     # ---------------------------------------------------------------- pump ----
     async def _emit(self, h: RunHandle, event: dict[str, Any]) -> None:
         event = {**event, "seq": len(h.events) + 1}
@@ -779,6 +835,8 @@ class Runner:
                     ev = raw
                     if ev["type"] == "CUSTOM" and isinstance(ev.get("value"), dict) and "ac_event" in ev["value"]:
                         h.emitted.append(ev["value"])
+                    if ev["type"] == "CUSTOM" and ev.get("name") == "ac.warning" and _is_drift(ev.get("value")):
+                        await self._tool_drift(h, spec, ev["value"])
                     if ev["type"] == "RUN_FINISHED":
                         interrupts = ev.get("interrupts", [])
                         status = "interrupted" if ev["outcome"] == "interrupt" else "success"
@@ -1275,3 +1333,7 @@ def _title(input: dict[str, Any] | None) -> str | None:
 
 def _as_object(payload: Any) -> dict[str, Any]:
     return payload if isinstance(payload, dict) else {"value": payload}
+
+
+def _is_drift(value: Any) -> bool:
+    return isinstance(value, dict) and value.get("kind") == "mcp_tool_drift"
