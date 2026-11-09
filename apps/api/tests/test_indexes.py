@@ -1,18 +1,19 @@
 """Indexes behind the hot and the cascading queries: a foreign key a delete cascades through leads an index, the
-Conversations list reads in order."""
+Conversations list reads in order, and a day or month budget check reads only this month's conversations."""
 
 from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import PrimaryKeyConstraint, UniqueConstraint, event, select, update
 from test_publish import make_greeter
 from test_retention import converse
 
-from agentcanvas.db.models import Base, Run
+from agentcanvas.db.models import Base, Run, Thread
+from agentcanvas.runtime.runner import periods, workflow_spend
 
 # small tables, or parents deleted rarely (a person, a dataset): a scan per deleted row costs nothing there
 SMALL = {
@@ -95,3 +96,33 @@ async def test_the_conversations_list_adds_up_every_run(app, api_client):
     [item] = (await api_client.get("/v1/threads", params={"workflow_id": wf})).json()["items"]
     assert (item["runs"], item["tokens"], item["cost_usd"]) == (3, 45, 1.5)
     assert item["last_run_id"] == last
+
+
+async def test_a_budget_check_reads_only_this_months_conversations(app, api_client, sqlite_only):
+    wf = await make_greeter(api_client)
+    await converse(api_client, wf, "th_now")
+    with executed(app) as seen:
+        async with app.state.db.sessionmaker() as s:
+            await workflow_spend(s, wf)
+    [(q, args)] = [(q, a) for q, a in seen if "sum(" in q.lower()]
+    assert "thread_workflow_idx (workflow_id=? AND updated_at>?)" in await plan(app, q, args)
+
+
+async def test_a_budget_counts_this_months_runs_of_older_conversations(app, api_client):
+    """Starting a run touches its conversation, so one begun last month with a run this month still counts."""
+    wf = await make_greeter(api_client)
+    await converse(api_client, wf, "th_old")  # begun last month, only old runs
+    await converse(api_client, wf, "th_back")  # begun last month, a run this month
+    month = periods()["month"][1]
+    long_ago = month - timedelta(days=40)
+    async with app.state.db.sessionmaker() as s:
+        await s.execute(update(Run).values(cost_usd=2))
+        await s.execute(update(Thread).values(created_at=long_ago, updated_at=long_ago))
+        await s.execute(update(Run).where(Run.thread_id == "th_old").values(started_at=long_ago))
+        await s.commit()
+    await converse(api_client, wf, "th_back")
+    async with app.state.db.sessionmaker() as s:
+        await s.execute(update(Run).where(Run.thread_id == "th_back").values(cost_usd=2))
+        await s.commit()
+        today, this_month = await workflow_spend(s, wf)
+    assert (today, this_month) == (4, 4)  # th_back's two runs, not th_old's

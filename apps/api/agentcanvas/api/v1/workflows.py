@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Request, Response
@@ -305,7 +305,8 @@ async def get_spend(
                 func.coalesce(func.sum(Run.fallbacks), 0),
             )
             .join(Thread, Thread.id == Run.thread_id)
-            .where(Thread.workflow_id == wf_id, Run.started_at >= start)
+            .where(Thread.workflow_id == wf_id, Thread.updated_at >= start - timedelta(days=1))  # as workflow_spend
+            .where(Run.started_at >= start)
         )  # fmt: skip
         runs, tokens, cost, hits, fallbacks = (await session.execute(q)).one()
         out[period] = SpendPeriod(

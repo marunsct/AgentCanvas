@@ -15,7 +15,7 @@ import traceback
 from collections import OrderedDict
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field, replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, cast
 
 from sqlalchemy import case, func, select, update
@@ -270,7 +270,10 @@ async def workflow_spend(s: Any, workflow_id: str, *, exclude_run: str | None = 
             func.coalesce(func.sum(Run.cost_usd), 0),
         )
         .join(Thread, Thread.id == Run.thread_id)
-        .where(Thread.workflow_id == workflow_id, Run.started_at >= month)
+        # starting a run touches its conversation: only conversations touched this month can hold a run of this
+        # month (thread_workflow_idx), not every one the workflow ever had (a day early, for clocks a little apart)
+        .where(Thread.workflow_id == workflow_id, Thread.updated_at >= month - timedelta(days=1))
+        .where(Run.started_at >= month)
     )
     if exclude_run is not None:
         q = q.where(Run.id != exclude_run)
