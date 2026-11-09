@@ -208,7 +208,6 @@ If you got this far, the API, the web app, the database and durable runs all wor
 - **Inbox:** run again, don't approve, and open **Inbox** in the top bar: the pending approval is there too.
 - **Chat:** open the **Chat assistant** template, switch the Run tab to **Chat**, and send a message.
 - **Publish and call it over HTTP:** see [Publish and integrate](publish.md#call-a-deployment).
-- **Tests:** `make test` runs the backend and web test suites (several minutes).
 
 ### 7. Use real models
 
@@ -306,5 +305,5 @@ from **Settings › Members**.
 | Startup says *oidc needs AGENTCANVAS_OIDC_ISSUER and AGENTCANVAS_OIDC_AUDIENCE* | Set both, or leave `AGENTCANVAS_AUTH_MODE` unset for local mode. |
 | Something is odd after many experiments | Reset (above) and restart. |
 
-More developer detail is in the [build guide](../agent-canvas-spec/build-guide/01-environment-setup.md) and its
-[troubleshooting FAQ](../agent-canvas-spec/build-guide/11-troubleshooting-faq.md).
+To change AgentCanvas itself (the test suites, the repository layout, how the code is built), start with the
+[developer documentation](../developer/README.md).

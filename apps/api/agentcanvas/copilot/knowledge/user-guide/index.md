@@ -37,8 +37,12 @@ Then dive into the area you need:
 - [Publish and integrate](publish.md)
 - [Settings and moving around](settings.md)
 - [Organisations, roles and policies](accounts.md)
-- [Deploy and operate](deploy.md)
+- Running AgentCanvas for a team: [Deploy and operate](deploy.md), the [Operations reference](operations.md)
+  (metrics, restore, runbooks) and every [server setting](server-settings.md)
 - [FAQ](faq.md)
+
+To change AgentCanvas itself, see the
+[developer documentation](https://github.com/marunsct/AgentCanvas/blob/main/docs/developer/README.md).
 
 ## Current release
 

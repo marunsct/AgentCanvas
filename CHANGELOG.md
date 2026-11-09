@@ -4,8 +4,8 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
 
 ## Unreleased
 
-The product pass ([PLAN.md](PLAN.md): one app shell, Settings, the Copilot), the hardening passes and the deep
-review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged for them yet.
+The product pass ([PLAN.md](docs/developer/history/product-plan-2026-10.md): one app shell, Settings, the Copilot), the hardening passes and the deep
+review of 2026-10-29 ([HARDENING.md](docs/developer/hardening.md)); no version has been tagged for them yet.
 
 ### Security
 - The web image's pages send `Strict-Transport-Security` (one year) when the request came over https, directly or from a
