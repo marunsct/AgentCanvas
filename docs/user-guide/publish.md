@@ -185,8 +185,13 @@ On the Versions tab:
   Senders sign each request: header `X-AgentCanvas-Timestamp: <unix seconds>` and
   `X-AgentCanvas-Signature: sha256=<hex HMAC-SHA256 of "<timestamp>." + body>` using the trigger's secret.
   Requests older than five minutes are refused.
-- **+ Cron** runs the workflow on a 5-field schedule in UTC (e.g. `*/5 9-17 * * 1-5`) with a fixed **Cron input
-  (JSON)**. Each scheduled minute fires once, however many API replicas run. An occurrence missed while no server
+- **+ Cron** runs the workflow on a 5-field schedule (minute hour day month weekday, e.g. `*/5 9-17 * * 1-5` or
+  `0 8 * * MON-FRI`; `@hourly`, `@daily`, `@weekly`, `@monthly` and `@yearly` work too) with a fixed **Cron input
+  (JSON)**. The schedule is read in the **time zone** next to it (an IANA name such as `Europe/Berlin`; the field
+  starts with your browser's, and `UTC` is used when none is sent), so `0 8 * * *` stays 08:00 there through
+  daylight saving changes. When the clocks go forward, a time that does not happen that day does not fire; when
+  they go back, a set time in the repeated hour fires once (a schedule that runs every hour keeps running through
+  both passes). Each scheduled minute fires once, however many API replicas run. An occurrence missed while no server
   was running (a restart or an outage at that minute) fires once when one is back, if it is less than an hour old
   (the operator's `AGENTCANVAS_CRON_CATCHUP_S`); older ones are skipped, as is anything due while the trigger was
   switched off.

@@ -236,3 +236,57 @@ async def test_a_schedule_does_not_fire_for_a_time_before_it_existed_or_while_it
     assert (await api_client.patch(f"/v1/triggers/{trig}", json={"enabled": False})).status_code == 200
     assert (await api_client.patch(f"/v1/triggers/{trig}", json={"enabled": True})).status_code == 200
     assert await app.state.cron.tick(now) == []  # what it missed while off is not run when it is switched back on
+
+
+def test_a_schedule_runs_in_its_time_zone_through_daylight_saving():
+    """A schedule written for local business hours used to run in UTC only, an hour off for half the year."""
+    from zoneinfo import ZoneInfo
+
+    berlin = ZoneInfo("Europe/Berlin")
+    eight = Cron("0 8 * * *")
+    assert eight.fires_at(at("2027-01-15T07:00"), berlin) and eight.fires_at(at("2027-07-15T06:00"), berlin)
+    assert not eight.fires_at(at("2027-07-15T07:00"), berlin)
+    assert eight.fires_at(at("2027-07-15T08:00"), ZoneInfo("UTC"))
+    # 2026-10-25: 02:00-03:00 happens twice in Berlin. A set time fires on the first pass only; a schedule that
+    # runs every hour keeps running through the second pass too
+    half_two = Cron("30 2 * * *")
+    assert half_two.fires_at(at("2026-10-25T00:30"), berlin) and not half_two.fires_at(at("2026-10-25T01:30"), berlin)
+    every = Cron("*/30 * * * *")
+    assert every.fires_at(at("2026-10-25T00:30"), berlin) and every.fires_at(at("2026-10-25T01:30"), berlin)
+    # 2027-03-28: 02:00-03:00 does not happen in Berlin, so a schedule set in it does not fire that day
+    assert not any(half_two.fires_at(at(f"2027-03-28T{h:02}:30"), berlin) for h in range(24))
+
+
+def test_a_schedule_may_name_days_and_months_and_use_the_usual_shorthands():
+    weekdays = Cron("0 9 * * MON-FRI")
+    assert weekdays.matches(at("2026-09-29T09:00")) and not weekdays.matches(at("2026-10-04T09:00"))  # Tue, Sun
+    assert Cron("0 0 1 jan,Jul *").matches(at("2027-07-01T00:00")) and not Cron("0 0 1 JAN *").matches(
+        at("2027-07-01T00:00")
+    )
+    assert Cron("0 0 * * sun").matches(at("2026-10-04T00:00"))
+    assert Cron("@daily").matches(at("2027-07-01T00:00")) and not Cron("@daily").matches(at("2027-07-01T01:00"))
+    assert Cron("@hourly").matches(at("2027-07-01T05:00")) and Cron("@weekly").matches(at("2026-10-04T00:00"))
+    assert Cron("@monthly").matches(at("2027-07-01T00:00")) and Cron("@yearly").matches(at("2027-01-01T00:00"))
+    for bad in ("0 9 * * MON-FRY", "@sometimes", "0 9 * FEBR *"):
+        with pytest.raises(ValueError):
+            Cron(bad)
+
+
+async def test_a_cron_trigger_keeps_its_time_zone(app, api_client):
+    wf = await make_greeter(api_client)
+    made = await api_client.post(
+        f"/v1/workflows/{wf}/triggers",
+        json={"kind": "cron", "config": {"schedule": "0 8 * * *", "timezone": "Mars/Base"}},
+    )
+    assert made.status_code == 422 and "time zone" in made.json()["detail"]
+    made = await api_client.post(
+        f"/v1/workflows/{wf}/triggers",
+        json={"kind": "cron", "config": {"schedule": "0 8 * * *", "timezone": "Europe/Berlin"}},
+    )
+    assert made.status_code == 201, made.text
+    [listed] = (await api_client.get(f"/v1/workflows/{wf}/triggers")).json()
+    assert listed["config"]["timezone"] == "Europe/Berlin"
+    assert await app.state.cron.tick(at("2027-07-15T08:00")) == []  # 10:00 in Berlin
+    fired = await app.state.cron.tick(at("2027-07-16T06:00"))  # 08:00 in Berlin
+    assert len(fired) == 1
+    await _finish(app, fired)

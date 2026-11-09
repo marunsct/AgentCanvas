@@ -11,13 +11,14 @@ export function TriggersSection({ wfId }: { wfId: string }) {
   const deps = useQuery({ queryKey: ["deployments", wfId], queryFn: () => apiFetch<DeploymentOut[]>(`/workflows/${wfId}/deployments`) });
   const published = deps.data?.find((d) => d.active);
   const [schedule, setSchedule] = useState("0 9 * * 1-5");
+  const [timezone, setTimezone] = useState(localZone);
   const [input, setInput] = useState("{}");
   const [created, setCreated] = useState<TriggerCreated | null>(null);
   const [error, setError] = useState<string | null>(null);
   const create = async (kind: "webhook" | "cron") => {
     setError(null);
     try {
-      const config = kind === "cron" ? { schedule, input: JSON.parse(input || "{}") } : {};
+      const config = kind === "cron" ? { schedule, timezone: timezone.trim() || "UTC", input: JSON.parse(input || "{}") } : {};
       const out = await apiFetch<TriggerCreated>(`/workflows/${wfId}/triggers`, {
         method: "POST", json: { kind, config, deployment_id: published?.id ?? null },
       });
@@ -47,10 +48,12 @@ export function TriggersSection({ wfId }: { wfId: string }) {
       <h4>Triggers <small className="muted">{published ? `run ${published.environment} v${published.semver}` : "run the draft"}</small></h4>
       <div className="row gap">
         <button type="button" className="small" onClick={() => void create("webhook")}>+ Webhook</button>
-        {/* the server runs schedules in UTC: 0 9 * * * is 09:00 UTC, not 09:00 here */}
-        <input className="mono" value={schedule} onChange={(e) => setSchedule(e.target.value)} aria-label="cron schedule (UTC)"
-          title="Minute hour day month weekday, in UTC" />
-        <span className="small muted">UTC</span>
+        <input className="mono" value={schedule} onChange={(e) => setSchedule(e.target.value)} aria-label="cron schedule"
+          title="Minute hour day month weekday (MON-FRI, JAN…), or @hourly, @daily, @weekly, @monthly" />
+        {/* the schedule is read in this zone, daylight saving included: 0 9 * * * is 09:00 there all year */}
+        <input className="mono" value={timezone} onChange={(e) => setTimezone(e.target.value)} aria-label="cron time zone"
+          list="cron-time-zones" title="IANA time zone the schedule runs in, e.g. Europe/Berlin or UTC" size={16} />
+        <datalist id="cron-time-zones">{zones().map((z) => <option key={z} value={z} />)}</datalist>
         <button type="button" className="small" onClick={() => void create("cron")}>+ Cron</button>
       </div>
       <label className="small">Cron input (JSON)
@@ -70,7 +73,7 @@ export function TriggersSection({ wfId }: { wfId: string }) {
           <li key={t.id} data-testid={`trigger-${t.kind}`}>
             <div className="row gap">
               <b>{t.kind}</b> {t.kind === "cron"
-                ? <><code>{String(t.config.schedule)}</code> <span className="small muted">UTC</span></>
+                ? <><code>{String(t.config.schedule)}</code> <span className="small muted">{String(t.config.timezone ?? "UTC")}</span></>
                 : <code className="small">{t.url}</code>}
               {!t.enabled && <span className="badge warn">off</span>}
               <span className="spacer" />
@@ -83,4 +86,16 @@ export function TriggersSection({ wfId }: { wfId: string }) {
       </ul>
     </section>
   );
+}
+
+function localZone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+}
+
+function zones(): string[] {
+  try {
+    return ["UTC", ...Intl.supportedValuesOf("timeZone").filter((z) => z !== "UTC")];
+  } catch {
+    return ["UTC"]; // an older browser: any IANA name can still be typed
+  }
 }
