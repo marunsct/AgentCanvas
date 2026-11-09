@@ -593,6 +593,8 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
   1.9.1 and dnspython 2.9.0.
 
 ### Added
+- **Decide with AI** block (`core.decide`, LangGraph): a model picks one of the paths you describe and saves
+  `{choice, confidence, reason}`; an answer outside the choices, or below a minimum confidence, takes the default path.
 - Experiments can run each example several times (**runs per example**, `repetitions`, up to 10) and report pass@k,
   pass^k, the flaky examples and each evaluator's spread; pairwise judges compare each run with the baseline's same run.
 - **Stop all runs** (Settings › Organisation › General, `POST /v1/org/runs/stop`): an admin stops every run in flight in

@@ -1401,6 +1401,59 @@ def router_fn(*, cases: list[dict[str, str]], default: str = "default") -> Calla
     return route
 
 
+DECIDE_INSTRUCTIONS = (
+    "Choose exactly one of these options:\n{options}\n\nAnswer with JSON only, no other text: "
+    '{{"choice": "<one option name>", "confidence": <0 to 1, how sure you are>, "reason": "<one short sentence>"}}'
+)
+
+
+def decision(text: str, choices: Sequence[str]) -> dict[str, Any]:
+    """The decision in a model's answer: {choice, confidence, reason}; `choice` is None when the answer names no
+    option (no JSON, or a name that is not one of `choices`)."""
+    start, end = text.find("{"), text.rfind("}")
+    try:
+        found = json.loads(text[start : end + 1]) if 0 <= start < end else {}
+    except ValueError:
+        found = {}
+    found = found if isinstance(found, dict) else {}
+    choice = str(found.get("choice", "")).strip()
+    raw = found.get("confidence")
+    try:
+        confidence = min(1.0, max(0.0, float(raw))) if isinstance(raw, int | float | str) else None
+    except ValueError:
+        confidence = None
+    return {"choice": choice if choice in choices else None, "confidence": confidence,
+            "reason": str(found.get("reason") or "")[:500]}  # fmt: skip
+
+
+def decide_node(*, model: BaseChatModel, prompt: str, cases: list[dict[str, str]], output: str) -> Callable:
+    """F-4: a model picks one of the described paths, with its confidence and reason, saved in `output`."""
+    options = "\n".join(f"- {c['route']}: {c.get('description', '')}" for c in cases)
+    choices = [c["route"] for c in cases]
+
+    async def run(state: Any) -> dict:
+        text = render_template(prompt, state) + "\n\n" + DECIDE_INSTRUCTIONS.format(options=options)
+        reply = await model.ainvoke([HumanMessage(text)])
+        content = reply.content if isinstance(reply.content, str) else str(reply.text)
+        return {output: decision(content, choices)}
+
+    return run
+
+
+def decide_fn(*, output: str, default: str = "default", min_confidence: float | None = None) -> Callable:
+    """Routing function for a Decide with AI step: its choice, or `default` when it made none or is not sure enough."""
+
+    def route(state: Any) -> str:
+        made = state.get(output) if isinstance(state, dict) else getattr(state, output, None)
+        made = made if isinstance(made, dict) else {}
+        unsure = min_confidence is not None and (made.get("confidence") is None or made["confidence"] < min_confidence)
+        if unsure or not made.get("choice"):
+            return default
+        return made["choice"]
+
+    return route
+
+
 def approval_node(*, node_id: str, show: str, output: str) -> Callable:
     """Pause for a human. Resume value must be {"approved": bool, "value": optional edit}."""
 

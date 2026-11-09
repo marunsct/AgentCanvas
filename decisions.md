@@ -12,6 +12,15 @@ Merging, deleting branches and anything outward-facing stay with you: work is de
 
 ## 2026-11-09
 
+### Decide with AI asks for JSON, and starts on LangGraph only
+The decision is a JSON answer the step parses ({choice, confidence, reason}) rather than the provider's structured
+output, so every model and the canvas's scripted replies work the same; a wrong or missing answer takes the default
+path, and an optional minimum confidence does too. It reuses the path step's `cases`/`default` shape, so its outputs
+are path dots everywhere without new canvas code. Only LangGraph runs it for now: the other ten frameworks refuse it
+with P001 (their manifests list no `core.decide`) instead of running something different. Next: the other
+frameworks' code generators, and the same decision as an evaluator kind. *Reverse:* delete
+`registry/nodes/core.decide.json` and the two functions in `adapters/langchain/nodes.py`.
+
 ### Repeated runs: the pass rate stays per run, and repeats skip the answer cache
 With k runs per example, the summary's `pass_rate` is still the share of runs that passed, so it compares with earlier
 experiments; pass@k and pass^k are added beside it, and release gates keep reading the pass rate. A model block's answer

@@ -63,6 +63,9 @@ def {{ fn }}(resources: ac.Resources | None = None, checkpointer=None, store=Non
 {%- elif n.type == "core.router" %}
     _route_{{ n.name }} = ac.router_fn(cases={{ n.config.get("cases", []) | pp }}, default={{ n.config.get("default", "default") | py }})
     builder.add_node({{ n.name | py }}, ac.passthrough, {{ meta }})
+{%- elif n.type == "core.decide" %}
+    _route_{{ n.name }} = ac.decide_fn(output={{ n.config.output | py }}, default={{ n.config.get("default", "default") | py }}, min_confidence={{ n.config.get("min_confidence") | py }})
+    builder.add_node({{ n.name | py }}, ac.decide_node(model={{ p.wired.model[0] }}, prompt={{ n.config.prompt | py }}, cases={{ n.config.get("cases", []) | pp }}, output={{ n.config.output | py }}), {{ meta }})
 {%- elif n.type == "core.map" %}{% set worker, empty = plan.map_edges[n.name] %}
     _fan_out_{{ n.name }} = ac.map_fn(items={{ n.config["items"] | py }}, item={{ n.config["item"] | py }}, target={{ worker | py }}, empty={{ empty if empty in ("START", "END") else (empty | py) }}, carry={{ n.config.get("carry", []) | py }}, max_items={{ n.config.get("max_items") | py }})
     builder.add_node({{ n.name | py }}, ac.passthrough, {{ meta }})
