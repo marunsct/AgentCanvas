@@ -22,13 +22,13 @@ updates:
     groups: { actions: { patterns: ["*"] } }
   # Agent frameworks: their pins live in our code (exports, CI, the image); this file mirrors them so Dependabot can
   # see new releases. One pull request per framework, so each is upgraded and tested on its own
-  # (docs/agent-canvas-spec/build-guide/16-framework-upgrades.md); its tests fail until the pin is moved everywhere.
+  # (docs/developer/build-guide/16-framework-upgrades.md); its tests fail until the pin is moved everywhere.
   - package-ecosystem: pip
     directory: /infra/frameworks
     schedule: { interval: weekly }
     open-pull-requests-limit: 20
     ignore:
-      - dependency-name: litellm      # held at 1.105.7: 1.106+ broke Google ADK tool calls (see decisions.md)
+      - dependency-name: litellm      # held at 1.105.7: 1.106+ broke Google ADK tool calls (see docs/developer/decisions.md)
         versions: [">=1.106"]
       - dependency-name: openai       # Agno's and Strands' OpenAI client: a major version is checked by hand first
         update-types: ["version-update:semver-major"]

@@ -23,6 +23,7 @@ from sqlalchemy import (
     Integer,
     LargeBinary,
     Numeric,
+    SmallInteger,
     String,
     Text,
     UniqueConstraint,
@@ -282,6 +283,7 @@ class Run(Base):
         CheckConstraint("mode IN ('normal','debug')", name="run_mode"),
         CheckConstraint("status IN ('running','success','interrupted','error','cancelled')", name="run_status"),
         Index("run_thread_idx", "thread_id", "started_at"),
+        Index("run_status_queued_idx", "status", "queued"),
     )
     id: Mapped[str] = mapped_column(String, primary_key=True)
     thread_id: Mapped[str] = mapped_column(ForeignKey("thread.id", ondelete="CASCADE"))
@@ -308,6 +310,9 @@ class Run(Base):
     handover: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     # F-5 kill switch: an admin asked to stop it; its instance stops it at the next heartbeat (never handed over)
     stop_requested: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    # the run queue (with a concurrent-run limit): 1 high, 0 normal, -1 low; `queued` while it waits for a slot
+    priority: Mapped[int] = mapped_column(SmallInteger, server_default=text("0"), default=0)
+    queued: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     # S12: refreshed while the run's instance is alive; a running run without a fresh heartbeat lost its instance
     heartbeat_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
     # S13: what the deployment API caller tagged the run with (online evaluator filters, annotation rules)

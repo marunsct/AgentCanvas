@@ -14,7 +14,7 @@ from agentcanvas.copilot import docs
 
 @pytest.fixture(autouse=True, params=["loop", "deepagents"])
 def engine(request, settings):
-    """Every Copilot test runs on both engines: the loop and the Deep Agents harness (PLAN.md section 2)."""
+    """Every Copilot test runs on both engines: the loop and the Deep Agents harness (product-plan-2026-10.md §2)."""
     settings.copilot_engine = request.param
     return request.param
 

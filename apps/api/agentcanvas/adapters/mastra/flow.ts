@@ -219,6 +219,8 @@ export type Step = {
   run?: StepFn; // none: a path (router) or "wait for all" (join), which change nothing
   cases?: [string, string][]; // router: [CEL rule, route], the first match wins
   default?: string;
+  decides?: string; // a Decide with AI step: the field its decision is saved in, which picks the path
+  minConfidence?: number; // ... below which it takes `default`
   disabled?: boolean;
 };
 
@@ -236,6 +238,9 @@ export function following(flow: Flow, nodeId: string, values: State): string[] {
   const nxt = nodeId === "START" ? flow.start : flow.next[nodeId] ?? [];
   if (!Array.isArray(nxt)) {
     const step = flow.steps[nodeId];
+    if (step.decides !== undefined) {
+      return [...(nxt[chosen(values[step.decides], step.default ?? "default", step.minConfidence ?? null)] ?? [])];
+    }
     const hit = (step.cases ?? []).find(([when]) => condition(when, values));
     return [...(nxt[hit ? hit[1] : step.default ?? "default"] ?? [])];
   }
@@ -576,10 +581,71 @@ export class Run {
     return { [opts.output]: [{ type: "ai", role: "assistant", content: text, name: agent }] };
   }
 
+  /** What a Decide with AI step asks its model: the rendered question, the options and the answer's shape. */
+  decidePrompt(prompt: string, choices: Record<string, string>): string {
+    return decidePrompt(prompt, choices);
+  }
+
+  /** The model's decision, saved in `output`; FLOW follows its choice (see `Step.decides`). */
+  decision(reply: string, choices: Record<string, string>, opts: { output: string }): Update {
+    return { [opts.output]: aiDecision(reply, choices) };
+  }
+
   limitNote(agent: string, limit: number, opts: { output: string }): Update {
     const note = `Stopped: ${agent} reached its limit of ${limit} model calls before finishing.`;
     return { [opts.output]: [{ type: "ai", role: "assistant", content: note, name: agent }] };
   }
+}
+
+// ------------------------------------------------------------- Decide with AI ----
+// The twin of `agentcanvas/expr.py`: the same words to the model and the same reading of its answer.
+export const DECIDE_INSTRUCTIONS =
+  "Choose exactly one of these options:\n{options}\n\nAnswer with JSON only, no other text: " +
+  '{"choice": "<one option name>", "confidence": <0 to 1, how sure you are>, "reason": "<one short sentence>"}';
+
+export function decidePrompt(prompt: string, choices: Record<string, string>): string {
+  const options = Object.entries(choices).map(([route, when]) => `- ${route}: ${when}`).join("\n");
+  return `${prompt}\n\n` + DECIDE_INSTRUCTIONS.replace("{options}", options);
+}
+
+const NUMBER = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
+
+/** The decision in a model's answer: {choice, confidence, reason}; `choice` is null when the answer names no
+ * option (no JSON, or a name that is not one of `choices`). */
+export function aiDecision(text: string, choices: Record<string, string> | string[]): Record<string, any> {
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  let found: any = {};
+  if (start >= 0 && start < end) {
+    try {
+      found = JSON.parse(text.slice(start, end + 1));
+    } catch {
+      found = {};
+    }
+  }
+  if (!isObject(found)) found = {};
+  const names = Array.isArray(choices) ? choices : Object.keys(choices);
+  const raw = found.choice;
+  const choice = (raw === undefined || raw === null ? "" : String(raw)).trim();
+  const given = found.confidence;
+  let value = Number.NaN;
+  if (typeof given === "number") value = given;
+  else if (typeof given === "boolean") value = given ? 1 : 0;
+  else if (typeof given === "string" && NUMBER.test(given.trim())) value = Number(given.trim());
+  const reason = found.reason;
+  return {
+    choice: names.includes(choice) ? choice : null,
+    confidence: Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : null,
+    reason: (reason ? (typeof reason === "string" ? reason : JSON.stringify(reason)) : "").slice(0, 500),
+  };
+}
+
+/** The path a decision takes: its choice, or `fallback` when it made none or is less sure than the minimum. */
+export function chosen(made: any, fallback: string, minConfidence: number | null): string {
+  const m = isObject(made) ? made : {};
+  const confidence = m.confidence;
+  const unsure = minConfidence !== null && (typeof confidence !== "number" || confidence < minConfidence);
+  return unsure || !m.choice ? fallback : String(m.choice);
 }
 
 // ------------------------------------------------------------------ helpers ----

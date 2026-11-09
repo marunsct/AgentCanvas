@@ -52,7 +52,7 @@ INSTALL_HINT = (
     "CrewAI is not installed on this server: run `make crewai` (a separate Python environment with "
     f"crewai=={codegen.CREWAI_VERSION}) or set AGENTCANVAS_CREWAI_PYTHON, then restart the server"
 )
-MODEL_STEPS = {"core.llm", "core.agent", "crewai.crew", "crewai.task"}
+MODEL_STEPS = {"core.llm", "core.agent", "core.decide", "crewai.crew", "crewai.task"}
 
 
 def crewai_python() -> str | None:

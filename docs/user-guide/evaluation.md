@@ -36,10 +36,19 @@ An evaluator scores one run from 0 to 1, passes or fails it at a threshold (*pas
 | **workspace code** | your own function in `scripts/` |
 | **retrieval** | the passages a Search knowledge block found against the example's relevant documents (recall, precision, hit or MRR at *k*; see [Knowledge](knowledge.md#measure-retrieval)) |
 | **composite** | a weighted mix of other evaluators, or all/any must pass. A part that cannot score (no reference, no model) is left out of the weighted mix, but counts as failed for all/any |
+| **AI classification** | a model puts the output in one of your categories (polite or rude, on topic or not), asked the way a **Decide with AI** block asks; it passes in a category you mark as passing, and with a **minimum confidence** only when the model is that sure. A failed run's comment says which category it chose and why |
 | **red team** | whether the workflow held against an attack example: no secret phrase or personal data in the reply, a refusal, or a safety block that stopped the run (see [Red team](#red-team)) |
 | **pairwise judge** | which of two answers is better (asked twice with the answers swapped to avoid position bias); reports a win rate with a confidence interval |
 
 **Try** runs an evaluator on a sample before you rely on it.
+
+**Tool calls with arguments.** An example's expected trajectory lists tool names (`["search", "send_reply"]`), or calls
+with the arguments that matter:
+`[{"name": "search", "args": {"query": {"$regex": "(?i)refund"}}}, "send_reply"]`. An argument is compared by
+equality, or by a pattern written `{"$regex": "..."}`. The tool trajectory evaluator's **arguments** setting says how:
+**subset** (the default: the call has at least the arguments the example names), **exact** (no other arguments) or
+**ignore** (names only). In any order and subset modes, each expected call is paired with a different call of the run.
+A failed score says which expected call no call matched.
 
 ## Experiments
 
@@ -52,6 +61,12 @@ be cancelled and survives a server restart.
 The results grid shows mean scores, pass rates, latency, tokens and cost per target, and each example's output
 with its run timeline one click away. The AI judges' own cost (LLM and pairwise judges) is shown apart from the
 runs' cost; a judge model without a catalog price is named instead of being counted as free. **Compare** two experiments to see which examples improved or regressed.
+
+**Why runs failed:** under each target's numbers, a line such as "4 of 30 runs failed. Most often: exact (3): differs:
+out" opens to the failures grouped: runs that did not finish by their error, and each evaluator by its comment (numbers
+and quoted values taken out, so alike comments group), with the examples each group failed on. Evaluators that write
+their own reasoning (LLM judge, red team, your code, composite) are grouped by evaluator, and one run's reasoning is
+shown on hover. It is in the API as `failures` and `failure_summary` on each target's summary.
 
 **Runs per example:** a model does not answer the same way every time, so one run per example can pass or fail by
 luck. Set **runs per example** (up to 10, `repetitions` in the API) and each example runs that many times per target.

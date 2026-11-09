@@ -83,8 +83,8 @@ class Settings(BaseSettings):
     langsmith_sandbox_endpoint: str | None = None  # None = the SDK default (LANGSMITH_ENDPOINT)
     langsmith_idle_s: int = 600  # idle sandboxes stop after this (a multiple of 60)
     recursion_limit: int = 50  # steps one run may take before it stops (LangGraph's recursion limit)
-    # the Copilot's engine: our own tool loop, or LangChain's Deep Agents harness (PLAN.md section 2; the loop stays the
-    # default until Deep Agents has passed the same suite and the real-model evaluation)
+    # the Copilot's engine: our own tool loop, or LangChain's Deep Agents harness (the loop stays the default until Deep
+    # Agents has passed the same suite and the real-model evaluation)
     copilot_engine: Literal["loop", "deepagents"] = "loop"
     cors_origins: list[str] = ["http://localhost:5173"]  # browser origins allowed to call the API
     # where people reach the web app, e.g. https://canvas.example.com: OAuth sign-ins to app connectors return to
@@ -129,6 +129,9 @@ class Settings(BaseSettings):
     # share links (S23): requests per minute from one client address to one link, on top of the deployment's and
     # project's limits, so one anonymous visitor cannot use up a deployment's whole budget
     rate_limit_per_share_client: int = 30
+    # runs in flight at once in one organisation, across every server; past it a run waits in the organisation's
+    # queue (highest priority, then oldest, first). 0 = no limit. An organisation may set a lower one.
+    max_concurrent_runs: int = Field(default=0, ge=0)
     retention_interval_s: int = 3600  # how often the retention job looks for expired conversations
     # G-5: the largest file a person may attach to a run (Run tab, share links, inline in API calls), in MB
     max_upload_mb: float = Field(default=10, gt=0, le=20)  # the web server accepts 20 MB bodies (infra/nginx.conf)

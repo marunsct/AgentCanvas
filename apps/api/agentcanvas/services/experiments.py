@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import math
+import re
 import statistics
 import time
 import uuid
@@ -37,10 +38,11 @@ from agentcanvas.evaluation import (
     Observation,
     Score,
     Spec,
+    ToolCall,
+    calls_of,
     code_hash,
     pairwise,
     score,
-    trajectory_of,
 )
 from agentcanvas.ids import new_id
 from agentcanvas.ir.models import Workflow
@@ -55,6 +57,10 @@ MAX_CONCURRENCY = 16
 MAX_RUNS = 5000  # targets x examples x repetitions per experiment
 MAX_REPETITIONS = 10
 FLAKY_LISTED = 100  # flaky example ids listed per target
+FAILURE_GROUPS = 10  # failure groups kept per target, most runs first
+FAILURE_EXAMPLES = 10  # example ids listed per failure group
+# judges write their own reasoning for every run: their failures are grouped by evaluator, not by comment
+FREE_TEXT = ("llm_judge", "red_team", "code", "composite")
 
 
 class TargetIn(BaseModel):
@@ -181,6 +187,16 @@ def confidence(values: list[float]) -> list[float] | None:
     return [round(max(0.0, mean - half), 4), round(min(1.0, mean + half), 4)]
 
 
+class FailureGroup(BaseModel):
+    evaluator: str | None = Field(
+        description="the evaluator that failed the runs; None: the run itself did not succeed"
+    )
+    reason: str = Field(description="what they have in common: the evaluator's comment or the run's error")
+    runs: int
+    examples: list[str] = Field(description=f"the examples (at most {FAILURE_EXAMPLES})")
+    sample: str = Field("", description="one failed run's full comment, for evaluators that write their own")
+
+
 class TargetSummary(BaseModel):
     target: int
     label: str
@@ -209,6 +225,10 @@ class TargetSummary(BaseModel):
     judge_unpriced: list[str] = Field(
         default_factory=list, description="judge models without a price: their calls are not in judge_cost_usd"
     )
+    failures: list[FailureGroup] = Field(
+        default_factory=list, description=f"why runs failed, grouped, most runs first (at most {FAILURE_GROUPS})"
+    )
+    failure_summary: str = Field("", description="the failures in a sentence or two; empty when nothing failed")
 
 
 def _spread(done: Sequence[Any], name: str) -> float | None:
@@ -220,6 +240,53 @@ def _spread(done: Sequence[Any], name: str) -> float | None:
                 by_example.setdefault(r.example_id, []).append(float(x["score"]))
     sds = [statistics.pstdev(v) for v in by_example.values() if len(v) > 1]
     return round(sum(sds) / len(sds), 4) if sds else None
+
+
+def _reason(text: str | None) -> str:
+    """A comment or error with what differs between runs (numbers, quoted values) taken out, so alike ones group."""
+    t = " ".join((text or "").split())[:300]
+    t = re.sub(r"'[^']*'|\"[^\"]*\"", "…", t)
+    t = re.sub(r"\d+(\.\d+)?", "N", t)
+    return t[:120] or "no reason given"
+
+
+def failures(done: Sequence[Any], specs: list[dict[str, Any]]) -> list[FailureGroup]:
+    """Why a target's finished runs failed: run errors by their error, evaluators by their comment (or, for those that
+    write free text, by evaluator alone), most runs first."""
+    kinds = {e["name"]: e["kind"] for e in specs if e["kind"] not in ONLY_IN_EXPERIMENTS}
+    groups: dict[tuple[str | None, str], FailureGroup] = {}
+
+    def add(evaluator: str | None, reason: str, example: str, sample: str = "") -> None:
+        g = groups.setdefault(
+            (evaluator, reason), FailureGroup(evaluator=evaluator, reason=reason, runs=0, examples=[], sample=sample)
+        )
+        g.runs += 1
+        if example not in g.examples and len(g.examples) < FAILURE_EXAMPLES:
+            g.examples.append(example)
+
+    for r in done:
+        if r.run_status != "success":
+            add(None, _reason(getattr(r, "error", None) or r.run_status), r.example_id)
+            continue
+        for x in r.scores or []:
+            if x["evaluator"] in kinds and not x["passed"]:
+                comment = str(x.get("comment") or "")
+                if x["score"] is None:
+                    add(x["evaluator"], f"could not score: {_reason(comment)}", r.example_id)
+                elif kinds[x["evaluator"]] == "classifier":  # "chose rude (0.80): …": grouped by the category
+                    add(x["evaluator"], _reason(comment.split(":", 1)[0]), r.example_id, comment[:300])
+                elif kinds[x["evaluator"]] in FREE_TEXT:
+                    add(x["evaluator"], "scored below its threshold", r.example_id, comment[:300])
+                else:
+                    add(x["evaluator"], _reason(comment), r.example_id)
+    return sorted(groups.values(), key=lambda g: (-g.runs, g.evaluator or "", g.reason))[:FAILURE_GROUPS]
+
+
+def failure_text(groups: list[FailureGroup], failed: int, finished: int) -> str:
+    if not failed:
+        return ""
+    parts = [f"{'run error' if g.evaluator is None else g.evaluator} ({g.runs}): {g.reason}" for g in groups[:3]]
+    return f"{failed} of {finished} runs failed. Most often: " + "; ".join(parts) + "."
 
 
 def summary(exp: Experiment, results: Sequence[Any]) -> list[TargetSummary]:
@@ -254,6 +321,8 @@ def summary(exp: Experiment, results: Sequence[Any]) -> list[TargetSummary]:
             outcomes.setdefault(r.example_id, []).append(ok)
         repeated = k > 1 and bool(graded) and bool(outcomes)
         latencies = [r.latency_ms for r in done if r.latency_ms is not None]
+        why = failures(done, exp.evaluators)
+        failed = sum(r.run_status != "success" or not ok for r, ok in zip(done, passed, strict=True))
         out.append(
             TargetSummary(
                 target=i,
@@ -278,6 +347,8 @@ def summary(exp: Experiment, results: Sequence[Any]) -> list[TargetSummary]:
                 cost_usd=round(sum(r.cost_usd for r in done), 6),
                 judge_cost_usd=round(sum(float(x.get("judge_cost_usd") or 0) for r in mine for x in r.scores or []), 6),
                 judge_unpriced=sorted({m for r in mine for x in r.scores or [] for m in x.get("judge_unpriced") or []}),
+                failures=why,
+                failure_summary=failure_text(why, failed, len(done)),
             )
         )
     return out
@@ -285,10 +356,10 @@ def summary(exp: Experiment, results: Sequence[Any]) -> list[TargetSummary]:
 
 SUMMARY_COLUMNS = (
     ExperimentResult.experiment_id, ExperimentResult.target, ExperimentResult.example_id, ExperimentResult.status,
-    ExperimentResult.run_status,
+    ExperimentResult.run_status, ExperimentResult.error,
     ExperimentResult.scores, ExperimentResult.latency_ms, ExperimentResult.tokens_in, ExperimentResult.tokens_out,
     ExperimentResult.cost_usd,
-)  # fmt: skip  # what `summary` reads: not outputs, trajectories or errors
+)  # fmt: skip  # what `summary` reads: not outputs or trajectories
 
 
 class ExperimentService:
@@ -679,7 +750,7 @@ class ExperimentJob:
         usage = (handle.usage["input_tokens"], handle.usage["output_tokens"], float(handle.usage["cost_usd"] or 0))
         await self._scored(
             result_id, wf, example, specs, run_status=run_status, error=error, output=output,
-            trajectory=trajectory_of(handle.events), usage=usage, started=started,
+            calls=calls_of(handle.events), usage=usage, started=started,
         )  # fmt: skip
 
     async def _not_started(self, result_id: str, specs: list[Spec], exc: Exception) -> None:
@@ -723,16 +794,18 @@ class ExperimentJob:
         run_status: str,
         error: str | None,
         output: dict[str, Any],
-        trajectory: list[str],
+        calls: list[ToolCall],
         usage: tuple[int, int, float],
         started: float,
     ) -> None:
         latency = round((time.perf_counter() - started) * 1000)
+        trajectory = [c.name for c in calls]
         obs = Observation(
             input=example.get("input") or {},
             output=output,
             reference=example.get("reference") or {},
             trajectory=trajectory,
+            calls=calls,
             expected_trajectory=example.get("trajectory"),
             status=run_status,
             error=error,
@@ -773,7 +846,7 @@ class ExperimentJob:
         goal = str((example.get("metadata") or {}).get("goal") or sim.goal)
         first_input = {k: v for k, v in (example.get("input") or {}).items() if k != "messages"}
         transcript: list[dict[str, str]] = []
-        trajectory: list[str] = []
+        calls: list[ToolCall] = []
         tokens_in = tokens_out = 0
         cost = 0.0
         run_status, error, output, ended = "success", None, {}, "max_turns"
@@ -813,7 +886,7 @@ class ExperimentJob:
             tokens_in += handle.usage["input_tokens"]
             tokens_out += handle.usage["output_tokens"]
             cost += float(handle.usage["cost_usd"] or 0)
-            trajectory += trajectory_of(handle.events)
+            calls += calls_of(handle.events)
             transcript.append({"role": "assistant", "content": simulation.reply_of(output)})
             if run_status != "success":
                 ended = "error"
@@ -833,5 +906,5 @@ class ExperimentJob:
         final.update(transcript=transcript, turns=sum(t["role"] == "user" for t in transcript), ended=ended)
         await self._scored(
             result_id, wf, example, specs, run_status=run_status, error=error, output=final,
-            trajectory=trajectory, usage=(tokens_in, tokens_out, round(cost, 6)), started=started,
+            calls=calls, usage=(tokens_in, tokens_out, round(cost, 6)), started=started,
         )  # fmt: skip

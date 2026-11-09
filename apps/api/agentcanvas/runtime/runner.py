@@ -32,6 +32,7 @@ from agentcanvas.ir.models import Budget, Workflow
 from agentcanvas.log import get_logger
 from agentcanvas.registry import default_registry
 from agentcanvas.runtime import masking
+from agentcanvas.runtime.admission import Admission, Priority, priority_of
 from agentcanvas.runtime.identity import CURRENT, RunIdentity
 from agentcanvas.runtime.tracing import trace_ref
 from agentcanvas.runtime.trajectory import compact
@@ -87,6 +88,8 @@ class RunHandle:
     event_times: list[int] = field(default_factory=list)  # wall clock (ns) of each event, for trace export (S15)
     alerted: set[tuple[str, float]] = field(default_factory=set)  # (period, share) cost alerts this run checked
     routing: list[dict[str, Any]] = field(default_factory=list)  # the model each routed block got (services/routing.py)
+    project_id: str | None = None
+    priority: int = 0  # in the run queue: 1 high, 0 normal, -1 low (runtime/admission.py)
 
 
 def _plain(value: Any) -> Any:
@@ -308,6 +311,7 @@ class Runner:
         self.router: Callable[[Any, Workflow, str], Awaitable[tuple[Workflow, list[dict[str, Any]]]]] | None = None
         # G-5: files sent inline in a run's input (AGENTCANVAS_MAX_UPLOAD_MB, AGENTCANVAS_MAX_PROJECT_FILES_MB)
         self.max_file_bytes, self.max_project_file_bytes = DEFAULT_MAX_BYTES, 0
+        self.admission: Admission | None = None  # the run queue, with a concurrent-run limit (runtime/admission.py)
 
     @property
     def models(self) -> ModelService:
@@ -365,12 +369,14 @@ class Runner:
         visitor_hash: str | None = None,
         project_files: bool = False,
         service_connection: bool = False,
+        priority: Priority | None = None,
     ) -> RunHandle:
         """Start a run. `context=None` reuses the context of the last run on `context_from` (default: this thread).
         A deployment's run takes only files given to that deployment (`visitor_hash`: a share link's visitor, whose
         own uploads on the link it may use); `project_files`: the input was written by a builder (a schedule's), so
         any of the project's files. `service_connection`: the person who starts it may use the organisation's service
-        connection (an admin); a deployment's runs always may."""
+        connection (an admin); a deployment's runs always may. `priority`: its place in the organisation's run queue
+        when a concurrent-run limit holds it back (default: low for test runs, else normal)."""
         if self.draining:
             raise Unavailable("this server is restarting; retry the request", retry_after=5)
         adapter = self.adapter_for(wf)
@@ -448,6 +454,7 @@ class Runner:
                         trace_url=trace_ref(run_id),
                         labels=labels or None,
                         origin=origin,
+                        priority=priority_of(priority, origin),
                     )
                 )
                 decided: list[str] = []
@@ -495,6 +502,7 @@ class Runner:
         handle.traced = trace_ref(run_id) is not None
         handle.event_depth = event_depth
         handle.routing = routing
+        handle.project_id, handle.priority = project_id, priority_of(priority, origin)
         handle.decided = decided  # an error before the answer is applied puts them back in the Inbox (R-4)
         if input is not None and resume is None and checkpoint_id is None and origin != "test":
             handle.input = _plain(input)  # a copy: the engine may turn the caller's message dicts into objects in place
@@ -586,6 +594,13 @@ class Runner:
             )
             for note in h.routing:
                 await self._emit(h, {"type": "CUSTOM", "name": "ac.route", "value": note})
+            if self.admission is not None:  # past the organisation's concurrent-run limit it waits for a slot
+
+                async def queued(place: dict[str, Any]) -> None:
+                    await self._emit(h, {"type": "CUSTOM", "name": "ac.queued", "value": place})
+
+                await self.admission.wait(h.run_id, spec.org_id, h.project_id, queued)
+                started = time.perf_counter()  # its duration (and budget's time limit) count from here
             before = await self._spent(h, budget) if budget else Spent()
             check_budget(budget, h.usage, before)  # a conversation that is already over budget does not start
             resources = self.resources(spec.thread_id, spec.workflow)
@@ -663,6 +678,8 @@ class Runner:
             finally:  # however the save went, whoever waits for the run is told it is over
                 h.finished_at = time.monotonic()
                 h.done.set()
+                if self.admission is not None:
+                    self.admission.freed()
                 self._evict()  # a quiet server must not hold finished runs' events beyond its limits
                 async with h.changed:
                     h.changed.notify_all()

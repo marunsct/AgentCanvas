@@ -1,4 +1,5 @@
 # Documentation site (M6-T8): `uvx --with mkdocs-material mkdocs serve` (or `make docs`)
+# Two sets: the user guide (docs/user-guide) and the developer documentation (docs/developer, map in its README.md).
 site_name: AgentCanvas
 site_description: Visual agentic workflows compiled to LangGraph / LangChain / Deep Agents
 repo_url: https://github.com/marunsct/AgentCanvas
@@ -9,82 +10,97 @@ theme:
 markdown_extensions:
   [tables, admonition, toc, attr_list, pymdownx.superfences, pymdownx.details, {pymdownx.tabbed: {alternate_style: true}}]
 not_in_nav: |
-  /agent-canvas-spec/adapters/*
-  /agent-canvas-spec/build-guide/reference/**
+  /developer/spec/adapters/*
+  /developer/build-guide/reference/**
 validation:
   links:
     not_found: info
     anchors: info
   omitted_files: info
 nav:
-  - Home: agent-canvas-spec/README.md
+  - Home: index.md
   - User guide:
       - Overview: user-guide/index.md
-      - Run on your computer: user-guide/run-locally.md
-      - Beginner's guide: user-guide/beginner-guide.md
-      - Getting started: user-guide/getting-started.md
-      - Template gallery: user-guide/templates.md
-      - Coming from OpenAI Agent Builder, Flowise, Langflow or n8n: user-guide/switching.md
-      - Core concepts: user-guide/concepts.md
-      - Models and API keys: user-guide/models.md
-      - Building on the canvas: user-guide/canvas.md
-      - Choosing a framework: user-guide/frameworks.md
-      - AI Copilot: user-guide/copilot.md
-      - Block reference: user-guide/widgets.md
-      - Running and debugging: user-guide/run-and-debug.md
-      - Workspace, secrets and events: user-guide/workspace.md
-      - Knowledge: user-guide/knowledge.md
-      - Memory: user-guide/memory.md
-      - Evaluation Studio: user-guide/evaluation.md
-      - Publish and integrate: user-guide/publish.md
-      - Connect to other agents and tools: user-guide/agents-and-connectors.md
-      - Export and deploy: user-guide/export.md
-      - Settings and moving around: user-guide/settings.md
-      - Organisations, roles and policies: user-guide/accounts.md
-      - Deploy and operate: user-guide/deploy.md
-      - Server settings: user-guide/server-settings.md
+      - Start here:
+          - Run on your computer: user-guide/run-locally.md
+          - Beginner's guide: user-guide/beginner-guide.md
+          - Getting started: user-guide/getting-started.md
+          - Template gallery: user-guide/templates.md
+          - Coming from OpenAI Agent Builder, Flowise, Langflow or n8n: user-guide/switching.md
+          - Core concepts: user-guide/concepts.md
+      - Build and run:
+          - Models and API keys: user-guide/models.md
+          - Building on the canvas: user-guide/canvas.md
+          - Choosing a framework: user-guide/frameworks.md
+          - AI Copilot: user-guide/copilot.md
+          - Block reference: user-guide/widgets.md
+          - Running and debugging: user-guide/run-and-debug.md
+          - Workspace, secrets and events: user-guide/workspace.md
+          - Knowledge: user-guide/knowledge.md
+          - Memory: user-guide/memory.md
+          - Evaluation Studio: user-guide/evaluation.md
+      - Ship:
+          - Publish and integrate: user-guide/publish.md
+          - Connect to other agents and tools: user-guide/agents-and-connectors.md
+          - Export and deploy: user-guide/export.md
+      - Settings and administration:
+          - Settings and moving around: user-guide/settings.md
+          - Organisations, roles and policies: user-guide/accounts.md
+      - Operate a server:
+          - Deploy and operate: user-guide/deploy.md
+          - Operations reference: user-guide/operations.md
+          - Server settings: user-guide/server-settings.md
       - FAQ: user-guide/faq.md
-  - Specification:
-      - Functional spec: agent-canvas-spec/01-functional-spec.md
-      - Technical architecture: agent-canvas-spec/02-technical-architecture.md
-      - Graph IR & compiler: agent-canvas-spec/03-graph-ir-and-compiler.md
-      - Node catalog: agent-canvas-spec/04-node-catalog.md
-      - Workspaces, scripting & events: agent-canvas-spec/05-workspaces-scripting-events.md
-      - Roadmap & risks: agent-canvas-spec/06-roadmap-risks.md
-      - Worked example: agent-canvas-spec/07-worked-example.md
-      - Persistence & memory: agent-canvas-spec/08-persistence-memory-data-modeling.md
-      - Self-improving agents: agent-canvas-spec/09-self-improving-agents.md
-      - Concept & new features: agent-canvas-spec/15-concept-evolution-and-new-features.md
-      - Competitive roadmap: agent-canvas-spec/16-competitive-roadmap.md
-      - Framework coverage review: agent-canvas-spec/17-framework-coverage-review.md
-      - Identity and tenancy plan: agent-canvas-spec/18-identity-and-tenancy-plan.md
-      - Threat model: agent-canvas-spec/19-threat-model.md
-      - Deep review v0.6: agent-canvas-spec/14-deep-review-v0.6.md
+  - Developer:
+      - Start here: developer/README.md
+      - Handover: developer/handover.md
+      - Status and roadmap (hardening.md): developer/hardening.md
+      - Decisions log: developer/decisions.md
+      - Build guide:
+          - Overview: developer/build-guide/README.md
+          - Concepts primer: developer/build-guide/00-concepts-primer.md
+          - Environment setup: developer/build-guide/01-environment-setup.md
+          - Repository & conventions: developer/build-guide/02-repository-and-conventions.md
+          - Walking skeleton: developer/build-guide/03-walking-skeleton-tutorial.md
+          - Implementation plan: developer/build-guide/04-implementation-plan.md
+          - Backend guide: developer/build-guide/05-backend-guide.md
+          - Frontend guide: developer/build-guide/06-frontend-guide.md
+          - Compiler & node types: developer/build-guide/07-compiler-and-node-types.md
+          - Testing & quality: developer/build-guide/08-testing-and-quality.md
+          - Security checklist: developer/build-guide/10-security-checklist.md
+          - Troubleshooting FAQ: developer/build-guide/11-troubleshooting-faq.md
+          - Traceability: developer/build-guide/12-traceability.md
+          - Copilot real-model evaluation: developer/build-guide/14-copilot-evaluation.md
+          - Upgrading an agent framework: developer/build-guide/16-framework-upgrades.md
+          - Spikes:
+              - SP-2 LangSmith sandbox: developer/build-guide/spikes/SP-2-langsmith-sandbox.md
+              - SP-3 v3 streaming: developer/build-guide/spikes/SP-3-v3-streaming.md
+              - SP-4 ServerRuntime hosting: developer/build-guide/spikes/SP-4-server-runtime-hosting.md
+      - Specification:
+          - Overview: developer/spec/README.md
+          - Functional spec: developer/spec/01-functional-spec.md
+          - Technical architecture: developer/spec/02-technical-architecture.md
+          - Graph IR & compiler: developer/spec/03-graph-ir-and-compiler.md
+          - Node catalog: developer/spec/04-node-catalog.md
+          - Workspaces, scripting & events: developer/spec/05-workspaces-scripting-events.md
+          - Roadmap & risks: developer/spec/06-roadmap-risks.md
+          - Worked example: developer/spec/07-worked-example.md
+          - Persistence & memory: developer/spec/08-persistence-memory-data-modeling.md
+          - Self-improving agents: developer/spec/09-self-improving-agents.md
+          - Concept & new features: developer/spec/15-concept-evolution-and-new-features.md
+          - Framework coverage review: developer/spec/17-framework-coverage-review.md
+          - Identity and tenancy plan: developer/spec/18-identity-and-tenancy-plan.md
+          - Threat model: developer/spec/19-threat-model.md
+      - Architecture decisions: developer/adr/README.md
       - History:
-          - Improvement plan: agent-canvas-spec/10-improvement-plan.md
-          - Framework-agnostic plan: agent-canvas-spec/11-framework-agnostic-plan.md
-          - Multi-framework technical spec: agent-canvas-spec/12-multi-framework-technical-spec.md
-          - Deep review report (v0.5): agent-canvas-spec/13-deep-review-report.md
-  - Build guide:
-      - Overview: agent-canvas-spec/build-guide/README.md
-      - Concepts primer: agent-canvas-spec/build-guide/00-concepts-primer.md
-      - Environment setup: agent-canvas-spec/build-guide/01-environment-setup.md
-      - Repository & conventions: agent-canvas-spec/build-guide/02-repository-and-conventions.md
-      - Walking skeleton: agent-canvas-spec/build-guide/03-walking-skeleton-tutorial.md
-      - Implementation plan: agent-canvas-spec/build-guide/04-implementation-plan.md
-      - Backend guide: agent-canvas-spec/build-guide/05-backend-guide.md
-      - Frontend guide: agent-canvas-spec/build-guide/06-frontend-guide.md
-      - Compiler & node types: agent-canvas-spec/build-guide/07-compiler-and-node-types.md
-      - Testing & quality: agent-canvas-spec/build-guide/08-testing-and-quality.md
-      - Deployment & operations: agent-canvas-spec/build-guide/09-deployment-and-operations.md
-      - Security checklist: agent-canvas-spec/build-guide/10-security-checklist.md
-      - Troubleshooting FAQ: agent-canvas-spec/build-guide/11-troubleshooting-faq.md
-      - Traceability: agent-canvas-spec/build-guide/12-traceability.md
-      - Copilot real-model evaluation: agent-canvas-spec/build-guide/14-copilot-evaluation.md
-      - Upgrading an agent framework: agent-canvas-spec/build-guide/16-framework-upgrades.md
-      - Sprint plan & execution log: agent-canvas-spec/build-guide/13-sprint-plan.md
-      - Spikes:
-          - SP-2 LangSmith sandbox: agent-canvas-spec/build-guide/spikes/SP-2-langsmith-sandbox.md
-          - SP-3 v3 streaming: agent-canvas-spec/build-guide/spikes/SP-3-v3-streaming.md
-          - SP-4 ServerRuntime hosting: agent-canvas-spec/build-guide/spikes/SP-4-server-runtime-hosting.md
-  - Architecture decisions: adr/README.md
+          - Overview: developer/history/README.md
+          - Handover snapshot (2026-10): developer/history/handover-2026-10.md
+          - Progress log: developer/history/progress-log.md
+          - Product plan (2026-10): developer/history/product-plan-2026-10.md
+          - Sprint plan & execution log: developer/history/sprint-plan-and-execution-log.md
+          - Competitive roadmap: developer/history/16-competitive-roadmap.md
+          - Deep review v0.6: developer/history/14-deep-review-v0.6.md
+          - Deep review report (v0.5): developer/history/13-deep-review-report.md
+          - Multi-framework technical spec: developer/history/12-multi-framework-technical-spec.md
+          - Framework-agnostic plan: developer/history/11-framework-agnostic-plan.md
+          - Improvement plan: developer/history/10-improvement-plan.md

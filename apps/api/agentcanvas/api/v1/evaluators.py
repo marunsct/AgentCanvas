@@ -17,6 +17,7 @@ from agentcanvas.db.repositories import ProjectRepo, WorkflowRepo
 from agentcanvas.errors import Conflict, InvalidInput, NotFound
 from agentcanvas.evaluation import (
     DEFAULT_THRESHOLD,
+    JUDGES,
     KINDS,
     ONLY_IN_EXPERIMENTS,
     Kind,
@@ -94,7 +95,7 @@ async def _check_parts(session: AsyncSession, wf_id: str, name: str, kind: str, 
 async def _with_judge(session: AsyncSession, wf_id: str, kind: str, config: dict[str, Any]) -> dict[str, Any]:
     """A judge saved without a model gets the project's judge model now (Settings > Models), so its scores keep
     saying which model gave them."""
-    if kind not in ("llm_judge", "pairwise") or config.get("model"):
+    if kind not in JUDGES or config.get("model"):
         return config
     row = await WorkflowRepo(session).require(wf_id)
     project = await ProjectRepo(session).require(row.project_id)

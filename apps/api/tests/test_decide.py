@@ -3,13 +3,26 @@
 from __future__ import annotations
 
 import pytest
+from test_flow_frameworks import installed
+from test_mastra import installed as mastra_installed
 from test_runs_v1 import events, make
 
-from agentcanvas.adapters.langchain.nodes import decision
+from agentcanvas.expr import decision
 from agentcanvas.ir.models import Workflow
 from agentcanvas.validation import validate
 
 ROUTE = {"route": "billing", "description": "invoices and payments"}
+MARKS = {"openai_agents": (), "mastra": mastra_installed}  # in-process; Node.js with Mastra
+FLOWS = [
+    "pydantic_ai",
+    "agno",
+    "microsoft_agent_framework",
+    "strands",
+    "llamaindex",
+    "openai_agents",
+    "crewai",
+    "google_adk",
+]
 
 
 def decide_wf(**config) -> dict:
@@ -78,14 +91,15 @@ async def test_a_decision_below_the_minimum_confidence_takes_the_default_path(ap
     assert (await _run(api_client, wf, '{"choice": "tech", "confidence": 0.8}'))["team"] == "tech"
 
 
-def test_its_paths_are_outputs_and_other_frameworks_refuse_it():
+def test_its_paths_are_outputs_on_every_framework():
     wf = Workflow.model_validate(decide_wf())
     assert not [d for d in validate(wf) if d.severity == "error"]
     loose = decide_wf()
     loose["edges"] = [e for e in loose["edges"] if e["id"] != "e_tech"]
     assert any(d.code for d in validate(Workflow.model_validate(loose)) if d.severity == "error")  # a path not wired
-    elsewhere = Workflow.model_validate({**decide_wf(), "framework": "openai_agents"})
-    assert any(d.code == "P001" and "core.decide" in d.message for d in validate(elsewhere))
+    for framework in FLOWS:  # every framework runs it now
+        elsewhere = Workflow.model_validate({**decide_wf(), "framework": framework})
+        assert not [d for d in validate(elsewhere) if d.severity == "error"], framework
 
 
 @pytest.mark.parametrize(
@@ -112,3 +126,75 @@ async def test_the_exported_code_decides_as_the_canvas_does(tmp_path, reply, tea
     interpreted = await build_graph(wf, res(), checkpointer=InMemorySaver()).ainvoke({"ticket": "down"}, cfg)
     exported = await mod.build_graph(res(), checkpointer=InMemorySaver()).ainvoke({"ticket": "down"}, cfg)
     assert interpreted == exported and interpreted["team"] == team
+
+
+@pytest.mark.parametrize(
+    ("framework", "reply", "minimum", "team"),
+    [
+        pytest.param(f, reply, minimum, team, marks=MARKS[f] if f in MARKS else installed(f))
+        for f in FLOWS
+        for reply, minimum, team in [
+            ('{"choice": "tech", "confidence": 0.9, "reason": "an outage"}', None, "tech"),
+            ('{"choice": "tech", "confidence": 0.5}', 0.7, "other"),
+            ("I would say billing", None, "other"),
+        ]
+    ],
+)
+async def test_flow_frameworks_decide_as_langgraph_does(framework, reply, minimum, team):
+    from test_flow_frameworks import _run as run_flow
+
+    from agentcanvas.adapters import create_adapter
+
+    config = {} if minimum is None else {"min_confidence": minimum}
+    wf = Workflow.model_validate({**decide_wf(**config), "framework": framework})
+    assert not [d for d in validate(wf) if d.severity == "error"]
+    adapter = create_adapter(framework)
+    async with adapter.persistence(None):
+        (events,) = await run_flow(adapter, wf, {"ticket": "the site is down"}, {"model": [reply]})
+    assert events[-1].get("outcome") == "success", events[-3:]
+    assert events[-1]["output"]["team"] == team
+    assert events[-1]["output"]["decided"]["choice"] == ("tech" if "tech" in reply else None)
+
+
+def test_the_generated_flow_reads_like_the_canvas():
+    from agentcanvas.adapters.pydantic_ai import codegen
+
+    source = codegen.generate(Workflow.model_validate({**decide_wf(min_confidence=0.6), "framework": "pydantic_ai"}))
+    assert 'ROUTE_TICKET_CHOICES = {"billing": "invoices and payments", "tech": "bugs and outages"}' in source
+    assert "run.decide_prompt(rt.render(ROUTE_TICKET_PROMPT, state), ROUTE_TICKET_CHOICES)" in source
+    assert 'decides="decided", min_confidence=0.6, default="other"' in source
+    assert '"n_d": {"billing": ["n_billing"], "tech": ["n_tech"], "other": ["n_other"]}' in source
+
+
+@pytest.mark.parametrize(
+    "text",
+    ['{"choice": "tech", "confidence": "0.4"}', "no", '{"choice": "x", "confidence": 2, "reason": 1}',
+     '{"choice": null, "confidence": true}', '{"choice": " billing ", "confidence": "nan", "reason": "r"}',
+     'ok {"confidence": ".5e0", "choice": "tech"} done', '{"choice": "tech", "confidence": "very"}', "[1, 2]"],
+)  # fmt: skip
+async def test_mastra_reads_an_answer_as_python_does(text, tmp_path):
+    """The TypeScript twin asks the same words and reads each answer the same way."""
+    import json
+    import shutil
+    import subprocess
+    from pathlib import Path
+
+    from agentcanvas.adapters import mastra as mastra_adapter
+    from agentcanvas.expr import DECIDE_INSTRUCTIONS, decide_prompt
+
+    here, node = mastra_adapter.mastra_dir(), mastra_adapter.node()
+    if here is None or node is None:
+        pytest.skip("no Mastra here (make mastra)")
+    shutil.copy(Path(mastra_adapter.__file__).parent / "flow.ts", tmp_path / "flow.ts")
+    (tmp_path / "node_modules").symlink_to(Path(here) / "node_modules")  # what flow.ts imports
+    script = tmp_path / "check.ts"
+    script.write_text(
+        'import { aiDecision, decidePrompt, DECIDE_INSTRUCTIONS } from "./flow.ts";\n'
+        f"console.log(JSON.stringify([aiDecision({json.dumps(text)}, {{billing: 'a', tech: 'b'}}), "
+        "decidePrompt('Q', {billing: 'a', tech: 'b'}), DECIDE_INSTRUCTIONS]));\n"
+    )
+    out = subprocess.run([node, str(script)], cwd=tmp_path, capture_output=True, text=True, timeout=60, check=True)
+    made, prompt, words = json.loads(out.stdout)
+    assert made == decision(text, ["billing", "tech"])
+    assert prompt == decide_prompt("Q", {"billing": "a", "tech": "b"})
+    assert words == DECIDE_INSTRUCTIONS.replace("{{", "{").replace("}}", "}")

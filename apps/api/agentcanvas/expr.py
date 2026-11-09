@@ -2,10 +2,14 @@
 
 - Conditions (routers):   CEL  (https://cel.dev) via `cel-python`, e.g.  state.urgency == "high"
 - Text templates (prompts): sandboxed Jinja2, e.g.  "Classify: {{ state.ticket }}"
+- A "Decide with AI" step's question and how its model's answer is read: here because every framework's runtime and
+  every export carries this module, so all of them decide alike.
 """
 
 from __future__ import annotations
 
+import json
+import math
 from functools import lru_cache
 from typing import Any
 
@@ -83,3 +87,44 @@ def _jsonable(value: Any) -> Any:
     if isinstance(value, (str, int, float, bool)) or value is None:
         return value
     return str(value)
+
+
+# ------------------------------------------------------------- Decide with AI ----
+DECIDE_INSTRUCTIONS = (
+    "Choose exactly one of these options:\n{options}\n\nAnswer with JSON only, no other text: "
+    '{{"choice": "<one option name>", "confidence": <0 to 1, how sure you are>, "reason": "<one short sentence>"}}'
+)
+
+
+def decision(text: str, choices: list[str] | dict[str, str]) -> dict[str, Any]:
+    """The decision in a model's answer: {choice, confidence, reason}; `choice` is None when the answer names no
+    option (no JSON, or a name that is not one of `choices`)."""
+    start, end = text.find("{"), text.rfind("}")
+    try:
+        found = json.loads(text[start : end + 1]) if 0 <= start < end else {}
+    except ValueError:
+        found = {}
+    found = found if isinstance(found, dict) else {}
+    choice = str(found.get("choice", "")).strip()
+    raw = found.get("confidence")
+    try:
+        value = float(raw) if isinstance(raw, int | float | str) else math.nan
+    except ValueError:
+        value = math.nan
+    confidence = min(1.0, max(0.0, value)) if math.isfinite(value) else None
+    return {"choice": choice if choice in choices else None, "confidence": confidence,
+            "reason": str(found.get("reason") or "")[:500]}  # fmt: skip
+
+
+def chosen(made: Any, default: str, min_confidence: float | None) -> str:
+    """The path a decision takes: its choice, or `default` when it made none or is less sure than the minimum."""
+    made = made if isinstance(made, dict) else {}
+    confidence = made.get("confidence")
+    unsure = min_confidence is not None and (not isinstance(confidence, int | float) or confidence < min_confidence)
+    return default if unsure or not made.get("choice") else str(made["choice"])
+
+
+def decide_prompt(prompt: str, choices: dict[str, str]) -> str:
+    """What a Decide with AI step asks its model: the rendered question, the options and the answer's shape."""
+    options = "\n".join(f"- {route}: {when}" for route, when in choices.items())
+    return f"{prompt}\n\n" + DECIDE_INSTRUCTIONS.format(options=options)

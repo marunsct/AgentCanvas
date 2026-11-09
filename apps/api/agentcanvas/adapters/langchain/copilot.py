@@ -1,5 +1,5 @@
-"""The Copilot on Deep Agents (PLAN.md §2): the same turn as `copilot.service.CopilotTurn`, run by LangChain's agent
-harness instead of our own loop.
+"""The Copilot on Deep Agents (product-plan-2026-10.md §2): the same turn as `copilot.service.CopilotTurn`, run
+by LangChain's agent harness instead of our own loop.
 
 What the harness adds over the loop: the whole conversation is sent (summarised by the harness when it grows long,
 instead of the last 24 messages), a plan the agent keeps as a to-do list (`write_todos`, streamed to the panel), a

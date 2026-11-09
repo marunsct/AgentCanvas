@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.db.models import Dataset, DatasetVersion, Run, TestCase, Thread, WorkflowRow
 from agentcanvas.errors import Conflict, InvalidInput, NotFound
+from agentcanvas.evaluation import ExpectedCall
 from agentcanvas.ids import new_id
 from agentcanvas.ir.contract import contract
 from agentcanvas.ir.models import Workflow
@@ -38,7 +39,9 @@ class Example(BaseModel):
     input: dict[str, Any] = Field(default_factory=dict)
     context: dict[str, Any] | None = None
     reference: dict[str, Any] = Field(default_factory=dict, description="output channel -> expected value")
-    trajectory: list[str] | None = Field(default=None, description="expected tool calls, in order")
+    trajectory: list[ExpectedCall] | None = Field(
+        default=None, description='expected tool calls, in order: a name, or {"name", "args"} to check arguments'
+    )
     split: str = ""
     metadata: dict[str, Any] = Field(default_factory=dict)
 
@@ -47,7 +50,7 @@ class ExamplePatch(BaseModel):
     input: dict[str, Any] | None = None
     context: dict[str, Any] | None = None
     reference: dict[str, Any] | None = None
-    trajectory: list[str] | None = None
+    trajectory: list[ExpectedCall] | None = None
     split: str | None = None
     metadata: dict[str, Any] | None = None
 

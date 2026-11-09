@@ -900,6 +900,8 @@ CREATE TABLE public.run (
     events jsonb,
     origin text,
     stop_requested boolean DEFAULT false NOT NULL,
+    priority smallint DEFAULT 0 NOT NULL,
+    queued boolean DEFAULT false NOT NULL,
     CONSTRAINT run_mode CHECK ((mode = ANY (ARRAY['normal'::text, 'debug'::text]))),
     CONSTRAINT run_status CHECK ((status = ANY (ARRAY['running'::text, 'success'::text, 'interrupted'::text, 'error'::text, 'cancelled'::text])))
 );
@@ -2024,6 +2026,12 @@ CREATE INDEX run_score_deployment_idx ON public.run_score USING btree (deploymen
 --
 
 CREATE INDEX run_search_project_idx ON public.run_search USING btree (project_id, created_at);
+
+--
+-- Name: run_status_queued_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX run_status_queued_idx ON public.run USING btree (status, queued);
 
 --
 -- Name: run_thread_idx; Type: INDEX; Schema: public; Owner: -

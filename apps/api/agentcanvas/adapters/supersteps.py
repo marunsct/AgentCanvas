@@ -3,10 +3,10 @@
 Their agents are excellent, but a workflow's shape (paths, parallel branches, loops, people) is not theirs to draw,
 so a workflow becomes plain async Python: one function per block and a `Flow` that names the steps and what follows
 each (see `flowgen`). This module runs that `Flow` in supersteps, the way the canvas draws it: steps side by side
-run in the same round, a "wait for all" step waits for every branch, paths follow the first CEL rule that matches,
-and fields merge with their reducers. A step that waits for a person ends the run with a `Paused` value (JSON) that
-continues it later from that step, with the step's own framework state (a Pydantic AI message history, an Agno
-`RunOutput`) kept in `native`.
+run in the same round, a "wait for all" step waits for every branch, paths follow the first CEL rule that matches
+(a "Decide with AI" step's path is the choice its model made), and fields merge with their reducers. A step that
+waits for a person ends the run with a `Paused` value (JSON) that continues it later from that step, with the step's
+own framework state (a Pydantic AI message history, an Agno `RunOutput`) kept in `native`.
 
 Each framework's runtime subclasses `Run` with its AI calls (`text`, `agent`) and passes it to `run`. The same
 module runs inside AgentCanvas (in a worker process with the framework) and in exports.
@@ -25,7 +25,7 @@ from typing import Any, Protocol
 
 from jsonschema import Draft202012Validator
 
-from agentcanvas.expr import eval_condition, render_template
+from agentcanvas.expr import chosen, decide_prompt, decision, eval_condition, render_template
 
 YES_WORDS = {"yes", "y", "true", "approve", "approved", "ok", "okay"}
 ROLES = {"human": "user", "user": "user", "ai": "assistant", "assistant": "assistant", "system": "system"}
@@ -82,6 +82,8 @@ class Step:
     run: StepFn | None = None  # None: a path (router) or "wait for all" (join), which change nothing
     cases: list[tuple[str, str]] = field(default_factory=list)  # router: (CEL rule, route), first match wins
     default: str = "default"
+    decides: str | None = None  # a Decide with AI step: the field its decision is saved in, which picks the path
+    min_confidence: float | None = None  # ... below which it takes `default`
     disabled: bool = False
 
 
@@ -99,7 +101,10 @@ class Flow:
         nxt = self.start if node_id == "START" else self.next.get(node_id, [])
         if isinstance(nxt, dict):
             step = self.steps[node_id]
-            route = next((r for when, r in step.cases if eval_condition(when, values)), step.default)
+            if step.decides is not None:
+                route = chosen(values.get(step.decides), step.default, step.min_confidence)
+            else:
+                route = next((r for when, r in step.cases if eval_condition(when, values)), step.default)
             return list(nxt.get(route, []))
         return list(nxt)
 
@@ -460,6 +465,14 @@ class Run:
                     "structured_response": data}  # fmt: skip
         text = answer if isinstance(answer, str) else "" if answer is None else json.dumps(answer, default=str)
         return {output: [{"type": "ai", "role": "assistant", "content": text, "name": agent}]}
+
+    def decide_prompt(self, prompt: str, choices: dict[str, str]) -> str:
+        """What a Decide with AI step asks its model: the rendered question, the options and the answer's shape."""
+        return decide_prompt(prompt, choices)
+
+    def decision(self, reply: str, choices: dict[str, str], *, output: str) -> dict[str, Any]:
+        """The model's decision, saved in `output`; FLOW follows its choice (see `Step.decides`)."""
+        return {output: decision(reply, choices)}
 
     def limit_note(self, agent: str, limit: int, *, output: str) -> dict[str, Any]:
         note = f"Stopped: {agent} reached its limit of {limit} model calls before finishing."

@@ -22,6 +22,7 @@
     "core.script": "emulated",
     "knowledge.search": "emulated",
     "mw.model_call_limit": "emulated",
+    "core.decide": "emulated",
     "*": "unsupported"
   },
   "notes": {
@@ -34,6 +35,7 @@
     "core.human_input": "the node yields ADK's RequestInput and asks again when an answer does not fit",
     "core.script": "your workspace function is called from the workflow",
     "knowledge.search": "the workflow searches the knowledge base; exports search its file with the built-in embedder",
-    "mw.model_call_limit": "a before_model_callback that stops the run after that many model calls in one turn of the agent"
+    "mw.model_call_limit": "a before_model_callback that stops the run after that many model calls in one turn of the agent",
+    "core.decide": "a node of the ADK workflow whose route is the model's choice: the block's model is asked once to pick a path and say how sure it is, the decision {choice, confidence, reason} is saved and its route follows the choice (the default one when there is none or it is below the minimum confidence)"
   }
 }

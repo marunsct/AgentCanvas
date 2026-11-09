@@ -1,8 +1,9 @@
 # Deploy and operate
 
 This page is for whoever runs AgentCanvas for a team. To try it on one computer, use the one-command Docker setup
-in [Run AgentCanvas on your computer](run-locally.md#run-everything-in-docker). The developer-level runbook is the
-[deployment & operations guide](../agent-canvas-spec/build-guide/09-deployment-and-operations.md).
+in [Run AgentCanvas on your computer](run-locally.md#run-everything-in-docker). The detail behind this page (what
+the images and the chart contain, metrics, retention, restore, and a runbook for each alert) is in the
+[Operations reference](operations.md).
 
 ## What runs
 
@@ -217,6 +218,9 @@ best effort.
   `infra/observability/`.
 - **Traces:** set `OTEL_EXPORTER_OTLP_ENDPOINT` for OpenTelemetry; `LANGSMITH_TRACING` / `LANGSMITH_API_KEY` for
   LangSmith.
+
+The metrics, the log fields and what to do when an alert fires are in the
+[Operations reference](operations.md#observability).
 
 ## Backups
 

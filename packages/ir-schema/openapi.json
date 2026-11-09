@@ -3613,7 +3613,8 @@
               "composite",
               "pairwise",
               "retrieval",
-              "red_team"
+              "red_team",
+              "classifier"
             ],
             "title": "Kind",
             "type": "string"
@@ -3717,7 +3718,8 @@
               "composite",
               "pairwise",
               "retrieval",
-              "red_team"
+              "red_team",
+              "classifier"
             ],
             "title": "Kind",
             "type": "string"
@@ -3992,7 +3994,14 @@
             "anyOf": [
               {
                 "items": {
-                  "type": "string"
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ToolCall"
+                    }
+                  ]
                 },
                 "type": "array"
               },
@@ -4000,7 +4009,7 @@
                 "type": "null"
               }
             ],
-            "description": "expected tool calls, in order",
+            "description": "expected tool calls, in order: a name, or {\"name\", \"args\"} to check arguments",
             "title": "Trajectory"
           }
         },
@@ -4072,7 +4081,14 @@
             "anyOf": [
               {
                 "items": {
-                  "type": "string"
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ToolCall"
+                    }
+                  ]
                 },
                 "type": "array"
               },
@@ -4617,6 +4633,53 @@
           "ok"
         ],
         "title": "ExpressionResult",
+        "type": "object"
+      },
+      "FailureGroup": {
+        "properties": {
+          "evaluator": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the evaluator that failed the runs; None: the run itself did not succeed",
+            "title": "Evaluator"
+          },
+          "examples": {
+            "description": "the examples (at most 10)",
+            "items": {
+              "type": "string"
+            },
+            "title": "Examples",
+            "type": "array"
+          },
+          "reason": {
+            "description": "what they have in common: the evaluator's comment or the run's error",
+            "title": "Reason",
+            "type": "string"
+          },
+          "runs": {
+            "title": "Runs",
+            "type": "integer"
+          },
+          "sample": {
+            "default": "",
+            "description": "one failed run's full comment, for evaluators that write their own",
+            "title": "Sample",
+            "type": "string"
+          }
+        },
+        "required": [
+          "evaluator",
+          "reason",
+          "runs",
+          "examples"
+        ],
+        "title": "FailureGroup",
         "type": "object"
       },
       "FeedbackIn": {
@@ -7843,6 +7906,21 @@
       },
       "Observation": {
         "properties": {
+          "calls": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ToolCall"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the same calls with their arguments (default: the trajectory's names, no arguments)",
+            "title": "Calls"
+          },
           "error": {
             "anyOf": [
               {
@@ -7858,7 +7936,14 @@
             "anyOf": [
               {
                 "items": {
-                  "type": "string"
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ToolCall"
+                    }
+                  ]
                 },
                 "type": "array"
               },
@@ -8164,6 +8249,20 @@
             ],
             "description": "not below the server's; 0 = forever",
             "title": "Audit Retention Days"
+          },
+          "max_concurrent_runs": {
+            "anyOf": [
+              {
+                "maximum": 100000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "runs in flight at once; past it runs wait in a queue by priority",
+            "title": "Max Concurrent Runs"
           },
           "memory_retention_days": {
             "anyOf": [
@@ -10206,6 +10305,23 @@
               }
             ],
             "title": "Pins"
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "enum": [
+                  "high",
+                  "normal",
+                  "low"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "its place in the organisation's run queue, when a concurrent-run limit holds it back (default: normal)",
+            "title": "Priority"
           },
           "stream": {
             "default": true,
@@ -12429,6 +12545,20 @@
             "title": "Examples",
             "type": "integer"
           },
+          "failure_summary": {
+            "default": "",
+            "description": "the failures in a sentence or two; empty when nothing failed",
+            "title": "Failure Summary",
+            "type": "string"
+          },
+          "failures": {
+            "description": "why runs failed, grouped, most runs first (at most 10)",
+            "items": {
+              "$ref": "#/components/schemas/FailureGroup"
+            },
+            "title": "Failures",
+            "type": "array"
+          },
           "flaky": {
             "description": "repeated runs: examples that passed in some runs and failed in others (at most 100)",
             "items": {
@@ -13303,6 +13433,33 @@
           "revoked_at"
         ],
         "title": "TokenOut",
+        "type": "object"
+      },
+      "ToolCall": {
+        "description": "One tool call: in an example, its arguments are what the run's call must have (a value, or {\"$regex\": \u2026}).",
+        "properties": {
+          "args": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Args"
+          },
+          "name": {
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "ToolCall",
         "type": "object"
       },
       "ToolUse": {

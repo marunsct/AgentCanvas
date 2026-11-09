@@ -1,5 +1,6 @@
-"""What the Deep Agents engine adds over the loop (PLAN.md section 2): text as it is generated, the agent's plan as a
-live to-do list, the full workflow as a file, the whole conversation instead of the last 24 messages, and no shell."""
+"""What the Deep Agents engine adds over the loop (product-plan-2026-10.md §2): text as it is generated, the agent's
+plan as a live to-do list, the full workflow as a file, the whole conversation instead of the last 24 messages, and no
+shell."""
 
 from __future__ import annotations
 

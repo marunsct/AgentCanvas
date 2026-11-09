@@ -4,8 +4,8 @@ All notable changes to AgentCanvas. Versions follow [semver](https://semver.org)
 
 ## Unreleased
 
-The product pass ([PLAN.md](PLAN.md): one app shell, Settings, the Copilot), the hardening passes and the deep
-review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged for them yet.
+The product pass ([PLAN.md](docs/developer/history/product-plan-2026-10.md): one app shell, Settings, the Copilot), the hardening passes and the deep
+review of 2026-10-29 ([HARDENING.md](docs/developer/hardening.md)); no version has been tagged for them yet.
 
 ### Security
 - The web image's pages send `Strict-Transport-Security` (one year) when the request came over https, directly or from a
@@ -596,8 +596,21 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
 
 ### Added
 - [Server settings](docs/user-guide/server-settings.md): every server setting with its default and what it does, generated from the code (a test keeps it current).
-- **Decide with AI** block (`core.decide`, LangGraph): a model picks one of the paths you describe and saves
+- **Runs at once and run priority:** with `AGENTCANVAS_MAX_CONCURRENT_RUNS`, or an organisation's lower limit (Settings ›
+  Organisation › General), a run past the limit waits in the organisation's queue, shared by every server, and the run
+  panel shows its place in line. The next slot goes to the highest priority (`priority` high, normal or low on a run;
+  experiments and test cases are low), then the oldest. No limit by default, so nothing waits until one is set.
+- **Decide with AI** block (`core.decide`): a model picks one of the paths you describe and saves
   `{choice, confidence, reason}`; an answer outside the choices, or below a minimum confidence, takes the default path.
+  It runs on every framework, asked with the same words and read the same way (on CrewAI a `@router` method, on ADK a
+  routed node, on the flow frameworks and Mastra a step whose path is the choice), and exports do the same.
+- **AI classification** evaluator (`classifier`): a model puts the output in one of your categories (polite or rude,
+  on topic or not), asked like Decide with AI; it passes in a passing category, optionally only when sure enough.
+- Each experiment target says why its runs failed: run errors and evaluator comments grouped (numbers and quoted values
+  taken out), with the examples of each group and a one-line summary (`failures`, `failure_summary`).
+- The tool trajectory evaluator can check arguments: an example's expected call can be `{"name", "args"}`, an argument
+  matched by value or by `{"$regex": …}`, and the evaluator's **arguments** setting compares them as a subset, exactly or
+  not at all. In any order and subset modes each expected call is paired with a different run call.
 - Experiments can run each example several times (**runs per example**, `repetitions`, up to 10) and report pass@k,
   pass^k, the flaky examples and each evaluator's spread; pairwise judges compare each run with the baseline's same run.
 - **Stop all runs** (Settings › Organisation › General, `POST /v1/org/runs/stop`): an admin stops every run in flight in

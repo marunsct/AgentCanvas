@@ -22,6 +22,7 @@
     "core.script": "emulated",
     "knowledge.search": "emulated",
     "mw.model_call_limit": "emulated",
+    "core.decide": "emulated",
     "*": "unsupported"
   },
   "notes": {
@@ -33,6 +34,7 @@
     "core.script": "your workspace function is called from the flow",
     "knowledge.search": "the flow searches the knowledge base; exports search its file with the built-in embedder",
     "core.agent": "an edited tool call is sent back to the agent to make again with the new arguments",
-    "mw.model_call_limit": "becomes the agent's max_turns (model calls in one run of the agent); a per-conversation limit is not kept"
+    "mw.model_call_limit": "becomes the agent's max_turns (model calls in one run of the agent); a per-conversation limit is not kept",
+    "core.decide": "an Agent with the block's model is asked once (Runner.run) to pick a path and say how sure it is; the decision {choice, confidence, reason} is saved and the flow follows the choice (the default path when there is none or it is below the minimum confidence)"
   }
 }

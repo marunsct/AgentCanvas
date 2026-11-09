@@ -42,6 +42,7 @@ from agentcanvas.log import configure_logging, get_logger
 from agentcanvas.registry import default_registry
 from agentcanvas.runtime import masking
 from agentcanvas.runtime import paused as paused_runs
+from agentcanvas.runtime.admission import Admission
 from agentcanvas.runtime.paused import DatabasePaused, DatabaseReplies, MemoryPaused
 from agentcanvas.runtime.runner import Runner
 from agentcanvas.security.auth import check_auth_settings
@@ -231,6 +232,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             # every run, whatever started it (triggers, events, hand-over), passes the security rules first
             app.state.org_settings = OrgSettingsCache(db)
+
+            async def concurrent_limit(project_id: str | None) -> int:
+                return (await app.state.org_settings.for_project(settings, project_id)).max_concurrent_runs
+
+            runner.admission = Admission(db, concurrent_limit, stale_after_s=settings.orphan_after_s)
             runner.prepare_hooks.append(
                 RunGate(
                     settings,

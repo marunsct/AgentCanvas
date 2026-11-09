@@ -261,7 +261,7 @@ def test_the_alerts_watch_series_the_api_exports_and_link_to_runbooks_that_exist
     assert "job=" not in down["expr"]  # the scrape job's name is the operator's (kubernetes-pods), not ours
     (metric,) = re.findall(r"absent\((\w+)\)", down["expr"])
     assert f"\n{metric} " in observability.generate_latest().decode()  # exported unlabelled, from start-up
-    guide = (ROOT / "docs" / "agent-canvas-spec" / "build-guide" / "09-deployment-and-operations.md").read_text()
+    guide = (ROOT / "docs" / "user-guide" / "operations.md").read_text()
     slugs = {
         re.sub(r"[^\w\- ]", "", h.strip().lower()).replace(" ", "-") for h in re.findall(r"^#+ (.+)$", guide, re.M)
     }
@@ -341,7 +341,7 @@ def test_every_aes_key_size_the_guides_allow_encrypts_checkpoints(monkeypatch, s
     serde = checkpoint_serde()
     kind, blob = serde.dumps_typed({"a": 1})
     assert "aes" in kind and serde.loads_typed((kind, blob)) == {"a": 1}
-    for path in ["docs/user-guide/deploy.md", "docs/agent-canvas-spec/build-guide/09-deployment-and-operations.md",
+    for path in ["docs/user-guide/deploy.md", "docs/user-guide/operations.md",
                  "infra/.env.prod.example"]:  # fmt: skip
         assert "exactly 32" not in (ROOT / path).read_text(), path
 

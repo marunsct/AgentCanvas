@@ -67,6 +67,11 @@ test("dataset, evaluator, experiment with a variant, results grid and comparison
   await expect(results).toContainText("Hi Ada");
   await expect(results.locator("thead")).toContainText("100%");
   await expect(results.locator("thead")).toContainText("0%");
+  // the variant's failures, grouped: "Hi Ada" is not the reference and does not say Hello
+  const why = results.getByTestId("failure-summary");
+  await expect(why).toContainText("runs failed. Most often: exact (");
+  await why.locator("summary").click();
+  await expect(why.locator("li", { hasText: "says hello" })).toContainText("not found in");
   await expect(page.getByTestId("experiments").locator("tr", { hasText: "running" })).toHaveCount(0);
 
   await page.getByLabel("baseline experiment").selectOption({ index: 1 });

@@ -51,4 +51,6 @@ Erase their memory namespace on the **Memory** page. Conversations are deleted a
 period (90 days by default).
 
 **Where do I report a bug or see what's planned?**
-On [GitHub](https://github.com/marunsct/AgentCanvas). `PROGRESS.md` lists what is done and pending.
+On [GitHub](https://github.com/marunsct/AgentCanvas). The
+[changelog](https://github.com/marunsct/AgentCanvas/blob/main/CHANGELOG.md) lists what changed in each release, and
+the [roadmap](https://github.com/marunsct/AgentCanvas/blob/main/docs/developer/hardening.md) what is open and planned.
