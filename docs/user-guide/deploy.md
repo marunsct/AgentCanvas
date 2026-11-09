@@ -190,7 +190,8 @@ neither sees no rows.
   `python -m agentcanvas.db.app_role`, which creates `agentcanvas_app` (no superuser, no `BYPASSRLS`, password
   `POSTGRES_APP_PASSWORD`); the API connects as that role. The Helm migrate Job does the same when the secret has
   `MIGRATE_DATABASE_URL` (the owner), `APP_DB_USER` and `APP_DB_PASSWORD`. Elsewhere, run migrations as the owner
-  (`make migrate` with the owner's `DATABASE_URL`) and set `AGENTCANVAS_AUTO_MIGRATE=false` on the API.
+  (`make migrate` with the owner's `DATABASE_URL`) and set `AGENTCANVAS_AUTO_MIGRATE=false` on the API. With it off, the
+  API refuses to start on a database the migrations have not reached and says which command to run.
 - The API sets `agentcanvas.all_tenants=on` as a connection startup option. Behind PgBouncer in transaction pooling
   mode, startup options are not passed on: use session pooling, or add the setting to the database role
   (`ALTER ROLE <api role> SET agentcanvas.all_tenants = 'on'`).

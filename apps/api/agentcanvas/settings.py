@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     database_url: str = Field(default="sqlite+aiosqlite:///./agentcanvas.db", validation_alias="DATABASE_URL")
     # LangGraph checkpointer/store location; defaults to the control DB ("memory" = ephemeral, tests only)
     persistence_url: str | None = None
-    auto_migrate: bool = True  # run Alembic `upgrade head` at startup
+    auto_migrate: bool = True  # run Alembic `upgrade head` at startup; off: refuse a database not at head
     seed_dev_data: bool = True  # create the default organisation/project/user when missing
     secret_key: str = "dev-only-change-me"  # signs sessions and links; staging and prod refuse the default
     # master key that wraps each organisation's data key (see agentcanvas/security/kms.py): "" derives it from

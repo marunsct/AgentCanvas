@@ -141,6 +141,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         db = Database(settings.database_url, settings.db_pool_size, settings.db_max_overflow)
         if settings.auto_migrate:
             await db.migrate()
+        else:
+            await db.check_migrated()  # migrated by someone else: refuse a database they have not reached yet
         if settings.seed_dev_data:
             async with db.sessionmaker() as s:
                 await seed_dev(s)

@@ -12,7 +12,7 @@ Lists are JSON (`["a", "b"]`), booleans `true` or `false`. Settings whose names 
 | `AGENTCANVAS_EDITION` | `"dev"` | hosted = multi-tenant service (E041 etc.) |
 | `DATABASE_URL` | `"sqlite+aiosqlite:///./agentcanvas.db"` | SQLAlchemy URL of the control DB. postgresql://… (production) or sqlite+aiosqlite:///… (local edition). |
 | `AGENTCANVAS_PERSISTENCE_URL` |  | LangGraph checkpointer/store location; defaults to the control DB ("memory" = ephemeral, tests only) |
-| `AGENTCANVAS_AUTO_MIGRATE` | `True` | run Alembic `upgrade head` at startup |
+| `AGENTCANVAS_AUTO_MIGRATE` | `True` | run Alembic `upgrade head` at startup; off: refuse a database not at head |
 | `AGENTCANVAS_SEED_DEV_DATA` | `True` | create the default organisation/project/user when missing |
 | `AGENTCANVAS_SECRET_KEY` | `"dev-only-change-me" (change it)` | signs sessions and links; staging and prod refuse the default |
 | `AGENTCANVAS_KMS_KEY` | `""` | master key that wraps each organisation's data key (see agentcanvas/security/kms.py): "" derives it from secret_key (development), or file:<path>, aws:<key ARN>, gcp:<key name>; previous keys still unwrap |

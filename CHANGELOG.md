@@ -943,6 +943,9 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
 - An e2e check that every control in the inspector has an accessible name and stays in the tab order.
 
 ### Changed
+- With `AGENTCANVAS_AUTO_MIGRATE=false`, the API refuses to start on a database the migrations have not reached (it
+  names the command to run) instead of failing request by request; a newer database (a rollback) starts with a
+  warning.
 - Agno and Strands (exports, the flow runtime and the image) use the OpenAI client 3.46.0 instead of 2.54.0. Its HTTP
   client is httpx2, which checks certificates against the operating system's store instead of `certifi`'s.
 - Claude Agent SDK 0.2.179 for designed-agent exports (bundled Claude Code CLI updates only).
