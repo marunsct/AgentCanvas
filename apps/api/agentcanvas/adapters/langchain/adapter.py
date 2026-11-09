@@ -52,7 +52,8 @@ class LangChainAdapter:
         self.memory_embedding: MemoryEmbedding | None = (
             None  # set before `persistence`: long-term memory's semantic index
         )
-        self._graphs: OrderedDict[tuple[str, int, str, str], tuple[Any, Any]] = OrderedDict()
+        # (IR, resources, workspace, secrets) -> (resources, graph, run warnings from building it: MCP tool drift)
+        self._graphs: OrderedDict[tuple[str, int, str, str], tuple[Any, Any, list[dict[str, Any]]]] = OrderedDict()
         self._cache_size = graph_cache_size
         self._shared = self.new_resources()
 
@@ -99,9 +100,7 @@ class LangChainAdapter:
 
     async def graph(self, wf: Workflow, resources: ac.Resources) -> Any:
         """Compiled graph for (IR, resources), cached: rebuilding per run is wasteful for real models."""
-        # the entry keeps `resources` alive, so its id cannot be reused; the revision changes when workspace code does,
-        # the fingerprint when a secret value does (a rotated key must reach the graph's model clients and MCP tools)
-        key = (ir_hash(wf), id(resources), resources.revision(), resources.secrets_fingerprint())
+        key = _graph_key(wf, resources)
         if key in self._graphs:
             self._graphs.move_to_end(key)
             return self._graphs[key][1]
@@ -109,10 +108,15 @@ class LangChainAdapter:
         plan = lower(wf, _registry(resources))
         await prepare(plan, resources)  # MCP tool discovery happens before the (synchronous) build
         graph = build_from_plan(plan, resources, checkpointer=p.checkpointer, store=p.store)
-        self._graphs[key] = (resources, graph)
+        self._graphs[key] = (resources, graph, _mcp_warnings(plan, resources))
         if len(self._graphs) > self._cache_size:
             self._graphs.popitem(last=False)
         return graph
+
+    def _graph_warnings(self, wf: Workflow, resources: ac.Resources) -> list[dict[str, Any]]:
+        """The warnings every run of the cached graph carries (MCP tools that pinning left out)."""
+        entry = self._graphs.get(_graph_key(wf, resources))
+        return entry[2] if entry is not None else []
 
     async def _read_graph(self, wf: Workflow, resources: ac.Resources) -> Any:
         """A graph to read or edit a conversation's state with: the run's own when it can be built, else one whose
@@ -133,14 +137,17 @@ class LangChainAdapter:
         p = self._persist()
         return build_from_plan(plan, reader, checkpointer=p.checkpointer, store=p.store)
 
-    async def _debug_graph(self, wf: Workflow, resources: ac.Resources, pins: dict[str, dict[str, Any]]) -> Any:
+    async def _debug_graph(
+        self, wf: Workflow, resources: ac.Resources, pins: dict[str, dict[str, Any]]
+    ) -> tuple[Any, list[dict[str, Any]]]:
         p = self._persist()
         plan = lower(wf, _registry(resources))
         for pn in plan.nodes:
             if pn.node.id in pins:
                 pn.pinned = pins[pn.node.id]
         await prepare(plan, resources)
-        return build_from_plan(plan, resources, checkpointer=p.checkpointer, store=p.store)
+        graph = build_from_plan(plan, resources, checkpointer=p.checkpointer, store=p.store)
+        return graph, _mcp_warnings(plan, resources)
 
     @staticmethod
     def _config(
@@ -275,14 +282,24 @@ class LangChainAdapter:
         self, spec: RunSpec, resources: ac.Resources, hidden: list[str]
     ) -> AsyncGenerator[dict[str, Any]]:
         wf = spec.workflow
-        if spec.pins or spec.mocks or spec.dry_run:  # debug aids: a one-off graph, never cached
-            if spec.mocks:
-                resources = resources.with_mocks(spec.mocks)
-            if spec.dry_run:
-                resources = resources.with_dry_run(dry_run_tools(wf, _registry(resources)))
-            graph = await self._debug_graph(wf, resources, spec.pins)
-        else:
-            graph = await self.graph(wf, resources)
+        if spec.pin_tools:  # a deployment or trigger run: app connectors offer the tools pinned at publish only
+            resources = resources.pinned()
+        try:
+            if spec.pins or spec.mocks or spec.dry_run:  # debug aids: a one-off graph, never cached
+                if spec.mocks:
+                    resources = resources.with_mocks(spec.mocks)
+                if spec.dry_run:
+                    resources = resources.with_dry_run(dry_run_tools(wf, _registry(resources)))
+                graph, warnings = await self._debug_graph(wf, resources, spec.pins)
+            else:
+                graph = await self.graph(wf, resources)
+                warnings = self._graph_warnings(wf, resources)
+        except ac.McpToolDrift as exc:  # a pinned tool changed and its connector is set to stop the run
+            yield {"type": "CUSTOM", "name": "ac.warning", "value": exc.warning}
+            yield {"type": "RUN_ERROR", "code": "mcp_tool_drift", "message": str(exc)}
+            return
+        for warning in warnings:
+            yield {"type": "CUSTOM", "name": "ac.warning", "value": warning}
         names, nested = node_index(wf), nested_index(wf)
         cfg = self._config(wf, spec.thread_id, spec.checkpoint_id, spec.run_id, spec.labels)
         if spec.org_id:  # memory nodes, memory tools and Deep Agent folders prefix their namespaces with it
@@ -447,6 +464,16 @@ class LangChainAdapter:
 def _redacted(event: dict[str, Any], hidden: list[str]) -> dict[str, Any]:
     """Mask project secret values wherever they show up in an event (e.g. an error echoing a header)."""
     return hide_values(event, hidden)
+
+
+def _graph_key(wf: Workflow, resources: ac.Resources) -> tuple[str, int, str, str]:
+    # the entry keeps `resources` alive, so its id cannot be reused; the revision changes when workspace code does,
+    # the fingerprint when a secret value does (a rotated key must reach the graph's model clients and MCP tools)
+    return (ir_hash(wf), id(resources), resources.revision(), resources.secrets_fingerprint())
+
+
+def _mcp_warnings(plan: Any, resources: ac.Resources) -> list[dict[str, Any]]:
+    return resources.mcp_warnings([(pr.resource.name, pr.resource.config) for pr in plan.mcp])
 
 
 def _registry(resources: Any) -> Any:

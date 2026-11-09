@@ -615,6 +615,7 @@ class Runner:
             org_id=org_id,
             user_id=user_id,
             service_connection=service_connection or deployment_id is not None,
+            pin_tools=deployment_id is not None or origin == "trigger",
             labels={
                 k: v
                 for k, v in {"origin": origin, "deployment_id": deployment_id, "version_id": version_id}.items()

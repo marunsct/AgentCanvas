@@ -492,6 +492,10 @@ class Resources:
         self._cache: OrderedDict[str, Any] = OrderedDict()  # model clients, least recently used first
         self.answers = AnswerCache()  # models' cached answers (S26), shared by this project's runs
         self._mcp: dict[tuple[str, str], list[BaseTool]] = {}
+        # deployment and trigger runs: MCP servers offer only the tools pinned at publish, unchanged (`pinned`)
+        self.pin_mcp = False
+        self._mcp_drift: dict[tuple[str, str], dict[str, Any] | None] = {}  # what pinning left out, per loaded server
+        self._pinned: Resources | None = None
         self._replays: dict[str, list[dict[str, Any]]] = {}  # tool resource -> recorded calls (FR-X-13 replay)
         # the server's knowledge bases (S24): (name, query, mode=, top_k=, min_score=) -> results; None = files
         self.knowledge: Callable[..., Awaitable[list[dict[str, Any]]]] | None = None
@@ -573,11 +577,29 @@ class Resources:
             return [dry_run_tool(t) if t.name in self.dry_run or mcp_tool_info(t)["destructive"] else t for t in found]
         return dry_run_tool(found) if name in self.dry_run or getattr(found, "name", None) in self.dry_run else found
 
+    def pinned(self) -> Resources:
+        """A copy whose MCP servers offer only the tools pinned when the version was published, as they were then
+        (deployment and trigger runs). One per Resources, so the graphs built with it are cached too."""
+        if self.pin_mcp:
+            return self
+        if getattr(self, "_pinned", None) is None:
+            clone = copy.copy(self)  # the same secrets, clients and caches; its own MCP tool lists
+            clone.pin_mcp, clone._mcp, clone._mcp_drift, clone._pinned = True, {}, {}, None
+            self._pinned = clone
+        assert self._pinned is not None
+        return self._pinned
+
+    def mcp_warnings(self, servers: Sequence[tuple[str, dict[str, Any]]]) -> list[dict[str, Any]]:
+        """What pinning left out of these (name, config) MCP servers' tools, as run warnings."""
+        found = (self._mcp_drift.get((name, self._key(config))) for name, config in servers)
+        return [d for d in found if d]
+
     def with_dry_run(self, tools: set[str]) -> Resources:
         """A copy whose named tools only record what they would have done (FR-X-02 dry run)."""
         clone = copy.copy(self)
         clone._overrides = {**self._overrides}
         clone.dry_run = set(tools)
+        clone._pinned = None  # its own pinned copy would have no dry run
         return clone
 
     def _tool(self, name: str, config: dict[str, Any], type_: str) -> Any:
@@ -655,6 +677,7 @@ class Resources:
         clone = copy.copy(self)  # the server's knowledge bases, files and answer cache too, like `with_dry_run`
         clone._overrides = {**self._overrides}
         clone._replays = {**self._replays}
+        clone._pinned = None  # its own pinned copy would have no mocks
         for name, replies in mocks.items():
             if replies and all(is_tool_recording(r) for r in replies):
                 clone._replays[name] = list(replies)
@@ -679,7 +702,11 @@ class Resources:
                     await _reachable_address(parts.hostname or "", port, private_ok=not self.public_only)
             tools = await mcp_tools(target)
             wanted = config.get("tool_filter") or []
-            self._mcp[key] = [t for t in tools if not wanted or t.name in wanted]
+            tools = [t for t in tools if not wanted or t.name in wanted]
+            if self.pin_mcp:
+                tools, drift = pin_mcp_tools(name, config, tools)  # raises McpToolDrift when set to fail the run
+                self._mcp_drift[key] = drift
+            self._mcp[key] = tools
         return self._mcp[key]
 
     def middleware(
@@ -880,6 +907,59 @@ async def mcp_tools(target: Any) -> list[BaseTool]:
 
     async with MCPAdapter(target) as adapter:
         return await adapter.list_tools()
+
+
+class McpToolDrift(Exception):
+    """An MCP server changed a pinned tool, and its block is set to fail the run then."""
+
+    def __init__(self, warning: dict[str, Any]):
+        super().__init__(warning["message"])
+        self.warning = warning
+
+
+def mcp_pins(config: dict[str, Any]) -> dict[str, str | None] | None:
+    """The tools a published MCP block may offer: name -> the fingerprint "Browse tools" recorded (None when it was
+    browsed before fingerprints were recorded, or named only in "Only these tools"). None: nothing is pinned (a
+    version published before pinning, or a block never browsed)."""
+    pins: dict[str, str | None] = {}
+    for d in config.get("discovered") or []:
+        if isinstance(d, dict) and isinstance(d.get("name"), str):
+            pins[d["name"]] = d["hash"] if isinstance(d.get("hash"), str) else None
+    if not pins:
+        pins = {str(n): None for n in config.get("tool_filter") or []}
+    return pins or None
+
+
+def pin_mcp_tools(
+    name: str, config: dict[str, Any], tools: list[BaseTool]
+) -> tuple[list[BaseTool], dict[str, Any] | None]:
+    """The tools a published version pinned, unchanged, and a run warning on what was left out (OWASP ASI04 rug
+    pulls and tool poisoning): a tool the builder never reviewed is dropped, and so is one whose description, input
+    schema or annotations changed since, unless the block is set to fail the run then (`McpToolDrift`)."""
+    pins = mcp_pins(config)
+    if pins is None:
+        return tools, {
+            "kind": "mcp_tool_drift", "resource": name, "unpinned": True, "added": [], "changed": [],
+            "message": f"'{name}': its tools were never browsed, so they are not pinned and the server's current "
+            "tools are offered. Browse its tools in the editor and publish again.",
+        }  # fmt: skip
+    added = [t.name for t in tools if t.name not in pins]
+    changed = [t.name for t in tools if pins.get(t.name) not in (None, mcp_tool_hash(t))]
+    if not added and not changed:
+        return tools, None
+    fail = config.get("on_tool_change") == "fail" and bool(changed)
+    parts = [f"new tool(s) {', '.join(added)}"] if added else []
+    parts += [f"changed tool(s) {', '.join(changed)}"] if changed else []
+    outcome = "the run stopped" if fail else "they were left out"
+    warning = {
+        "kind": "mcp_tool_drift", "resource": name, "added": added, "changed": changed,
+        "outcome": "failed" if fail else "dropped",
+        "message": f"'{name}' changed since this version was published ({'; '.join(parts)}): {outcome}. Browse its "
+        "tools in the editor to review them, then publish again.",
+    }  # fmt: skip
+    if fail:
+        raise McpToolDrift(warning)
+    return [t for t in tools if t.name not in added and t.name not in changed], warning
 
 
 def mcp_tool_info(tool: BaseTool) -> dict[str, Any]:

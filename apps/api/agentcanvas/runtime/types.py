@@ -43,6 +43,8 @@ class RunSpec:
     # closed by then, so it is handed over here and still counts for the run's tokens and cost
     on_usage: Callable[[dict[str, Any]], None] | None = None
     service_connection: bool = False  # connectors set to the service identity may use it though a person started it
+    # deployment and trigger runs: app connectors offer only the tools pinned at publish, unchanged (OWASP ASI04)
+    pin_tools: bool = False
 
 
 @dataclass

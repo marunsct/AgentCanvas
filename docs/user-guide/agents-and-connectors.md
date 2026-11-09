@@ -191,6 +191,24 @@ into an agent, and use **Browse tools** to pick tools.
 Each entry was checked against npm, PyPI or the official MCP registry when the gallery was built; its tooltip says
 what it needs.
 
+### Published tools are pinned
+
+An app's server can change after you reviewed its tools: a new tool appears, or a description is rewritten to steer
+the agent (a "rug pull" or tool poisoning). A published agent does not pick such changes up on its own.
+
+- **Browse tools** records, for every tool, a fingerprint of its whole description, its arguments and its
+  annotations (such as *destructive*). Publishing keeps that list with the version.
+- Runs of a deployment, and runs started by a schedule or webhook, offer the agent only the tools in that list, and
+  only while their fingerprint is unchanged. A tool the server added since is left out. A tool whose description,
+  arguments or annotations changed is left out too; set **When a published tool changes** to **fail** on the block
+  to stop the run instead.
+- The run shows a warning naming what was left out. Runs you start in the editor are not pinned, so you see what
+  the server offers now.
+- To accept a change, select the block, click **Browse tools**, review the tools, and publish again.
+
+A version published before tools were pinned keeps working: tools browsed then are pinned by name only, and a block
+that was never browsed offers the server's current tools, with a warning on every run. Publish again to pin them.
+
 ### Sign-in per person
 
 A connector that has the **Sign in with OAuth** setting (the apps above that accept only a sign-in come with it) does not use
