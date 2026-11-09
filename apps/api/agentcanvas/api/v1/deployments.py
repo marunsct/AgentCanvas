@@ -113,7 +113,10 @@ async def publish(
 
     async def run_tests():
         cases = await tests.list(wf_id)
-        return await tests.run(request.app.state.runner, wf, cases, lambda g: _context(wf, g, user), user_id=user.id)
+        # someone waits to publish: the checklist's runs do not wait behind every person's run in the run queue
+        return await tests.run(
+            request.app.state.runner, wf, cases, lambda g: _context(wf, g, user), user_id=user.id, priority="normal"
+        )
 
     deps = DeploymentService(session)
     checks = await deps.checklist(wf, errors, set(projects.secrets.get(project_id, {})), run_tests, policies=broken)

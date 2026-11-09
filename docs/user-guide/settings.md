@@ -66,13 +66,15 @@ runs the server decides how much an organisation may ask of it.
 **Runs at once and the run queue.** With a limit, a run past it waits in the organisation's queue instead of starting,
 on every server alike: the run panel says "Waiting for a free run slot" and its place in line. The next free slot goes
 to the highest priority, then the oldest run. A run's priority is `high`, `normal` (the default) or `low` (experiments
-and test cases, which can wait); `priority` on `POST /v1/workflows/{id}/runs/stream` sets it, and a run handed over to
-another server keeps its own priority and its place in line. A server that is shutting down starts no waiting run: it
-hands each one over at once, with the message or answer it was sent, and the run waits for a slot on another server. A
-waiting run counts as in flight for **Stop all runs** and can be stopped like any other. A run that waits longer than
-`AGENTCANVAS_MAX_QUEUE_WAIT_S` (an hour by default; 0 waits as long as it takes) ends with an error that says so (code
-`queue_timeout`): send it again later, or ask an admin to raise the limit. Runs of a server that stopped answering
-stop counting after about a minute.
+and the test cases you run, which can wait; the test cases a publish runs and the Copilot's test runs are `normal`, as
+someone waits for them); `priority` on `POST /v1/workflows/{id}/runs/stream` sets it, and a run handed over to another
+server keeps its own priority and its place in line. The time limits of experiment examples, test cases and Copilot
+test runs count from when the run takes its slot, not while it waits. A server that is shutting down starts no waiting
+run: it hands each one over at once, with the message or answer it was sent, and the run waits for a slot on another
+server. A waiting run counts as in flight for **Stop all runs** and can be stopped like any other. A run that waits
+longer than `AGENTCANVAS_MAX_QUEUE_WAIT_S` (an hour by default; 0 waits as long as it takes) ends with an error that
+says so (code `queue_timeout`): send it again later, or ask an admin to raise the limit. Runs of a server that stopped
+answering stop counting after about a minute.
 
 Leave a field empty to use the server's value. The **Applies now** column shows what is in force. If the operator
 later lowers a server limit, an organisation's higher value stops applying at once. A per-environment limit the

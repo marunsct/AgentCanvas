@@ -100,6 +100,29 @@ class RunHandle:
     project_id: str | None = None
     priority: int = 0  # in the run queue: 1 high, 0 normal, -1 low (runtime/admission.py)
     waiting: bool = False  # in the run queue, waiting for a slot: it has not begun its work
+    # set once it has its slot (at once without a limit) or has ended: callers' time limits count from here
+    admitted: asyncio.Event = field(default_factory=asyncio.Event)
+    created_at: float = field(default_factory=time.perf_counter)
+    admitted_at: float | None = None
+
+    @property
+    def queued_s(self) -> float:
+        """How long it waited in the run queue (so far, while it still waits)."""
+        return (self.admitted_at or time.perf_counter()) - self.created_at
+
+    async def done_within(self, timeout_s: float, queue_s: float | None = None) -> Literal["queue", "run"] | None:
+        """Wait for the run to end, `timeout_s` counted from when it took its slot: time in the run queue does not
+        count (`queue_s` bounds it, else the queue's own maximum wait does). None once it ended, else which wait
+        ran out ("queue" or "run"); the caller stops the run."""
+        try:
+            await asyncio.wait_for(self.admitted.wait(), queue_s)
+        except TimeoutError:
+            return "queue"
+        try:
+            await asyncio.wait_for(self.done.wait(), timeout_s)
+        except TimeoutError:
+            return "run"
+        return None
 
 
 def _plain(value: Any) -> Any:
@@ -717,6 +740,8 @@ class Runner:
                 await self.admission.wait(h.run_id, spec.org_id, h.project_id, queued, _pending(h, spec))
                 h.waiting = False
                 started = time.perf_counter()  # its duration (and budget's time limit) count from here
+            h.admitted_at = time.perf_counter()
+            h.admitted.set()
             before = await self._spent(h, budget) if budget else Spent()
             check_budget(budget, h.usage, before)  # a conversation that is already over budget does not start
             resources = self.resources(spec.thread_id, spec.workflow)
@@ -800,6 +825,8 @@ class Runner:
             try:
                 await self._close(h, events, status, error, interrupts, held)
             finally:  # however the save went, whoever waits for the run is told it is over
+                h.admitted_at = h.admitted_at or time.perf_counter()
+                h.admitted.set()
                 h.finished_at = time.monotonic()
                 h.done.set()
                 if self.admission is not None:

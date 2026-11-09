@@ -8,7 +8,6 @@ fixes that very run.
 
 from __future__ import annotations
 
-import asyncio
 import json
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -120,14 +119,17 @@ class RunAccess:
         try:
             handle = await self.runner.start(
                 wf, thread_id=thread_id, input=input, context=ctx, mode="debug" if mocks else "normal",
-                mocks=mocks or None, dry_run=True, user_id=self.user_id, origin="test",
+                mocks=mocks or None, dry_run=True, user_id=self.user_id, origin="test", priority="normal",
             )  # fmt: skip
         except Exception as exc:  # noqa: BLE001 - e.g. the workflow has errors
             return {"ok": False, "error": f"could not start: {exc}"}
-        try:
-            await asyncio.wait_for(handle.done.wait(), RUN_TIMEOUT_S)
-        except TimeoutError:
+        # a person waits for it: it queues like their own runs, and the time limit counts from when it took its slot
+        late = await handle.done_within(RUN_TIMEOUT_S, queue_s=RUN_TIMEOUT_S)
+        if late is not None:
             await self.runner.cancel(handle.run_id)
+            if late == "queue":
+                return {"ok": False, "error": f"the test run waited {RUN_TIMEOUT_S:g} s for a free run slot (the "
+                        "organisation's runs-at-once limit) and was stopped; try again later"}  # fmt: skip
             return {"ok": False, "error": f"the test run took longer than {RUN_TIMEOUT_S:g} s and was stopped"}
         status, error, output, route = "error", None, {}, []
         for ev in handle.events:

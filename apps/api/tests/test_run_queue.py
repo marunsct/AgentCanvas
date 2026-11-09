@@ -349,3 +349,78 @@ async def test_a_handed_over_run_keeps_its_place_in_the_queue(app, api_client, l
     assert (await run_row(app, resumed)).queue_key == first
     for run_id in (holder, later, resumed):
         await runner.cancel(run_id)
+
+
+async def test_a_test_case_counts_its_time_limit_from_its_slot(app, api_client, limited, monkeypatch):
+    """Test runs wait in the run queue behind people's runs: the wait does not count against the case's time limit
+    (every case used to fail 'timed out' without having run)."""
+    from agentcanvas.db.models import TestCase
+    from agentcanvas.ir.models import Workflow
+    from agentcanvas.services import testcases
+
+    monkeypatch.setattr(testcases, "CASE_TIMEOUT_S", 0.5)
+    runner = app.state.runner
+    blocker = await _start_slow(app, api_client, limited)
+    wf = Workflow.model_validate((await api_client.get(f"/v1/workflows/{limited}")).json()["ir"])
+    case = TestCase(id="tc_queued", workflow_id=limited, name="quick", input={"seconds": 0.01}, expect={})
+    task = asyncio.create_task(testcases.run_case(runner, wf, case, {}, None))
+    await asyncio.sleep(1)
+    assert not task.done()
+    await runner.cancel(blocker)
+    res = await asyncio.wait_for(task, 10)
+    assert res.passed, res.failures
+    assert res.duration_ms is not None and res.duration_ms < 500  # the run's own time, not the wait
+
+
+async def test_experiment_examples_count_their_time_limit_from_their_slot(app, api_client, limited, monkeypatch):
+    from test_experiments import finished, setup
+
+    from agentcanvas.services import experiments
+
+    monkeypatch.setattr(experiments, "EXAMPLE_TIMEOUT_S", 0.5)
+    runner = app.state.runner
+    blocker = await _start_slow(app, api_client, limited)
+    wf, ds = await setup(api_client)
+    r = await api_client.post(f"/v1/workflows/{wf}/experiments", json={"dataset_id": ds["id"], "targets": [{}]})
+    assert r.status_code == 202, r.text
+    await asyncio.sleep(1.2)
+    await runner.cancel(blocker)
+    exp = await finished(app, api_client, r.json()["id"])
+    results = (await api_client.get(f"/v1/experiments/{exp['id']}/results")).json()
+    assert [x["run_status"] for x in results] == ["success"] * 3, [x["error"] for x in results]
+    assert all(x["latency_ms"] < 500 for x in results)
+
+
+async def test_a_copilot_test_run_says_when_it_could_not_get_a_slot(app, api_client, limited, monkeypatch):
+    """A person waits for the Copilot's test run: it queues as a person's run (not behind them), and a run that never
+    got a slot is reported as that, not as a run that took too long."""
+    from agentcanvas.copilot import runs
+    from agentcanvas.ir.models import Workflow
+
+    monkeypatch.setattr(runs, "RUN_TIMEOUT_S", 0.3)
+    blocker = await _start_slow(app, api_client, limited)
+    wf = Workflow.model_validate((await api_client.get(f"/v1/workflows/{limited}")).json()["ir"])
+    access = runs.RunAccess(app.state.runner, app.state.db.sessionmaker, wf, lambda _wf, ctx: ctx)
+    out = await access.test(wf, {"seconds": 0.01})
+    assert out["ok"] is False and "waited 0.3 s for a free run slot" in out["error"]
+    [run] = [h for h in app.state.runner.handles.values() if h.origin == "test"]
+    assert run.priority == 0 and (await asyncio.wait_for(app.state.runner.wait(run.run_id), 10)).status == "cancelled"
+    await app.state.runner.cancel(blocker)
+
+
+async def test_publishing_runs_its_test_cases_as_a_persons_runs(app, api_client, limited):
+    """Someone waits to publish: the checklist's test cases queue like their own runs, not behind every person's."""
+    runner = app.state.runner
+    case = {"name": "quick", "input": {"seconds": 0.01}}
+    assert (await api_client.post(f"/v1/workflows/{limited}/test-cases", json=case)).status_code == 201
+    blocker = await _start_slow(app, api_client, limited)
+    publish = asyncio.create_task(api_client.post(f"/v1/workflows/{limited}/publish", json={}))
+    for _ in range(200):
+        tests = [h for h in runner.handles.values() if h.origin == "test"]
+        if tests:
+            break
+        await asyncio.sleep(0.02)
+    assert [h.priority for h in tests] == [0]
+    await runner.cancel(blocker)
+    r = await asyncio.wait_for(publish, 20)
+    assert r.status_code in (200, 201), r.text
