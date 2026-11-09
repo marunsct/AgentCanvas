@@ -22,7 +22,9 @@
   example `model*` takes a *ChatModel*, `tools` takes a list of *Tool*s; `*` means required). A connection that
   doesn't fit is refused with the reason.
 - **Configure:** click a card. The Inspector shows its name (used in code and the API), label (shown on the
-  card) and a settings form. Prompts and many fields are templates over the state: `{{ state.ticket }}`.
+  card) and a settings form. Prompts and many fields are templates over the state: `{{ state.ticket }}`. A
+  template that takes longer than a second to fill in, or builds a text longer than 10 million characters (or a
+  list of over a million items), stops its step with an error.
   Conditions (routers, policies, filters) are written in [CEL](https://cel.dev), e.g. `state.urgency == "high"`.
 - **Bypass:** **Bypass this node** (under Runtime policies) skips a step and passes the state on unchanged; the
   card shows *· bypassed*. A step that picks the path (**Choose a path**, **Decide with AI**) or a **Repeat for
