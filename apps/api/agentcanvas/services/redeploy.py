@@ -36,7 +36,7 @@ from agentcanvas.ir.contract import contract
 from agentcanvas.ir.models import Workflow
 from agentcanvas.log import get_logger
 from agentcanvas.runtime.admission import NAMES
-from agentcanvas.runtime.runner import STOPPED_BY_ADMIN
+from agentcanvas.runtime.runner import STOPPED_BY_ADMIN, TEST_NOT_CONTINUED
 from agentcanvas.runtime.types import ResumeSpec
 
 log = get_logger(__name__)
@@ -121,10 +121,11 @@ class HandoverJob:
             await s.commit()
         return res.rowcount == 1  # type: ignore[attr-defined]
 
-    async def _fail(self, run_id: str, thread_id: str, error: str = NO_STATE) -> None:
+    async def _fail(self, run_id: str, thread_id: str, error: str = NO_STATE, status: str = "error") -> None:
         async with self.db.sessionmaker() as s:
-            await s.execute(update(Run).where(Run.id == run_id).values(status="error", error=error))
-            await s.execute(update(Thread).where(Thread.id == thread_id).values(status="error"))
+            await s.execute(update(Run).where(Run.id == run_id).values(status=status, error=error))
+            thread_status = "idle" if status == "cancelled" else "error"
+            await s.execute(update(Thread).where(Thread.id == thread_id).values(status=thread_status))
             await s.commit()
         log.warning("handover.cannot_continue", run_id=run_id, thread_id=thread_id)
 
@@ -142,7 +143,7 @@ class HandoverJob:
                 )
                 await s.commit()
         keep = ("input", "mode", "breakpoints_before", "breakpoints_after", "durability", "checkpoint_id", "pins",
-                "mocks", "dry_run", "user_id", "service_connection", "event_depth")  # fmt: skip
+                "mocks", "dry_run", "user_id", "service_connection")  # fmt: skip
         out = {k: pending[k] for k in keep if k in pending}
         out["resume"] = ResumeSpec(value=resume["value"], interrupt_id=resume.get("interrupt_id")) if resume else None
         out["project_files"] = True  # its files were checked when it was first started
@@ -155,24 +156,29 @@ class HandoverJob:
         mine = set(self.runner.active())
         swept: list[str] = []
         async with self.db.sessionmaker() as s:
-            q = select(Run.id, Run.thread_id, Run.stop_requested, Run.stop_reason).where(*stale).limit(BATCH)
+            q = (
+                select(Run.id, Run.thread_id, Run.stop_requested, Run.stop_reason, Run.origin)
+                .where(*stale)
+                .limit(BATCH)
+            )
             rows = (await s.execute(q)).all()
-            for run_id, thread_id, stop, reason in rows:
+            for run_id, thread_id, stop, reason, origin in rows:
                 if run_id in mine:  # alive here; its heartbeat is just late
                     continue
                 # a run someone asked to stop (Stop, the F-5 kill switch) is cancelled, not continued elsewhere
-                values = (
-                    {"status": "cancelled", "error": reason or STOPPED_BY_ADMIN, "handover": False}
-                    if stop
-                    else {"status": "interrupted", "error": ORPHANED, "handover": True}
-                )
+                if stop:
+                    values = {"status": "cancelled", "error": reason or STOPPED_BY_ADMIN, "handover": False}
+                elif origin == "test":  # its experiment runs the example again, and a test case's caller is gone
+                    values = {"status": "cancelled", "error": TEST_NOT_CONTINUED, "handover": False}
+                else:
+                    values = {"status": "interrupted", "error": ORPHANED, "handover": True}
                 res = await s.execute(
                     update(Run)
                     .where(Run.id == run_id, *stale)  # exactly one instance sweeps it
                     .values(ended_at=datetime.now(UTC), **values)
                 )
                 if res.rowcount == 1:  # type: ignore[attr-defined]
-                    thread_status = "idle" if stop else "interrupted"
+                    thread_status = "interrupted" if values["handover"] else "idle"
                     await s.execute(update(Thread).where(Thread.id == thread_id).values(status=thread_status))
                     swept.append(run_id)
             await s.commit()
@@ -198,13 +204,18 @@ class HandoverJob:
                         Run.queued,
                         Run.pending,
                         func.coalesce(Run.queue_key, Run.id),
+                        Run.origin,
+                        Run.event_depth,
                     )
                     .where(Run.handover.is_(True), Run.stop_requested.is_(False))
                     .limit(BATCH)
                 )
             ).all()
-        for run_id, thread_id, version_id, priority, queued, pending, queue_key in rows:
+        for run_id, thread_id, version_id, priority, queued, pending, queue_key, origin, depth in rows:
             if self.runner.draining or not await self._mark(run_id, False):  # another instance claimed it
+                continue
+            if origin == "test":  # handed over by a server that still did that: see `sweep`
+                await self._fail(run_id, thread_id, TEST_NOT_CONTINUED, "cancelled")
                 continue
             try:
                 async with self.db.sessionmaker() as s:
@@ -222,8 +233,9 @@ class HandoverJob:
                 else:
                     kw["input"] = None  # it continues from its last checkpoint
                 h = await self.runner.start(  # in the queue, it keeps the place its run had
-                    wf, thread_id=thread_id, origin="handover", priority=NAMES.get(priority), queue_key=queue_key, **kw
-                )
+                    wf, thread_id=thread_id, origin=origin or "user", priority=NAMES.get(priority),
+                    queue_key=queue_key, event_depth=depth, handed_over=True, **kw,
+                )  # fmt: skip
             except Conflict:  # someone already continued the conversation
                 continue
             except Unavailable:  # this instance began draining meanwhile: leave it to the next one

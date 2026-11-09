@@ -48,6 +48,8 @@ STOPPED_BY_ADMIN = "stopped by an admin (stop all runs)"  # the kill switch (F-5
 FORGET_PAGE = 500  # conversations whose saved state is deleted per query, when a workflow or project goes
 CANCELLED_BY_USER = "cancelled by user"  # Stop pressed on the run
 CONVERSATION_DELETED = "its conversation was deleted"
+# experiments run their examples again themselves, and a test case's or Copilot test's caller is gone with the server
+TEST_NOT_CONTINUED = "its server stopped; test runs are not continued on another server"
 
 
 @dataclass
@@ -74,6 +76,7 @@ class RunHandle:
     traced: bool = False  # sent to LangSmith ("Open trace", M6-T6)
     input: dict[str, Any] | None = None  # a fresh run's input: its model replies are recorded (FR-X-13)
     drained: bool = False  # stopped by a server shutdown; another instance continues it (FR-X-10)
+    handed_over: bool = False  # it continues a run another instance handed over (FR-X-10)
     superseded: bool = False  # swept while this instance stalled: another instance continues it (S13)
     finishing: bool = False  # saving its outcome: a cancel now would cut the save short and wedge the thread
     # a task cancelled before it began never runs its code, so nothing would finish the run: until `_pump` starts,
@@ -449,6 +452,7 @@ class Runner:
         service_connection: bool = False,
         priority: Priority | None = None,
         queue_key: str | None = None,
+        handed_over: bool = False,
     ) -> RunHandle:
         """Start a run. `context=None` reuses the context of the last run on `context_from` (default: this thread).
         A deployment's run takes only files given to that deployment (`visitor_hash`: a share link's visitor, whose
@@ -456,7 +460,7 @@ class Runner:
         any of the project's files. `service_connection`: the person who starts it may use the organisation's service
         connection (an admin); a deployment's runs always may. `priority`: its place in the organisation's run queue
         when a concurrent-run limit holds it back (default: low for test runs, else normal); `queue_key`: the run a
-        hand-over continues, whose place in that queue it keeps."""
+        hand-over continues, whose place in that queue it keeps; `handed_over`: started by the hand-over."""
         if self.draining:
             raise Unavailable("this server is restarting; retry the request", retry_after=5)
         adapter = self.adapter_for(wf)
@@ -537,6 +541,7 @@ class Runner:
                         origin=origin,
                         priority=priority_of(priority, origin),
                         queue_key=queue_key,
+                        event_depth=event_depth,
                     )
                 )
                 decided: list[str] = []
@@ -586,7 +591,7 @@ class Runner:
             trace_redact=list(wf.settings.trace_redact),
         )  # fmt: skip
         handle.traced = trace_ref(run_id) is not None
-        handle.event_depth = event_depth
+        handle.event_depth, handle.handed_over = event_depth, handed_over
         handle.routing = routing
         handle.project_id, handle.priority = project_id, priority_of(priority, origin)
         handle.fresh = fresh
@@ -1090,8 +1095,7 @@ class Runner:
         # a waiting run has not begun: it is handed over at once, its input kept on its row
         cut = [h for h in running if h.waiting and self._stoppable(h)]
         for h in cut:
-            h.drained = True
-            self._stop_task(h)
+            self._hand_over(h)
         if running and grace_s > 0:
             waiters = [asyncio.ensure_future(h.done.wait()) for h in running]
             _, pending = await asyncio.wait(waiters, timeout=grace_s)
@@ -1099,13 +1103,20 @@ class Runner:
                 w.cancel()
         left = [h for h in running if h not in cut and self._stoppable(h)]
         for h in left:
-            h.drained = True
-            self._stop_task(h)
+            self._hand_over(h)
         left = cut + left
         await asyncio.gather(*(h.task for h in left if h.task), return_exceptions=True)
         if left:
             log.info("runner.drained", runs=[h.run_id for h in left])
         return [h.run_id for h in left]
+
+    def _hand_over(self, h: RunHandle) -> None:
+        """Stop a run for the drain: another instance continues it, unless it is a test run (nobody waits for it)."""
+        if h.origin == "test":
+            h.stop_reason = TEST_NOT_CONTINUED
+        else:
+            h.drained = True
+        self._stop_task(h)
 
     def active(self) -> list[str]:
         return [h.run_id for h in self.handles.values() if h.task and not h.done.is_set()]
@@ -1164,7 +1175,7 @@ def _pending(h: RunHandle, spec: RunSpec) -> dict[str, Any]:
             "breakpoints_before": spec.breakpoints_before, "breakpoints_after": spec.breakpoints_after,
             "durability": spec.durability, "checkpoint_id": spec.checkpoint_id, "pins": spec.pins,
             "mocks": spec.mocks, "dry_run": spec.dry_run, "user_id": spec.user_id,
-            "service_connection": spec.service_connection, "event_depth": h.event_depth,
+            "service_connection": spec.service_connection,
         }
     )  # fmt: skip
 

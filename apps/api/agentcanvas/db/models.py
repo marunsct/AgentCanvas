@@ -334,6 +334,8 @@ class Run(Base):
     # its place among runs of its priority (oldest first): the id of the run it continues, for a hand-over; else
     # empty, and its own id counts
     queue_key: Mapped[str | None] = mapped_column(Text)
+    # how many events led to it (an event handler's run): a hand-over continues it at the same depth
+    event_depth: Mapped[int] = mapped_column(SmallInteger, server_default=text("0"), default=0)
     # S12: refreshed while the run's instance is alive; a running run without a fresh heartbeat lost its instance
     heartbeat_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
     # S13: what the deployment API caller tagged the run with (online evaluator filters, annotation rules)
