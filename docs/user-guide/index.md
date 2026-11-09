@@ -18,7 +18,7 @@ Google ADK, Pydantic AI, Agno, the Microsoft Agent Framework, Strands, LlamaInde
 | **Run and debug** | Run a workflow and watch each step light up. Pause for human approvals, set breakpoints, step back through the timeline, edit state and fork, and read a plain-language explanation of what happened. See tokens, cost and latency per step. |
 | **Test and evaluate** | Save runs as test cases, build datasets, score runs with evaluators (exact match, regex, schema, LLM judge, tool trajectory, your own code), compare versions in experiments, and block releases that score worse. |
 | **Ship** | Freeze versions, export a standalone Python project, or publish to an environment behind an API key. Start runs from webhooks, schedules or events, and keep scoring live traffic in production. |
-| **Govern** | Sign in with your identity provider, keep organisations apart, give people roles, write policies the editor and publishing enforce, and read the audit log. |
+| **Govern** | Sign in with your identity provider, keep organisations apart, give people roles, write policies the editor and publishing enforce, and read the audit log. How your data is stored, protected and shared is in [Security, privacy and compliance](security.md). |
 
 ## Where to start
 

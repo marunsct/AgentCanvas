@@ -46,6 +46,7 @@ nav:
       - Settings and administration:
           - Settings and moving around: user-guide/settings.md
           - Organisations, roles and policies: user-guide/accounts.md
+          - Security, privacy and compliance: user-guide/security.md
       - Operate a server:
           - Deploy and operate: user-guide/deploy.md
           - Operations reference: user-guide/operations.md

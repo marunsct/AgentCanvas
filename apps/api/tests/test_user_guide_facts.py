@@ -76,3 +76,22 @@ def test_the_server_settings_page_speaks_plainly():
     assert found == {}
     upload = next(text for v, _, text in ref.rows() if v == "AGENTCANVAS_MAX_UPLOAD_MB")
     assert "in MB the web server" not in upload
+
+
+def test_vulnerabilities_have_a_private_channel_and_customers_a_security_page():
+    """Without SECURITY.md a finder's only channel was a public issue; without a security page a customer's
+    questionnaire (data flows, retention, isolation, compliance) had nothing to point to."""
+    policy = (ROOT / ".github" / "SECURITY.md").read_text()
+    assert "security/advisories/new" in policy  # GitHub's private vulnerability reporting
+    for part in ("Supported versions", "Response targets"):
+        assert part in policy, part
+    page = (GUIDE / "security.md").read_text()
+    nav = yaml.safe_load((ROOT / "mkdocs.yml").read_text().replace("!!python", "#"))["nav"]
+    assert "user-guide/security.md" in str(nav)
+    for topic in ("Where your data is stored", "Encryption", "Organisations", "sandbox", "Audit", "SCIM",
+                  "Retention", "Backups", "Third parties", "Compliance", "Reporting a vulnerability"):  # fmt: skip
+        assert topic in page, topic
+    for link, anchor in re.findall(r"\]\(([a-z-]+\.md)#([a-z0-9-]+)\)", page):  # every anchor it links to exists
+        headings = re.findall(r"^#+ (.+)$", (GUIDE / link).read_text(), re.M)
+        slugs = {re.sub(r"[^a-z0-9 -]", "", h.lower()).strip().replace(" ", "-") for h in headings}
+        assert anchor in slugs, (link, anchor)
