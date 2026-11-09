@@ -24,6 +24,18 @@ def problem(status: int, title: str, detail: str, type_: str = "about:blank", **
     return JSONResponse(body, status_code=status, media_type=MEDIA)
 
 
+def unexpected_error(request_id: str | None) -> JSONResponse:
+    """A bug's answer: the same problem document as every other error (not a text page), with the request id to
+    quote; what went wrong stays in the server's log."""
+    return problem(
+        500,
+        "Internal error",
+        "something went wrong on the server; quote the request id when you report it",
+        "https://agentcanvas.dev/errors/internal",
+        request_id=request_id,
+    )
+
+
 def install_problem_handlers(app: FastAPI) -> None:
     @app.exception_handler(DomainError)
     async def _domain(_: Request, exc: DomainError) -> JSONResponse:
@@ -83,15 +95,9 @@ def install_problem_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(Exception)
     async def _unexpected(_: Request, exc: Exception) -> JSONResponse:
-        # a bug: the client gets the same problem document as every other error (not a text page) and the request id
-        # to quote; the traceback is logged by the server as before (Starlette re-raises after answering)
-        return problem(
-            500,
-            "Internal error",
-            "something went wrong on the server; quote the request id when you report it",
-            "https://agentcanvas.dev/errors/internal",
-            request_id=get_contextvars().get("request_id"),
-        )
+        # the request middleware answers a route's crash itself (counted, logged with its id); this one is left for
+        # a failure in a middleware outside it, and Starlette logs the traceback after answering
+        return unexpected_error(get_contextvars().get("request_id"))
 
     @app.exception_handler(StarletteHTTPException)
     async def _http(_: Request, exc: StarletteHTTPException) -> JSONResponse:

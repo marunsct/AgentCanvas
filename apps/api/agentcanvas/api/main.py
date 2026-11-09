@@ -30,7 +30,7 @@ from agentcanvas.adapters.spi import MemoryAbility, require
 from agentcanvas.api.audit import record as audit_record
 from agentcanvas.api.deps import release_sessions
 from agentcanvas.api.limits import BodyLimit, RefuseClients
-from agentcanvas.api.problems import install_problem_handlers
+from agentcanvas.api.problems import install_problem_handlers, unexpected_error
 from agentcanvas.api.scim import router as scim_router
 from agentcanvas.api.shutdown import WindDown
 from agentcanvas.api.v1 import router as v1_router
@@ -363,7 +363,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         bind_contextvars(request_id=request_id)
         observability.tag_current_span(**{"request.id": request_id})
         start = time.perf_counter()
-        response = await call_next(request)
+        try:
+            response = await call_next(request)
+        except Exception:
+            # a bug: the `Exception` handler answers outside this middleware, so the crash would miss the metric,
+            # the header and the structured log (Starlette's traceback is plain text, unmasked, without the id).
+            # Answer it here; nothing escapes, so the server logs it once, as JSON.
+            log.exception("http.unhandled", method=request.method, route=observability.route_label(request.scope))
+            response = unexpected_error(request_id)
         await release_sessions(request)  # streams keep no database connection
         route = observability.route_label(request.scope)
         observability.observe_request(request.method, route, response.status_code, time.perf_counter() - start)

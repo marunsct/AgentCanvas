@@ -121,3 +121,37 @@ async def test_a_quiet_stream_says_it_is_alive():
     got = [chunk async for chunk in counted_stream(slow(), keepalive_s=0.05)]
     assert got[0] == "data: 1\n\n" and got[-1] == "data: 2\n\n"
     assert got.count(": keepalive\n\n") >= 3 and len(got) == got.count(": keepalive\n\n") + 2
+
+
+async def test_a_crash_is_counted_logged_with_its_request_id_and_masked(app, api_client, monkeypatch):
+    """A route that raised went past the request middleware: no 500 in the error-rate metric (so the alert never
+    fired), no x-request-id header, and the traceback reached the log as plain text, without the request id and with
+    secrets in clear. It is now answered, counted and logged like every other request."""
+    from structlog.contextvars import merge_contextvars
+    from structlog.processors import format_exc_info
+    from structlog.testing import capture_logs
+
+    from agentcanvas.api import main
+    from agentcanvas.log import get_logger, hide_secret_values
+
+    app.state.projects.secrets["p_crash"] = {"API_KEY": "sk-crash-secret-value"}
+
+    async def crash():
+        raise RuntimeError("upstream refused key sk-crash-secret-value")
+
+    app.add_api_route("/v1/_test/crash", crash)
+    before = await scrape(api_client)
+    with capture_logs(processors=[merge_contextvars, format_exc_info, hide_secret_values]) as logs:
+        monkeypatch.setattr(main, "log", get_logger("test"))  # the module's logger is cached on the earlier config
+        # the default transport re-raises what the app lets escape: the crash no longer escapes it
+        r = await api_client.get("/v1/_test/crash", headers={"x-request-id": "req_crash_1"})
+    assert r.status_code == 500 and r.headers["content-type"] == "application/problem+json"
+    assert r.headers["x-request-id"] == "req_crash_1" == r.json()["request_id"]
+    assert "sk-crash-secret-value" not in r.text
+    after = await scrape(api_client)
+    route, labels = "/v1/_test/crash", {"method": "GET", "status": "500"}
+    counted = sample(after, "agentcanvas_http_requests_total", route=route, **labels)
+    assert counted - sample(before, "agentcanvas_http_requests_total", route=route, **labels) == 1
+    crashed = [e for e in logs if e["event"] == "http.unhandled"]
+    assert len(crashed) == 1 and crashed[0]["request_id"] == "req_crash_1" and crashed[0]["route"] == route
+    assert "RuntimeError" in crashed[0]["exception"] and "sk-crash-secret-value" not in crashed[0]["exception"]
