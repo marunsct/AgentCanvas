@@ -324,6 +324,8 @@ async def _start_turn(
     cs = copilot_settings.load(project.settings)
     if not cs.enabled:
         raise Forbidden("the Copilot is switched off for this project")
+    caps = request.app.state.spend_caps
+    await caps.refuse(project_id)  # its answers count against the organisation's and project's spending caps
     now = datetime.now(UTC)
     conv = await _conversation(session, wf_id, user.id, lock=True)  # the lease: one turn at a time, on any replica
     model = await _model(svc, view, project.settings or {}, cs, body.mode, conv.model if conv else None)
@@ -389,15 +391,17 @@ async def _start_turn(
 
     async def save() -> None:
         """Merge this turn into the row as it is now: decisions taken meanwhile (another tab) are kept."""
+        spent = {k: v - usage_before.get(k, 0) for k, v in turn.usage.items() if v > usage_before.get(k, 0)}
+        cost = usage_cost(model.model, spent) if spent else None  # each model call priced on its own
+        if spent:  # the spending caps count it, whatever becomes of the conversation
+            await caps.record(project_id, "copilot", cost, spent.get("input_tokens", 0), spent.get("output_tokens", 0))
         async with db.sessionmaker() as s:
             row = await s.get(CopilotConversation, conv_id, with_for_update=True)
             if row is None:  # "New chat" while answering
                 return
             new = [dict(m) for m in turn.history[seen_messages:]]
-            spent = {k: v - usage_before.get(k, 0) for k, v in turn.usage.items() if v > usage_before.get(k, 0)}
             answer = next((m for m in reversed(new) if m.get("role") == "assistant"), None)
             if answer is not None and spent:  # what this answer cost, shown under it and summed for the conversation
-                cost = usage_cost(model.model, spent)  # each model call priced on its own
                 answer.update(usage=tokens_of(spent), model=model.model, cost_usd=cost)
             row.messages = [*(row.messages or []), *new]
             row.busy_until = None
@@ -898,6 +902,8 @@ async def code_help(
     cs = copilot_settings.load(project.settings)
     if not cs.enabled:
         raise Forbidden("the Copilot is switched off for this project")
+    caps = request.app.state.spend_caps
+    await caps.refuse(view.row.project_id)
     model = await _model(svc, view, project.settings or {}, cs, "ask" if body.action == "explain" else "build")
     factory = getattr(request.app.state, "resources_factory", None)
     resources = (
@@ -912,5 +918,10 @@ async def code_help(
         )
     except Exception as exc:
         raise InvalidInput(f"the model call failed: {type(exc).__name__}: {exc}"[:500]) from exc
+    finally:  # a failed call may have used tokens too
+        if usage:
+            cost = usage_cost(model.model, usage)
+            await caps.record(view.row.project_id, "copilot", cost, usage.get("input_tokens", 0),
+                              usage.get("output_tokens", 0))  # fmt: skip
     text, code = split_reply(str(reply.get("content") or ""), body.action)
     return CodeHelpOut(text=text, code=code, model=model.model, usage=tokens_of(usage))

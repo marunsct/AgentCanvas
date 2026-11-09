@@ -236,3 +236,69 @@ async def test_an_answer_that_would_continue_a_run_is_refused_and_the_item_stays
     r = await api.post(f"/v1/inbox/{item['id']}/decision", json={"value": {"decisions": [{"type": "approve"}]}})
     assert r.status_code == 429 and "month spending cap" in r.json()["detail"], r.text
     assert [i["id"] for i in (await api.get("/v1/inbox")).json()] == [item["id"]]  # still waiting for an answer
+
+
+async def test_copilot_answers_count_against_the_caps_and_are_refused_at_one(app, api_client):
+    from langchain_core.messages import AIMessage
+    from test_copilot import ask, new_workflow, script
+
+    from agentcanvas.db.models import ModelSpend
+
+    wf = (await new_workflow(api_client, template="ticket_triage"))["id"]  # its model, claude-haiku, has a price
+    spend = {"input_tokens": 100_000, "output_tokens": 20_000, "total_tokens": 120_000}
+    script(app, AIMessage(content="Hi.", usage_metadata=spend))  # type: ignore[arg-type]
+    done = (await ask(api_client, wf, "hi", mode="ask"))[-1]
+    cost = done["cost_usd"]
+    assert cost > 0
+    async with app.state.db.sessionmaker() as s:
+        [row] = (await s.scalars(select(ModelSpend))).all()
+    assert (row.project_id, row.kind, row.calls, row.tokens_in) == ("prj_default", "copilot", 1, 100_000)
+    assert float(row.cost_usd) == pytest.approx(cost, abs=1e-6)
+    report = (await api_client.get("/v1/org/spending")).json()
+    assert report["outside_runs"] == [
+        {"kind": "copilot", "calls": 1, "tokens_in": 100_000, "tokens_out": 20_000, "cost_usd": pytest.approx(cost)}
+    ]
+    assert report["total"]["cost_usd"] == 0  # runs only
+    caps = (await api_client.get("/v1/org/spending/caps")).json()
+    assert caps["organisation"]["month"]["spent_usd"] == pytest.approx(cost, abs=1e-6)
+
+    r = await api_client.put("/v1/org/settings", json={"limits": {"max_cost_usd_day": cost / 2}})
+    assert r.status_code == 200
+    script(app, "Hello again.")
+    r = await api_client.post(f"/v1/workflows/{wf}/copilot/messages", json={"text": "hi", "mode": "ask"})
+    assert r.status_code == 429 and "day spending cap" in r.json()["detail"], r.text
+    code = {"action": "explain", "path": "a.py", "content": "x = 1"}
+    r = await api_client.post(f"/v1/workflows/{wf}/copilot/code", json=code)
+    assert r.status_code == 429, r.text
+    # and the editor's runs too: the Copilot's spending reached the cap
+    r = await api_client.post(f"/v1/workflows/{wf}/runs/stream", json={"input": {}})
+    assert r.status_code == 429, r.text
+
+
+async def test_ai_judges_count_against_the_caps(app, api_client, monkeypatch):
+    from agentcanvas.db.models import ModelSpend
+    from agentcanvas.ir.models import Workflow
+    from agentcanvas.runtime.runner import add_call
+    from agentcanvas.services.experiments import scorers
+
+    info = default_registry().model("openai:gpt-5-mini")
+    monkeypatch.setattr(info, "price_in_per_mtok", 1000.0)
+    monkeypatch.setattr(info, "price_out_per_mtok", 1000.0)
+
+    async def complete(resources: Any, model: str, system: str, prompt: str, usage: Any = None) -> str:
+        add_call(usage, model, {"input_tokens": 10, "output_tokens": 5})
+        return "PASS"
+
+    monkeypatch.setattr(app.state.runner.models, "complete", complete)
+    wf_id = await _workflow(api_client, _plain_chain())
+    wf = Workflow.model_validate((await api_client.get(f"/v1/workflows/{wf_id}")).json()["ir"])
+    seen: dict[str, Any] = {}
+    judge = scorers(app.state.runner, wf, seen)["complete"]
+    for _ in range(2):
+        assert await judge("grade", "it", "openai:gpt-5-mini") == "PASS"
+    assert seen["openai:gpt-5-mini"]["input_tokens"] == 20  # the caller still sees what its judge used
+    async with app.state.db.sessionmaker() as s:
+        [row] = (await s.scalars(select(ModelSpend))).all()
+    assert (row.kind, row.calls, float(row.cost_usd)) == ("judge", 2, pytest.approx(2 * CALL))
+    assert (await api_client.put("/v1/org/settings", json={"limits": {"max_cost_usd_day": CALL}})).status_code == 200
+    assert (await _stream(api_client, wf_id)).status_code == 429

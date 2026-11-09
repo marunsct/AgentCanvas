@@ -8,8 +8,10 @@ the administrator's: what the whole organisation, or one project, may spend a UT
 - A project's caps are in its settings (`spending_caps`), never above the organisation's when they are saved; the
   organisation's caps bind its projects as well.
 - Spending counts every run of the scope, whatever started it (the editor's draft and debug runs, test cases,
-  experiments, deployments, schedules, webhooks, event handlers), and what conversations deleted since had spent
-  (`spend_archive`).
+  experiments, deployments, schedules, webhooks, event handlers), what conversations deleted since had spent
+  (`spend_archive`), and the model calls outside runs: the Copilot's answers and AI judges (`model_spend`, written
+  by `SpendCaps.record`). A new Copilot answer is refused at a cap like a run; judges are counted, not stopped (they
+  score runs that the caps already stop).
 
 Where they are enforced: before a run starts (`Runner.start`), a scope at or over a cap refuses the run with 429;
 and after each model call of a run in flight (`Runner._pump`), the run saves what it has spent on its row, and stops
@@ -32,10 +34,22 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 from sqlalchemy import case, func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agentcanvas.db.models import AuditLog, Organization, Project, Run, SpendArchive, SpendCapAlert, Thread, WorkflowRow
+from agentcanvas.db.models import (
+    AuditLog,
+    ModelSpend,
+    Organization,
+    Project,
+    Run,
+    SpendArchive,
+    SpendCapAlert,
+    Thread,
+    WorkflowRow,
+)
 from agentcanvas.errors import InvalidInput, SpendingCapReached
 from agentcanvas.ids import new_id
 from agentcanvas.log import get_logger
@@ -159,6 +173,18 @@ async def usage_of(s: AsyncSession, org_id: str, project_id: str | None = None) 
         .where(SpendArchive.hour >= month, *scope)
     )
     gone_today, gone_month = (await s.execute(gone)).one()
+    calls = (  # the Copilot and AI judges
+        select(
+            func.coalesce(func.sum(case((ModelSpend.hour >= day, ModelSpend.cost_usd), else_=0)), 0),
+            func.coalesce(func.sum(ModelSpend.cost_usd), 0),
+        )
+        .select_from(ModelSpend)
+        .join(Project, Project.id == ModelSpend.project_id)
+        .where(ModelSpend.hour >= month, Project.org_id == org_id)
+    )
+    if project_id:
+        calls = calls.where(ModelSpend.project_id == project_id)
+    calls_today, calls_month = (await s.execute(calls)).one()
     live = (
         select(Run.id, Run.cost_usd, case((Run.started_at >= day, 1), else_=0))
         .join(Thread, Thread.id == Run.thread_id)
@@ -167,7 +193,11 @@ async def usage_of(s: AsyncSession, org_id: str, project_id: str | None = None) 
         .where(Run.status == "running", Run.started_at >= month, *scope)
     )
     running = {rid: (float(cost or 0), bool(t)) for rid, cost, t in (await s.execute(live)).all()}
-    return Usage(day=float(today) + float(gone_today), month=float(this_month) + float(gone_month), running=running)
+    return Usage(
+        day=float(today) + float(gone_today) + float(calls_today),
+        month=float(this_month) + float(gone_month) + float(calls_month),
+        running=running,
+    )
 
 
 async def spent_by_project(s: AsyncSession, org_id: str) -> dict[str, tuple[float, float]]:
@@ -200,8 +230,18 @@ async def spent_by_project(s: AsyncSession, org_id: str) -> dict[str, tuple[floa
         .where(SpendArchive.hour >= month, Project.org_id == org_id)
         .group_by(WorkflowRow.project_id)
     )
+    calls = (
+        select(
+            ModelSpend.project_id,
+            func.coalesce(func.sum(case((ModelSpend.hour >= day, ModelSpend.cost_usd), else_=0)), 0),
+            func.coalesce(func.sum(ModelSpend.cost_usd), 0),
+        )
+        .join(Project, Project.id == ModelSpend.project_id)
+        .where(ModelSpend.hour >= month, Project.org_id == org_id)
+        .group_by(ModelSpend.project_id)
+    )
     out: dict[str, tuple[float, float]] = {}
-    for q in (runs, gone):
+    for q in (runs, gone, calls):
         for pid, today, this_month in (await s.execute(q)).all():
             d, m = out.get(pid, (0.0, 0.0))
             out[pid] = (d + float(today), m + float(this_month))
@@ -271,6 +311,37 @@ class SpendCaps:
         if len(self._usage) > 1000:
             self._usage = {k: v for k, v in self._usage.items() if v[0] >= now}
         return found
+
+    async def record(
+        self, project_id: str | None, kind: str, cost: float | None, tokens_in: int = 0, tokens_out: int = 0
+    ) -> None:
+        """Add what a model call outside a run spent (the Copilot's, an AI judge's) to its project's hour. Never
+        raises: an answer already given is not lost because its accounting failed (that is logged)."""
+        if not project_id or not (cost or tokens_in or tokens_out):
+            return
+        hour = datetime.now(UTC).replace(minute=0, second=0, microsecond=0)
+        insert = pg_insert if self.db.engine.dialect.name == "postgresql" else sqlite_insert
+        stmt = insert(ModelSpend).values(
+            project_id=project_id, hour=hour, kind=kind, calls=1, tokens_in=tokens_in, tokens_out=tokens_out,
+            cost_usd=round(cost or 0.0, 6),
+        )  # fmt: skip
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[ModelSpend.project_id, ModelSpend.hour, ModelSpend.kind],
+            set_={
+                "calls": ModelSpend.calls + 1,
+                "tokens_in": ModelSpend.tokens_in + stmt.excluded.tokens_in,
+                "tokens_out": ModelSpend.tokens_out + stmt.excluded.tokens_out,
+                "cost_usd": ModelSpend.cost_usd + stmt.excluded.cost_usd,
+            },
+        )
+        try:
+            async with self.db.sessionmaker() as s:
+                await s.execute(stmt)
+                await s.commit()
+        except Exception:
+            log.exception("model_spend.save_failed", project_id=project_id, kind=kind, cost_usd=cost)
+            return
+        self._usage.clear()  # this server counts it at once
 
     async def refuse(self, project_id: str | None) -> None:
         """Before a run (or a Copilot answer) starts: 429 when its organisation or project reached a cap."""

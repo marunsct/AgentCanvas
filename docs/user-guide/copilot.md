@@ -118,7 +118,9 @@ your workflows never leave them.
 
 **Token limit per chat** caps what one conversation can spend (input plus output tokens; input read from the
 provider's prompt cache costs a tenth or less and does not count). The chat shows how much
-is used; **New chat** starts over with a fresh limit.
+is used; **New chat** starts over with a fresh limit. What the Copilot's answers cost counts against the
+organisation's and the project's [spending caps](settings.md#spending-caps): at a cap, a new question (and code help
+in the code editor) is refused with a message saying which cap was reached.
 
 ## What it knows
 

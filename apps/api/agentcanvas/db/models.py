@@ -397,6 +397,22 @@ class SpendArchive(Base):
     fallbacks: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
 
 
+class ModelSpend(Base):
+    """What model calls outside runs spent, per project, UTC hour and kind: the Copilot's answers ("copilot") and AI
+    judges scoring runs, experiments and evaluator tests ("judge"). Spending caps and the spending report count it
+    with the runs; it goes with its project."""
+
+    __tablename__ = "model_spend"
+    __table_args__ = (Index("model_spend_hour_idx", "hour"),)
+    project_id: Mapped[str] = mapped_column(ForeignKey("project.id", ondelete="CASCADE"), primary_key=True)
+    hour: Mapped[datetime] = mapped_column(UtcDateTime(), primary_key=True)
+    kind: Mapped[str] = mapped_column(String, primary_key=True)  # "copilot" | "judge"
+    calls: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    tokens_in: Mapped[int] = mapped_column(BigInteger, server_default=text("0"), default=0)
+    tokens_out: Mapped[int] = mapped_column(BigInteger, server_default=text("0"), default=0)
+    cost_usd: Mapped[Decimal] = mapped_column(Numeric(14, 6), server_default=text("0"), default=Decimal(0))
+
+
 class RunSearch(Base):
     """G-10: a finished run's input and answer, embedded for "find conversations where …". One row per run; it goes
     with its run (retention, deleting the conversation or the workflow). `model` is the embedding model that made

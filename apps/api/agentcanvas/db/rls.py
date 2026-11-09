@@ -45,6 +45,7 @@ TENANT_TABLES: dict[str, tuple[str, str | None]] = {
     "org_data_key": ("org_id", None),
     "audit_log": ("org_id", None),
     "answer_cache": ("project_id", "project"),
+    "model_spend": ("project_id", "project"),
     "personal_token": ("org_id", None),
     "spend_cap_alert": ("org_id", None),
     "scim_group": ("org_id", None),

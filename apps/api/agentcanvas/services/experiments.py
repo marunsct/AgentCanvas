@@ -48,6 +48,7 @@ from agentcanvas.evaluation import (
 from agentcanvas.ids import new_id
 from agentcanvas.ir.models import Workflow
 from agentcanvas.log import get_logger
+from agentcanvas.runtime.runner import usage_cost
 from agentcanvas.services import simulation
 from agentcanvas.services.simulation import Simulation
 
@@ -125,9 +126,20 @@ def scorers(runner: Any, wf: Workflow, usage: dict[str, Any] | None = None) -> d
     adapter, resources, models = runner.adapter, runner.resources("", wf), runner.models
 
     async def complete(system: str, prompt: str, model: str) -> str:
-        if usage is None:
-            return await models.complete(resources, model, system, prompt)
-        return await models.complete(resources, model, system, prompt, usage=usage.setdefault(model, {}))
+        spent: dict[str, int] = {}
+        try:
+            return await models.complete(resources, model, system, prompt, usage=spent)
+        finally:
+            if usage is not None:
+                mine = usage.setdefault(model, {})
+                for k, v in spent.items():
+                    mine[k] = mine.get(k, 0) + v
+            caps = getattr(runner, "caps", None)
+            if caps is not None and spent:  # a judge's calls count against the spending caps
+                from agentcanvas.services.projects import PROJECT_OF
+
+                await caps.record(PROJECT_OF.get(wf.id), "judge", usage_cost(model, spent),
+                                  spent.get("input_tokens", 0), spent.get("output_tokens", 0))  # fmt: skip
 
     return {
         "complete": complete,

@@ -513,14 +513,25 @@ class SpendDeployment(SpendEntry):
     workflow_id: str | None = Field(description="the deployed workflow; null: runs not made through a deployment")
 
 
+class SpendOutsideRuns(BaseModel):
+    kind: Literal["copilot", "judge"] = Field(description="the Copilot's answers, or AI judges scoring runs")
+    calls: int
+    tokens_in: int
+    tokens_out: int
+    cost_usd: float
+
+
 class SpendingOut(BaseModel):
     since: datetime
     until: datetime
-    total: SpendTotal
+    total: SpendTotal = Field(description="runs only: model calls outside runs are in `outside_runs`")
     by_project: list[SpendProject]
     by_workflow: list[SpendWorkflow]
     by_person: list[SpendPerson]
     by_deployment: list[SpendDeployment]
+    outside_runs: list[SpendOutsideRuns] = Field(
+        description="model calls outside runs (the Copilot, AI judges), which the spending caps count too"
+    )
 
 
 @router.get("/spending", response_model=SpendingOut)
@@ -579,7 +590,7 @@ async def spending_caps(
     request: Request, session: AsyncSession = Depends(get_session), user: CurrentUser = Depends(current_user)
 ) -> SpendingCapsOut:
     """The organisation's and its projects' spending caps, and what each spent today and this month (UTC): runs of
-    every kind, and what conversations deleted since had spent."""
+    every kind, what conversations deleted since had spent, the Copilot and AI judges."""
     org = await session.get(Organization, user.org_id)
     if org is None:
         raise NotFound(f"organisation '{user.org_id}' not found")
