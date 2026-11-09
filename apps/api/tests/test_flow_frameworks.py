@@ -36,7 +36,7 @@ CODEGEN = {"pydantic_ai": pai_codegen, "agno": agno_codegen, "microsoft_agent_fr
            "strands": strands_codegen, "llamaindex": llama_codegen}  # fmt: skip
 PINS = {
     "pydantic_ai": "pydantic-ai-slim[openai]==2.66.0",
-    "agno": "agno==3.1.11",
+    "agno": "agno==3.1.12",
     "microsoft_agent_framework": "agent-framework-core==1.25.0",
     "strands": "strands-agents[openai]==1.64.0",
     "llamaindex": "llama-index-core==0.14.25",

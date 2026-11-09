@@ -13,7 +13,7 @@ from agentcanvas.ir.models import Workflow
 
 LLAMA_INDEX_CORE_VERSION = "0.14.25"
 OPENAI_LIKE_VERSION = "0.8.1"
-WORKFLOWS_VERSION = "2.25.0"  # llama-index-workflows: core takes a range, CI tests this one
+WORKFLOWS_VERSION = "2.26.1"  # llama-index-workflows: core takes a range, CI tests this one
 RUNTIME_IMPORT = "from agentcanvas.adapters.llamaindex import runtime as rt"
 STEP_TYPES = flowgen.STEP_TYPES
 RESOURCE_TYPES = flowgen.RESOURCE_TYPES

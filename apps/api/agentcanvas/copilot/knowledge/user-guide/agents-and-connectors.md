@@ -35,9 +35,9 @@ which shows what will be sent on an approval card; a rejection skips the agent.
 | CrewAI | `crewai==1.15.39` | a `Crew` (its task texts can use `{input}` and other field names), an `Agent` or a `Flow` |
 | Google ADK | `google-adk==2.14.0` | an agent (`LlmAgent`, …) |
 | Pydantic AI | `pydantic-ai-slim==2.66.0` | an `Agent` |
-| Agno | `agno==3.1.11` | an `Agent` or `Team` |
+| Agno | `agno==3.1.12` | an `Agent` or `Team` |
 | Strands Agents | `strands-agents==1.64.0` | an `Agent` |
-| LlamaIndex Workflows | `llama-index-workflows==2.25.0` | a `Workflow` (it gets `input=` and the other fields) |
+| LlamaIndex Workflows | `llama-index-workflows==2.26.1` | a `Workflow` (it gets `input=` and the other fields) |
 | Microsoft Agent Framework | `agent-framework-core==1.25.0` | an agent (`client.as_agent(...)`) |
 | Claude Agent SDK | `claude-agent-sdk==0.2.174` | a `ClaudeAgentOptions` |
 | Python function | none | `async def run(input, ctx)`: return text, or a dict to set several fields |
