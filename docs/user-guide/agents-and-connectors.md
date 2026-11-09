@@ -123,6 +123,10 @@ When a run pauses for an approval or a question, the tool's answer says so and g
 agent continues it with `answer` (`approve: true` or `false`, or `text` for a question). To continue a
 conversation, pass the `thread_id` of the earlier run to the workflow's tool.
 
+A tool call waits up to 5 minutes for the run. A longer run answers `running` with its `run_id` and the address
+of its result (`GET /v1/deployments/<id>/runs/<run_id>` with the deployment key, see
+[Publish](publish.md#long-runs-start-now-read-the-result-later)).
+
 ### As an A2A agent
 
 | | |
@@ -141,7 +145,10 @@ conversation, pass the `thread_id` of the earlier run to the workflow's tool.
 - A2A 1.0 clients use `SendMessage` and `GetTask` (the same behaviour, in 1.0's form: `TASK_STATE_COMPLETED`,
   parts without `kind`); the agent card comes in 1.0's form when read with `A2A-Version: 1.0`, and lists both
   versions either way.
-- Not supported: streaming (`message/stream`, `SendStreamingMessage`), push notifications and cancelling a task.
+- `tasks/cancel` (`CancelTask` in 1.0) stops a working task, on whichever server runs it (another server stops it
+  within a few seconds: the answer may still say `working`). A task that ended, or waits for an answer, cannot be
+  cancelled.
+- Not supported: streaming (`message/stream`, `SendStreamingMessage`) and push notifications.
 - The agent card (and the MCP Server Card) may be cached for five minutes and carry an `ETag`: a republished
   deployment's new card reaches clients that cache it within that time.
 

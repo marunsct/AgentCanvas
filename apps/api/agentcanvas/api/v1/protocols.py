@@ -8,7 +8,7 @@ deployment API, with the same rate limits:
   connect to it like to any remote MCP server.
 - **A2A** (`POST /v1/deployments/{id}/a2a`, JSON-RPC; card at `.../a2a/.well-known/agent-card.json`):
   `message/send` runs the workflow (a pause becomes `input-required`, answered by sending to the same task),
-  `tasks/get` reads a task.
+  `tasks/get` reads a task (from any server: services/run_results.py), `tasks/cancel` stops a working one.
 
 Runs started here are ordinary deployment runs: they show in Runs, count for online evaluators and keep their
 conversation (`thread_id` / A2A `contextId`).
@@ -16,6 +16,8 @@ conversation (`thread_id` / A2A `contextId`).
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import hashlib
 import json
 import re
@@ -40,6 +42,7 @@ from agentcanvas.api.v1.deployments import (
     api_result,
     own_thread,
 )
+from agentcanvas.api.v1.runs import stop_run
 from agentcanvas.db.models import Deployment, InterruptTask, Run, Thread, WorkflowVersion
 from agentcanvas.errors import Conflict, DomainError, InvalidInput, NotFound, TooManyRequests, Unauthorized
 from agentcanvas.ir.contract import Contract, contract
@@ -73,6 +76,7 @@ V1_STATES = {
     "completed": "TASK_STATE_COMPLETED", "input-required": "TASK_STATE_INPUT_REQUIRED", "working": "TASK_STATE_WORKING",
     "canceled": "TASK_STATE_CANCELED", "failed": "TASK_STATE_FAILED",
 }  # fmt: skip
+CANCEL_WAIT_S = 5.0  # how long CancelTask waits for a run stopped on this server to save its outcome
 TEXT_FIELDS = ("message", "question", "query", "input", "text", "request", "prompt", "ticket")
 
 
@@ -233,14 +237,15 @@ def _mcp_tools(wf: Workflow, c: Contract) -> list[dict[str, Any]]:
     return tools
 
 
-def _tool_result(res: ApiResult) -> dict[str, Any]:
+def _tool_result(res: ApiResult, result_url: str | None = None) -> dict[str, Any]:
     data = res.model_dump(exclude_none=True)
     if res.status == "interrupted":
         text = f"The run paused (thread_id {res.thread_id}):\n{_describe_pause(res.interrupts)}\nCall `answer`."
     elif res.status == "success":
         text = json.dumps(res.output, ensure_ascii=False, indent=1)
     elif res.status == "running":
-        text = f"Still running after the wait limit (run {res.run_id}); see Runs in AgentCanvas."
+        text = (f"Still running after the wait limit (run {res.run_id}). Its result: GET {result_url or 'the run'} "
+                "with the deployment key.")  # fmt: skip
     else:
         text = f"The run ended with status {res.status}: {res.error or 'no details'}"
     return {
@@ -248,6 +253,10 @@ def _tool_result(res: ApiResult) -> dict[str, Any]:
         "structuredContent": data,
         "isError": res.status in ("error", "cancelled"),
     }
+
+
+def _result_url(request: Request, dep: Deployment, res: ApiResult) -> str:
+    return api_url(request, "api_run_get", dep_id=dep.id, run_id=res.run_id)
 
 
 async def _mcp_call(
@@ -268,12 +277,14 @@ async def _mcp_call(
                 raise RpcError(-32602, f"invalid arguments: {exc.errors()[0]['msg']}") from None
             h = await _start(request, session, dep.id, body, auth, caller=(dep, wf))
             await session.close()
-            return _tool_result(await _result(h))
+            res = await _result(h)
+            return _tool_result(res, _result_url(request, dep, res))
         if name == "answer" and c.pauses:
             thread_id, iid = str(args.get("thread_id") or ""), args.get("interrupt_id")
             pending = await _pending(request, session, thread_id, iid)
             value = answer_value(pending, args.get("approve"), args.get("text"), args.get("value"))
-            return _tool_result(await _resume(request, session, dep, wf, thread_id, value, iid))
+            res = await _resume(request, session, dep, wf, thread_id, value, iid)
+            return _tool_result(res, _result_url(request, dep, res))
     except (InvalidInput, NotFound, Conflict) as exc:  # the caller's mistake: tell the model, it can correct it
         return {"content": [{"type": "text", "text": exc.detail}], "isError": True}
     raise RpcError(-32602, f"unknown tool '{name}'")
@@ -686,6 +697,10 @@ async def _a2a_send(
 async def _a2a_get(request: Request, session: AsyncSession, dep: Deployment, params: dict[str, Any]) -> dict[str, Any]:
     """A task's state: the run that started it, or the latest run that answered it (labelled with the task)."""
     task_id = str(params.get("id") or "")
+    return _task(await _task_result(request, session, dep, task_id), task_id)
+
+
+async def _task_result(request: Request, session: AsyncSession, dep: Deployment, task_id: str) -> ApiResult:
     thread = await _task_thread(session, dep, task_id)
     # the newest run that is the task or answered it, found in SQL: a long conversation has many runs
     task_run = or_(Run.id == task_id, Run.labels["a2a_task"].as_string() == task_id)
@@ -693,8 +708,24 @@ async def _a2a_get(request: Request, session: AsyncSession, dep: Deployment, par
     latest = await session.scalar(q.order_by(Run.started_at.desc(), Run.id.desc()).limit(1))
     # from this server's memory or the run's row: the same answer on every replica (E-2)
     found = await ResultRepo(session, request.app.state.runner).of(latest or task_id, dep.id)
-    res = api_result(found) if found else ApiResult(run_id=task_id, thread_id=thread.id, status="error")
-    return _task(res, task_id)
+    return api_result(found) if found else ApiResult(run_id=task_id, thread_id=thread.id, status="error")
+
+
+async def _a2a_cancel(
+    request: Request, session: AsyncSession, dep: Deployment, params: dict[str, Any]
+) -> dict[str, Any]:
+    """Stop a working task, wherever its run runs; one that ended, or waits for an answer, cannot be cancelled."""
+    task_id = str(params.get("id") or "")
+    res = await _task_result(request, session, dep, task_id)
+    if res.status != "running":
+        state = "waits for an answer" if res.status == "interrupted" else "has ended"
+        raise RpcError(TASK_NOT_CANCELABLE, f"task '{task_id}' {state}: only a working task can be cancelled")
+    runner = request.app.state.runner
+    stopped = await stop_run(session, runner, res.run_id)
+    if stopped["cancelled"] and not stopped["pending"] and (h := runner.handles.get(res.run_id)) is not None:
+        with contextlib.suppress(TimeoutError):  # it stops at once here; saving its outcome takes a moment
+            await asyncio.wait_for(h.done.wait(), CANCEL_WAIT_S)
+    return _task(await _task_result(request, session, dep, task_id), task_id)
 
 
 async def _a2a_v1(
@@ -712,8 +743,7 @@ async def _a2a_v1(
     if method == "GetTask":
         return _v1_task(await _a2a_get(request, session, dep, params))
     if method == "CancelTask":
-        await _task_thread(session, dep, str(params.get("id") or ""))  # an unknown task is TaskNotFound
-        raise RpcError(TASK_NOT_CANCELABLE, "tasks cannot be cancelled through A2A; a paused task simply waits")
+        return _v1_task(await _a2a_cancel(request, session, dep, params))
     raise RpcError(UNSUPPORTED_OPERATION, f"{method} is not supported by this agent (see its card's capabilities)")
 
 
@@ -744,7 +774,7 @@ async def a2a_endpoint(
         elif method == "tasks/get":
             result = await _a2a_get(request, session, dep, params)
         elif method == "tasks/cancel":
-            raise RpcError(-32002, "tasks cannot be cancelled through A2A; a paused task simply waits")
+            result = await _a2a_cancel(request, session, dep, params)
         elif method in ("message/stream", "tasks/resubscribe"):
             raise RpcError(-32004, "streaming is not supported (the agent card says so); use message/send")
         else:

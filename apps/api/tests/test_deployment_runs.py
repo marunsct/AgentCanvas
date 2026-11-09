@@ -95,3 +95,50 @@ async def test_cancel_a_run_here_and_one_running_on_another_server(app, api_clie
         await _until(b, f"/v1/deployments/{dep}/runs/{second['run_id']}", auth, "cancelled")
     over = await api_client.post(f"/v1/deployments/{dep}/runs/{second['run_id']}/cancel", headers=auth)
     assert over.json() == {"cancelled": False, "pending": False}
+
+
+async def test_a2a_cancels_a_working_task_here_or_on_another_server(app, api_client, settings):
+    from test_protocols import rpc
+
+    dep, key = await _publish(api_client, await make(api_client, SLOW))
+    auth, url = bearer(key), f"/v1/deployments/{dep}/a2a"
+    v1 = {**auth, "A2A-Version": "1.0"}
+
+    async def slow() -> str:
+        run_id = (await api_client.post(f"/v1/deployments/{dep}/runs", json={"input": {"seconds": 30}},
+                                        headers=auth)).json()["run_id"]  # fmt: skip
+        await _running(app, run_id)
+        return run_id
+
+    here = await slow()
+    task = (await api_client.post(url, json=rpc("CancelTask", {"id": here}), headers=v1)).json()["result"]
+    assert task["id"] == here and task["status"]["state"] == "TASK_STATE_CANCELED"
+    again = (await api_client.post(url, json=rpc("CancelTask", {"id": here}), headers=v1)).json()
+    assert again["error"]["code"] == -32002 and "has ended" in again["error"]["message"]
+    there = await slow()
+    async with replica(settings) as (_, b):
+        working = (await b.post(url, json=rpc("tasks/cancel", {"id": there}), headers=auth)).json()["result"]
+        assert working["status"]["state"] == "working"  # the server running it stops it at its next heartbeat
+        await app.state.runner.heartbeat()
+        await asyncio.wait_for(app.state.runner.wait(there), 10)
+        done = (await b.post(url, json=rpc("tasks/get", {"id": there}), headers=auth)).json()["result"]
+        assert done["status"]["state"] == "canceled"
+    missing = (await api_client.post(url, json=rpc("tasks/cancel", {"id": "run_nope"}), headers=auth)).json()
+    assert missing["error"]["code"] == -32001
+
+
+async def test_an_mcp_call_past_the_wait_limit_names_where_to_read_the_result(app, api_client, monkeypatch):
+    from test_protocols import rpc
+
+    from agentcanvas.api.v1 import deployments
+
+    monkeypatch.setattr(deployments, "WAIT_TIMEOUT_S", 0.2)
+    dep, key = await _publish(api_client, await make(api_client, SLOW))
+    url = f"/v1/deployments/{dep}/mcp"
+    [tool] = (await api_client.post(url, json=rpc("tools/list"), headers=bearer(key))).json()["result"]["tools"]
+    call = rpc("tools/call", {"name": tool["name"], "arguments": {"seconds": 30}})
+    res = (await api_client.post(url, json=call, headers=bearer(key))).json()["result"]
+    run_id = res["structuredContent"]["run_id"]
+    assert res["structuredContent"]["status"] == "running" and res["isError"] is False
+    assert f"GET http://test/v1/deployments/{dep}/runs/{run_id}" in res["content"][0]["text"]
+    await app.state.runner.cancel(run_id)
