@@ -77,6 +77,7 @@ TENANT_TABLES: dict[str, tuple[str, str | None]] = {
     "knowledge_document": ("kb_id", "knowledge_base"),
     "knowledge_chunk": ("kb_id", "knowledge_base"),
     "deployment_share": ("deployment_id", "deployment"),
+    "deployment_key": ("deployment_id", "deployment"),
     "share_thread": ("deployment_id", "deployment"),
     "online_evaluator": ("deployment_id", "deployment"),
     "run": ("thread_id", "thread"),

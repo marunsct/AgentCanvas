@@ -195,9 +195,30 @@ class Deployment(Base):
     workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"))
     version_id: Mapped[str] = mapped_column(ForeignKey("workflow_version.id", ondelete="CASCADE"))
     environment: Mapped[str] = mapped_column(Text, server_default=text("'prod'"), default="prod")
-    api_key_hash: Mapped[str] = mapped_column(Text)
-    key_prefix: Mapped[str | None] = mapped_column(Text)  # shown in the UI to tell keys apart
+    # the single key of the previous release, copied to `deployment_key` (2026-11); kept, unused, so a server still
+    # on that release accepts the key during an upgrade. A later migration drops both.
+    api_key_hash: Mapped[str | None] = mapped_column(Text)
+    key_prefix: Mapped[str | None] = mapped_column(Text)
     active: Mapped[bool] = mapped_column(Boolean, server_default=text("true"), default=True)
+    created_at: Mapped[datetime] = _now()
+
+
+class DeploymentKey(Base):
+    """One of a deployment's API keys (E-8): `Authorization: Bearer ac_…` runs the deployment. A deployment may have
+    several at once, so a key is replaced without downtime (make the new one, move callers, revoke the old one). Only
+    the SHA-256 of the key is kept; it is shown once."""
+
+    __tablename__ = "deployment_key"
+    __table_args__ = (Index("deployment_key_deployment_idx", "deployment_id"),)
+    id: Mapped[str] = mapped_column(String, primary_key=True)  # dky_<ulid>
+    deployment_id: Mapped[str] = mapped_column(ForeignKey("deployment.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(Text)
+    key_hash: Mapped[str] = mapped_column(Text, unique=True)
+    prefix: Mapped[str] = mapped_column(Text)  # the first characters, shown to tell keys apart
+    created_by: Mapped[str | None] = mapped_column(Text)  # the person who made it (none: from before E-8)
+    expires_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
+    last_used_at: Mapped[datetime | None] = mapped_column(UtcDateTime())  # written at most once a minute
+    revoked_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
     created_at: Mapped[datetime] = _now()
 
 

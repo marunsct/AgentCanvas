@@ -44,8 +44,26 @@ Publishing first runs a checklist, and refuses on a failure:
 | contract | no breaking change against the live version (or it is the first publish) |
 | release gate | the evaluation meets the environment's gate, if one is set |
 
-The deployment's **API key** is shown **once**, when the deployment is created. Store it safely. **Rotate key**
-issues a new one; **Unpublish** removes the deployment.
+The deployment's first **API key** is shown **once**, when the deployment is created. Store it safely.
+**Unpublish** removes the deployment and revokes its keys; publishing it again makes a new key.
+
+### Deployment keys
+
+A deployment can have several keys at once (up to 20 that work), each with a name and, if you like, an expiry, so
+each caller can have its own and a key can be replaced without downtime. Only a fingerprint (SHA-256) of a key is
+stored, and a key is shown once, when it is made. Builders manage them:
+
+| Request | Does |
+|---|---|
+| `GET /v1/deployments/{id}/keys` | The keys, newest first: name, first characters, who made it, when it expires, when it was last used (to the minute), and whether it was revoked. Never the key itself |
+| `POST /v1/deployments/{id}/keys` with `{"name": "CI", "expires_in_days": 90}` | Another key next to the ones that work (`expires_in_days` left out: it never expires). The answer holds `api_key`, shown this once |
+| `DELETE /v1/deployments/{id}/keys/{key id}` | Revoke the key: calls with it are refused at once, on every server |
+| `POST /v1/deployments/{id}/rotate-key`, optionally with `{"overlap_hours": 24}` | A new key; the other keys stop working at once, or after the overlap (at most 720 hours) |
+
+To replace a key without downtime: make a new one, move the callers to it, check that the old one's last use stops
+moving, then revoke it (or rotate with an overlap, which does the same on a timer). A revoked or expired key gets
+`401` with a message that says which. Making, revoking and rotating keys are in the audit log
+(`create_deployment_key`, `revoke_deployment_key`, `rotate_key`) with the key's first characters, never the key.
 
 ## Call a deployment
 

@@ -37,6 +37,7 @@ async def test_org_b_cannot_read_org_a(app, api_client, org_b):
     await asyncio.wait_for(h.done.wait(), 10)
     pub = (await api_client.post(f"/v1/workflows/{wf_id}/publish", json={})).json()
     dep_id = pub["deployment"]["id"]
+    key_id = (await api_client.get(f"/v1/deployments/{dep_id}/keys")).json()[0]["id"]
     assert (await api_client.put("/v1/projects/prj_default/secrets/TOKEN", json={"value": "s3cret"})).status_code == 204
 
     act_as_b(app)
@@ -60,6 +61,7 @@ async def test_org_b_cannot_read_org_a(app, api_client, org_b):
         # writes are refused the same way
         assert (await api_client.delete(f"/v1/workflows/{wf_id}")).status_code == 404
         assert (await api_client.post(f"/v1/deployments/{dep_id}/rotate-key")).status_code == 404
+        assert (await api_client.get(f"/v1/deployments/{dep_id}/keys")).status_code == 404
         assert (await api_client.post("/v1/projects/prj_default/workflows", json={"name": "x"})).status_code == 404
         for method, path, body in [  # S17: every kind of write names a resource of A, so every one is a 404
             ("PUT", "/v1/projects/prj_default/secrets/TOKEN", {"value": "mine"}),
@@ -75,6 +77,8 @@ async def test_org_b_cannot_read_org_a(app, api_client, org_b):
             ("GET", f"/v1/deployments/{dep_id}/share", None),  # S23: share links
             ("PUT", f"/v1/deployments/{dep_id}/share", {"enabled": True}),
             ("POST", f"/v1/deployments/{dep_id}/share/regenerate", None),
+            ("POST", f"/v1/deployments/{dep_id}/keys", {"name": "mine"}),  # E-8: deployment keys
+            ("DELETE", f"/v1/deployments/{dep_id}/keys/{key_id}", None),
         ]:
             r = await api_client.request(method, path, json=body)
             assert r.status_code == 404, f"{method} {path}: {r.status_code} {r.text}"
@@ -113,6 +117,7 @@ CHILD_PARAMS = {
     "user_id": "member routes act on the caller's organisation only",
     "connection_id": "/connections: a connection of the caller's own organisation and, but for admins, own owner",
     "group_id": "/scim/v2: ScimService looks groups up within the organisation of the SCIM token",
+    "key_id": "DeploymentService.revoke_key looks the key up within {dep_id}",
     "token_id": "TokenService.revoke compares the token's organisation (and, for /me, its owner) with the caller's",
     "org_id": "/me/invitations: the caller's own invitations only",
     "target": "a framework name, not a stored object (S22 bridge export)",

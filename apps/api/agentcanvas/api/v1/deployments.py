@@ -7,7 +7,7 @@ version — editing the draft never changes what callers get.
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, File, Header, Request, Response, UploadFile
@@ -24,7 +24,16 @@ from agentcanvas.api.v1.gitsync import GitSyncOut, sync_after_version
 from agentcanvas.api.v1.runs import SSE_HEADERS, _context, _sse
 from agentcanvas.api.v1.versions import workspace_commit
 from agentcanvas.api.v1.workflows import service
-from agentcanvas.db.models import Deployment, Organization, Project, Run, RunScore, Thread, WorkflowVersion
+from agentcanvas.db.models import (
+    Deployment,
+    DeploymentKey,
+    Organization,
+    Project,
+    Run,
+    RunScore,
+    Thread,
+    WorkflowVersion,
+)
 from agentcanvas.errors import Conflict, Forbidden, InvalidInput, NotFound
 from agentcanvas.ids import new_id
 from agentcanvas.ir.contract import breaking_changes, contract
@@ -77,14 +86,51 @@ class PublishOut(BaseModel):
     )
 
 
+class DeploymentKeyOut(BaseModel):
+    id: str
+    name: str
+    prefix: str = Field(description="the key's first characters, to tell it from the others")
+    created_by: str | None = Field(description="who made it (none: the key the deployment had before E-8)")
+    created_at: datetime
+    expires_at: datetime | None = Field(description="none: never expires")
+    last_used_at: datetime | None = Field(description="the last call made with it, to the minute")
+    revoked_at: datetime | None
+    active: bool = Field(description="works now: neither revoked nor expired")
+
+
+class KeyIn(BaseModel):
+    name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
+    expires_in_days: int | None = Field(None, ge=1, le=3650, description="null: never expires")
+
+
+class KeyCreated(DeploymentKeyOut):
+    api_key: str = Field(description="the key itself: shown this once")
+
+
+class RotateIn(BaseModel):
+    overlap_hours: int = Field(
+        0, ge=0, le=720, description="how long the old keys keep working, so callers can move over (0: they stop now)"
+    )
+
+
 class KeyOut(BaseModel):
-    api_key: str
+    api_key: str = Field(description="the new key: shown this once")
+    key: DeploymentKeyOut | None = Field(None, description="the new key's details")
 
 
-def _dep(d: Deployment, v: WorkflowVersion) -> DeploymentOut:
+def _dep(d: Deployment, v: WorkflowVersion, key_prefix: str | None) -> DeploymentOut:
     return DeploymentOut(
-        id=d.id, environment=d.environment, version_id=v.id, semver=v.semver, key_prefix=d.key_prefix,
+        id=d.id, environment=d.environment, version_id=v.id, semver=v.semver, key_prefix=key_prefix,
         active=d.active, created_at=d.created_at, endpoint=f"/v1/deployments/{d.id}/runs/wait",
+    )  # fmt: skip
+
+
+def _key(k: DeploymentKey) -> DeploymentKeyOut:
+    now = datetime.now(UTC)
+    return DeploymentKeyOut(
+        id=k.id, name=k.name, prefix=k.prefix, created_by=k.created_by, created_at=k.created_at,
+        expires_at=k.expires_at, last_used_at=k.last_used_at, revoked_at=k.revoked_at,
+        active=k.revoked_at is None and (k.expires_at is None or k.expires_at > now),
     )  # fmt: skip
 
 
@@ -153,8 +199,9 @@ async def publish(
         wf_id, message=body.message or f"published to {body.environment}", workspace_commit=commit,
         created_by=user.id, reuse_unchanged=True,
     )  # fmt: skip
-    dep, key = await deps.publish(view.row, body.environment, version)
-    out = PublishOut(deployment=_dep(dep, version), api_key=key, checklist=checks)
+    dep, key = await deps.publish(view.row, body.environment, version, created_by=user.id)
+    prefix = (await deps.newest_prefixes([dep.id])).get(dep.id)
+    out = PublishOut(deployment=_dep(dep, version, prefix), api_key=key, checklist=checks)
     out.git = await sync_after_version(request, session, wf_id, version, "publish")  # G-14: never fails the publish
     return out
 
@@ -191,13 +238,58 @@ async def _contract_check(session: AsyncSession, wf_id: str, environment: str, w
 
 @router.get("/workflows/{wf_id}/deployments", response_model=list[DeploymentOut])
 async def list_deployments(wf_id: str, session: AsyncSession = Depends(get_session)) -> list[DeploymentOut]:
-    return [_dep(d, v) for d, v in await DeploymentService(session).list(wf_id)]
+    svc = DeploymentService(session)
+    found = await svc.list(wf_id)
+    prefixes = await svc.newest_prefixes([d.id for d, _ in found])
+    return [_dep(d, v, prefixes.get(d.id)) for d, v in found]
+
+
+@router.get("/deployments/{dep_id}/keys", response_model=list[DeploymentKeyOut])
+async def list_deployment_keys(dep_id: str, session: AsyncSession = Depends(get_session)) -> list[DeploymentKeyOut]:
+    """The deployment's API keys, newest first, with revoked and expired ones (builders)."""
+    svc = DeploymentService(session)
+    await svc.require(dep_id)
+    return [_key(k) for k in await svc.keys(dep_id)]
+
+
+@router.post("/deployments/{dep_id}/keys", response_model=KeyCreated, status_code=201)
+async def create_deployment_key(
+    dep_id: str,
+    body: KeyIn,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    user: CurrentUser = Depends(current_user),
+) -> KeyCreated:
+    """Another key for the deployment, next to the ones that work already (shown once). To replace a key without
+    downtime: make a new one, move the callers to it, then revoke the old one."""
+    row, value = await DeploymentService(session).add_key(dep_id, body.name, user.id, body.expires_in_days)
+    note(request, key=row.id, prefix=row.prefix, name=row.name, expires_at=row.expires_at)
+    return KeyCreated(**_key(row).model_dump(), api_key=value)
+
+
+@router.delete("/deployments/{dep_id}/keys/{key_id}", status_code=204)
+async def revoke_deployment_key(
+    dep_id: str, key_id: str, request: Request, session: AsyncSession = Depends(get_session)
+) -> Response:
+    """Revoke a key: calls with it are refused at once, on every server."""
+    row = await DeploymentService(session).revoke_key(dep_id, key_id)
+    note(request, key=row.id, prefix=row.prefix, name=row.name)
+    return Response(status_code=204)
 
 
 @router.post("/deployments/{dep_id}/rotate-key", response_model=KeyOut)
-async def rotate_key(dep_id: str, session: AsyncSession = Depends(get_session)) -> KeyOut:
-    """A new key; the old one stops working immediately."""
-    return KeyOut(api_key=await DeploymentService(session).rotate(dep_id))
+async def rotate_key(
+    dep_id: str,
+    request: Request,
+    body: RotateIn | None = None,
+    session: AsyncSession = Depends(get_session),
+    user: CurrentUser = Depends(current_user),
+) -> KeyOut:
+    """A new key; the deployment's other keys stop working at once, or after `overlap_hours`."""
+    overlap = body.overlap_hours if body else 0
+    row, value = await DeploymentService(session).rotate(dep_id, user.id, overlap)
+    note(request, key=row.id, prefix=row.prefix, overlap_hours=overlap)
+    return KeyOut(api_key=value, key=_key(row))
 
 
 @router.delete("/deployments/{dep_id}", status_code=204)
