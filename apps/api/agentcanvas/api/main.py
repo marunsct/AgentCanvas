@@ -66,7 +66,7 @@ from agentcanvas.services.retention import RetentionJob
 from agentcanvas.services.run_gate import RunGate
 from agentcanvas.services.run_search import RunSearchService
 from agentcanvas.services.secrets import SecretCache, encoded_forms
-from agentcanvas.services.trace_export import TraceExportHook
+from agentcanvas.services.trace_export import Exporter, TraceExportHook
 from agentcanvas.services.triggers import CronScheduler
 from agentcanvas.settings import Settings, get_settings
 
@@ -270,7 +270,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             runner.finish_hooks.append(app.state.run_search.on_run_finished)
             app.state.presence = PresenceHub(db)  # G-4: who has a workflow open
-            app.state.trace_export = TraceExportHook(db, app.state.projects)
+            app.state.trace_export = TraceExportHook(
+                db, app.state.projects, Exporter(public_only=settings.edition == "hosted")
+            )
             runner.finish_hooks.append(app.state.trace_export.on_run_finished)
             app.state.cron = CronScheduler(db, runner, app.state.keyring, catchup_s=settings.cron_catchup_s)
             app.state.ratelimit = RateLimiter(db)

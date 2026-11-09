@@ -168,3 +168,42 @@ def test_openai_client_models_ask_for_their_streamed_usage():
     off = chat_model_args("lmstudio:m", {"stream_usage": False}, {})[1]
     assert off["stream_usage"] is False  # a workflow that turns it off keeps it off
     assert "stream_usage" not in chat_model_args("anthropic:claude-haiku-5-5", {}, {})[1]  # reports usage anyway
+
+
+async def test_the_hosted_edition_lists_models_from_public_addresses_only(api_client, app, monkeypatch):
+    """S-5: in the hosted edition a builder's base URL must not make the API server read the cluster network or the
+    cloud metadata address (a `?x=` suffix makes the whole URL theirs), and there is no local server to ask."""
+    import http.server
+    import threading
+
+    hits: list[str] = []
+
+    class Internal(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            hits.append(self.path)
+            self.send_response(200)
+            self.send_header("content-type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"data": [{"id": "internal-secret"}], "models": [{"name": "internal-secret"}]}')
+
+        def log_message(self, *a):
+            pass
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Internal)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{server.server_port}/internal?x="
+    monkeypatch.setattr(app.state.settings, "edition", "hosted")
+    try:
+        url = f"{URL}/server-models"
+        for provider in ("openai_compatible", "ollama", "lmstudio"):
+            r = (await api_client.post(url, json={"provider": provider, "base_url": base})).json()
+            assert r["ok"] is False and r["models"] == [], (provider, r)
+        assert "your own machine" in r["error"]
+        models = (await api_client.get("/v1/projects/prj_default/chat-models")).json()
+        assert not any("internal-secret" in m["id"] for m in models)
+        assert hits == []
+        monkeypatch.setattr(app.state.settings, "edition", "dev")  # the self-hosted editions: as before
+        r = (await api_client.post(url, json={"provider": "openai_compatible", "base_url": base})).json()
+        assert r["models"] == ["internal-secret"] and hits
+    finally:
+        server.shutdown()

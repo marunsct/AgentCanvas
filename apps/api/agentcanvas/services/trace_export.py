@@ -12,6 +12,9 @@ Spans carry the OpenTelemetry GenAI conventions (`gen_ai.*`) and the OpenInferen
 and inputs. Secrets are already masked in run events; `include_content: false` sends timings, models and tokens
 only. Export runs in the background (batched) and never slows or fails a run.
 
+The hosted edition sends traces to public addresses only (S-5): the destination is checked when it is saved and
+tested, and every connection the exporter makes goes to an address checked as it connects.
+
 Run events have one timestamp each (when they happened), so a step span is exact and model and tool calls are
 points inside their step.
 """
@@ -237,14 +240,44 @@ def spans(h: RunHandle, status: str, error: str | None, content: bool) -> list[d
     return out
 
 
+async def internal_address(url: str) -> str | None:
+    """Why `url` is not a public destination (its host resolves to a private, loopback or metadata address, or not
+    at all), or None when it is. The hosted edition refuses such a destination."""
+    from urllib.parse import urlsplit
+
+    from agentcanvas.adapters.langchain.pinned import RefusedAddress, public_address
+
+    parts = urlsplit(url)
+    if not parts.hostname:
+        return f"'{url}' has no host"
+    try:
+        await public_address(parts.hostname, parts.port or (443 if parts.scheme == "https" else 80))
+    except RefusedAddress as exc:
+        return str(exc)
+    except OSError:
+        return f"'{parts.hostname}' does not resolve"
+    return None
+
+
+def _session(public_only: bool) -> Any:
+    if not public_only:
+        return None
+    from agentcanvas.adapters.langchain.pinned import public_requests_session
+
+    return public_requests_session()
+
+
 class Exporter:
     """One OpenTelemetry pipeline per project (batched, background thread), reused across runs. A project whose
     destination or credentials change gets a new pipeline; the old one is flushed and shut down. So is the pipeline
     of a project with no run for `idle_s`, and the least recently used one past `max_pipelines`: each holds a
-    thread, so they must not pile up with every project a server has ever exported for."""
+    thread, so they must not pile up with every project a server has ever exported for. `public_only` (the hosted
+    edition): every connection goes to a public address, checked as it connects."""
 
-    def __init__(self, max_pipelines: int = 256, idle_s: float = 900.0, clock: Any = time.monotonic) -> None:
-        self.max_pipelines, self.idle_s, self.clock = max_pipelines, idle_s, clock
+    def __init__(
+        self, max_pipelines: int = 256, idle_s: float = 900.0, clock: Any = time.monotonic, public_only: bool = False
+    ) -> None:
+        self.max_pipelines, self.idle_s, self.clock, self.public_only = max_pipelines, idle_s, clock, public_only
         # project id -> (destination key, pipeline, last used), least recently used first
         self._providers: dict[str, tuple[str, TracerProvider, float]] = {}
         self._lock = threading.Lock()
@@ -265,7 +298,8 @@ class Exporter:
                 provider = current[1]
             else:
                 provider = TracerProvider(resource=Resource.create({"service.name": "agentcanvas"}))
-                exporter = MaskingExporter(OTLPSpanExporter(endpoint=url, headers=headers))
+                otlp = OTLPSpanExporter(endpoint=url, headers=headers, session=_session(self.public_only))
+                exporter = MaskingExporter(otlp)
                 provider.add_span_processor(BatchSpanProcessor(exporter))
             for other, (_, p, used) in list(self._providers.items()):  # oldest first
                 if now - used > self.idle_s or len(self._providers) >= self.max_pipelines:
@@ -311,7 +345,7 @@ def emit(provider: Any, records: list[dict[str, Any]]) -> None:
         span.end(end_time=max(r["end"], r["start"]))
 
 
-def test_send(url: str, headers: dict[str, str]) -> str | None:
+def test_send(url: str, headers: dict[str, str], public_only: bool = False, timeout: float = 10) -> str | None:
     """Send one test span right now; None when the destination accepted it, else what went wrong."""
     from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
     from opentelemetry.sdk.resources import Resource
@@ -322,7 +356,7 @@ def test_send(url: str, headers: dict[str, str]) -> str | None:
 
     class Recording(SpanExporter):
         def __init__(self) -> None:
-            self.inner = OTLPSpanExporter(endpoint=url, headers=headers, timeout=10)
+            self.inner = OTLPSpanExporter(endpoint=url, headers=headers, timeout=timeout, session=_session(public_only))
 
         def export(self, spans: Any) -> SpanExportResult:
             result.append(self.inner.export(spans))

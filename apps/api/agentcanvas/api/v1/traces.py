@@ -51,6 +51,10 @@ async def put_trace_export(
         raise InvalidInput("Langfuse needs its public and secret keys, each stored as a project secret")
     if body.kind == "otlp" and not body.endpoint:
         raise InvalidInput("enter the OTLP traces URL, e.g. https://collector.example.com/v1/traces")
+    if request.app.state.settings.edition == "hosted":
+        problem = await trace_export.internal_address(body.endpoint or trace_export.DEFAULTS.get(body.kind, ""))
+        if problem:
+            raise InvalidInput(f"the hosted service sends traces to public addresses only: {problem}")
     project = await ProjectRepo(session).require(project_id, lock=True)
     project.settings = {**(project.settings or {}), "trace_export": body.model_dump(exclude_none=True)}
     await session.commit()
@@ -84,5 +88,8 @@ async def test_trace_export(project_id: str, request: Request, session: AsyncSes
         url, headers = cfg.target(request.app.state.projects.secrets.get(project_id, {}))
     except KeyError as exc:
         return TestOut(ok=False, detail=f"missing {exc.args[0]}: add it under Secrets")
-    problem = await asyncio.to_thread(trace_export.test_send, url, headers)
+    hosted = request.app.state.settings.edition == "hosted"
+    if hosted and (problem := await trace_export.internal_address(url)):  # saved before, or the name moved since
+        return TestOut(ok=False, detail=f"the hosted service sends traces to public addresses only: {problem}")
+    problem = await asyncio.to_thread(trace_export.test_send, url, headers, hosted)
     return TestOut(ok=problem is None, detail=problem or f"{url} accepted a test trace")

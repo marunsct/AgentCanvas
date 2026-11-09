@@ -223,9 +223,18 @@ async def list_server_models(
     """Read a local server's or OpenAI-compatible API's model list; any connection or format error is the answer."""
     ollama = p.id == "ollama"
     url = base.rstrip("/") + ("/api/tags" if ollama else "/models")
+    hosted = request.app.state.settings.edition == "hosted"
+    if hosted and p.local:
+        return ServerModelsOut(ok=False, error=f"{p.label} runs on your own machine: the hosted service cannot ask it")
     try:
         transport = getattr(request.app.state, "model_list_transport", None)  # tests serve a fake server here
-        async with httpx.AsyncClient(timeout=timeout, follow_redirects=False, transport=transport) as client:
+        if transport is None and hosted:  # S-5: public addresses only, checked as it connects
+            from agentcanvas.adapters.langchain.pinned import public_async_client
+
+            client = public_async_client(timeout=timeout, follow_redirects=False)
+        else:
+            client = httpx.AsyncClient(timeout=timeout, follow_redirects=False, transport=transport)
+        async with client:
             r = await client.get(url, headers={"Authorization": f"Bearer {key}"} if key else {})
         if r.status_code in (401, 403):
             return ServerModelsOut(

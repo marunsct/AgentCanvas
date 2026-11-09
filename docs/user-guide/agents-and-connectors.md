@@ -214,3 +214,6 @@ use the OpenTelemetry GenAI conventions and the OpenInference ones, which all th
 - Export runs in the background and never slows a run down. If the destination is down, traces are dropped and
   the server logs a warning.
 - A model or tool call is shown as a point in time inside its step: the step's duration is exact.
+- The hosted service sends traces to public addresses only. An address that is private, internal or the server's
+  own (including the Phoenix and Datadog defaults on `localhost`) is refused when you save or test it, and every
+  connection is checked again as it is made.

@@ -113,7 +113,8 @@ Open it from **Choose a model** on Home (until setup is done) or **Settings › 
 
 1. Pick a provider and a model. For a local server or an OpenAI-compatible API, **Find models on the server** lists
    the models it offers (LM Studio lists the models you downloaded; Ollama the ones you pulled) so you can pick one
-   instead of typing its name.
+   instead of typing its name. The hosted service asks only servers at public addresses: it has no local server to
+   ask, and an internal or private address is refused.
 2. Enter the API key (for a local server, only if it requires one), or the server address for a local server on a
    non-default port.
 3. **Test connection** sends one short message with exactly these settings and shows the reply or the error.
