@@ -13,7 +13,8 @@ playwright-report/
 *.db-wal
 *.tsbuildinfo
 apps/api/workspaces/
-apps/api/.frameworks/
+# no trailing slash: a symlink to another checkout's framework environments is ignored too
+apps/api/.frameworks
 
 # filled-in production / local settings
 infra/.env.prod
