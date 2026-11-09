@@ -138,3 +138,32 @@ test("an annotation queue: a rubric as rows, runs picked from a list, a review",
   await review.getByRole("button", { name: "Submit review" }).click();
   await expect(page.getByTestId("queues")).toContainText("1 of 1");
 });
+
+test("an experiment runs each example twice: pass@2, pass^2 and a row per run", async ({ page }) => {
+  // F-6: runs per example. The greeter answers the same every time, so pass@2 and pass^2 agree and nothing is flaky.
+  const api = page.request;
+  const wf = await (await api.post("/api/v1/projects/prj_default/workflows", { data: { name: `Repeat ${Date.now()}` } })).json();
+  const ir = {
+    ...wf.ir, state: { channels: [{ name: "who" }, { name: "out" }] },
+    nodes: [{ id: "n_g", type: "core.set", name: "greet", config: { values: { out: "Hello {{ state.who }}" } } }],
+    edges: [
+      { id: "e1", kind: "flow", source: { node: "START" }, target: { node: "n_g" } },
+      { id: "e2", kind: "flow", source: { node: "n_g" }, target: { node: "END" } },
+    ],
+  };
+  expect((await api.put(`/api/v1/workflows/${wf.id}`, { data: { ir }, headers: { "If-Match": "1" } })).ok()).toBeTruthy();
+  const ds = await (await api.post(`/api/v1/workflows/${wf.id}/datasets`, { data: { name: "Twice" } })).json();
+  const examples = ["Ada", "Bob"].map((who) => ({ input: { who }, reference: { out: `Hello ${who}` } }));
+  expect((await api.post(`/api/v1/datasets/${ds.id}/examples`, { data: { examples } })).ok()).toBeTruthy();
+  expect((await api.post(`/api/v1/workflows/${wf.id}/evaluators`, { data: { name: "exact", kind: "exact", config: {} } })).ok()).toBeTruthy();
+
+  await page.goto(`/workflows/${wf.id}/evaluation`);
+  await page.getByRole("tab", { name: "Experiments" }).click();
+  await page.getByLabel("runs per example").fill("2");
+  await page.getByRole("button", { name: "▶ Run experiment" }).click();
+  const results = page.getByTestId("results");
+  await expect(results.getByTestId("repeated")).toContainText("pass@2 100%");
+  await expect(results.getByTestId("repeated")).toContainText("pass^2 100%");
+  await expect(results.getByTestId("repeated")).not.toContainText("flaky");
+  await expect(results.getByRole("button", { name: /#1 · run 2/ })).toBeVisible();
+});

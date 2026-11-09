@@ -167,3 +167,17 @@ test("a workflow of another project (from the Inbox, Runs or a link) opens in it
   await expect(page.getByTestId("project-name")).toHaveText(`Elsewhere ${stamp}`);
   expect((await page.request.delete(`/api/v1/projects/${project.id}`)).ok()).toBeTruthy();
 });
+
+test("an admin stops all runs from Settings, with a reason", async ({ page }) => {
+  // F-5. The request is answered here: pressing the real switch would stop the runs of the tests running beside this one.
+  let sent: unknown = null;
+  await page.route("**/api/v1/org/runs/stop", async (route) => {
+    sent = route.request().postDataJSON();
+    await route.fulfill({ json: { stopping: ["run_a", "run_b"], cancelled: [] } });
+  });
+  await page.goto("/settings/organisation");
+  await page.getByRole("button", { name: "Stop all runs…" }).click();
+  await answerDialog(page, "an agent is looping");
+  await expect(page.getByText("Stopping 2 runs")).toBeVisible();
+  expect(sent).toEqual({ reason: "an agent is looping" });
+});
