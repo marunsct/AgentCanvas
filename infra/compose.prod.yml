@@ -1,5 +1,6 @@
 # Production-style single host (M8-T2): Postgres, a one-shot migration, two API replicas behind nginx.
-#   docker build -f infra/Dockerfile.api -t agentcanvas-api apps/api
+#   docker build -f infra/Dockerfile.api --build-arg FRAMEWORKS=all --build-arg WITH_MASTRA=true -t agentcanvas-api apps/api
+#     (every framework, like the Docker app; fewer: FRAMEWORKS="crewai google_adk", see docs/user-guide/deploy.md)
 #   docker build -f infra/Dockerfile.web -t agentcanvas-web .
 #   cp infra/.env.prod.example infra/.env.prod   # then fill it in
 #   docker compose -f infra/compose.prod.yml --env-file infra/.env.prod up -d

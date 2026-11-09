@@ -518,3 +518,17 @@ def test_the_pooler_runbook_fits_the_driver_and_the_row_level_security_the_api_u
     for needed in ("max_prepared_statements", "ignore_startup_parameters = options", "agentcanvas.all_tenants"):
         assert needed in row, needed
     assert "AGENTCANVAS_PERSISTENCE_URL" in row  # its startup holds a session lock, which transaction pooling breaks
+
+
+def test_the_documented_production_builds_include_every_framework_like_the_docker_app():
+    """The Docker app builds with every framework; the production commands built without the arguments, so the image
+    held only LangGraph and the OpenAI Agents SDK and CrewAI, ADK, Mastra... workflows failed at run time."""
+    local = yaml.safe_load((ROOT / "infra" / "compose.local.yml").read_text())["services"]["api"]["build"]["args"]
+    assert local["FRAMEWORKS"] == "${FRAMEWORKS:-all}" and local["WITH_MASTRA"] == "${WITH_MASTRA:-true}"
+    for path in ["docs/user-guide/deploy.md", "infra/compose.prod.yml"]:
+        builds = [
+            line for line in (ROOT / path).read_text().splitlines() if "docker build -f infra/Dockerfile.api" in line
+        ]
+        assert builds, path
+        for line in builds:
+            assert "--build-arg FRAMEWORKS=all" in line and "--build-arg WITH_MASTRA=true" in line, (path, line)

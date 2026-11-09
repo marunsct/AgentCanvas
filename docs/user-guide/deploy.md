@@ -18,7 +18,7 @@ the images and the chart contain, metrics, retention, restore, and a runbook for
 ## Option 1: Docker Compose on one host
 
 ```bash
-docker build -f infra/Dockerfile.api -t agentcanvas-api apps/api
+docker build -f infra/Dockerfile.api --build-arg FRAMEWORKS=all --build-arg WITH_MASTRA=true -t agentcanvas-api apps/api
 docker build -f infra/Dockerfile.web -t agentcanvas-web .
 cp infra/.env.prod.example infra/.env.prod      # fill it in (never commit it)
 docker compose -f infra/compose.prod.yml --env-file infra/.env.prod up -d --wait
@@ -33,6 +33,14 @@ for all its tabs, and each open editor, run or Copilot answer holds one, so with
 wait. The API containers run with a read-only root (writable: the workspaces volume, `/tmp` and the
 app user's home, both in memory), no capabilities and a 2 GB memory limit (`API_MEM_LIMIT`); `API_READ_ONLY=false`
 turns the read-only root off should a framework need to write elsewhere.
+
+**Which frameworks the image runs.** Like the Docker app, these commands build every framework into the API image
+(about 4.5 GB instead of 1.1 GB), so workflows designed for CrewAI, Google ADK, Pydantic AI, Agno, the Microsoft Agent
+Framework, Strands, LlamaIndex or Mastra run on this server too. For a smaller image, list only the ones you use,
+for example `--build-arg FRAMEWORKS="crewai google_adk" --build-arg WITH_MASTRA=false`, or `FRAMEWORKS=none` (and
+`WITH_MASTRA=false`) for LangGraph and the OpenAI Agents SDK only, which every image has. A workflow whose framework is
+missing can still be designed and exported, but its runs stop with *… is not installed on this server*, and the
+workflow's **Framework** setting marks it *not set up*. The ids are in [Choosing a framework](frameworks.md).
 
 **Database connections.** Each API replica opens up to `AGENTCANVAS_DB_POOL_SIZE` + `AGENTCANVAS_DB_MAX_OVERFLOW` +
 `AGENTCANVAS_PERSISTENCE_POOL_SIZE` connections (10 + 20 + 20 = 50 by default). Postgres's `max_connections` must be
@@ -55,7 +63,8 @@ registry your cluster can pull from.
 ```bash
 REGISTRY=registry.example.com/acme   # yours
 TAG=$(git rev-parse --short HEAD)
-docker build -f infra/Dockerfile.api -t $REGISTRY/agentcanvas-api:$TAG apps/api
+docker build -f infra/Dockerfile.api --build-arg FRAMEWORKS=all --build-arg WITH_MASTRA=true \
+  -t $REGISTRY/agentcanvas-api:$TAG apps/api
 docker build -f infra/Dockerfile.web -t $REGISTRY/agentcanvas-web:$TAG .
 docker push $REGISTRY/agentcanvas-api:$TAG && docker push $REGISTRY/agentcanvas-web:$TAG
 ```
