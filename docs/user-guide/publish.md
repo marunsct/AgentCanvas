@@ -186,7 +186,10 @@ On the Versions tab:
   `X-AgentCanvas-Signature: sha256=<hex HMAC-SHA256 of "<timestamp>." + body>` using the trigger's secret.
   Requests older than five minutes are refused.
 - **+ Cron** runs the workflow on a 5-field schedule in UTC (e.g. `*/5 9-17 * * 1-5`) with a fixed **Cron input
-  (JSON)**. Each scheduled minute fires once, however many API replicas run.
+  (JSON)**. Each scheduled minute fires once, however many API replicas run. An occurrence missed while no server
+  was running (a restart or an outage at that minute) fires once when one is back, if it is less than an hour old
+  (the operator's `AGENTCANVAS_CRON_CATCHUP_S`); older ones are skipped, as is anything due while the trigger was
+  switched off.
 
 A trigger runs its deployment's pinned version when it is attached to one, otherwise the draft (the panel says
 which). For starting

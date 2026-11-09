@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from test_publish import make_greeter, set_greeting
@@ -174,3 +174,65 @@ async def test_a_trigger_warns_when_a_connector_signs_in_as_the_person_who_start
     cur = (await api_client.get(f"/v1/workflows/{wf}")).json()
     await api_client.put(f"/v1/workflows/{wf}", json={"ir": ir}, headers={"If-Match": str(cur["version"])})
     assert (await api_client.get(f"/v1/workflows/{wf}/triggers")).json()[0]["warnings"] == []
+
+
+async def _cron(app, api_client, schedule: str, **config) -> str:
+    wf = await make_greeter(api_client)
+    r = await api_client.post(
+        f"/v1/workflows/{wf}/triggers", json={"kind": "cron", "config": {"schedule": schedule, **config}}
+    )
+    assert r.status_code == 201, r.text
+    return r.json()["id"]
+
+
+async def _finish(app, run_ids: list[str]) -> None:
+    for rid in run_ids:
+        await asyncio.wait_for(app.state.runner.handles[rid].done.wait(), 10)
+
+
+async def test_a_schedule_missed_while_no_server_was_ticking_fires_once_when_one_comes_back(app, api_client):
+    """A restart, an outage or a slow tick at the scheduled minute used to lose that occurrence: the scheduler only
+    looked at the minute it ticked in. The latest occurrence missed within AGENTCANVAS_CRON_CATCHUP_S (1 h) fires
+    once, on one replica, when ticking resumes; an older one is not run late."""
+    from sqlalchemy import select
+
+    from agentcanvas.db.models import Trigger
+    from agentcanvas.services.triggers import CronScheduler
+
+    due = datetime.now(UTC).replace(second=0, microsecond=0) + timedelta(days=1)  # after the trigger was made
+    nightly = await _cron(app, api_client, f"{due.minute} {due.hour} * * *")
+    replicas = [app.state.cron, CronScheduler(app.state.db, app.state.runner, app.state.keyring)]
+    assert app.state.cron.catchup_s == 3600
+
+    back = due + timedelta(minutes=2, seconds=5)  # the server was down at `due`
+    fired = await asyncio.gather(*(c.tick(back) for c in replicas))
+    assert sorted(len(f) for f in fired) == [0, 1]  # once, not once per replica
+    await _finish(app, [*fired[0], *fired[1]])
+    async with app.state.db.sessionmaker() as s:
+        assert (await s.get(Trigger, nightly)).last_fired == due.strftime("%Y-%m-%dT%H:%M")  # type: ignore[union-attr]
+    assert [await c.tick(back + timedelta(minutes=1)) for c in replicas] == [[], []]  # and only once
+
+    late = due + timedelta(days=1, hours=1, minutes=1)  # the next night's occurrence is over an hour old
+    assert [await c.tick(late) for c in replicas] == [[], []]
+    async with app.state.db.sessionmaker() as s:
+        assert (await s.scalar(select(Trigger.last_fired).where(Trigger.id == nightly))) == due.strftime(
+            "%Y-%m-%dT%H:%M"
+        )
+
+
+async def test_a_schedule_does_not_fire_for_a_time_before_it_existed_or_while_it_was_off(app, api_client):
+    from sqlalchemy import update
+
+    from agentcanvas.db.models import Trigger
+
+    now = datetime.now(UTC)
+    missed = now - timedelta(minutes=10)
+    trig = await _cron(app, api_client, f"{missed.minute} * * * *")
+    assert await app.state.cron.tick(now) == []  # its minute this hour came before it was made
+
+    async with app.state.db.sessionmaker() as s:  # it last fired long ago and was then switched off
+        await s.execute(update(Trigger).where(Trigger.id == trig).values(last_fired="2026-01-01T00:00"))
+        await s.commit()
+    assert (await api_client.patch(f"/v1/triggers/{trig}", json={"enabled": False})).status_code == 200
+    assert (await api_client.patch(f"/v1/triggers/{trig}", json={"enabled": True})).status_code == 200
+    assert await app.state.cron.tick(now) == []  # what it missed while off is not run when it is switched back on

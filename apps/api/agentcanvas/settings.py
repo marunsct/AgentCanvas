@@ -108,7 +108,7 @@ class Settings(BaseSettings):
     # a decision nobody gave for this many days expires: its run is cancelled and the conversation then follows the
     # conversation retention like any other. 0 = approvals wait forever (and keep their conversations forever)
     approval_expiry_days: int = Field(default=90, ge=0)
-    # long-term memory's semantic index : "builtin" or "<provider>:<model>"; empty (default): by words.
+    # long-term memory's semantic index: "builtin" or "<provider>:<model>"; empty (default): by words.
     # One size of vector per server (the pgvector column), so one model for every project; a model other than the
     # built-in or a well-known hosted one needs its size in `memory_embedding_dims` (0: measured at startup)
     memory_embedding: str = ""
@@ -140,9 +140,11 @@ class Settings(BaseSettings):
     # queue (highest priority, then oldest, first). 0 = no limit. An organisation may set a lower one.
     max_concurrent_runs: int = Field(default=0, ge=0)
     retention_interval_s: int = 3600  # how often the retention job looks for expired conversations
-    # the largest file a person may attach to a run (Run tab, share links, inline in API calls), in MB; at most 20,
-    # the largest request body the web server accepts (infra/nginx.conf)
-    max_upload_mb: float = Field(default=10, gt=0, le=20)
+    # a cron occurrence no scheduler ticked in (a restart, an outage) fires once when ticking resumes, if it is no
+    # older than this; 0 = only the minute a scheduler ticks in
+    cron_catchup_s: int = Field(default=3600, ge=0)
+    # G-5: the largest file a person may attach to a run (Run tab, share links, inline in API calls), in MB
+    max_upload_mb: float = Field(default=10, gt=0, le=20)  # the web server accepts 20 MB bodies (infra/nginx.conf)
     max_project_files_mb: float = Field(default=1024, ge=0)  # all of a project's attached files; 0 = no limit
     # FR-X-10 safe redeploy: from SIGTERM, how long running runs get to finish before they are handed over (keep
     # 5 + max(30, it) + 25 below the pod's terminationGracePeriodSeconds), and how often instances look for runs

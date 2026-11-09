@@ -272,7 +272,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.presence = PresenceHub(db)  # G-4: who has a workflow open
             app.state.trace_export = TraceExportHook(db, app.state.projects)
             runner.finish_hooks.append(app.state.trace_export.on_run_finished)
-            app.state.cron = CronScheduler(db, runner, app.state.keyring)
+            app.state.cron = CronScheduler(db, runner, app.state.keyring, catchup_s=settings.cron_catchup_s)
             app.state.ratelimit = RateLimiter(db)
             app.state.retention = RetentionJob(
                 db, runner, settings.retention_days, settings.retention_interval_s,

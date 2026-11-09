@@ -8,7 +8,9 @@
   itself is the input.
 - **Cron**: a 5-field schedule (`*/5 9-17 * * 1-5`, UTC) checked by one scheduler task per API process. Each
   minute fires at most once across every replica: a scheduler claims it by moving the trigger's `last_fired`
-  forward in one conditional UPDATE, and only the replica whose update matched starts the run.
+  forward in one conditional UPDATE, and only the replica whose update matched starts the run. An occurrence no
+  scheduler ticked in (a restart, an outage, a slow tick) is caught up: the latest one missed within
+  `AGENTCANVAS_CRON_CATCHUP_S` fires once, never one before the trigger existed or while it was switched off.
 
 A trigger runs its deployment's pinned version when it has one, otherwise the draft.
 """
@@ -40,6 +42,7 @@ log = structlog.get_logger()
 SIGNATURE_HEADER = "X-AgentCanvas-Signature"
 TIMESTAMP_HEADER = "X-AgentCanvas-Timestamp"
 TOLERANCE_S = 300  # how old a signed delivery may be
+MINUTE = "%Y-%m-%dT%H:%M"  # a cron trigger's `last_fired`: the UTC minute, comparable as text
 _ORG_KEY = "v2:"  # webhook secrets encrypted with the organisation's data key; unprefixed = legacy key
 _RANGES = [(0, 59), (0, 23), (1, 31), (1, 12), (0, 7)]  # day of week: 0 and 7 are Sunday
 
@@ -203,6 +206,9 @@ class TriggerService:
 
     async def set_enabled(self, trigger_id: str, enabled: bool) -> Trigger:
         trig = await self.require(trigger_id)
+        if enabled and not trig.enabled and trig.kind == "cron":  # what it missed while off is not caught up
+            before = (datetime.now(UTC) - timedelta(minutes=1)).strftime(MINUTE)
+            trig.last_fired = max(trig.last_fired or before, before)
         trig.enabled = enabled
         await self.s.commit()
         return trig
@@ -287,9 +293,11 @@ class TriggerService:
 class CronScheduler:
     """Fires due cron triggers once per minute, across replicas (see module docstring)."""
 
-    def __init__(self, db: Any, runner: Any, keyring: Keyring, tick_s: float = 15.0):
-        self.db, self.runner, self.keyring, self.tick_s = db, runner, keyring, tick_s
+    def __init__(self, db: Any, runner: Any, keyring: Keyring, tick_s: float = 15.0, catchup_s: int = 3600):
+        self.db, self.runner, self.keyring, self.tick_s, self.catchup_s = db, runner, keyring, tick_s, catchup_s
         self._task: asyncio.Task | None = None
+        # trigger -> (schedule, the last minute this replica looked at): each tick checks only the minutes since
+        self._seen: dict[str, tuple[str, datetime]] = {}
 
     def start(self) -> None:
         observability.job_started("cron")
@@ -309,20 +317,43 @@ class CronScheduler:
                 log.exception("cron.tick_failed")
             await asyncio.sleep(self.tick_s)
 
+    def _due(self, trig: Trigger, cron: Cron, now: datetime) -> datetime | None:
+        """The minute `trig` fires for at `now`: the current one when the schedule matches it, else the latest it
+        missed since it last fired, within the catch-up window and not before the trigger existed."""
+        current = now.replace(second=0, microsecond=0)
+        if cron.matches(current):
+            return current
+        since = current - timedelta(seconds=self.catchup_s)
+        created = trig.created_at.replace(second=0, microsecond=0) - timedelta(minutes=1)
+        last = datetime.strptime(trig.last_fired, MINUTE).replace(tzinfo=UTC) if trig.last_fired else None
+        seen = self._seen.get(trig.id)
+        for floor in (created, last, seen[1] if seen and seen[0] == trig.config["schedule"] else None):
+            if floor is not None and floor > since:
+                since = floor
+        t = current - timedelta(minutes=1)
+        while t > since:  # a minute at a time, but only since this replica last looked
+            if cron.matches(t):
+                return t
+            t -= timedelta(minutes=1)
+        return None
+
     async def tick(self, now: datetime) -> list[str]:
         """Start the runs due at `now`; returns their run ids."""
-        minute = now.strftime("%Y-%m-%dT%H:%M")
         started = []
         async with self.db.sessionmaker() as s:
             rows = (await s.scalars(select(Trigger).where(Trigger.kind == "cron", Trigger.enabled))).all()
+            self._seen = {t.id: self._seen[t.id] for t in rows if t.id in self._seen}  # deleted ones are dropped
             svc = TriggerService(s, self.keyring)
             for trig in rows:
                 try:  # one schedule that no longer parses must not stop every other trigger
-                    due = Cron(trig.config["schedule"]).matches(now)
+                    due = self._due(trig, Cron(trig.config["schedule"]), now)
                 except Exception as exc:  # noqa: BLE001 - also a missing or non-text schedule
                     log.warning("cron.bad_schedule", trigger=trig.id, error=str(exc))
                     continue
-                if not due or not await self._claim(s, trig.id, minute):
+                minute = due.strftime(MINUTE) if due else None
+                claimed = minute is not None and await self._claim(s, trig.id, minute)
+                self._seen[trig.id] = (trig.config["schedule"], now.replace(second=0, microsecond=0))
+                if not claimed:
                     continue
                 try:
                     wf, kw = await svc.target(trig)
@@ -330,7 +361,7 @@ class CronScheduler:
                         wf, input=dict(trig.config.get("input") or {}), origin="trigger", project_files=True, **kw
                     )
                     started.append(h.run_id)
-                    log.info("cron.fired", trigger=trig.id, run=h.run_id)
+                    log.info("cron.fired", trigger=trig.id, run=h.run_id, minute=minute)
                 except Exception as exc:  # noqa: BLE001
                     log.warning("cron.failed", trigger=trig.id, error=str(exc))
         return started
