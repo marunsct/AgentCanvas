@@ -55,6 +55,22 @@ def compose(name: str) -> dict[str, Any]:
     return yaml.safe_load((ROOT / "infra" / name).read_text())
 
 
+def test_every_page_location_sends_hsts_over_https_and_a_permissions_policy():
+    """HARDENING 2a: the web image's pages send Strict-Transport-Security when the request came over https (an empty
+    value otherwise, which nginx leaves out) and a Permissions-Policy that turns off what the app never uses."""
+    import re
+
+    template = (ROOT / "infra" / "nginx.conf").read_text()
+    hsts = re.search(r"map \$forwarded_proto \$hsts \{(.*?)\}", template, re.S)
+    assert hsts is not None and re.search(r'https\s+"max-age=31536000";', hsts.group(1))
+    assert re.search(r'default\s+"";', hsts.group(1))  # plain http: no header
+    pages = [b for b in re.split(r"\n  location ", template) if "Content-Security-Policy" in b]
+    assert len(pages) >= 4
+    for block in pages:
+        assert "add_header Strict-Transport-Security $hsts always;" in block, block[:80]
+        assert re.search(r'add_header Permissions-Policy "camera=\(\), microphone=\(\), geolocation=\(\)', block)
+
+
 @needs_helm
 def test_the_chart_signs_in_with_oidc_by_default_and_with_matura_when_asked():
     api = find(render(), "Deployment", "-api")

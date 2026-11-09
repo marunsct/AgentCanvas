@@ -8,6 +8,8 @@ The product pass ([PLAN.md](PLAN.md): one app shell, Settings, the Copilot), the
 review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged for them yet.
 
 ### Security
+- The web image's pages send `Strict-Transport-Security` (one year) when the request came over https, directly or from a
+  trusted proxy, and a `Permissions-Policy` that turns off the camera, microphone, location, payment and USB.
 - Pydantic AI 2.66.0 for exports, the bridge and the flow runtime: it fixes crafted JSON or schema resource use, a cloud-metadata gap in its URL-download blocklist, and header leaks in trace spans.
 - Dependencies: pyasn1 0.6.5 and pypdf 6.21.4, which fix denial-of-service bugs (CVE-2026-119194 to 119197, CVE-2026-119203 to 119205) the image scan reported.
 - Removing someone from an organisation now also deletes their API tokens and app connector connections there
