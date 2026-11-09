@@ -1030,7 +1030,7 @@ class Trigger(Base):
 
 class AuditLog(Base):
     __tablename__ = "audit_log"
-    __table_args__ = (Index("audit_org_time_idx", "org_id", "created_at"),)
+    __table_args__ = (Index("audit_org_time_idx", "org_id", "created_at"), Index("audit_org_id_idx", "org_id", "id"))
     id: Mapped[int] = mapped_column(BigId, primary_key=True, autoincrement=True)
     org_id: Mapped[str | None] = mapped_column(ForeignKey("organization.id"))
     actor_id: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
@@ -1038,6 +1038,23 @@ class AuditLog(Base):
     target: Mapped[str] = mapped_column(Text)
     detail: Mapped[dict[str, Any]] = mapped_column(Json, server_default=text("'{}'"), default=dict)
     ip: Mapped[str | None] = mapped_column(String(45))
+    created_at: Mapped[datetime] = _now()
+    # the organisation's hash chain (services/audit_chain.py): the previous entry's row_hash, and this entry's
+    prev_hash: Mapped[str | None] = mapped_column(String(64))
+    row_hash: Mapped[str | None] = mapped_column(String(64))
+
+
+class AuditAnchor(Base):
+    """Where retention left an organisation's audit chain: the last entry it deleted, so the oldest remaining one
+    still links to something known (services/audit_chain.py)."""
+
+    __tablename__ = "audit_anchor"
+    __table_args__ = (Index("audit_anchor_org_idx", "org_id", "id"),)
+    id: Mapped[int] = mapped_column(BigId, primary_key=True, autoincrement=True)
+    org_id: Mapped[str] = mapped_column(ForeignKey("organization.id"))
+    through_id: Mapped[int] = mapped_column(BigInteger)  # entries up to this id were deleted
+    last_hash: Mapped[str | None] = mapped_column(String(64))  # the row_hash of the last one deleted
+    rows: Mapped[int] = mapped_column(Integer)
     created_at: Mapped[datetime] = _now()
 
 

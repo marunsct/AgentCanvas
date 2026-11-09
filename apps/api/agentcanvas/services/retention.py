@@ -34,6 +34,7 @@ from sqlalchemy import delete, func, select, update
 from agentcanvas import observability
 from agentcanvas.adapters.spi import MemoryAbility, supports
 from agentcanvas.db.models import (
+    AuditAnchor,
     AuditLog,
     EventDedup,
     EventLog,
@@ -300,15 +301,44 @@ class RetentionJob:
             days = await self._days(org_id, "audit_retention_days")
             if days <= 0:
                 continue
-            where = AuditLog.org_id == org_id if org_id else AuditLog.org_id.is_(None)
-            async with self.db.sessionmaker() as s:
-                res = await s.execute(delete(AuditLog).where(where, AuditLog.created_at < now - timedelta(days=days)))
-                await s.commit()
-            gone = res.rowcount or 0  # type: ignore[attr-defined]
+            gone = await self._expire_audit(org_id, now - timedelta(days=days))
             if gone:
                 log.info("retention.audit_deleted", org_id=org_id, rows=gone, days=days)
             n += gone
         return n
+
+    async def _expire_audit(self, org_id: str | None, cutoff: datetime) -> int:
+        """Delete an organisation's entries older than `cutoff`, from the start of its hash chain up to the first
+        that is not, so the chain stays whole (services/audit_chain.py); where it now starts is kept in
+        `audit_anchor`. Entries are written in time order; an older one after a kept one waits for it."""
+        async with self.db.sessionmaker() as s:
+            if org_id is None:  # entries of no organisation (none are written any more) have no chain
+                res = await s.execute(delete(AuditLog).where(AuditLog.org_id.is_(None), AuditLog.created_at < cutoff))
+                await s.commit()
+                return res.rowcount or 0  # type: ignore[attr-defined]
+            kept = await s.scalar(
+                select(AuditLog.id)
+                .where(AuditLog.org_id == org_id, AuditLog.created_at >= cutoff)
+                .order_by(AuditLog.id)
+                .limit(1)
+            )
+            last = (
+                await s.execute(
+                    select(AuditLog.id, AuditLog.row_hash)
+                    .where(AuditLog.org_id == org_id, AuditLog.created_at < cutoff)
+                    .where(*([AuditLog.id < kept] if kept is not None else []))
+                    .order_by(AuditLog.id.desc())
+                    .limit(1)
+                )
+            ).first()
+            if last is None:
+                return 0
+            res = await s.execute(delete(AuditLog).where(AuditLog.org_id == org_id, AuditLog.id <= last.id))
+            gone = res.rowcount or 0  # type: ignore[attr-defined]
+            if gone:  # another server may have deleted them a moment ago
+                s.add(AuditAnchor(org_id=org_id, through_id=last.id, last_hash=last.row_hash, rows=gone))
+            await s.commit()
+            return gone
 
     async def expire_memory(self, now: datetime, org_ids: list[str]) -> int:
         if not supports(self.runner.adapter, "memory_store"):

@@ -161,6 +161,7 @@ async def test_a_security_event_is_queued_for_each_destination_with_its_entry(ap
     event = json.loads(hook.content)
     assert event["id"] == f"audit-{entry.id}" and event["type"] == "agentcanvas.audit.put_secret"
     assert event["data"]["target"] == "name=API_TOKEN" and "s3cret" not in hook.content.decode()
+    assert event["data"]["row_hash"] == entry.row_hash  # the SIEM keeps the chain's links (services/audit_chain.py)
     [hec] = receivers["splunk"].requests
     assert hec.headers["authorization"] == f"Splunk {HEC_TOKEN}"
     body = receivers["splunk"].bodies[0]

@@ -47,6 +47,7 @@ LATER = [
     MIGRATIONS / "20261110_7ad337b9ba7d_approval_notifications.py",
     MIGRATIONS / "20261111_f80c7d9d9409_org_export.py",
     MIGRATIONS / "20261110_7d5c15cdde99_audit_outbox.py",
+    MIGRATIONS / "20261110_24a6fd6e48f9_audit_chain.py",
 ]  # tables added after it, each with its own policy
 
 

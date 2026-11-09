@@ -20,6 +20,7 @@ from agentcanvas.db.models import Organization, Project, SpendCapAlert
 from agentcanvas.db.repositories import AuditRepo, MemberRepo, PolicyRepo
 from agentcanvas.errors import Conflict, InvalidInput, NotFound
 from agentcanvas.expr import ExpressionError
+from agentcanvas.log import get_logger
 from agentcanvas.services import matura, mfa, networks, offboarding, org_settings, scim, tokens
 from agentcanvas.services.org_settings import OrgLimits
 from agentcanvas.services.spend_caps import periods, project_caps, spent_by_project
@@ -27,6 +28,7 @@ from agentcanvas.services.spending import spending
 from agentcanvas.services.sso_groups import GroupMapping
 from agentcanvas.validation.policies import check_policy
 
+log = get_logger(__name__)
 router = APIRouter(prefix="/org", tags=["organisation"])
 Role = Literal["admin", "builder", "reviewer", "viewer"]
 
@@ -482,6 +484,47 @@ async def audit_log(
         )
         for r, email in rows
     ]
+
+
+class ChainProblem(BaseModel):
+    id: int = Field(description="the audit entry")
+    kind: Literal["changed", "missing", "unchained"] = Field(
+        description="changed: edited after it was written; missing: the entry before it was deleted or replaced; "
+        "unchained: has no hash although the chain had started"
+    )
+    message: str
+
+
+class ChainAnchor(BaseModel):
+    through_id: int = Field(description="retention deleted the entries up to this id")
+    last_hash: str | None = Field(description="the hash of the last entry it deleted: where the chain now starts")
+    rows: int
+    expired_at: str
+
+
+class AuditVerifyOut(BaseModel):
+    ok: bool = Field(description="every chained entry is as it was written, and none is missing")
+    checked: int = Field(description="chained entries checked")
+    unchained: int = Field(description="older entries, written before the hash chain existed")
+    first_id: int | None
+    last_id: int | None
+    head_hash: str | None = Field(description="the last entry's hash: compare it with the copy forwarded to the SIEM")
+    anchor: ChainAnchor | None
+    problems: list[ChainProblem] = Field(description="the first 50")
+
+
+@router.get("/audit/verify", response_model=AuditVerifyOut)
+async def verify_audit_log(
+    session: AsyncSession = Depends(get_session), user: CurrentUser = Depends(current_user)
+) -> AuditVerifyOut:
+    """Check the organisation's audit log against its hash chain (admins): every entry is recomputed, so an entry
+    changed or deleted after it was written shows. It reads the whole log: a long one takes a while."""
+    from agentcanvas.services import audit_chain
+
+    report = await audit_chain.verify(session, user.org_id)
+    if not report.ok:
+        log.warning("audit.chain_broken", org_id=user.org_id, problems=report.problems[:5])
+    return AuditVerifyOut.model_validate(report, from_attributes=True)
 
 
 class PolicyIn(BaseModel):

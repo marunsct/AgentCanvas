@@ -1,5 +1,7 @@
 """The audit log from the command line, for operators (the API's environment: DATABASE_URL and the audit settings).
 
+    python -m agentcanvas.audit verify [--org org_123]            check each organisation's hash chain (exit code 1
+                                                                  when an entry was changed or removed)
     python -m agentcanvas.audit outbox                            what waits for delivery, by destination and state
     python -m agentcanvas.audit retry [--destination splunk]      send entries given up on (dead) again
     python -m agentcanvas.audit discard --destination splunk [--pending]
@@ -19,11 +21,19 @@ from typing import Any
 
 from sqlalchemy import delete, func, select, update
 
-from agentcanvas.db.models import AuditLog, AuditOutbox
+from agentcanvas.db.models import AuditLog, AuditOutbox, Organization
 from agentcanvas.db.repositories import AuditRepo
 from agentcanvas.db.session import Database
-from agentcanvas.services import audit_sink
+from agentcanvas.services import audit_chain, audit_sink
 from agentcanvas.settings import Settings
+
+
+async def verify(db: Database, org_id: str | None = None) -> list[audit_chain.Report]:
+    async with db.sessionmaker() as s:
+        org_ids = (
+            [org_id] if org_id else list((await s.scalars(select(Organization.id).order_by(Organization.id))).all())
+        )
+        return [await audit_chain.verify(s, o) for o in org_ids]
 
 
 async def outbox(db: Database) -> list[tuple[str, str, int]]:
@@ -81,6 +91,14 @@ async def _main(args: argparse.Namespace, settings: Settings) -> int:
     audit_sink.install(audit_sink.Forwarding(tuple(d.name for d in destinations), settings.audit_forward_all))
     db = Database(settings.database_url)
     try:
+        if args.command == "verify":
+            reports = await verify(db, args.org)
+            for r in reports:
+                state = "ok" if r.ok else "BROKEN"
+                print(f"{r.org_id}\t{state}\tchecked={r.checked}\tunchained={r.unchained}\thead={r.head_hash or '-'}")
+                for p in r.problems:
+                    print(f"  entry {p['id']}: {p['kind']}: {p['message']}")
+            return 0 if all(r.ok for r in reports) else 1
         if args.command == "outbox":
             rows = await outbox(db)
             for d, st, n in rows:
@@ -101,6 +119,8 @@ async def _main(args: argparse.Namespace, settings: Settings) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m agentcanvas.audit", description=(__doc__ or "").split("\n")[0])
     sub = parser.add_subparsers(dest="command", required=True)
+    v = sub.add_parser("verify", help="check each organisation's hash chain")
+    v.add_argument("--org", help="only this organisation")
     sub.add_parser("outbox", help="what waits for delivery, by destination and state")
     r = sub.add_parser("retry", help="send entries given up on (dead) again")
     r.add_argument("--destination", help="only this destination (webhook, splunk, matura)")

@@ -34,6 +34,7 @@ TABLES = [
     "event_dedup",
     "event_log",
     "audit_outbox",
+    "audit_anchor",
     "audit_log",
     "interrupt_task",
     "a2a_reply",

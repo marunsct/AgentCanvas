@@ -102,12 +102,15 @@ class AuditEvent:
     ip: str | None = None
     at: datetime = field(default_factory=lambda: datetime.now(UTC))
     id: int | None = None  # the audit entry's id: the same on every delivery of it
+    # its place in the organisation's hash chain: the SIEM's copy shows if the stored chain is ever rewritten
+    prev_hash: str | None = None
+    row_hash: str | None = None
 
     @classmethod
     def of(cls, row: AuditLog) -> AuditEvent:
         return cls(
             row.org_id, row.actor_id, row.action, row.target, dict(row.detail or {}), row.ip,
-            row.created_at or datetime.now(UTC), row.id,
+            row.created_at or datetime.now(UTC), row.id, row.prev_hash, row.row_hash,
         )  # fmt: skip
 
     def data(self) -> dict[str, Any]:

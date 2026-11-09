@@ -110,6 +110,16 @@ forwarded to your SIEM as signed CloudEvents or to Splunk's HTTP Event Collector
 database with the entry and retried until delivered
 ([Security events and audit forwarding](deploy.md#security-events-and-audit-forwarding)).
 
+The audit log is tamper-evident. Each organisation's entries form a hash chain: every entry stores the SHA-256 hash
+of its own contents together with the previous entry's hash, so an entry that is edited, deleted or slipped in
+afterwards breaks the chain. Admins check it with `GET /v1/org/audit/verify`, which recomputes every hash and lists
+the first entries that do not match (`changed`, `missing` or `unchained`); operators check every organisation with
+`python -m agentcanvas.audit verify`, which exits with 1 when a chain is broken (run it from a scheduled job to be
+alerted). Retention deletes the oldest entries without breaking the chain: it records where the chain now starts.
+Entries written before the chain existed have no hash and are counted as `unchained` at the start. Forwarded entries
+carry their `row_hash` and `prev_hash`, so the copy in your SIEM also shows if someone with full database access
+rewrote the whole chain; compare the `head_hash` that verifying reports with the last forwarded entry's `row_hash`.
+
 ## Third parties your data reaches
 
 AgentCanvas sends data only to the services you configure. There is no subprocessor of the maintainers; the list
