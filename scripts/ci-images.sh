@@ -35,8 +35,10 @@ trap cleanup EXIT
 fail() { echo "images: $*" >&2; prod logs --no-color --tail 80 2>&1 | tail -80 >&2 || true; exit 1; }
 
 echo "== build the images"
-# the runtime stage is rebuilt every time: its `apt-get upgrade` layer must not come from a cache older than the scan
-docker build -q --no-cache-filter runtime -f infra/Dockerfile.api -t "$API_IMAGE" apps/api >/dev/null
+# the runtime stage is rebuilt every time: its `apt-get upgrade` layer must not come from a cache older than the scan.
+# The API image is the Docker app's (every framework environment and Mastra), so the scan sees all that ships.
+docker build -q --no-cache-filter runtime --build-arg FRAMEWORKS=all --build-arg WITH_MASTRA=true \
+  -f infra/Dockerfile.api -t "$API_IMAGE" apps/api >/dev/null
 docker build -q --no-cache-filter runtime -f infra/Dockerfile.web -t "$WEB_IMAGE" . >/dev/null
 
 echo "== scan them (Trivy: high and critical, with a fix; accepted ones are in infra/.trivyignore)"

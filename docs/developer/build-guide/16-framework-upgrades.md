@@ -52,6 +52,8 @@ when a lock no longer holds the pins.
 - When a package caps a dependency below its fixed version and the cap does not apply to how we run it, write the
   requirement in `framework-locks/<id>.overrides.txt` with the reason (`google_adk.overrides.txt` raises filelock past
   LiteLLM's cap). Remove it once the pin that set the cap moves on.
+- `scripts/audit-deps.sh` (`scripts/ci-local.sh audit`) checks every lock, with the API's and Mastra's, against the
+  advisory databases; an advisory accepted there is listed in the script with its reason.
 
 ## Holding a version back
 

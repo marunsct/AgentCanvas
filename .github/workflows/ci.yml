@@ -136,23 +136,17 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
-        with:  # downloads cached across runs, keyed on the lock and the framework pins in the Makefile
+        with:  # downloads cached across runs, keyed on the API lock and the framework environments' locks
           enable-cache: true
           cache-dependency-glob: |
             apps/api/uv.lock
-            Makefile
-      - name: Python (pip-audit)
-        working-directory: apps/api
-        run: |
-          uv export --frozen --no-dev --no-emit-project --no-hashes -o "$RUNNER_TEMP/requirements.txt"
-          uvx pip-audit==2.10.1 -r "$RUNNER_TEMP/requirements.txt" --disable-pip --no-deps
+            apps/api/framework-locks/*.txt
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115  # v6.1.1
         with: { version: 10 }
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
         with: { node-version: 22 }
-      - name: JavaScript (pnpm audit)
-        working-directory: apps/web
-        run: pnpm audit --prod --audit-level high
+      - name: The API, every framework environment, Mastra and the web app (pip-audit, npm and pnpm audit)
+        run: scripts/audit-deps.sh
 
   images:
     # M8-T1/T2: build both images, start the production compose stack and check it answers; render the Helm chart
@@ -178,6 +172,9 @@ jobs:
         with:
           context: apps/api
           file: infra/Dockerfile.api
+          build-args: |  # the Docker app's image, so the scan sees every framework environment and Mastra
+            FRAMEWORKS=all
+            WITH_MASTRA=true
           load: true
           tags: agentcanvas-api:ci
           cache-from: type=gha,scope=api

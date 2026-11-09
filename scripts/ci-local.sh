@@ -156,11 +156,7 @@ JSON
       && "$tsc" -p . )
 }
 s_docs() { uvx --from mkdocs==1.6.1 --with mkdocs-material==9.8.1 mkdocs build --strict -d "$(mktemp -d)"; }  # pins as ci.yml
-s_audit() {
-  ( cd apps/api && uv export --frozen --no-dev --no-emit-project --no-hashes -o "${TMPDIR:-/tmp}/ac-req.txt" \
-      && uvx pip-audit==2.10.1 -r "${TMPDIR:-/tmp}/ac-req.txt" --disable-pip --no-deps ) || return 1
-  ( cd apps/web && pnpm audit --prod --audit-level high ) || return 1
-}
+s_audit() { scripts/audit-deps.sh; }   # the API, every framework environment, Mastra and the web app
 s_helm() {
   helm_run lint infra/helm/agentcanvas -f infra/helm/agentcanvas/ci/test-values.yaml --strict || return 1
   helm_run template agentcanvas infra/helm/agentcanvas -f infra/helm/agentcanvas/ci/test-values.yaml | kubeconform_run
@@ -177,7 +173,7 @@ run() {
     api) stage api s_api ;;
     mastra-types) if need node; then stage mastra-types s_mastra_types; else skip mastra-types "node missing"; fi ;;
     docs) if need uvx; then stage docs s_docs; else skip docs "uvx missing"; fi ;;
-    audit) if need uvx; then stage audit s_audit; else skip audit "uvx missing"; fi ;;
+    audit) if need uvx && need npm; then stage audit s_audit; else skip audit "uvx or npm missing"; fi ;;
     helm) if have_helm; then stage helm s_helm; else skip helm "helm and docker missing"; fi ;;
     frameworks) stage frameworks s_frameworks ;;
     export) stage export s_export ;;

@@ -4,6 +4,7 @@ helm is installed) and the compose files read as YAML. Static checks only: nothi
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -405,3 +406,16 @@ def test_the_reference_schema_names_the_folder_the_migrations_are_in():
     for path in ["infra/schema.sql", "scripts/export_schema_sql.sh"]:
         (folder,) = re.findall(r"Alembic migrations \((apps/api/[\w/]+)\)", (ROOT / path).read_text())
         assert (ROOT / folder).is_dir() and any((ROOT / folder).glob("*.py")), (path, folder)
+
+
+def test_the_audit_covers_every_dependency_tree_the_images_ship_and_the_scan_sees_them():
+    """The audit read only uv.lock and the web app, and the scanned API image was built without FRAMEWORKS or Mastra,
+    so the framework environments and the Mastra npm tree the Docker app ships were never checked by either gate."""
+    audit = (ROOT / "scripts" / "audit-deps.sh").read_text()
+    assert "apps/api/framework-locks/*.txt" in audit and "--require-hashes" in audit
+    assert "adapters/mastra && npm audit --omit=dev" in audit and "pnpm audit --prod" in audit
+    assert "scripts/audit-deps.sh" in (ROOT / "scripts" / "ci-local.sh").read_text()
+    assert "scripts/audit-deps.sh" in (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    images = re.sub(r"\\\n\s*", "", (ROOT / "scripts" / "ci-images.sh").read_text())  # one line per command
+    build = next(line for line in images.splitlines() if "Dockerfile.api" in line and "docker build" in line)
+    assert "--build-arg FRAMEWORKS=all" in build and "--build-arg WITH_MASTRA=true" in build

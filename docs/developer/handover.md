@@ -141,10 +141,10 @@ set `E2E_API_PORT`; if the dev server runs out of file watchers set `E2E_PROD=1`
 
 `.github/workflows/ci.yml` jobs: `api` (lint, pyright, import contract, schema drift, pytest on Postgres+pgvector),
 `web` (generated-type drift, typecheck, vitest, build), `e2e` (Playwright on the prod build under the strict CSP via
-`vite preview`), `docs` (MkDocs build), `connectors` (gallery smoke, S15), `audit` (pip-audit, pnpm audit),
+`vite preview`), `docs` (MkDocs build), `connectors` (gallery smoke, S15), `audit` (`scripts/audit-deps.sh`: the API, each framework environment's lock, Mastra, the web app),
 `export` (S19: every template to every target, deploy files linted, each export's own tests, Docker Compose and
 kind deployed for real), `frameworks` (S16: a real agent of each framework as a step against a fake model server;
-Agent Spec exports loaded with pyagentspec), `images` (Docker builds, Trivy, prod and local compose stacks answer through nginx, Helm lint/render). Playwright traces are uploaded on failure.
+Agent Spec exports loaded with pyagentspec), `images` (Docker builds with every framework and Mastra, Trivy, prod and local compose stacks answer through nginx, Helm lint/render). Playwright traces are uploaded on failure.
 
 ## 5. Conventions
 
