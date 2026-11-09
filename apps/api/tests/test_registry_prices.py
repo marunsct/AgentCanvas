@@ -54,6 +54,25 @@ def test_prompt_cache_reads_and_writes_are_priced_apart():
     assert m.price_cache_read_per_mtok is None  # unknown: charged as ordinary input, never as free
 
 
+def test_anthropic_cache_writes_reported_by_their_lifetime_are_counted():
+    """langchain-anthropic reports cache writes under their lifetime (5 minutes, 1 hour) and sets the generic count to
+    0, so they were priced as plain input. Both the reported cost and a run's spending limit count them."""
+    from anthropic.types import Usage
+    from langchain_anthropic.chat_models import _create_usage_metadata
+
+    from agentcanvas.adapters.langchain.spend import _counts
+    from agentcanvas.registry import token_counts
+
+    for five, hour in ((15000, 0), (0, 15000), (10000, 5000)):
+        ttl = {"ephemeral_5m_input_tokens": five, "ephemeral_1h_input_tokens": hour}
+        usage = Usage(input_tokens=200, output_tokens=500, cache_creation_input_tokens=15000, cache_read_input_tokens=0,
+                      cache_creation=ttl)  # type: ignore[arg-type]  # fmt: skip
+        meta = _create_usage_metadata(usage)
+        assert token_counts(meta)["cache_write_tokens"] == 15000 == _counts(meta)["cache_write_tokens"]
+    generic = {"input_tokens": 100, "input_token_details": {"cache_creation": 40}}  # other providers, older versions
+    assert token_counts(generic)["cache_write_tokens"] == 40 == _counts(generic)["cache_write_tokens"]
+
+
 def test_cache_reads_do_not_use_up_a_token_cap():
     from agentcanvas.registry import billed_tokens, token_counts
 

@@ -115,8 +115,15 @@ def token_counts(meta: Any) -> dict[str, int]:
         "input_tokens": int(meta.get("input_tokens") or 0),
         "output_tokens": int(meta.get("output_tokens") or 0),
         "cache_read_tokens": int(details.get("cache_read") or 0),
-        "cache_write_tokens": int(details.get("cache_creation") or 0),
+        "cache_write_tokens": cache_writes(details),
     }
+
+
+def cache_writes(details: dict[str, Any]) -> int:
+    """Input tokens written to the prompt cache. langchain-anthropic reports them by lifetime (5 minutes, 1 hour)
+    and sets the generic `cache_creation` to 0 then, so both shapes are read."""
+    by_ttl = int(details.get("ephemeral_5m_input_tokens") or 0) + int(details.get("ephemeral_1h_input_tokens") or 0)
+    return int(details.get("cache_creation") or 0) or by_ttl
 
 
 def billed_tokens(usage: dict[str, Any]) -> int:
