@@ -22,6 +22,7 @@
     "core.script": "emulated",
     "knowledge.search": "emulated",
     "mw.model_call_limit": "emulated",
+    "core.decide": "emulated",
     "*": "unsupported"
   },
   "notes": {
@@ -34,6 +35,7 @@
     "knowledge.search": "the flow searches the knowledge base; exports search its file with the built-in embedder",
     "core.llm": "an Agno Agent with the block's model, asked once with agent.arun",
     "core.agent": "an Agno Agent (instructions, model, tools, output_schema); tools named in 'Ask before using' use @tool(requires_confirmation=True): the run pauses, its RunOutput is saved, and acontinue_run goes on once a person confirms, edits or rejects each call",
-    "mw.model_call_limit": "the runtime counts the agent's model calls in one turn (Agno's own tool_call_limit counts tool calls): past the limit the agent stops with a note, or the run fails when the block says so"
+    "mw.model_call_limit": "the runtime counts the agent's model calls in one turn (Agno's own tool_call_limit counts tool calls): past the limit the agent stops with a note, or the run fails when the block says so",
+    "core.decide": "the step asks its model once (an \"Ask AI\" call) to pick a path and say how sure it is, saves {choice, confidence, reason}, and the flow engine follows the choice (the default path when there is none or it is below the minimum confidence)"
   }
 }

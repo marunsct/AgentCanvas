@@ -22,6 +22,7 @@
     "core.script": "emulated",
     "knowledge.search": "emulated",
     "mw.model_call_limit": "native",
+    "core.decide": "emulated",
     "*": "unsupported"
   },
   "notes": {
@@ -34,6 +35,7 @@
     "knowledge.search": "the flow searches the knowledge base; exports search its file with the built-in embedder",
     "core.llm": "a Pydantic AI Agent with the block's model, asked once with agent.run",
     "core.agent": "a Pydantic AI Agent (instructions, model, tools, NativeOutput); tools named in 'Ask before using' are Tool(requires_approval=True): the run pauses on DeferredToolRequests and continues from the saved message history with DeferredToolResults",
-    "mw.model_call_limit": "UsageLimits(request_limit=...) on the agent's run: past the limit the agent stops with a note, or the run fails when the block says so"
+    "mw.model_call_limit": "UsageLimits(request_limit=...) on the agent's run: past the limit the agent stops with a note, or the run fails when the block says so",
+    "core.decide": "the step asks its model once (an \"Ask AI\" call) to pick a path and say how sure it is, saves {choice, confidence, reason}, and the flow engine follows the choice (the default path when there is none or it is below the minimum confidence)"
   }
 }

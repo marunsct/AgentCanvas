@@ -21,7 +21,7 @@ from agentcanvas.ir.models import Node, Workflow
 
 STEP_TYPES = {
     "core.set", "core.router", "core.join", "core.approval", "core.human_input", "core.script", "core.llm",
-    "core.agent", "knowledge.search",
+    "core.agent", "knowledge.search", "core.decide",
 }  # fmt: skip
 RESOURCE_TYPES = {"model.chat", "tool.python", "mw.model_call_limit"}
 _TAKEN = {"rt", "Agent", "FunctionAgent", "NativeOutput", "BaseModel", "Field", "Any", "Literal", "FLOW",
@@ -143,6 +143,15 @@ def _step(wf: Workflow, n: Node, fn: str, names: _Names, dialect: Dialect) -> tu
         ), ""  # fmt: skip
     if n.type == "core.agent":
         return _agent(wf, n, fn, names, head, dialect)
+    if n.type == "core.decide":
+        prompt, choices = names.take(f"{n.name}_prompt".upper()), names.take(f"{n.name}_choices".upper())
+        options = {case["route"]: case.get("description", "") for case in c.get("cases", [])}
+        return (
+            f"{prompt} = {_lit(c['prompt'])}\n{choices} = {_py(options)}\n\n\n" + head
+            + f"    agent = {dialect.text_agent(n.name, _model(wf, n))}\n"
+            + f"    reply = await run.text(agent, run.decide_prompt(rt.render({prompt}, state), {choices}))\n"
+            + f"    return run.decision(reply, {choices}, output={_py(c['output'])})"
+        ), ""  # fmt: skip
     if n.type == "core.approval":
         return head + f"    return run.approval(state, show={_py(c['show'])}, output={_py(c['output'])})", ""
     if n.type == "core.human_input":
@@ -210,15 +219,19 @@ def _flow(wf: Workflow, fns: dict[str, str]) -> str:
         if n.type == "core.router":
             cases = [(case["when"], case["route"]) for case in n.config.get("cases", [])]
             kw.append(f"cases={_py(cases)}")
-            if n.config.get("default", "default") != "default":
-                kw.append(f"default={_py(n.config['default'])}")
+        if n.type == "core.decide":
+            kw.append(f"decides={_py(n.config['output'])}")
+            if n.config.get("min_confidence") is not None:
+                kw.append(f"min_confidence={_py(n.config['min_confidence'])}")
+        if n.type in ("core.router", "core.decide") and n.config.get("default", "default") != "default":
+            kw.append(f"default={_py(n.config['default'])}")
         if n.disabled:
             kw.append("disabled=True")
         marker = f"  # @canvas-node {one_line(n.id)} ({n.type})" if n.id not in fns else ""
         steps.append(f"        {_py(n.id)}: rt.Step({', '.join(kw)}),{marker}")
     for n in wf.nodes:
         edges = [e for e in wf.flow_edges() if e.source.node == n.id and e.target.node != "END"]
-        if n.type == "core.router":
+        if n.type in ("core.router", "core.decide"):
             routes: dict[str, list[str]] = {}
             for e in [e for e in wf.flow_edges() if e.source.node == n.id]:
                 targets = routes.setdefault(e.source.route, [])

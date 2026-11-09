@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import pytest
+from test_flow_frameworks import installed
 from test_runs_v1 import events, make
 
-from agentcanvas.adapters.langchain.nodes import decision
+from agentcanvas.expr import decision
 from agentcanvas.ir.models import Workflow
 from agentcanvas.validation import validate
 
 ROUTE = {"route": "billing", "description": "invoices and payments"}
+FLOWS = ["pydantic_ai", "agno", "microsoft_agent_framework", "strands", "llamaindex"]
+REFUSED = ["openai_agents", "google_adk", "crewai", "mastra"]
 
 
 def decide_wf(**config) -> dict:
@@ -84,8 +87,9 @@ def test_its_paths_are_outputs_and_other_frameworks_refuse_it():
     loose = decide_wf()
     loose["edges"] = [e for e in loose["edges"] if e["id"] != "e_tech"]
     assert any(d.code for d in validate(Workflow.model_validate(loose)) if d.severity == "error")  # a path not wired
-    elsewhere = Workflow.model_validate({**decide_wf(), "framework": "openai_agents"})
-    assert any(d.code == "P001" and "core.decide" in d.message for d in validate(elsewhere))
+    for framework in REFUSED:
+        elsewhere = Workflow.model_validate({**decide_wf(), "framework": framework})
+        assert any(d.code == "P001" and "core.decide" in d.message for d in validate(elsewhere)), framework
 
 
 @pytest.mark.parametrize(
@@ -112,3 +116,41 @@ async def test_the_exported_code_decides_as_the_canvas_does(tmp_path, reply, tea
     interpreted = await build_graph(wf, res(), checkpointer=InMemorySaver()).ainvoke({"ticket": "down"}, cfg)
     exported = await mod.build_graph(res(), checkpointer=InMemorySaver()).ainvoke({"ticket": "down"}, cfg)
     assert interpreted == exported and interpreted["team"] == team
+
+
+@pytest.mark.parametrize(
+    ("framework", "reply", "minimum", "team"),
+    [
+        pytest.param(f, reply, minimum, team, marks=installed(f))
+        for f in FLOWS
+        for reply, minimum, team in [
+            ('{"choice": "tech", "confidence": 0.9, "reason": "an outage"}', None, "tech"),
+            ('{"choice": "tech", "confidence": 0.5}', 0.7, "other"),
+            ("I would say billing", None, "other"),
+        ]
+    ],
+)
+async def test_flow_frameworks_decide_as_langgraph_does(framework, reply, minimum, team):
+    from test_flow_frameworks import _run as run_flow
+
+    from agentcanvas.adapters import create_adapter
+
+    config = {} if minimum is None else {"min_confidence": minimum}
+    wf = Workflow.model_validate({**decide_wf(**config), "framework": framework})
+    assert not [d for d in validate(wf) if d.severity == "error"]
+    adapter = create_adapter(framework)
+    async with adapter.persistence(None):
+        (events,) = await run_flow(adapter, wf, {"ticket": "the site is down"}, {"model": [reply]})
+    assert events[-1].get("outcome") == "success", events[-3:]
+    assert events[-1]["output"]["team"] == team
+    assert events[-1]["output"]["decided"]["choice"] == ("tech" if "tech" in reply else None)
+
+
+def test_the_generated_flow_reads_like_the_canvas():
+    from agentcanvas.adapters.pydantic_ai import codegen
+
+    source = codegen.generate(Workflow.model_validate({**decide_wf(min_confidence=0.6), "framework": "pydantic_ai"}))
+    assert 'ROUTE_TICKET_CHOICES = {"billing": "invoices and payments", "tech": "bugs and outages"}' in source
+    assert "run.decide_prompt(rt.render(ROUTE_TICKET_PROMPT, state), ROUTE_TICKET_CHOICES)" in source
+    assert 'decides="decided", min_confidence=0.6, default="other"' in source
+    assert '"n_d": {"billing": ["n_billing"], "tech": ["n_tech"], "other": ["n_other"]}' in source

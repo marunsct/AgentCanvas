@@ -22,6 +22,7 @@
     "core.script": "emulated",
     "knowledge.search": "emulated",
     "mw.model_call_limit": "emulated",
+    "core.decide": "emulated",
     "*": "unsupported"
   },
   "notes": {
@@ -34,6 +35,7 @@
     "knowledge.search": "the flow searches the knowledge base; exports search its file with the built-in embedder",
     "core.llm": "a Strands Agent with the block's model, asked once with agent.invoke_async",
     "core.agent": "a Strands Agent (system prompt, OpenAIModel, tools, structured_output_model); tools named in 'Ask before using' are interrupted by an AskBefore hook (BeforeToolCallEvent.interrupt): the agent's messages and interrupt state are saved with the pause, and it continues with an interruptResponse once a person approves, edits or rejects each call",
-    "mw.model_call_limit": "Strands' own Limits(turns=...): past the limit the agent stops with a note, or the run fails when the block says so"
+    "mw.model_call_limit": "Strands' own Limits(turns=...): past the limit the agent stops with a note, or the run fails when the block says so",
+    "core.decide": "the step asks its model once (an \"Ask AI\" call) to pick a path and say how sure it is, saves {choice, confidence, reason}, and the flow engine follows the choice (the default path when there is none or it is below the minimum confidence)"
   }
 }
