@@ -10293,6 +10293,12 @@
             "title": "Mode",
             "type": "string"
           },
+          "queued": {
+            "default": false,
+            "description": "still waiting for a slot in the organisation's run queue (status running)",
+            "title": "Queued",
+            "type": "boolean"
+          },
           "started_at": {
             "format": "date-time",
             "title": "Started At",

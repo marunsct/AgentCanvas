@@ -2557,6 +2557,10 @@ export type Error7 = string | null;
 export type Id50 = string;
 export type IrHash3 = string;
 export type Mode3 = string;
+/**
+ * still waiting for a slot in the organisation's run queue (status running)
+ */
+export type Queued = boolean;
 export type StartedAt1 = string;
 export type Status13 = string;
 export type ThreadId9 = string;
@@ -6811,6 +6815,7 @@ export interface RunOut {
   id: Id50;
   ir_hash: IrHash3;
   mode: Mode3;
+  queued?: Queued;
   started_at: StartedAt1;
   status: Status13;
   thread_id: ThreadId9;

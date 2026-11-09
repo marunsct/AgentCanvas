@@ -82,6 +82,7 @@ Lists are JSON (`["a", "b"]`), booleans `true` or `false`. Settings whose names 
 | `AGENTCANVAS_MAX_CONCURRENT_RUNS` | `0` | runs in flight at once in one organisation, across every server; past it a run waits in the organisation's queue (highest priority, then oldest, first). 0 = no limit. An organisation may set a lower one. |
 | `AGENTCANVAS_MAX_TOKEN_DAYS` | `0` | the longest an API token may live, in days; 0 = no limit (a token may also never expire). An organisation may set a shorter one. |
 | `AGENTCANVAS_APPROVE_OWN_RUNS` | `True` | false: nobody may approve or answer an Inbox item raised by a run they started (four-eyes approvals). An organisation may switch it off for itself, never on when the server has it off. |
+| `AGENTCANVAS_MAX_QUEUE_WAIT_S` | `3600` | how long a run may wait in that queue before it gives up with an error (seconds); 0 = as long as it takes |
 | `AGENTCANVAS_RETENTION_INTERVAL_S` | `3600` | how often the retention job looks for expired conversations |
 | `AGENTCANVAS_CRON_CATCHUP_S` | `3600` | a cron occurrence no scheduler ticked in (a restart, an outage) fires once when ticking resumes, if it is no older than this; 0 = only the minute a scheduler ticks in |
 | `AGENTCANVAS_MAX_UPLOAD_MB` | `10` | G-5: the largest file a person may attach to a run (Run tab, share links, inline in API calls), in MB the web server accepts 20 MB bodies (infra/nginx.conf) |

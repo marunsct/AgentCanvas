@@ -906,6 +906,10 @@ CREATE TABLE public.run (
     priority smallint DEFAULT 0 NOT NULL,
     queued boolean DEFAULT false NOT NULL,
     stop_reason text,
+    pending jsonb,
+    queue_key text,
+    event_depth smallint DEFAULT 0 NOT NULL,
+    handover_attempts smallint DEFAULT 0 NOT NULL,
     CONSTRAINT run_mode CHECK ((mode = ANY (ARRAY['normal'::text, 'debug'::text]))),
     CONSTRAINT run_status CHECK ((status = ANY (ARRAY['running'::text, 'success'::text, 'interrupted'::text, 'error'::text, 'cancelled'::text])))
 );
@@ -2073,6 +2077,12 @@ CREATE INDEX presence_seen_idx ON public.presence USING btree (workflow_id, seen
 CREATE INDEX project_workspace_idx ON public.project USING btree (org_id, workspace_id);
 
 --
+-- Name: run_live_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX run_live_idx ON public.run USING btree (queued, priority) WHERE (status = 'running'::text);
+
+--
 -- Name: run_score_deployment_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2089,12 +2099,6 @@ CREATE INDEX run_search_project_idx ON public.run_search USING btree (project_id
 --
 
 CREATE INDEX run_started_idx ON public.run USING btree (started_at);
-
---
--- Name: run_status_queued_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX run_status_queued_idx ON public.run USING btree (status, queued);
 
 --
 -- Name: run_thread_idx; Type: INDEX; Schema: public; Owner: -
