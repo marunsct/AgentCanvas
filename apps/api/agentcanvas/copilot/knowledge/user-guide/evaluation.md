@@ -61,6 +61,12 @@ The results grid shows mean scores, pass rates, latency, tokens and cost per tar
 with its run timeline one click away. The AI judges' own cost (LLM and pairwise judges) is shown apart from the
 runs' cost; a judge model without a catalog price is named instead of being counted as free. **Compare** two experiments to see which examples improved or regressed.
 
+**Why runs failed:** under each target's numbers, a line such as "4 of 30 runs failed. Most often: exact (3): differs:
+out" opens to the failures grouped: runs that did not finish by their error, and each evaluator by its comment (numbers
+and quoted values taken out, so alike comments group), with the examples each group failed on. Evaluators that write
+their own reasoning (LLM judge, red team, your code, composite) are grouped by evaluator, and one run's reasoning is
+shown on hover. It is in the API as `failures` and `failure_summary` on each target's summary.
+
 **Runs per example:** a model does not answer the same way every time, so one run per example can pass or fail by
 luck. Set **runs per example** (up to 10, `repetitions` in the API) and each example runs that many times per target.
 The summary then adds **pass@k** (examples that passed in at least one of the k runs: can the workflow do it?),
