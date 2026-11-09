@@ -112,6 +112,18 @@ async def server_settings(request: Request) -> list[ServerSetting]:
             f"{s.max_queue_wait_s:g} seconds" if s.max_queue_wait_s else "no limit",
             "AGENTCANVAS_MAX_QUEUE_WAIT_S",
         ),
+        (
+            "Limits",
+            "Spending cap per organisation a day (unless it sets a lower one)",
+            f"{s.max_cost_usd_day:g} USD" if s.max_cost_usd_day else "no cap",
+            "AGENTCANVAS_MAX_COST_USD_DAY",
+        ),
+        (
+            "Limits",
+            "Spending cap per organisation a month (unless it sets a lower one)",
+            f"{s.max_cost_usd_month:g} USD" if s.max_cost_usd_month else "no cap",
+            "AGENTCANVAS_MAX_COST_USD_MONTH",
+        ),
         ("Limits", "Steps per run", str(s.recursion_limit), "AGENTCANVAS_RECURSION_LIMIT"),
         ("Limits", "Largest attached file", _mb(s.max_upload_mb), "AGENTCANVAS_MAX_UPLOAD_MB"),
         ("Limits", "Attached files kept per project", _mb(s.max_project_files_mb), "AGENTCANVAS_MAX_PROJECT_FILES_MB"),

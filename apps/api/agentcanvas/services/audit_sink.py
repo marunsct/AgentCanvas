@@ -47,6 +47,7 @@ SECURITY_ACTIONS = frozenset({
     "scim_create_user", "scim_set_active", "scim_delete_user", "scim_role_sync",  # the identity provider over SCIM
     "scim_create_group", "scim_replace_group", "scim_patch_group", "scim_delete_group",
     "sso_role_sync", "sso_member_removed",  # roles from the sign-in token's groups
+    "put_spending_caps", "spend_cap_warning", "spend_cap_reached",  # spending caps, and spending reaching them
 })  # fmt: skip
 
 

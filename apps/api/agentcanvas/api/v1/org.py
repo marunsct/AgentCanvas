@@ -8,17 +8,18 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, Field, StringConstraints
-from sqlalchemy import null
+from sqlalchemy import null, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.audit import note
 from agentcanvas.api.deps import CurrentUser, current_user, get_session, members_here, refuse_token
-from agentcanvas.db.models import Organization
+from agentcanvas.db.models import Organization, Project, SpendCapAlert
 from agentcanvas.db.repositories import AuditRepo, MemberRepo, PolicyRepo
 from agentcanvas.errors import Conflict, InvalidInput, NotFound
 from agentcanvas.expr import ExpressionError
 from agentcanvas.services import matura, mfa, networks, org_settings, scim, tokens
 from agentcanvas.services.org_settings import OrgLimits
+from agentcanvas.services.spend_caps import periods, project_caps, spent_by_project
 from agentcanvas.services.spending import spending
 from agentcanvas.services.sso_groups import GroupMapping
 from agentcanvas.validation.policies import check_policy
@@ -248,8 +249,10 @@ class OrgSecurityOut(BaseModel):
 
 class OrgLimitsOut(BaseModel):
     own: OrgLimits = Field(description="what this organisation set (null: the server's value applies)")
-    server: dict[str, int | bool] = Field(description="the server's values: the default and, mostly, the ceiling")
-    effective: dict[str, int | bool] = Field(description="what applies now")
+    server: dict[str, int | float | bool] = Field(
+        description="the server's values: the default and, mostly, the ceiling"
+    )
+    effective: dict[str, int | float | bool] = Field(description="what applies now")
 
 
 class OrgSettingsOut(BaseModel):
@@ -336,6 +339,7 @@ async def put_org_settings(
         merged = {**kept, **org_settings.stored(org.settings), **changes}
         org.settings = {k: v for k, v in merged.items() if v is not None} or None
         request.app.state.org_settings.forget()  # this replica reads the new values at once
+        request.app.state.spend_caps.forget()
     if body.security is not None and "allowed_networks" in body.security.model_fields_set:
         allowed = networks.parse(body.security.allowed_networks or [])
         here = networks.client_ip(request)
@@ -534,6 +538,84 @@ async def org_spending(
     if since >= until:
         raise InvalidInput("'since' must be before 'until'")
     return await spending(session, user.org_id, since, until, limit=limit)
+
+
+class CapUse(BaseModel):
+    period: Literal["day", "month"] = Field(description="a UTC day or a calendar month (UTC)")
+    period_start: str = Field(description='"2026-11-10" or "2026-11"')
+    limit_usd: float | None = Field(description="the cap that applies; null: none")
+    spent_usd: float = Field(description="what was spent in the period so far")
+
+
+class ScopeCaps(BaseModel):
+    id: str | None = Field(description="the project's id; null: the organisation")
+    name: str
+    own: dict[str, float | None] = Field(description="the caps this organisation or project set itself")
+    day: CapUse
+    month: CapUse
+
+
+class SpendCapAlertOut(BaseModel):
+    project_id: str | None = Field(description="null: the organisation's cap")
+    period: str
+    period_start: str
+    share: float = Field(description="of the cap; 1: the cap was reached")
+    spent_usd: float
+    limit_usd: float
+    message: str
+    created_at: datetime
+
+
+class SpendingCapsOut(BaseModel):
+    warn_percent: int = Field(description="the share of a cap, in percent, at which an alert is raised")
+    server: dict[str, float] = Field(description="the server's caps for every organisation (0: none)")
+    organisation: ScopeCaps
+    projects: list[ScopeCaps]
+    alerts: list[SpendCapAlertOut] = Field(description="the latest alerts, newest first")
+
+
+@router.get("/spending/caps", response_model=SpendingCapsOut)
+async def spending_caps(
+    request: Request, session: AsyncSession = Depends(get_session), user: CurrentUser = Depends(current_user)
+) -> SpendingCapsOut:
+    """The organisation's and its projects' spending caps, and what each spent today and this month (UTC): runs of
+    every kind, and what conversations deleted since had spent."""
+    org = await session.get(Organization, user.org_id)
+    if org is None:
+        raise NotFound(f"organisation '{user.org_id}' not found")
+    server = request.app.state.settings
+    eff = org_settings.effective(server, org.settings)
+    own = org_settings.stored(org.settings)
+    labels = {p: label for p, (label, _) in periods().items()}
+    spent = await spent_by_project(session, user.org_id)
+
+    def use(period: str, limit: float | None, value: float) -> CapUse:
+        return CapUse(period=period, period_start=labels[period], limit_usd=limit or None, spent_usd=round(value, 6))  # type: ignore[arg-type]
+
+    def scope(pid: str | None, name: str, caps: dict[str, float | None], day: float, month: float) -> ScopeCaps:
+        return ScopeCaps(
+            id=pid, name=name, own=caps,
+            day=use("day", caps.get("max_cost_usd_day") if pid else eff["max_cost_usd_day"], day),
+            month=use("month", caps.get("max_cost_usd_month") if pid else eff["max_cost_usd_month"], month),
+        )  # fmt: skip
+
+    projects = []
+    for p in await session.scalars(select(Project).where(Project.org_id == user.org_id).order_by(Project.name)):
+        d, m = spent.get(p.id, (0.0, 0.0))
+        projects.append(scope(p.id, p.name, dict(project_caps(p.settings)), d, m))
+    org_caps = {k: own.get(k) for k in ("max_cost_usd_day", "max_cost_usd_month")}
+    total_day, total_month = sum(d for d, _ in spent.values()), sum(m for _, m in spent.values())
+    alerts = await session.scalars(
+        select(SpendCapAlert).where(SpendCapAlert.org_id == user.org_id)
+        .order_by(SpendCapAlert.created_at.desc(), SpendCapAlert.id.desc()).limit(20)
+    )  # fmt: skip
+    return SpendingCapsOut(
+        warn_percent=eff["cost_warn_percent"],
+        server={"max_cost_usd_day": server.max_cost_usd_day, "max_cost_usd_month": server.max_cost_usd_month},
+        organisation=scope(None, org.name, org_caps, total_day, total_month),
+        projects=projects,
+        alerts=[SpendCapAlertOut.model_validate(a, from_attributes=True) for a in alerts],
+    )
 
 
 def _utc(when: datetime) -> datetime:

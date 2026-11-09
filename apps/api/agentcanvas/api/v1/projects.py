@@ -13,12 +13,14 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from agentcanvas.api.audit import note
 from agentcanvas.api.deps import CurrentUser, current_user, get_session, get_settings_dep
 from agentcanvas.db.models import Organization, Project, WorkflowRow
 from agentcanvas.db.repositories import ProjectRepo
 from agentcanvas.errors import Conflict, InvalidInput
 from agentcanvas.registry import default_registry
-from agentcanvas.services import matura, model_defaults
+from agentcanvas.services import matura, model_defaults, org_settings, spend_caps
+from agentcanvas.services.spend_caps import ProjectCaps
 from agentcanvas.settings import Settings
 
 router = APIRouter(tags=["projects"])
@@ -205,3 +207,29 @@ async def put_model_defaults(
     p.settings = {**(p.settings or {}), model_defaults.KEY: {k: v for k, v in merged.items() if v}}
     await session.commit()
     return _defaults_out(p)
+
+
+# ------------------------------------------------------------- spending caps (Settings > Spending) ----
+@router.put("/projects/{project_id}/spending-caps", response_model=ProjectCaps)
+async def put_spending_caps(
+    project_id: str,
+    body: ProjectCaps,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings_dep),
+) -> ProjectCaps:
+    """Cap what the project spends a UTC day and a calendar month, in USD (admins). A field left out keeps its value,
+    null removes the cap. Never above the organisation's cap, which binds the project as well; at a cap, the
+    project's new runs are refused (429) and its runs in flight stop."""
+    p = await ProjectRepo(session).require(project_id, lock=True)
+    changes = body.model_dump(include=body.model_fields_set)
+    org = await session.get(Organization, p.org_id)
+    spend_caps.check_project(changes, org_settings.effective(settings, org.settings if org else None))
+    merged = {**spend_caps.project_caps(p.settings), **changes}
+    caps = {k: v for k, v in merged.items() if v is not None}
+    p.settings = {**{k: v for k, v in (p.settings or {}).items() if k != spend_caps.PROJECT_KEY},
+                  **({spend_caps.PROJECT_KEY: caps} if caps else {})}  # fmt: skip
+    await session.commit()
+    request.app.state.spend_caps.forget()  # this server applies the new caps at once, the others within seconds
+    note(request, **changes)
+    return ProjectCaps.model_validate(caps)

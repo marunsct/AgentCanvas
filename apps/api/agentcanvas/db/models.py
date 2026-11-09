@@ -798,6 +798,30 @@ class CostAlert(Base):
     created_at: Mapped[datetime] = _now()
 
 
+class SpendCapAlert(Base):
+    """An organisation's or a project's spending reached a share of its day or month cap: raised once per period and
+    share, whichever run or server crossed it first."""
+
+    __tablename__ = "spend_cap_alert"
+    __table_args__ = (
+        UniqueConstraint("org_id", "scope", "period", "period_start", "share", name="spend_cap_alert_once"),
+        Index("spend_cap_alert_org_idx", "org_id", "created_at"),
+    )
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    org_id: Mapped[str] = mapped_column(ForeignKey("organization.id", ondelete="CASCADE"))
+    # "" for the organisation's cap, else the project's id (`project_id`, which goes with its project)
+    scope: Mapped[str] = mapped_column(String)
+    project_id: Mapped[str | None] = mapped_column(ForeignKey("project.id", ondelete="CASCADE"), index=True)
+    run_id: Mapped[str | None] = mapped_column(Text)  # the run whose spending crossed it
+    period: Mapped[str] = mapped_column(Text)  # "day" | "month"
+    period_start: Mapped[str] = mapped_column(String(10))  # UTC "2026-10-10" (day) or "2026-10" (month)
+    share: Mapped[float] = mapped_column(Float)  # of the cap; 1.0 = the cap was reached and runs stop
+    spent_usd: Mapped[float] = mapped_column(Float)
+    limit_usd: Mapped[float] = mapped_column(Float)
+    message: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = _now()
+
+
 class AnnotationQueue(Base):
     """A queue of runs for people to review (S13): fed by rules on production runs or by hand."""
 

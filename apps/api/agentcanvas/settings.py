@@ -156,6 +156,15 @@ class Settings(BaseSettings):
     # runs in flight at once in one organisation, across every server; past it a run waits in the organisation's
     # queue (highest priority, then oldest, first). 0 = no limit. An organisation may set a lower one.
     max_concurrent_runs: int = Field(default=0, ge=0)
+    # spending caps for each organisation, in USD per UTC day and per calendar month (UTC): what all its runs (drafts,
+    # debug runs, experiments, deployments, triggers), the Copilot and AI judges spent on models with a price. At a
+    # cap, new runs are refused (429) and runs in flight stop. 0 = no cap. An organisation may set a lower one, and
+    # one per project.
+    max_cost_usd_day: float = Field(default=0, ge=0)
+    max_cost_usd_month: float = Field(default=0, ge=0)
+    # the share of a spending cap, in percent, at which a cost alert is raised (reaching the cap always raises one).
+    # An organisation may choose its own.
+    cost_warn_percent: int = Field(default=80, ge=1, le=100)
     # the longest an API token may live, in days; 0 = no limit (a token may also never expire). An organisation may set
     # a shorter one.
     max_token_days: int = Field(default=0, ge=0, le=3650)

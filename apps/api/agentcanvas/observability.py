@@ -55,6 +55,9 @@ COST = Counter("agentcanvas_cost_usd_total", "Model cost in US dollars (priced m
 MODEL_CACHE_HITS = Counter("agentcanvas_model_cache_hits_total", "Model answers taken from the answer cache")
 MODEL_FALLBACKS = Counter("agentcanvas_model_fallbacks_total", "Model calls a backup model answered")
 COST_ALERTS = Counter("agentcanvas_cost_alerts_total", "Workflow cost alerts raised", ["period"])
+SPEND_CAP_ALERTS = Counter(
+    "agentcanvas_spend_cap_alerts_total", "Spending cap alerts raised (organisation or project)", ["scope", "share"]
+)
 SSE_CLIENTS = Gauge("agentcanvas_sse_clients", "Open run event streams")
 HTTP_REQUESTS = Counter("agentcanvas_http_requests_total", "HTTP requests", ["method", "route", "status"])
 HTTP_DURATION = Histogram(
@@ -118,6 +121,11 @@ async def run_finished(h: RunHandle, status: str, _error: str | None, _interrupt
 
 def cost_alert(alert: Any) -> None:
     COST_ALERTS.labels(period=alert.period).inc()
+
+
+def spend_cap_alert(alert: Any) -> None:
+    scope = "project" if alert.scope else "organisation"
+    SPEND_CAP_ALERTS.labels(scope=scope, share="reached" if alert.share >= 1 else "warning").inc()
 
 
 KEEPALIVE_S = 15.0  # an SSE comment after this long without a chunk, so proxies keep the stream open (R-9)

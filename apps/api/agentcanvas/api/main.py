@@ -67,6 +67,7 @@ from agentcanvas.services.retention import RetentionJob
 from agentcanvas.services.run_gate import RunGate
 from agentcanvas.services.run_search import RunSearchService
 from agentcanvas.services.secrets import SecretCache, encoded_forms
+from agentcanvas.services.spend_caps import SpendCaps
 from agentcanvas.services.trace_export import Exporter, TraceExportHook
 from agentcanvas.services.triggers import CronScheduler
 from agentcanvas.settings import Settings, get_settings
@@ -252,6 +253,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             runner.admission = Admission(
                 db, concurrent_limit, stale_after_s=settings.orphan_after_s, max_wait_s=settings.max_queue_wait_s
             )
+            # what an organisation or project may spend a day and a month: new runs are refused and runs stop at a cap
+            app.state.spend_caps = runner.caps = SpendCaps(db, settings, ttl=0 if settings.env == "test" else 5.0)
+            app.state.spend_caps.sink = lambda: getattr(app.state, "audit_sink", None)
+            app.state.spend_caps.alert_hooks.append(observability.spend_cap_alert)
             runner.prepare_hooks.append(
                 RunGate(
                     settings,

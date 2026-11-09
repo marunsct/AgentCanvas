@@ -79,6 +79,7 @@ async def test_org_b_cannot_read_org_a(app, api_client, org_b):
             ("POST", f"/v1/deployments/{dep_id}/share/regenerate", None),
             ("POST", f"/v1/deployments/{dep_id}/keys", {"name": "mine"}),  # E-8: deployment keys
             ("DELETE", f"/v1/deployments/{dep_id}/keys/{key_id}", None),
+            ("PUT", "/v1/projects/prj_default/spending-caps", {"max_cost_usd_day": 1000}),  # E-9: spending caps
         ]:
             r = await api_client.request(method, path, json=body)
             assert r.status_code == 404, f"{method} {path}: {r.status_code} {r.text}"

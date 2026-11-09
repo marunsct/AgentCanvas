@@ -190,4 +190,5 @@ Names you can use: `node` (`type`, `config`, `effects`, `ungated`, `models`, `to
 
 Admins can **Switch off** a policy without deleting it. Broken policies show in the editor's Problems dock (`E095`; `W095` for environment-only rules), steps inside
 subgraphs included. Draft and debug runs still work, but **publishing** is refused until every applicable policy
-holds.
+holds. Policies check what a workflow is, not what it spends: to limit spending for every run, draft and debug runs
+included, set [spending caps](settings.md#spending-caps) for the organisation or a project.

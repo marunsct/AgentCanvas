@@ -39,6 +39,7 @@ from agentcanvas.runtime.trajectory import compact
 from agentcanvas.runtime.types import REPLAYABLE, ResumeSpec, RunMode, RunSpec
 from agentcanvas.services.files import DEFAULT_MAX_BYTES, FileService
 from agentcanvas.services.secrets import masker
+from agentcanvas.services.spend_caps import SpendCaps, SpendCapStop, periods
 
 log = get_logger(__name__)
 ResourcesFactory = Callable[[str, Workflow | None], Any]
@@ -283,13 +284,6 @@ class Spent:
     month_cost: float = 0.0
 
 
-def periods(now: datetime | None = None) -> dict[str, tuple[str, datetime]]:
-    """The current budget periods (UTC): name -> (label, start)."""
-    day = (now or datetime.now(UTC)).replace(hour=0, minute=0, second=0, microsecond=0)
-    month = day.replace(day=1)
-    return {"day": (day.strftime("%Y-%m-%d"), day), "month": (month.strftime("%Y-%m"), month)}
-
-
 def period_limits(budget: Budget | None, before: Spent, cost: float) -> list[tuple[str, float, float]]:
     """(period, limit, spent including this run) of each day or month limit the budget sets."""
     if budget is None:
@@ -381,6 +375,7 @@ class Runner:
         # G-5: files sent inline in a run's input (AGENTCANVAS_MAX_UPLOAD_MB, AGENTCANVAS_MAX_PROJECT_FILES_MB)
         self.max_file_bytes, self.max_project_file_bytes = DEFAULT_MAX_BYTES, 0
         self.admission: Admission | None = None  # the run queue, with a concurrent-run limit (runtime/admission.py)
+        self.caps: SpendCaps | None = None  # the organisations' and projects' spending caps (services/spend_caps.py)
 
     @property
     def models(self) -> ModelService:
@@ -510,6 +505,8 @@ class Runner:
                 from agentcanvas.services.projects import PROJECT_OF
 
                 PROJECT_OF[wf.id] = project_id
+            if self.caps is not None and not handed_over:  # a run handed over stops at its first check instead
+                await self.caps.refuse(project_id)  # an organisation or project at a spending cap starts nothing
             for prepare in self.prepare_hooks:
                 await prepare(wf)
             async with self.db.sessionmaker() as s:
@@ -750,6 +747,7 @@ class Runner:
             h.admitted.set()
             before = await self._spent(h, budget) if budget else Spent()
             check_budget(budget, h.usage, before)  # a conversation that is already over budget does not start
+            await self._spend_caps(h, saved=True)  # nor one whose organisation reached a cap while it waited
             resources = self.resources(spec.thread_id, spec.workflow)
             hide = masker(list((getattr(resources, "_secrets", None) or {}).values()))
             events = self.adapter_for(spec.workflow).execute(spec, resources)
@@ -762,6 +760,7 @@ class Runner:
                         now = await self._concurrent_spend(h, before) if by_period else before
                         await self._cost_alerts(h, budget, now)
                         check_budget(budget, h.usage, now)
+                        await self._spend_caps(h, saved=by_period)
                         continue
                     ev = raw
                     if ev["type"] == "CUSTOM" and isinstance(ev.get("value"), dict) and "ac_event" in ev["value"]:
@@ -796,6 +795,12 @@ class Runner:
                     "threadId": h.thread_id,
                 },
             )
+        except SpendCapStop as exc:
+            status, error = "error", str(exc)
+            await emit(
+                {"type": "RUN_ERROR", "code": "spending_cap", "message": error, "usage": dict(h.usage),
+                 "runId": h.run_id, "threadId": h.thread_id},
+            )  # fmt: skip
         except QueueTimeout as exc:  # it never began: nothing to stop or save but its outcome
             status, error = "error", str(exc)
             await emit(
@@ -987,6 +992,29 @@ class Runner:
             if budget.daily_max_cost_usd or budget.monthly_max_cost_usd:
                 out.day_cost, out.month_cost = await workflow_spend(s, h.workflow_id, exclude_run=h.run_id)
         return out
+
+    async def _spend_caps(self, h: RunHandle, saved: bool) -> None:
+        """Stop the run when its organisation or project reached a spending cap (services/spend_caps.py), and raise
+        the cap's alerts it crossed. The run's spending is saved on its row first (unless `saved`), so the other
+        runs, here and on other servers, count it. If the database does not answer, the run carries on."""
+        if self.caps is None:
+            return
+        try:
+            if await self.caps.config(h.project_id) is None:
+                return
+            if not saved:
+                async with self.db.sessionmaker() as s:
+                    running = (Run.id == h.run_id, Run.status == "running")
+                    await s.execute(update(Run).where(*running).values(cost_usd=h.usage["cost_usd"]))
+                    await s.commit()
+            alerts, over = await self.caps.check(h.project_id, h.run_id, float(h.usage["cost_usd"]))
+        except Exception:
+            log.warning("run.spend_cap_check_failed", run_id=h.run_id, exc_info=True)
+            return
+        for value in alerts:
+            await self._emit(h, {"type": "CUSTOM", "name": "ac.cost_alert", "value": value})
+        if over is not None:
+            raise SpendCapStop(over)
 
     async def _concurrent_spend(self, h: RunHandle, before: Spent) -> Spent:
         """Save what the run has spent so far on its row, and read what the workflow's other runs have spent, on any

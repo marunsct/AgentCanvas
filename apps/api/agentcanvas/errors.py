@@ -52,5 +52,9 @@ class TooManyRequests(DomainError):
     status, title, type_ = 429, "Too many requests", "https://agentcanvas.dev/errors/rate-limited"
 
 
+class SpendingCapReached(TooManyRequests):
+    title, type_ = "Spending cap reached", "https://agentcanvas.dev/errors/spending-cap"
+
+
 class UpstreamError(DomainError):
     status, title, type_ = 502, "Upstream error", "https://agentcanvas.dev/errors/upstream"

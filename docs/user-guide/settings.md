@@ -38,7 +38,7 @@ cannot change are shown read-only, with a sentence saying who can; sections your
 | Project › **Knowledge** | How new knowledge bases split their documents (by heading, paragraph, sentence or fixed windows; passage size; overlap). Existing knowledge bases keep their own ([Knowledge](knowledge.md#chunking-and-embeddings)) | builders |
 | Project › **Observability** | Sending traces to Langfuse, Phoenix or any OpenTelemetry collector | admins |
 | Organisation › **General** | The organisation's name, how long conversations are kept (the server's default, a number of days, or forever), and the **Environments** workflows can be published to (publishing to a name not on the list is refused). Below it, **Limits and policies**: this organisation's own setting for local MCP servers, approving your own runs, the four rate limits, how many runs may be in flight at once, the longest an API token may live, and how long the audit log and long-term memories are kept (see below). Last, **Stop all runs**: the kill switch for an emergency; every run in flight in the organisation stops within about 10 seconds on every server (runs waiting to be handed over are cancelled), with a reason kept in the audit log. It does not refuse new runs: stop a deployment on its page for that. `POST /v1/org/runs/stop` takes the same `reason`, and optionally a `deployment_id` or `workflow_id` to stop only those runs | admins |
-| Organisation › **Spending** | What the organisation's runs cost over a date range (the last 30 days to start with; **Last 7 / 30 / 90 days** buttons), in total and by project, by workflow, by person and by deployment, with runs, tokens, answers taken from the cache and answers from backup models. A person is whoever started the conversation; runs from deployments, schedules and events are listed as no person, and the deployment table shows which deployment (the workflow and its environment) they came through, with the rest listed as not through a deployment. Cost counts models with a price. Conversations deleted since (by hand or by the retention period) still count, by the hour their runs started. The same report is `GET /v1/org/spending?since=&until=` | admins |
+| Organisation › **Spending** | What the organisation's runs cost over a date range (the last 30 days to start with; **Last 7 / 30 / 90 days** buttons), in total and by project, by workflow, by person and by deployment, with runs, tokens, answers taken from the cache and answers from backup models. A person is whoever started the conversation; runs from deployments, schedules and events are listed as no person, and the deployment table shows which deployment (the workflow and its environment) they came through, with the rest listed as not through a deployment. Cost counts models with a price. Conversations deleted since (by hand or by the retention period) still count, by the hour their runs started. The same report is `GET /v1/org/spending?since=&until=`. Above it, **Spending caps**: what the organisation and each project may spend a day and a month, how much of it is used today and this month, and the latest cap alerts (see [Spending caps](#spending-caps)) | admins |
 | Organisation › **Security** | The **allowed networks** the organisation may be used from: sign-ins, API tokens, deployment keys, share links and SCIM ([Allowed networks](accounts.md#allowed-networks)); whether members must sign in with a second factor ([Multi-factor sign-in](accounts.md#multi-factor-sign-in)) | admins |
 | Organisation › **Members**, **Policies**, **Audit log** | See [Organisations, roles and policies](accounts.md) | admins |
 | Organisation › **Server** | How this server is set up (sign-in, where workspace code runs, frameworks offered, limits, retention), each with the environment variable an operator sets it with. Read-only | admins can read |
@@ -63,6 +63,8 @@ runs the server decides how much an organisation may ask of it.
 | Longest API token lifetime (`AGENTCANVAS_MAX_TOKEN_DAYS`, in days) | set a shorter one: tokens then must expire within it | set one above the server's (unless the server's is 0, no limit) |
 | Audit log kept (`AGENTCANVAS_AUDIT_RETENTION_DAYS`) | keep it longer, or forever | keep it shorter than the server does |
 | Long-term memories kept (`AGENTCANVAS_MEMORY_RETENTION_DAYS`) | choose any number of days, or forever | |
+| Spending caps a day and a month (`AGENTCANVAS_MAX_COST_USD_DAY`, `_MONTH`, in USD; no cap by default) | set a lower cap, or one when the server has none | set one above the server's |
+| Cap alert share (`AGENTCANVAS_COST_WARN_PERCENT`, 80) | choose any percent from 1 to 100 | |
 
 **Runs at once and the run queue.** With a limit, a run past it waits in the organisation's queue instead of starting,
 on every server alike: the run panel says "Waiting for a free run slot" and its place in line. The next free slot goes
@@ -85,3 +87,38 @@ Leave a field empty to use the server's value. The **Applies now** column shows 
 later lowers a server limit, an organisation's higher value stops applying at once. A per-environment limit the
 operator set with `AGENTCANVAS_RATE_LIMIT_BY_ENVIRONMENT` keeps applying to that environment's deployments. Other
 replicas of the server pick up a change within about 15 seconds.
+
+### Spending caps
+
+A workflow's own [budget](canvas.md#budgets) is set, and can be removed, by whoever builds the workflow. Spending caps
+are the administrator's: what the whole organisation, or one project, may spend on models a **UTC day** and a
+**calendar month** (UTC), in USD. Set them in **Settings › Organisation › Spending**: the organisation's caps (also
+`limits.max_cost_usd_day` and `limits.max_cost_usd_month` of `PUT /v1/org/settings`) and each project's
+(`PUT /v1/projects/{id}/spending-caps {"max_cost_usd_day": 50, "max_cost_usd_month": 800}`; `null` removes one). A
+project's cap is never above the organisation's (the save is refused), and the organisation's caps bind every project
+too. An operator can cap every organisation of the server with `AGENTCANVAS_MAX_COST_USD_DAY` and
+`AGENTCANVAS_MAX_COST_USD_MONTH`; an organisation can then only set a lower cap. Only admins set or see caps, and
+every change is in the audit log.
+
+What counts: every run of the organisation or project, whatever started it (the editor's draft and debug runs, test
+cases, experiments, deployments, share links, schedules, webhooks and event handlers), at the cost of models with a
+price (the catalog's, or `AGENTCANVAS_MODEL_PRICES`; a model without one adds no cost). Conversations deleted since,
+by hand or by the retention period, still count.
+
+At a cap:
+
+- **New runs are refused** with `429` (problem type `/errors/spending-cap`, with `scope`, `period` and a `Retry-After`
+  until the day or month ends): in the editor, on the deployment API, MCP and A2A, on share links, and for schedules,
+  webhooks, event handlers and experiments, which record the refusal as their outcome. Answering an Inbox item that
+  would continue a run is refused the same way; the item stays open.
+- **Runs in flight stop** after the model call that reached the cap, with the error code `spending_cap`. Runs going
+  at once, on any server, count each other's spending within a few seconds, so together they can pass a cap by about
+  one model call each.
+- Runs start again when the next day or month begins (UTC), or as soon as an admin raises or removes the cap.
+
+**Alerts.** When spending reaches the alert share of a cap (80% unless the organisation sets its own **Alert at**
+percent, `limits.cost_warn_percent`) and when it reaches the cap, a cost alert is raised, once per organisation or
+project, period and share, however many runs cross it together. It shows in the run that crossed it, on the
+Spending page, and as an audit-log entry (`spend_cap_warning`, `spend_cap_reached`) that is also forwarded to your
+SIEM or webhook like the other security-relevant entries ([Security](security.md)); Prometheus counts them in
+`agentcanvas_spend_cap_alerts_total`.
