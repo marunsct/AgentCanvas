@@ -173,3 +173,24 @@ async def test_tokens_are_audited_and_admins_see_and_revoke_everyones(client):
     log = (await client.get("/v1/org/audit", headers=ALICE)).json()
     revoked = next(e for e in log if e["action"] == "revoke_org_token")
     assert revoked["detail"]["owner"] == bobs["user_id"]
+
+
+async def test_a_token_cannot_hand_out_lasting_access(client):
+    """The organisation's SCIM token, invitations and the groups-to-roles table outlive a revoked API token: changing
+    them needs a real sign-in, as making another token does."""
+    tok = bearer((await _make(client))["token"])
+    groups = {"sso_groups": {"claim": "groups", "roles": {"ops": "admin"}}}
+    r = await client.post("/v1/org/scim/token", headers=tok)
+    assert r.status_code == 403 and "sign in" in r.json()["detail"], r.text
+    r = await client.put("/v1/org/members", json={"email": "mallory@example.com", "role": "admin"}, headers=tok)
+    assert r.status_code == 403, r.text
+    assert (await client.put("/v1/org/settings", json=groups, headers=tok)).status_code == 403
+    await _member(client, "bob@example.com", "viewer")
+    members = (await client.get("/v1/org/members", headers=ALICE)).json()
+    bob_id = next(m["user_id"] for m in members if m["email"] == "bob@example.com")
+    assert (await client.delete(f"/v1/org/members/{bob_id}", headers=tok)).status_code == 403
+    # other settings stay open to scripts, and the signed-in admin can do all of it
+    assert (await client.put("/v1/org/settings", json={"retention_days": 30}, headers=tok)).status_code == 200
+    assert (await client.post("/v1/org/scim/token", headers=ALICE)).status_code == 201
+    assert (await client.put("/v1/org/settings", json=groups, headers=ALICE)).status_code == 200
+    assert (await client.delete(f"/v1/org/members/{bob_id}", headers=ALICE)).status_code == 204

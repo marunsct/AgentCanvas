@@ -57,7 +57,9 @@ curl -H "Authorization: Bearer act_…" https://<your AgentCanvas>/api/v1/projec
   stops them.
 - Only a fingerprint (SHA-256) of the token is stored. Revoke a token there and it stops working at once; admins see
   everyone's tokens in the same place and can revoke any of them.
-- A token cannot make another token: that needs a real sign-in.
+- A token cannot make another token, the organisation's SCIM token, invite or remove members, or change which groups
+  give which roles: those need a real sign-in, so a leaked token cannot leave access behind that outlives revoking
+  it.
 - Every change made with a token is in the audit log under your name, with the token's id (`personal token tok_…`);
   making and revoking tokens are recorded too.
 

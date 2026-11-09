@@ -229,6 +229,13 @@ async def role_policy(request: Request, user: CurrentUser = Depends(current_user
         raise Forbidden(f"your role '{user.role}' cannot do this; it needs '{needed}' or above")
 
 
+def refuse_token(user: CurrentUser, what: str) -> None:
+    """`what` hands out access that would outlive the caller's API token being revoked (another token, the SCIM
+    token, a seat, a role through groups): it needs a real sign-in."""
+    if user.token_id:
+        raise Forbidden(f"sign in to {what}: an API token cannot, so a leaked one cannot outlive its revocation")
+
+
 def members_here(settings: Settings = Depends(get_settings_dep)) -> None:
     """With Matura, members, invitations and roles are managed there: the local endpoints refuse changes."""
     if settings.auth_mode == "matura":

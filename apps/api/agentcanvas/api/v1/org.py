@@ -12,7 +12,7 @@ from sqlalchemy import null
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.audit import note
-from agentcanvas.api.deps import CurrentUser, current_user, get_session, members_here
+from agentcanvas.api.deps import CurrentUser, current_user, get_session, members_here, refuse_token
 from agentcanvas.db.models import Organization
 from agentcanvas.db.repositories import AuditRepo, MemberRepo, PolicyRepo
 from agentcanvas.errors import Conflict, InvalidInput, NotFound
@@ -65,6 +65,7 @@ async def set_member(
     user: CurrentUser = Depends(current_user),
 ) -> MemberOut:
     """Invite someone by email or change their role. Invitations take effect at their first verified sign-in."""
+    refuse_token(user, "invite people or change roles")
     repo = MemberRepo(session)
     u, role = await repo.set_role(user.org_id, body.email, body.role)
     note(request, target=f"user_id={u.id}", email=u.email, role=role)
@@ -76,6 +77,7 @@ async def set_member(
 async def remove_member(
     user_id: str, session: AsyncSession = Depends(get_session), user: CurrentUser = Depends(current_user)
 ) -> Response:
+    refuse_token(user, "remove members")
     await MemberRepo(session).remove(user.org_id, user_id)
     return Response(status_code=204)
 
@@ -274,6 +276,8 @@ async def put_org_settings(
     session: AsyncSession = Depends(get_session),
     user: CurrentUser = Depends(current_user),
 ) -> OrgSettingsOut:
+    if "sso_groups" in body.model_fields_set:
+        refuse_token(user, "change which groups give which roles")
     # read afresh and held until the commit: `settings` is merged, so a concurrent change must not be lost
     org = await session.get(Organization, user.org_id, with_for_update=True, populate_existing=True)
     if org is None:
@@ -341,7 +345,9 @@ async def scim_status(
 async def create_scim_token(
     request: Request, session: AsyncSession = Depends(get_session), user: CurrentUser = Depends(current_user)
 ) -> ScimCreated:
-    """Make (or replace) the organisation's SCIM token. The old one stops working at once."""
+    """Make (or replace) the organisation's SCIM token. The old one stops working at once. Needs a real sign-in: the
+    SCIM token belongs to the organisation and would outlive a revoked API token."""
+    refuse_token(user, "make the SCIM token")
     settings = request.app.state.settings
     if settings.auth_mode == "matura":
         raise Conflict("members and roles are managed" + matura.portal_hint(matura.portal_base(settings)))
