@@ -1,5 +1,5 @@
 # AgentCanvas monorepo tasks. Run `make help`.
-.PHONY: help setup crewai framework mastra infra dev-api dev-fake dev-web docker-up docker-down docker-logs ci ci-full hooks test test-api test-web e2e copilot-evals screenshots lint fmt schema check docs
+.PHONY: help setup crewai framework mastra infra dev-api dev-fake dev-web docker-up docker-down docker-logs ci ci-full hooks test test-api test-web e2e copilot-evals screenshots framework-versions framework-bump lint fmt schema check docs
 
 help:       ## show targets
 	@grep -E '^[a-z-]+:.*## ' Makefile | sed 's/:.*## /\t/'
@@ -60,6 +60,13 @@ ENGINE ?= loop
 OUT ?= $(CURDIR)/copilot-evals.json
 copilot-evals: ## the Copilot evaluation, both suites, on this computer: MODEL=ollama:qwen3 (or provider:model; the offline demo Copilot when it cannot be reached) ENGINE=loop|deepagents OUT=report.json
 	cd apps/api && uv run python -m agentcanvas.copilot.evals --model "$(MODEL)" --engine "$(ENGINE)" --suite both --out "$(OUT)" --fallback-to-demo
+
+framework-versions: ## which agent framework pins are behind their latest release, with each one's changelog
+	cd apps/api && uv run python scripts/framework_versions.py
+
+framework-bump: ## move one framework pin everywhere it is written: make framework-bump PKG=crewai VERSION=1.15.39
+	cd apps/api && uv run python scripts/framework_versions.py bump "$(PKG)" "$(VERSION)"
+	cd apps/api && uv run pytest -q -p no:cacheprovider tests/test_framework_pins.py tests/test_framework_versions.py
 
 screenshots: ## retake the pictures in docs/user-guide/img (fake-model server, made-up data)
 	d=$$(mktemp -d) && cd apps/web && DATABASE_URL="sqlite+aiosqlite:///$$d/shots.db" AGENTCANVAS_WORKSPACES_DIR="$$d/ws" \
