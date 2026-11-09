@@ -74,7 +74,11 @@ run: it hands each one over at once, with the message or answer it was sent, and
 server. A waiting run counts as in flight for **Stop all runs** and can be stopped like any other. A run that waits
 longer than `AGENTCANVAS_MAX_QUEUE_WAIT_S` (an hour by default; 0 waits as long as it takes) ends with an error that
 says so (code `queue_timeout`): send it again later, or ask an admin to raise the limit. Runs of a server that stopped
-answering stop counting after about a minute.
+answering stop counting after about a minute. A run that calls another deployment of the organisation (a **Remote
+agent** step over A2A, or an MCP tool that points at a deployment) keeps its slot while it waits for the answer, so
+the run it calls works within that slot instead of waiting behind it: the call carries the caller's run id, signed by
+the server, in an `X-AgentCanvas-Run` header (sent on every A2A and MCP call a run makes; only this server can check
+it).
 
 Leave a field empty to use the server's value. The **Applies now** column shows what is in force. If the operator
 later lowers a server limit, an organisation's higher value stops applying at once. A per-environment limit the

@@ -9,7 +9,7 @@ graph was built.
 from __future__ import annotations
 
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
@@ -19,6 +19,7 @@ class RunIdentity:
     # the organisation's service connection may be used although a person started it: a run of a deployment (resumed
     # from the inbox, say) or an admin's own. A builder's draft run may not borrow the admin's connection.
     service_ok: bool = False
+    run_id: str | None = field(default=None, compare=False)  # the run itself (its calls to deployments name it)
 
 
 CURRENT: ContextVar[RunIdentity | None] = ContextVar("agentcanvas_run_identity", default=None)

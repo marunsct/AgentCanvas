@@ -342,10 +342,10 @@ async def test_a_handed_over_run_keeps_its_place_in_the_queue(app, api_client, l
     [resumed] = await app.state.handover.tick()
     assert await _queued(app, resumed) == {"position": 1, "limit": 1}  # ahead of the later run
     for _ in range(100):
-        if (await _queued(app, later))["position"] == 2:
+        if await _queued(app, later) == {"position": 2, "limit": 1}:
             break
         await asyncio.sleep(0.02)
-    assert (await _queued(app, later))["position"] == 2
+    assert await _queued(app, later) == {"position": 2, "limit": 1}
     assert (await run_row(app, resumed)).queue_key == first
     for run_id in (holder, later, resumed):
         await runner.cancel(run_id)
@@ -415,6 +415,7 @@ async def test_publishing_runs_its_test_cases_as_a_persons_runs(app, api_client,
     assert (await api_client.post(f"/v1/workflows/{limited}/test-cases", json=case)).status_code == 201
     blocker = await _start_slow(app, api_client, limited)
     publish = asyncio.create_task(api_client.post(f"/v1/workflows/{limited}/publish", json={}))
+    tests: list = []
     for _ in range(200):
         tests = [h for h in runner.handles.values() if h.origin == "test"]
         if tests:
@@ -424,3 +425,102 @@ async def test_publishing_runs_its_test_cases_as_a_persons_runs(app, api_client,
     await runner.cancel(blocker)
     r = await asyncio.wait_for(publish, 20)
     assert r.status_code in (200, 201), r.text
+
+
+async def test_a_run_called_by_a_run_of_its_organisation_works_within_its_slot(app, api_client, limited):
+    """A run waiting on another deployment of its organisation (A2A, MCP) holds a slot meanwhile: the run it calls
+    used to wait behind it (and behind every caller like it) until the call timed out. Named by the caller's signed
+    header, it takes no place in the queue while its caller holds a slot."""
+    from test_publish import bearer
+
+    from agentcanvas.runtime import nesting
+    from agentcanvas.runtime.identity import CURRENT, RunIdentity
+
+    runner = app.state.runner
+    pub = (await api_client.post(f"/v1/workflows/{limited}/publish", json={})).json()
+    dep, key = pub["deployment"]["id"], pub["api_key"]
+    caller = await _start_slow(app, api_client, limited)
+    token = CURRENT.set(RunIdentity("org_default", None, run_id=caller))
+    try:
+        named = nesting.header()
+    finally:
+        CURRENT.reset(token)
+    assert named[nesting.HEADER].startswith(f"{caller}.")
+    body = {"input": {"seconds": 0.01}}
+    r = await api_client.post(f"/v1/deployments/{dep}/runs/wait", json=body, headers=bearer(key) | named)
+    assert r.json()["status"] == "success", r.text  # at once, while the caller still holds the only slot
+    assert not [e for e in runner.handles[r.json()["run_id"]].events if e.get("name") == "ac.queued"]
+
+    forged = {nesting.HEADER: f"{caller}.{'0' * 32}"}
+    waiting = asyncio.create_task(api_client.post(f"/v1/deployments/{dep}/runs/wait", json=body,
+                                                  headers=bearer(key) | forged))  # fmt: skip
+    found: list = []
+    for _ in range(200):
+        found = [h for h in runner.handles.values() if h.deployment_id == dep and h.run_id != r.json()["run_id"]]
+        if found and await _queued(app, found[0].run_id):
+            break
+        await asyncio.sleep(0.02)
+    assert found and found[0].waiting  # a header it cannot vouch for: the queue as usual
+    await runner.cancel(caller)
+    assert (await asyncio.wait_for(waiting, 10)).json()["status"] == "success"
+
+
+async def test_a_runs_a2a_calls_name_the_run(app):
+    """The Remote agent step sends the signed header of the run that makes the call."""
+    import json
+
+    import httpx
+    from langgraph.checkpoint.memory import InMemorySaver
+    from test_interop import MESSAGES, cfg, workflow
+
+    from agentcanvas.adapters.langchain.interpreter import build_graph
+    from agentcanvas.adapters.langchain.nodes import Resources
+    from agentcanvas.runtime import nesting
+    from agentcanvas.runtime.identity import CURRENT, RunIdentity
+
+    seen: list[str | None] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET":
+            return httpx.Response(200, json={"name": "Desk", "url": "https://agents.example.com/a2a"})
+        seen.append(request.headers.get(nesting.HEADER))
+        result = {"kind": "task", "id": "t1", "contextId": "c1", "status": {"state": "completed"},
+                  "artifacts": [{"parts": [{"kind": "text", "text": "done"}]}]}  # fmt: skip
+        assert json.loads(request.content)["method"] == "message/send"
+        return httpx.Response(200, json={"jsonrpc": "2.0", "id": 1, "result": result})
+
+    wf = workflow(
+        channels=[MESSAGES],
+        nodes=[("desk", "agent.a2a", {"url": "https://agents.example.com/a2a", "output": "messages"})],
+        flow=[("START", "desk"), ("desk", "END")],
+    )
+    graph = build_graph(wf, Resources(http_transport=httpx.MockTransport(handle)), checkpointer=InMemorySaver())
+    token = CURRENT.set(RunIdentity("org_default", None, run_id="run_caller"))
+    try:
+        await graph.ainvoke({"messages": [("user", "hi")]}, cfg())
+    finally:
+        CURRENT.reset(token)
+    assert seen and nesting.caller(seen[0]) == "run_caller"
+
+
+async def test_a_runs_mcp_calls_name_the_run(app, monkeypatch):
+    """MCP tools are loaded once and shared by runs: each request names the run that makes it."""
+    import httpx2
+
+    from agentcanvas.adapters.langchain import nodes
+    from agentcanvas.runtime import nesting
+    from agentcanvas.runtime.identity import CURRENT, RunIdentity
+
+    seen: list[str | None] = []
+    transport = httpx2.MockTransport(lambda r: seen.append(r.headers.get(nesting.HEADER)) or httpx2.Response(200))
+    monkeypatch.setattr(nodes, "MCP_CLIENT_FACTORY", lambda **kw: httpx2.AsyncClient(transport=transport))
+    factory = nodes.mcp_target({"url": "https://tools.example.com/mcp"}).httpx_client_factory
+    assert factory is not None
+    async with factory(headers={}, follow_redirects=False) as client:
+        for run_id in ("run_a", "run_b"):
+            token = CURRENT.set(RunIdentity("org_default", None, run_id=run_id))
+            try:
+                await client.get("https://tools.example.com/mcp")
+            finally:
+                CURRENT.reset(token)
+    assert [nesting.caller(v) for v in seen] == ["run_a", "run_b"]

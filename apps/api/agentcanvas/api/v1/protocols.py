@@ -36,6 +36,7 @@ from agentcanvas.db.repositories import LIGHT_RUN
 from agentcanvas.errors import Conflict, DomainError, InvalidInput, NotFound, TooManyRequests, Unauthorized
 from agentcanvas.ir.contract import Contract, contract
 from agentcanvas.ir.models import Workflow
+from agentcanvas.runtime import nesting
 from agentcanvas.runtime.types import ResumeSpec
 from agentcanvas.settings import Settings
 
@@ -174,6 +175,7 @@ async def _resume(
         deployment_id=dep.id,
         version_id=version_id,
         labels=labels,
+        caller_run_id=nesting.caller(request.headers.get(nesting.HEADER)),
     )
     await session.close()
     return await _result(h)

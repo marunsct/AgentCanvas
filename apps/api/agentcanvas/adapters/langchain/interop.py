@@ -394,7 +394,9 @@ def a2a_agent_node(
         if approve and not _approve(node_id, name, "a2a", text):
             _trace(node=name, framework="a2a", input=text, skipped=True)
             return {}
-        sent = {k: str(resolve(v)) for k, v in (headers or {}).items()}
+        from agentcanvas.adapters.langchain.nodes import RUN_HEADERS
+
+        sent = {**(RUN_HEADERS() if RUN_HEADERS else {}), **{k: str(resolve(v)) for k, v in (headers or {}).items()}}
         async with httpx.AsyncClient(timeout=timeout, transport=transport) as client:
             endpoint = await _a2a_endpoint(client, url, sent, allow_private_network, checked=transport is None)
             task_id = context_id = None

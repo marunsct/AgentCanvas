@@ -99,6 +99,7 @@ class RunHandle:
     fresh: bool = False  # it started a new conversation (created its thread)
     project_id: str | None = None
     priority: int = 0  # in the run queue: 1 high, 0 normal, -1 low (runtime/admission.py)
+    caller_run_id: str | None = None  # the run that called this deployment run (A2A, MCP): it works within its slot
     waiting: bool = False  # in the run queue, waiting for a slot: it has not begun its work
     # set once it has its slot (at once without a limit) or has ended: callers' time limits count from here
     admitted: asyncio.Event = field(default_factory=asyncio.Event)
@@ -476,6 +477,7 @@ class Runner:
         priority: Priority | None = None,
         queue_key: str | None = None,
         handed_over: bool = False,
+        caller_run_id: str | None = None,
     ) -> RunHandle:
         """Start a run. `context=None` reuses the context of the last run on `context_from` (default: this thread).
         A deployment's run takes only files given to that deployment (`visitor_hash`: a share link's visitor, whose
@@ -483,7 +485,9 @@ class Runner:
         any of the project's files. `service_connection`: the person who starts it may use the organisation's service
         connection (an admin); a deployment's runs always may. `priority`: its place in the organisation's run queue
         when a concurrent-run limit holds it back (default: low for test runs, else normal); `queue_key`: the run a
-        hand-over continues, whose place in that queue it keeps; `handed_over`: started by the hand-over."""
+        hand-over continues, whose place in that queue it keeps; `handed_over`: started by the hand-over;
+        `caller_run_id`: the run of the organisation that called this deployment run (it takes no place in the
+        queue while that run holds a slot: runtime/nesting.py)."""
         if self.draining:
             raise Unavailable("this server is restarting; retry the request", retry_after=5)
         adapter = self.adapter_for(wf)
@@ -618,6 +622,7 @@ class Runner:
         handle.routing = routing
         handle.project_id, handle.priority = project_id, priority_of(priority, origin)
         handle.fresh = fresh
+        handle.caller_run_id = caller_run_id
         handle.decided = decided  # an error before the answer is applied puts them back in the Inbox (R-4)
         handle.requested_by = requested_by
         if input is not None and resume is None and checkpoint_id is None and origin != "test":
@@ -681,9 +686,8 @@ class Runner:
     async def _pump(self, h: RunHandle, spec: RunSpec) -> None:
         h.started = True  # from here on a cancel reaches the code below, which always finishes the run
         started = time.perf_counter()
-        CURRENT.set(
-            RunIdentity(spec.org_id, spec.user_id, spec.service_connection)
-        )  # app connectors that sign in read it per call (G-7)
+        # app connectors that sign in read it per call (G-7), and A2A and MCP calls name the run (runtime/nesting.py)
+        CURRENT.set(RunIdentity(spec.org_id, spec.user_id, spec.service_connection, run_id=h.run_id))
         status, error, interrupts = "error", None, []
         # The run's last events are published only after the run is finalised (saved, thread released): a client
         # that sends its next message the moment it reads RUN_FINISHED must find the thread free, not 'already has
@@ -737,7 +741,9 @@ class Runner:
                     h.waiting = True
                     await self._emit(h, {"type": "CUSTOM", "name": "ac.queued", "value": place})
 
-                await self.admission.wait(h.run_id, spec.org_id, h.project_id, queued, _pending(h, spec))
+                await self.admission.wait(
+                    h.run_id, spec.org_id, h.project_id, queued, _pending(h, spec), caller=h.caller_run_id
+                )
                 h.waiting = False
                 started = time.perf_counter()  # its duration (and budget's time limit) count from here
             h.admitted_at = time.perf_counter()

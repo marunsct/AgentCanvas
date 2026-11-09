@@ -115,14 +115,18 @@ class Admission:
         project_id: str | None,
         on_queued: Callable[[dict[str, Any]], Awaitable[None]],
         pending: dict[str, Any] | None = None,
+        caller: str | None = None,
     ) -> None:
         """Return when the run may go: at once without a limit, else once it has a slot. `on_queued` is told the
         run's place in the queue when it has to wait, and again when its place changes. `pending`: what the run
-        was started with, kept on its row while it waits (a hand-over starts it again with it). Raises
-        QueueTimeout after `max_wait_s` without a slot."""
+        was started with, kept on its row while it waits (a hand-over starts it again with it). `caller`: the run
+        of the organisation this one was called by (runtime/nesting.py): while it holds a slot, this run works within
+        it instead of waiting behind it. Raises QueueTimeout after `max_wait_s` without a slot."""
         if org_id is None:
             return
         if await self.limit_of(project_id) <= 0:
+            return
+        if caller is not None and await self._holds_slot(caller, org_id):
             return
         async with self.db.sessionmaker() as s:
             await s.execute(update(Run).where(Run.id == run_id).values(queued=True, pending=pending))
@@ -141,6 +145,11 @@ class Admission:
             ) from None
         finally:
             self._waiting.get(org_id, {}).pop(run_id, None)
+
+    async def _holds_slot(self, run_id: str, org_id: str) -> bool:
+        async with self.db.sessionmaker() as s:
+            found = await s.scalar(self._in_org(org_id).where(Run.id == run_id, Run.queued.is_(False), self._alive()))
+        return found is not None
 
     async def _leave(self, run_id: str) -> None:
         async with self.db.sessionmaker() as s:

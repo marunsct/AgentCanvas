@@ -42,7 +42,7 @@ from agentcanvas.db.session import Database
 from agentcanvas.ids import new_id
 from agentcanvas.log import configure_logging, get_logger
 from agentcanvas.registry import default_registry
-from agentcanvas.runtime import masking
+from agentcanvas.runtime import masking, nesting
 from agentcanvas.runtime import paused as paused_runs
 from agentcanvas.runtime.admission import Admission
 from agentcanvas.runtime.paused import DatabasePaused, DatabaseReplies, MemoryPaused
@@ -205,6 +205,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )  # sign-ins to app connectors (G-7); with no address for the web app, a sign-in says so when it starts
             app.state.oauth_tokens = oauth.ConnectionTokens(db, app.state.keyring, public_only=hosted)
             oauth.install(app.state.oauth_tokens)
+            nesting.install(settings.secret_key)  # runs' A2A and MCP calls name the run (one org's nested runs)
             masking.provider = lambda: (  # traces: each secret and its encoded forms (S-9)
                 f for values in app.state.projects.secrets.values() for v in values.values() for f in encoded_forms(v)
             )
@@ -333,6 +334,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     yield
             finally:
                 oauth.install(None)
+                nesting.install(None)
                 await app.state.wind_down.begin()  # begun at the signal already, or now
                 # after the drain: runs finishing in it are scored and indexed too, both at once (AFTER_DRAIN_S)
                 await asyncio.gather(app.state.online.stop(), app.state.run_search.drain())

@@ -819,6 +819,9 @@ def _config_key(config: dict[str, Any]) -> str:
 # Set by the server (`services/oauth.install`): signs an app connector's requests with the connection of whoever the
 # run acts for (G-7). None outside the server: a connector that asks for it cannot run there.
 OAUTH_AUTH: Callable[[str, str], Any] | None = None
+# Set by the server (`runtime/nesting.install`): headers that name the run making a call, so a deployment of the same
+# organisation it calls (A2A, MCP) runs within its slot of the run queue. None outside the server: nothing is added.
+RUN_HEADERS: Callable[[], dict[str, str]] | None = None
 # Tests only: the HTTP client factory the MCP client uses for http connectors (reaches an in-process ASGI server)
 MCP_CLIENT_FACTORY: Callable[..., Any] | None = None
 
@@ -843,7 +846,31 @@ def mcp_target(config: dict[str, Any], resolve: Callable[[Any], Any] = lambda v:
         from agentcanvas.adapters.langchain.pinned import public_mcp_client_factory
 
         factory = public_mcp_client_factory
+    if RUN_HEADERS is not None:
+        factory = _naming_the_run(factory)
     return StreamableHttpTransport(config["url"], headers=headers or None, auth=auth, httpx_client_factory=factory)
+
+
+def _naming_the_run(factory: Callable[..., Any] | None) -> Callable[..., Any]:
+    """The MCP client's HTTP client factory, its requests carrying `RUN_HEADERS` of the run that makes them (the
+    tools are loaded once and shared by runs, so the headers are read per request)."""
+
+    def make(**asked: Any) -> Any:
+        if factory is not None:
+            client = factory(**asked)
+        else:
+            from mcp.shared._httpx_utils import create_mcp_http_client
+
+            client = create_mcp_http_client(**{k: v for k, v in asked.items() if k in ("headers", "timeout", "auth")})
+
+        async def name_the_run(request: Any) -> None:
+            if RUN_HEADERS is not None:
+                request.headers.update(RUN_HEADERS())
+
+        client.event_hooks.setdefault("request", []).append(name_the_run)
+        return client
+
+    return make
 
 
 async def mcp_tools(target: Any) -> list[BaseTool]:
