@@ -266,6 +266,11 @@ neither sees no rows.
   `MIGRATE_DATABASE_URL` (the owner), `APP_DB_USER` and `APP_DB_PASSWORD`. Elsewhere, run migrations as the owner
   (`make migrate` with the owner's `DATABASE_URL`) and set `AGENTCANVAS_AUTO_MIGRATE=false` on the API. With it off, the
   API refuses to start on a database the migrations have not reached and says which command to run.
+- That role may read and add audit-log entries but not change or delete them: `app_role` revokes UPDATE and DELETE
+  on `audit_log`, so a SQL injection or a compromised API server cannot rewrite history. Retention deletes entries
+  past the audit retention through the function `audit_expire`, which runs as the owner, deletes only the oldest
+  entries of an organisation's hash chain, records where the chain now starts, and refuses entries less than a day
+  old. An API that connects as the owner (no `APP_DB_USER`), and SQLite, keep the hash chain but not this guarantee.
 - The API asks for `agentcanvas.all_tenants=on` as a connection startup option, and `app_role` also makes it the
   role's own default when it runs as a superuser (on a managed Postgres, whose owner is not one, it prints a notice
   instead). PgBouncer refuses or drops startup options, so behind it the role needs that default (a superuser runs

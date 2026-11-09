@@ -29,7 +29,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
 from prometheus_client import Counter
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, select, text, update
 
 from agentcanvas import observability
 from agentcanvas.adapters.spi import MemoryAbility, supports
@@ -311,7 +311,13 @@ class RetentionJob:
         """Delete an organisation's entries older than `cutoff`, from the start of its hash chain up to the first
         that is not, so the chain stays whole (services/audit_chain.py); where it now starts is kept in
         `audit_anchor`. Entries are written in time order; an older one after a kept one waits for it."""
-        async with self.db.sessionmaker() as s:
+        cutoff = min(cutoff, datetime.now(UTC) - timedelta(days=1))  # never the last day's: the function refuses it
+        if self.db.is_postgres:  # the API's role may not delete audit rows: the owner's function does (app_role.py)
+            async with self.db.sessionmaker() as s:
+                gone = await s.scalar(text("SELECT audit_expire(:org, :cutoff)"), {"org": org_id, "cutoff": cutoff})
+                await s.commit()
+                return gone or 0
+        async with self.db.sessionmaker() as s:  # SQLite: the same, here (migration d32911f9085f)
             if org_id is None:  # entries of no organisation (none are written any more) have no chain
                 res = await s.execute(delete(AuditLog).where(AuditLog.org_id.is_(None), AuditLog.created_at < cutoff))
                 await s.commit()

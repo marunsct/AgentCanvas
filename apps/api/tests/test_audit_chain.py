@@ -2,14 +2,19 @@
 changed, deleted or slipped in afterwards; retention deletes the start of a chain without breaking it."""
 
 import asyncio
+import os
 from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import delete, select, text, update
+from sqlalchemy.engine import make_url
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.ext.asyncio import create_async_engine
 
 from agentcanvas.api.deps import CurrentUser, current_user
 from agentcanvas.db.models import AuditAnchor, AuditLog, Organization
 from agentcanvas.db.repositories import AuditRepo
+from agentcanvas.db.session import async_url
 from agentcanvas.services import audit_chain
 
 
@@ -218,3 +223,76 @@ async def test_a_membership_change_and_an_audit_write_wait_for_each_other_withou
     await asyncio.wait_for(waiting, 5)
     assert [r.action for r in await entries(app)] == ["set_member", "publish"]
     assert (await verify(api_client))["ok"]
+
+
+APP_ROLE = "agentcanvas_e3_audit_app"  # roles belong to the whole Postgres server: a name of this test's own
+
+
+@pytest.mark.skipif(not (os.getenv("TEST_DATABASE_URL") or "").startswith("postgres"), reason="roles need Postgres")
+async def test_the_api_role_may_add_audit_entries_but_never_change_or_delete_them(app, api_client):
+    """ASVS V16.4.2: a SQL injection or a compromised API server, connected as the API's role, cannot rewrite
+    history. Retention still deletes old entries, through the owner's function, which refuses recent ones."""
+    from agentcanvas.db.app_role import ensure
+    from agentcanvas.db.session import Database
+    from agentcanvas.services.retention import RetentionJob
+
+    url = os.environ["TEST_DATABASE_URL"]
+    await changes(api_client, 3)
+    ensure(url, APP_ROLE, APP_ROLE)  # what the deployment's migration step runs, as the owner
+    as_app = Database(make_url(async_url(url)).set(username=APP_ROLE, password=APP_ROLE).render_as_string(False))
+    try:
+        async with as_app.sessionmaker() as s:  # adding is what the API does
+            await AuditRepo(s).add(AuditLog(org_id="org_default", action="put_secret", target="name=X", detail={}))
+        for sql in (
+            "UPDATE audit_log SET target = 'name=innocent'",
+            "DELETE FROM audit_log",
+            "TRUNCATE audit_log CASCADE",
+            "INSERT INTO audit_anchor (org_id, through_id, last_hash, rows) VALUES ('org_default', 1, NULL, 0)",
+            "SELECT audit_expire('org_default', now())",  # recent entries: refused by the function itself
+        ):
+            async with as_app.sessionmaker() as s:
+                with pytest.raises(DBAPIError) as refused:
+                    await s.execute(text(sql))
+            assert "permission denied" in str(refused.value) or "younger than a day" in str(refused.value), sql
+        async with app.state.db.sessionmaker() as s:  # the owner ages the first two (and re-hashes them)
+            rows = list((await s.scalars(select(AuditLog).order_by(AuditLog.id))).all())
+            prev = None
+            for i, r in enumerate(rows):
+                if i < 2:
+                    r.created_at = datetime.now(UTC) - timedelta(days=500)
+                r.prev_hash, r.row_hash = prev, None
+                r.row_hash = prev = audit_chain.row_hash(r)
+            await s.commit()
+        job = RetentionJob(as_app, app.state.runner, 90, audit_days=400)
+        assert await job.expire_audit(datetime.now(UTC)) == 2  # as the API's role
+        report = await verify(api_client)
+        assert report["ok"] and report["checked"] == 2 and report["anchor"]["rows"] == 2, report
+    finally:
+        await as_app.dispose()
+        engine = create_async_engine(async_url(url))
+        async with engine.begin() as conn:
+            await conn.execute(text(f"DROP OWNED BY {APP_ROLE}"))
+            await conn.execute(text(f"DROP ROLE {APP_ROLE}"))
+        await engine.dispose()
+
+
+@pytest.mark.skipif(not (os.getenv("TEST_DATABASE_URL") or "").startswith("postgres"), reason="roles need Postgres")
+async def test_the_api_role_is_created_on_an_empty_database_before_a_restore(capfd):
+    """restore.sh creates the role before it loads the dump, on an empty database: the audit log's privileges wait
+    for the run after the migrations instead of failing the restore."""
+    from agentcanvas.db.app_role import ensure
+
+    url = make_url(os.environ["TEST_DATABASE_URL"])
+    empty = f"{url.database}_empty"
+    engine = create_async_engine(async_url(str(url.render_as_string(False))), isolation_level="AUTOCOMMIT")
+    async with engine.connect() as conn:
+        await conn.execute(text(f"DROP DATABASE IF EXISTS {empty}"))
+        await conn.execute(text(f"CREATE DATABASE {empty}"))
+    try:
+        ensure(url.set(database=empty).render_as_string(False), APP_ROLE, APP_ROLE)
+        assert "audit log's tables are not there yet" in capfd.readouterr().err
+    finally:
+        async with engine.connect() as conn:
+            await conn.execute(text(f"DROP DATABASE {empty}"))
+            await conn.execute(text(f"DROP ROLE IF EXISTS {APP_ROLE}"))
+        await engine.dispose()

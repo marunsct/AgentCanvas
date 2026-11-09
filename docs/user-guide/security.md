@@ -116,7 +116,10 @@ afterwards breaks the chain. Admins check it with `GET /v1/org/audit/verify`, wh
 the first entries that do not match (`changed`, `missing` or `unchained`); operators check every organisation with
 `python -m agentcanvas.audit verify`, which exits with 1 when a chain is broken (run it from a scheduled job to be
 alerted). Retention deletes the oldest entries without breaking the chain: it records where the chain now starts.
-Entries written before the chain existed have no hash and are counted as `unchained` at the start. Forwarded entries
+Entries written before the chain existed have no hash and are counted as `unchained` at the start. On Postgres,
+when the API connects as its own role (`agentcanvas_app`, [Database isolation](deploy.md#database-isolation)),
+the database itself refuses to let the API change or delete audit entries; retention deletes old ones through a
+function that can do only that. Forwarded entries
 carry their `row_hash` and `prev_hash`, so the copy in your SIEM also shows if someone with full database access
 rewrote the whole chain; compare the `head_hash` that verifying reports with the last forwarded entry's `row_hash`.
 

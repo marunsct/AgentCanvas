@@ -10,7 +10,8 @@ Retention deletes the oldest entries on purpose; it records the last deleted ent
 the remaining chain starts. Entries written before the chain existed have no hash and are reported as such.
 
 What it cannot show on its own: someone able to rewrite the whole table could recompute every hash. Forwarded entries
-carry their hashes, so the copy in the SIEM anchors the chain against that.
+carry their hashes, so the copy in the SIEM anchors the chain against that; and on Postgres the API's own role may
+not change or delete audit rows at all (`db/app_role.py`).
 """
 
 from __future__ import annotations
