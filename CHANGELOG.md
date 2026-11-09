@@ -8,6 +8,53 @@ The product pass ([PLAN.md](docs/developer/history/product-plan-2026-10.md): one
 review of 2026-10-29 ([HARDENING.md](docs/developer/hardening.md)); no version has been tagged for them yet.
 
 ### Security
+- Links in Copilot and Playground answers that look like in-app paths but lead to another site (/\host) are shown as
+  plain text.
+- Signing out or switching account or organisation clears the Playground conversation kept in the browser tab, so it is
+  not shown to, or sent to the model of, the next person or organisation.
+- Deleting a workflow or project now deletes its conversations' saved state, and a new conversation that reuses a
+  deleted one's id starts empty.
+- Joserfc 1.7.6 and OpenTelemetry 1.45.2 replace releases with known vulnerabilities, one of which let an
+  unauthenticated request with a long `tracestate` header stall a traced API pod.
+- The API image's agent-framework environments are installed from locks that pin and hash every package, so a build
+  cannot pick up an unreviewed transitive release, and ADK's environment no longer carries the vulnerable filelock 3.x.
+- The dependency audit and the image vulnerability scan now cover the agent-framework environments and the Mastra
+  runtime that the API image ships, and the Mastra runtime takes fast-uri 3.1.9.
+- The web app's config forms use fast-uri 3.1.9 / 4.2.3, past two moderate URI-parsing advisories, and the dependency
+  audit now fails on moderate findings in what the web app ships.
+- Dependabot version updates and new web-package resolutions wait until a release is 7 days old (14 days for a major
+  version), so a hijacked release is usually withdrawn before it can reach a pull request.
+- In the Helm chart, the API, web and migration pods run on a read-only root filesystem and without a Kubernetes
+  service-account token, and API pods no longer re-own every workspace file at start-up.
+- A server that runs workspace code in a sandbox now refuses the "Agent from another framework" block (E041), whose code
+  would otherwise run inside the API with its keys and every organisation's secrets in reach.
+- Project secrets are masked in the run events of every framework, not only LangGraph, before they are streamed, stored
+  or recorded.
+- Workspace code in the sandbox can start at most about 256 processes or threads, so a fork loop no longer exhausts a
+  Kubernetes node's process table.
+- Agents of other frameworks run as parts of a LangGraph flow no longer get the server's keys or database settings, run
+  with their framework's telemetry off, and stop when they hang or their run is stopped.
+- A Mastra export ships the package-lock.json AgentCanvas tested and installs with npm ci, so every npm package it uses
+  has the tested version.
+- Importing a shared workflow file can no longer write code (such as event handlers) into the project's workspace.
+- Copilot test runs no longer reach a new address you have not accepted, and rerunning a past run asks before calling
+  real models.
+- A template that runs longer than a second or builds an oversized text stops its step with an error instead of freezing
+  or crashing the server.
+- The Copilot no longer describes another project's custom blocks when two projects use the same block name.
+- The harmful-content check can no longer be cleared by text that tells its AI model to answer zeros; near-certain
+  phrase matches always count.
+- An API token can no longer make the SCIM token, invite or remove members, or change which groups give which roles;
+  these need a real sign-in, so a leaked token cannot leave access behind.
+- In the hosted edition, listing a server's models and sending traces reach public addresses only, so a builder or
+  tenant admin cannot make the API server call internal addresses.
+- In the hosted edition, LangSmith dataset sync uses the project's own LANGSMITH_API_KEY only, never the operator's
+  server key.
+- Security events leave the server in every sign-in mode (an `audit.event` log line, and a signed CloudEvent to
+  AGENTCANVAS_AUDIT_SINK_URL), SCIM and group role changes included, and refused sign-ins and actions are logged as
+  warnings.
+- A step with "Allow private network" (web API tools, remote agents) and app connectors can no longer reach a link-local
+  or cloud metadata address from the server; AGENTCANVAS_EDITION is now explicit in the Helm chart and documented.
 - The web image's pages send `Strict-Transport-Security` (one year) when the request came over https, directly or from a
   trusted proxy, and a `Permissions-Policy` that turns off the camera, microphone, location, payment and USB.
 - Pydantic AI 2.66.0 for exports, the bridge and the flow runtime: it fixes crafted JSON or schema resource use, a cloud-metadata gap in its URL-download blocklist, and header leaks in trace spans.
@@ -119,6 +166,121 @@ review of 2026-10-29 ([HARDENING.md](docs/developer/hardening.md)); no version h
   and metadata addresses are never reached, and a list naming one is refused (HARDENING S-1).
 
 ### Fixed
+- Stopped, cancelled or timed-out runs on every framework now record the tokens and cost of the model calls they made.
+- An experiment's failure summary now names the same examples every time it is read.
+- The run panel no longer keeps saying "Waiting for a free run slot" after a queued run is stopped or ends before its
+  first step.
+- The condition field's expression check always reflects the text currently typed, even when the server answers slowly.
+- Confirm dialogs for destructive actions start with Cancel focused, so pressing Enter twice no longer deletes or
+  replaces anything.
+- Adding a block from the palette, the command palette or by dragging while a subgraph or a Copilot proposal is shown
+  explains that you must leave that view first, instead of adding it to the workflow out of sight.
+- On a shared chat page reloaded while an answer was being written, the conversation no longer jumps to the bottom every
+  2 seconds or is read out again by screen readers.
+- On a shared chat page, messages in Arabic, Hebrew and other right-to-left languages are shown right to left.
+- Workflows open in background tabs no longer use up the browser's connections to the server, which could make every
+  other tab hang over HTTP/1.1.
+- The Timeline loads a checkpoint's state only when you select it, so long conversations no longer download every
+  checkpoint's full state after each run, and checkpoints are numbered by step.
+- In the Workspace, text typed while a file is being saved is no longer treated as saved; it stays marked unsaved and
+  Save stores it.
+- The Workspace no longer overwrites a file that changed elsewhere since you opened it: the editor shows the newer
+  version, or asks which to keep when you have unsaved changes, and the file API accepts If-Match.
+- Leaving the Workspace with unsaved code (another page, Back to workflow, the browser's Back) now asks first instead of
+  dropping the changes.
+- Searching a project's runs no longer reads the name of every workflow on the server.
+- Run search finds a resumed run by the question that started its conversation, and online evaluators see a resumed
+  run's input and labels.
+- Indexing finished runs for search no longer ties up database connections while a hosted embedding model answers.
+- The retention job, deleting a workflow and the Conversations list stay fast on large databases; new indexes are built
+  without blocking writes.
+- Day and month budget checks no longer slow down as a workflow's past conversations pile up.
+- The dataset list and version history stay fast for large datasets with many versions; the history returns the newest
+  100 versions and pages with `before`.
+- Deleting conversations, by hand or by retention, no longer resets day and month budgets or removes their cost from the
+  spending report.
+- `make ci` (scripts/ci-local.sh) now fails a stage when any command in it fails; before, only the stage's last command
+  counted, so dependency audit findings and Helm lint errors could pass unnoticed.
+- `make check` and the API test suite now fail when the Copilot's copy of the user guide or the web app's diagnostics
+  file is out of date, instead of letting a stale copy ship.
+- Putting PgBouncer in front of the database no longer makes every project, run and background job see an empty
+  installation, and the operations runbook's pooler advice matches the driver the API uses.
+- The deploy guide's image build includes every framework, as the Docker app does, so CrewAI, ADK, Mastra and other
+  workflows run on a production server too.
+- The user guide no longer sends operators handling a leaked secret to search for audit events that never exist, and its
+  template count, local-setup, CI and framework statements match the product.
+- The user guide no longer says exported code is yours to use while AgentCanvas has published no licence; it says the
+  terms are not set yet.
+- An input-only field is no longer returned in a run's output on CrewAI, Google ADK, OpenAI Agents, Mastra and the flow
+  frameworks, or by their exported code.
+- Importing a Langflow or Flowise prompt that shows a JSON example in doubled braces (or other brace text) gives a
+  prompt that renders as written instead of a template error.
+- A bypassed Choose a path or Decide with AI step still picks the path on CrewAI, Google ADK, OpenAI Agents, Mastra and
+  the flow frameworks, as it does on LangGraph, instead of ending the run or taking the default path.
+- The blast radius and organisation policies still count a bypassed Decide with AI step, which still runs and calls its
+  model.
+- Importing a damaged file (a huge or infinite number, code nested too deeply, a broken Agent Spec file) is refused with
+  a plain message instead of a server error.
+- An agent export or Managed Agents bundle names the same test tools whether a production server or a development
+  machine made it.
+- Stop now stops a run when the request reaches a different API replica than the one running it (within the hand-over
+  interval, 10 s).
+- Deleting a conversation whose run is going on another API replica stops that run before the conversation is deleted,
+  instead of leaving it running and writing the conversation back.
+- A run whose conversation was deleted while it ran stops at the next heartbeat and does not leave the conversation's
+  saved state behind.
+- An API pod that is stopping no longer starts or claims runs while uvicorn waits for open streams, and its grace period
+  (now 90 s) leaves time to save online-evaluation scores, the search index and trace exports.
+- A server error is counted in the error-rate metric and alert, answers with an x-request-id header, and is logged once
+  as JSON with its request id and secrets masked.
+- With JSON logs on, uvicorn's access and error lines and library warnings are JSON lines too, with the request id and
+  project secret values masked.
+- Rolling an upgrade back to the previous images starts the API: the migration step and the API's own start-up migration
+  leave a database a later release migrated as it is; the deploy guide has a rollback procedure.
+- The OpenAPI document describes errors as they are sent (a Problem schema as application/problem+json for 422 and every
+  other error), so clients generated from it can read them.
+- Red-team attacks no longer fail because the workflow's output repeats the attack input unchanged.
+- "Use the cheapest of" no longer sends a block's own API key or address to a model of another provider.
+- Costs and cost limits count Claude prompt-cache writes at the cache-write price instead of as ordinary input.
+- The Copilot's and AI judges' costs no longer charge a whole turn at the long-context price when only the sum of its
+  calls passes the threshold.
+- Decide with AI no longer takes the default path when the model's JSON answer has text with braces around it or names
+  the path in another letter case.
+- On Mastra, a Decide with AI path description containing `$` signs reaches the model unchanged.
+- The event log and event handlers' dedup values are now deleted with the organisation's conversation retention (dedup
+  values after AGENTCANVAS_EVENT_DEDUP_DAYS, 30, when shorter).
+- An approval nobody answers within AGENTCANVAS_APPROVAL_EXPIRY_DAYS (90) expires and its run is cancelled, so the
+  conversation then follows the organisation's retention instead of being kept forever.
+- A schedule whose time passed while no server was running (a restart or an outage) now fires once when a server is
+  back, if the missed time is within AGENTCANVAS_CRON_CATCHUP_S (1 hour).
+- Online scoring keeps at most 1,000 runs waiting per server (further runs are left unscored and counted in
+  agentcanvas_online_scoring_dropped_total), and annotation queues receive failed runs without waiting for slow judges.
+- An API server no longer keeps a trace-export thread for every project that ever exported traces; idle pipelines are
+  flushed and shut down after 15 minutes, with at most 256 at once.
+- A bootstrap admin whose first sign-in had no verified email (Entra ID before AGENTCANVAS_OIDC_TRUST_EMAIL) becomes
+  admin once the email is verified, and the refusal says why.
+- The sign-in guide no longer lists Google as directly supported, and gives the setup Keycloak, Okta, Auth0 and Entra ID
+  need.
+- A run waiting in the run queue when its server restarts or stops is handed over with the message it was sent, instead
+  of failing or finishing without running.
+- The run queue no longer makes every waiting run poll the database or lock the organisation, never goes over the limit
+  on SQLite, and a run that waits longer than AGENTCANVAS_MAX_QUEUE_WAIT_S ends with a clear error.
+- A run handed over to another server during a redeploy keeps its place in the run queue instead of going behind the
+  runs that came after it.
+- A run continued on another server after a redeploy keeps its origin, so an event handler's run no longer fires
+  lifecycle events, and experiment and test runs are no longer continued as people's runs.
+- A run whose hand-over to another server fails is tried again a few times and otherwise ends with an error that says
+  why, instead of staying "interrupted, it continues automatically" for ever.
+- Runs finishing during a server's drain grace period keep their heartbeat, so a long AGENTCANVAS_DRAIN_GRACE_S no
+  longer makes another server run them a second time.
+- With a runs-at-once limit, experiment examples, test cases and Copilot test runs no longer time out while they wait
+  for a slot, and the test cases a publish runs no longer wait behind every other run.
+- With a runs-at-once limit, a workflow that calls another deployment of its organisation (over A2A or MCP) no longer
+  stalls waiting for a slot its own caller holds.
+- Upgrading no longer blocks writes to the run table while the run queue's index builds; the index covers only runs in
+  flight and is built concurrently on Postgres.
+- A run that gets its slot at the very moment its server begins to drain is handed over with its message instead of
+  losing it.
 - Runs on CrewAI, Google ADK, the OpenAI Agents SDK and the flow frameworks (Pydantic AI, Agno, Agent Framework,
   Strands, LlamaIndex, Mastra) that are stopped, cancelled or hit their time limit now record the tokens and cost of
   the model calls they made before stopping, as LangGraph runs already did.
@@ -598,6 +760,27 @@ review of 2026-10-29 ([HARDENING.md](docs/developer/hardening.md)); no version h
   1.9.1 and dnspython 2.9.0.
 
 ### Added
+- The web app serves the licences of the packages it bundles at /third-party-licenses.txt, and the images check writes a
+  CycloneDX bill of materials for each image.
+- A security policy with a private way to report vulnerabilities, and a user-guide page on security, privacy and
+  compliance for customers' security reviews.
+- Metrics and alerts for background jobs (hand-over, cron, retention, crawls, experiments and others) that fail or stop
+  finishing, and a gauge of runs waiting in the run queue.
+- Settings › About and GET /v1/version show the release and commit the server and web app run; agentcanvas_build_info
+  and the images' OCI labels carry them too.
+- GET /v1/openapi.json gives signed-in callers the server's OpenAPI document in production too, and the user guide has
+  an API reference page (errors, error types, versioning).
+- Cron triggers take a time zone (e.g. Europe/Berlin) and follow its daylight saving changes; schedules accept day and
+  month names and @hourly, @daily, @weekly, @monthly and @yearly.
+- A cron trigger whose scheduled runs cannot start shows why and how many times in a row, in the trigger list and the
+  Versions tab.
+- An admin (Settings › Organisation › Limits and policies) or the operator (AGENTCANVAS_MAX_TOKEN_DAYS) can cap how long
+  API tokens live; tokens that never expire are then refused.
+- An admin (Limits and policies) or the operator (AGENTCANVAS_APPROVE_OWN_RUNS) can forbid approving your own runs, so
+  an approval step needs a second person.
+- Run queue metrics (`agentcanvas_runs_queued`, `agentcanvas_run_queue_wait_seconds`,
+  `agentcanvas_run_queue_timeouts_total`), the `AgentCanvasRunQueueSlow` alert with a runbook entry, `queued` on runs in
+  the API, and the runs-at-once limit on Settings > Server.
 - [Server settings](docs/user-guide/server-settings.md): every server setting with its default and what it does, generated from the code (a test keeps it current).
 - **Runs at once and run priority:** with `AGENTCANVAS_MAX_CONCURRENT_RUNS`, or an organisation's lower limit (Settings ›
   Organisation › General), a run past the limit waits in the organisation's queue, shared by every server, and the run
@@ -959,6 +1142,13 @@ review of 2026-10-29 ([HARDENING.md](docs/developer/hardening.md)); no version h
 - An e2e check that every control in the inspector has an accessible name and stays in the tab order.
 
 ### Changed
+- The web app pins pnpm exactly (10.34.9, with its hash) in package.json; the web image, CI and a developer's pnpm all
+  use that version.
+- The API's development environment, tests and checks run on Python 3.14 (apps/api/.python-version), the version the API
+  image ships; `uv sync` recreates an existing 3.13 environment once.
+- Re-attaching to a run's events on a replica that is not running it answers a 404 that says the run is on another
+  server and names its conversation.
+- Runs that do not wait in the run queue no longer copy their input for it.
 - With `AGENTCANVAS_AUTO_MIGRATE=false`, the API refuses to start on a database the migrations have not reached (it
   names the command to run) instead of failing request by request; a newer database (a rollback) starts with a
   warning.
