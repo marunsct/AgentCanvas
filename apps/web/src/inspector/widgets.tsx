@@ -61,12 +61,16 @@ export function CelWidget(props: WidgetProps) {
   const text = typeof value === "string" ? value : "";
   useEffect(() => {
     if (!text) return setError(null);
+    // an answer about older text (a slow server) must not land after the answer about the current text
+    let live = true;
+    const ac = new AbortController();
     const t = setTimeout(() => {
-      apiFetch<{ ok: boolean; error?: string | null }>("/expressions/check", { method: "POST", json: { kind: "cel", source: text } })
-        .then((r) => setError(r.ok ? null : r.error ?? "invalid"))
-        .catch(() => setError(null));
+      apiFetch<{ ok: boolean; error?: string | null }>("/expressions/check",
+        { method: "POST", json: { kind: "cel", source: text }, signal: ac.signal })
+        .then((r) => { if (live) setError(r.ok ? null : r.error ?? "invalid"); })
+        .catch(() => { if (live) setError(null); });
     }, 300);
-    return () => clearTimeout(t);
+    return () => { live = false; clearTimeout(t); ac.abort(); };
   }, [text]);
   return (
     <div>
