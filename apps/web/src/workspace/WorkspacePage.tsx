@@ -51,10 +51,14 @@ export function WorkspacePage() {
     queryKey: ["file", PROJECT_ID, selected], enabled: Boolean(selected),
     queryFn: () => apiFetch<FileContent>(`${base()}/files/${enc(selected!)}`),
   });
-  const [draft, setDraft] = useState<string | null>(null);
+  // the editor's text once it was typed in, for the file it was typed in; a save does not clear it: text typed while
+  // the save was on its way would then count as saved (dirty compares it with what the server has)
+  const [edit, setEdit] = useState<{ path: string; text: string } | null>(null);
+  const draft = edit && edit.path === selected ? edit.text : null;
+  useEffect(() => setEdit(null), [selected]); // a file opened again starts from what the server has
   const [diagnostics, setDiagnostics] = useState<LintItem[]>([]);
   const [newPath, setNewPath] = useState("");
-  useEffect(() => { setDraft(null); setDiagnostics(file.data?.diagnostics ?? []); }, [file.data]);
+  useEffect(() => { setDiagnostics(file.data?.diagnostics ?? []); }, [file.data]);
 
   const save = useMutation({
     mutationFn: ({ path, content }: { path: string; content: string }) =>
@@ -62,7 +66,7 @@ export function WorkspacePage() {
     onSuccess: (out, { path, content }) => {
       // the cached copy is what reopening the file shows: keep it in step with what was saved
       qc.setQueryData<FileContent>(["file", PROJECT_ID, path], (old) => ({ ...old, path, content, diagnostics: out.diagnostics }));
-      if (path === selected) { setDiagnostics(out.diagnostics); setDraft(null); }
+      if (path === selected) setDiagnostics(out.diagnostics);
       void qc.invalidateQueries({ queryKey: ["files", PROJECT_ID] });
       void qc.invalidateQueries({ queryKey: ["workspace-catalog"] }); // new tools / custom nodes
       void qc.invalidateQueries({ queryKey: ["node-types"] });
@@ -119,7 +123,7 @@ export function WorkspacePage() {
     cancel: "Keep editing", danger: true,
   });
   const open = async (path: string) => { if (path !== selected && await leave()) setParams({ file: path }); };
-  const doSave = () => { if (selected && draft !== null) save.mutate({ path: selected, content: draft }); };
+  const doSave = () => { if (selected && draft !== null && dirty && !save.isPending) save.mutate({ path: selected, content: draft }); };
   const newFile = async (path: string) => { if (await leave()) create.mutate({ path, content: starter(path) }); };
   const prefix = folder ? `${folder}/` : "";
 
@@ -167,7 +171,7 @@ export function WorkspacePage() {
                   Delete
                 </button>
               </div>
-              <CodeEditor path={selected} value={file.data.content} diagnostics={diagnostics} onChange={setDraft} onSave={doSave} api={editorApi} />
+              <CodeEditor path={selected} value={file.data.content} diagnostics={diagnostics} onChange={(text) => setEdit({ path: selected, text })} onSave={doSave} api={editorApi} />
               <ul className="lint-list" data-testid="lint">
                 {diagnostics.map((d, i) => <li key={i}><b>{d.code}</b> line {d.line}: {d.message}</li>)}
                 {diagnostics.length === 0 && <li className="muted">{selected.endsWith(".py") ? "ruff: no problems" : "no problems"}</li>}
