@@ -37,6 +37,7 @@ from agentcanvas.db.models import (
     OAuthFlow,
     Organization,
     OrgDataKey,
+    OrgExport,
     OrgPolicy,
     PersonalToken,
     Project,
@@ -160,9 +161,19 @@ class OffboardingJob:
     workspaces directory)."""
 
     def __init__(
-        self, db: Any, runner: Any, projects: Any, workspaces_dir: str, interval_s: float = 60.0, sink: Any = None
+        self,
+        db: Any,
+        runner: Any,
+        projects: Any,
+        workspaces_dir: str,
+        interval_s: float = 60.0,
+        sink: Any = None,
+        export_keep_hours: int = 24,
     ):
+        from agentcanvas.services.org_export import ExportBuilder
+
         self.db, self.runner, self.projects, self.sink = db, runner, projects, sink
+        self.exports = ExportBuilder(db, runner, workspaces_dir, export_keep_hours)
         self.workspaces_dir, self.interval_s = Path(workspaces_dir), interval_s
         self._task: asyncio.Task | None = None
         self._wake = asyncio.Event()
@@ -194,7 +205,9 @@ class OffboardingJob:
             self._wake.clear()
 
     async def tick(self, now: datetime) -> list[str]:
-        """Delete the organisations due by `now`; returns the ids this replica finished."""
+        """Build the exports asked for (they come first: an admin may be exporting during the grace period), then
+        delete the organisations due by `now`; returns the organisation ids this replica finished."""
+        await self.exports.tick(now)
         async with self.db.sessionmaker() as s:
             due = list(
                 (
@@ -329,7 +342,7 @@ class OffboardingJob:
         """The organisation's own rows, its audit log but for the deletion's entries, and the tombstone."""
         async with self.db.sessionmaker() as s:
             for table in (PersonalToken, OAuthConnection, OAuthFlow, OAuthClient, OrgPolicy, ScimGroup, OrgDataKey,
-                          Membership):  # fmt: skip
+                          OrgExport, Membership):  # fmt: skip
                 await s.execute(delete(table).where(table.org_id == org_id))
             res = await s.execute(
                 delete(AuditLog).where(AuditLog.org_id == org_id, AuditLog.action.not_in(KEPT_ACTIONS))

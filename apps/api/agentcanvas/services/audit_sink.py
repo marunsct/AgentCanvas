@@ -54,6 +54,7 @@ SECURITY_ACTIONS = frozenset({
     "delete_organization", "cancel_organization_deletion", "purge_organization",  # offboarding (E-7)
     "erase_member", "erase_end_user", "api_erase_end_user",  # data-subject erasure (E-7)
     "export_member", "export_end_user", "api_export_end_user",  # and access (E-7)
+    "create_org_export", "create_org_export_link", "download_org_export",  # the organisation's data leaving
 })  # fmt: skip
 
 

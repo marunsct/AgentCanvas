@@ -1228,3 +1228,40 @@ class OAuthClient(Base):
     # entered by an admin: the MCP servers (canonical addresses) they are for. None: AgentCanvas registered itself
     resources: Mapped[list[Any] | None] = mapped_column(Json, nullable=True)
     created_at: Mapped[datetime] = _now()
+
+
+class OrgExport(Base):
+    """An export of an organisation's data (E-7, GDPR Art. 20 and 28(3)(g)): built by a background job on any
+    replica (`lease_until`), kept as parts of a zip in `org_export_part` until `expires_at`, downloaded once through a
+    short-lived link of which only the SHA-256 is kept."""
+
+    __tablename__ = "org_export"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('queued','building','ready','downloaded','expired','failed')", name="org_export_status"
+        ),
+        Index("org_export_org_idx", "org_id", "created_at"),
+        Index("org_export_status_idx", "status"),
+    )
+    id: Mapped[str] = mapped_column(String, primary_key=True)  # exp_<ulid>
+    org_id: Mapped[str] = mapped_column(ForeignKey("organization.id", ondelete="CASCADE"))
+    status: Mapped[str] = mapped_column(Text, server_default=text("'queued'"), default="queued")
+    requested_by: Mapped[str | None] = mapped_column(Text)
+    lease_until: Mapped[datetime | None] = mapped_column(UtcDateTime())
+    started_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
+    finished_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
+    expires_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
+    size: Mapped[int | None] = mapped_column(BigInteger)
+    sha256: Mapped[str | None] = mapped_column(Text)
+    error: Mapped[str | None] = mapped_column(Text)
+    link_hash: Mapped[str | None] = mapped_column(Text, unique=True)
+    link_expires_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
+    downloaded_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
+    created_at: Mapped[datetime] = _now()
+
+
+class OrgExportPart(Base):
+    __tablename__ = "org_export_part"
+    export_id: Mapped[str] = mapped_column(ForeignKey("org_export.id", ondelete="CASCADE"), primary_key=True)
+    seq: Mapped[int] = mapped_column(Integer, primary_key=True)
+    data: Mapped[bytes] = mapped_column(LargeBinary)

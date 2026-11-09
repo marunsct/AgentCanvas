@@ -129,8 +129,11 @@ class Settings(BaseSettings):
     # an organisation an admin deletes is suspended at once and deleted for good this many days later; until then an
     # admin can take the deletion back
     org_deletion_grace_days: int = Field(default=7, ge=1, le=365)
-    # how often each server looks for organisations due for deletion (and, later, exports to build)
+    # how often each server looks for organisations due for deletion and exports to build (a server also starts an
+    # export it was asked for at once)
     offboarding_interval_s: float = Field(default=60, gt=0)
+    # an organisation export is kept this many hours after it is built, then deleted; it can be downloaded once
+    org_export_keep_hours: int = Field(default=24, ge=1, le=720)
     # long-term memory's semantic index: "builtin" or "<provider>:<model>"; empty (default): by words.
     # One size of vector per server (the pgvector column), so one model for every project; a model other than the
     # built-in or a well-known hosted one needs its size in `memory_embedding_dims` (0: measured at startup)

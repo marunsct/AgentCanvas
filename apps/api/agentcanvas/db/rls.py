@@ -94,6 +94,8 @@ TENANT_TABLES: dict[str, tuple[str, str | None]] = {
     "annotation_item": ("queue_id", "annotation_queue"),
     "annotation": ("item_id", "annotation_item"),
     "scim_group_member": ("group_id", "scim_group"),
+    "org_export": ("org_id", None),
+    "org_export_part": ("export_id", "org_export"),
 }
 # tables without a policy, and why
 EXEMPT: dict[str, str] = {

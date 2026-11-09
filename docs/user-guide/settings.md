@@ -89,6 +89,32 @@ later lowers a server limit, an organisation's higher value stops applying at on
 operator set with `AGENTCANVAS_RATE_LIMIT_BY_ENVIRONMENT` keeps applying to that environment's deployments. Other
 replicas of the server pick up a change within about 15 seconds.
 
+### Exporting the organisation
+
+An admin can take a copy of everything the organisation holds, for example before it leaves or to move it
+elsewhere. Signed in (an API token cannot do it):
+
+1. `POST /v1/org/export` asks for the export. A background job on one of the servers builds it, usually within a
+   minute; `GET /v1/org/export/{id}` says when it is `ready` (or `failed`, with the reason). One export is made at a
+   time.
+2. `POST /v1/org/export/{id}/link` gives a link, `/v1/exports/acx_…` (`/api/v1/…` behind the web server), that
+   downloads the zip once, within 15 minutes, without signing in, so `curl -o export.zip` works. A new link replaces
+   the one before. The export answers its size and SHA-256 to check the download against.
+3. The archive is deleted once it is downloaded, and in any case `AGENTCANVAS_ORG_EXPORT_KEEP_HOURS` (24) after it
+   was built; the record of the export stays in the list (`GET /v1/org/export`). Until then the zip is kept in the
+   database (so every server can hand it out), which needs room for it: about the size of the organisation's data,
+   compressed.
+
+The zip holds `manifest.json` (what is in it and how many of each), `organisation.json`, `members.ndjson`, one
+NDJSON file per kind of data (projects, workflows and their versions, deployments, triggers, conversations
+(`thread.ndjson`) with their runs, inputs, answers and events, decisions, datasets, evaluators, experiments, scores,
+annotations, knowledge bases with their documents and passages, Copilot chats, policies, the event log, the audit
+log...), `memories.ndjson`, the files people attached under `files/` and each project's workspace under
+`workspaces/` (its files, not its git history). Credentials are never in it: key and token hashes, encrypted
+secrets and app-connector sign-ins (secrets appear by name only), share-link tokens, webhook signing secrets and
+the data key. Embedding vectors are left out too; they can be made again from the text. Asking for an export, making
+a link and the download are in the audit log. An export also works while the organisation waits to be deleted.
+
 ### Deleting the organisation
 
 An admin can delete the organisation with everything in it, for example when a contract ends. It happens in two
@@ -109,8 +135,8 @@ steps, so a mistake can be undone:
    request to delete and the job's record of what it deleted (counts, no content), which stay with an empty
    organisation record as proof of the deletion.
 
-During the grace period an admin can still sign in to read the request (`GET /v1/org/deletion`) and take it back
-(`DELETE /v1/org/deletion`): the organisation opens again as it was, but the runs that were stopped stay stopped.
+During the grace period an admin can still sign in to read the request (`GET /v1/org/deletion`), export the
+organisation (above) and take the deletion back (`DELETE /v1/org/deletion`): the organisation opens again as it was, but the runs that were stopped stay stopped.
 Once the job has started, the deletion can no longer be taken back. With Matura, organisations are removed in
 Matura instead. Copies of the database in your backups keep the data until those backups expire
 ([Backups and recovery](security.md#backups-and-recovery)).

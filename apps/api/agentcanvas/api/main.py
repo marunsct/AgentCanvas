@@ -304,8 +304,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 audit_days=settings.audit_retention_days, memory_days=settings.memory_retention_days, server=settings,
             )  # fmt: skip
             app.state.offboarding = OffboardingJob(
-                db, runner, app.state.projects, settings.workspaces_dir, settings.offboarding_interval_s
-            )
+                db, runner, app.state.projects, settings.workspaces_dir, settings.offboarding_interval_s,
+                export_keep_hours=settings.org_export_keep_hours,
+            )  # fmt: skip
 
             async def handover_target(s, thread_id, version_id):
                 return await runs_module.handover_target(s, settings, thread_id, version_id)

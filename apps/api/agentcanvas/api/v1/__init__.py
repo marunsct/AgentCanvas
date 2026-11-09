@@ -101,4 +101,5 @@ router.include_router(deployments.public_router)
 router.include_router(protocols.router)  # MCP and A2A, deployment keys
 router.include_router(triggers.public_router)
 router.include_router(share.public_router)  # share links (S23): the token is the capability
+router.include_router(org.exports_router)  # an organisation export's download link (E-7): the token is the capability
 router.include_router(matura.public_router)  # Matura's webhooks (TS9a): HMAC

@@ -213,6 +213,116 @@ async def export_end_user(
     return download(data, "agentcanvas-end-user.json")
 
 
+class ExportOut(BaseModel):
+    id: str
+    status: Literal["queued", "building", "ready", "downloaded", "expired", "failed"]
+    requested_by: str | None
+    created_at: datetime
+    finished_at: datetime | None
+    expires_at: datetime | None = Field(description="when the archive is deleted (downloaded or not)")
+    size: int | None = Field(description="bytes of the zip")
+    sha256: str | None = Field(description="of the zip, to check the download")
+    error: str | None
+    downloaded_at: datetime | None
+
+
+class ExportLinkOut(BaseModel):
+    path: str = Field(description="GET it once, without signing in; behind the web server it is under /api")
+    expires_at: datetime
+
+
+def _export(e) -> ExportOut:
+    return ExportOut(
+        id=e.id, status=e.status, requested_by=e.requested_by, created_at=e.created_at, finished_at=e.finished_at,
+        expires_at=e.expires_at, size=e.size, sha256=e.sha256, error=e.error, downloaded_at=e.downloaded_at,
+    )  # fmt: skip
+
+
+@router.post("/export", response_model=ExportOut, status_code=202)
+async def create_org_export(
+    request: Request, session: AsyncSession = Depends(get_session), user: CurrentUser = Depends(current_user)
+) -> ExportOut:
+    """Export everything the organisation holds (admins, with a real sign-in): a zip of NDJSON files (projects,
+    workflows and versions, deployments without keys, conversations with their runs and events, memories, files,
+    datasets, evaluations, the audit log...), the attached files and the workspaces. A background job builds it;
+    poll `GET /v1/org/export/{id}` until it is `ready`, then make a download link. Also during a deletion's grace
+    period."""
+    from agentcanvas.services import org_export
+
+    refuse_token(user, "export the organisation")
+    row = await org_export.request_export(session, user.org_id, user.id)
+    request.app.state.offboarding.wake()  # this server starts on it at once
+    note(request, target=f"export_id={row.id}")
+    return _export(row)
+
+
+@router.get("/export", response_model=list[ExportOut])
+async def list_org_exports(
+    session: AsyncSession = Depends(get_session), user: CurrentUser = Depends(current_user)
+) -> list[ExportOut]:
+    """The organisation's exports, newest first (the last 20)."""
+    from agentcanvas.db.models import OrgExport
+
+    q = select(OrgExport).where(OrgExport.org_id == user.org_id).order_by(OrgExport.created_at.desc()).limit(20)
+    return [_export(e) for e in (await session.scalars(q)).all()]
+
+
+@router.get("/export/{export_id}", response_model=ExportOut)
+async def get_org_export(
+    export_id: str, session: AsyncSession = Depends(get_session), user: CurrentUser = Depends(current_user)
+) -> ExportOut:
+    from agentcanvas.services import org_export
+
+    return _export(await org_export.get_export(session, user.org_id, export_id))
+
+
+@router.post("/export/{export_id}/link", response_model=ExportLinkOut)
+async def create_org_export_link(
+    export_id: str,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    user: CurrentUser = Depends(current_user),
+) -> ExportLinkOut:
+    """A link that downloads the built export once, within 15 minutes, without signing in (so a browser or `curl`
+    can fetch it). A new link replaces the one before. After the download the archive is deleted."""
+    from agentcanvas.services import org_export
+
+    refuse_token(user, "download the organisation's data")
+    token, expires = await org_export.make_link(session, user.org_id, export_id)
+    note(request, target=f"export_id={export_id}", link_expires_at=expires.isoformat())
+    return ExportLinkOut(path=f"/v1/exports/{token}", expires_at=expires)
+
+
+exports_router = APIRouter(tags=["organisation"])  # the download link: the token is the capability
+
+
+@exports_router.get("/exports/{token}", responses={200: {"content": {"application/zip": {}}}})
+async def download_org_export(token: str, request: Request, session: AsyncSession = Depends(get_session)) -> Response:
+    """Download an organisation export through its link, once."""
+    from fastapi.responses import StreamingResponse
+
+    from agentcanvas.db.models import AuditLog
+    from agentcanvas.db.repositories import AuditRepo
+    from agentcanvas.services import org_export
+    from agentcanvas.services.audit_sink import AuditEvent
+
+    row = await org_export.use_link(session, token)
+    entry = AuditLog(
+        org_id=row.org_id, actor_id=None, action="download_org_export", target=f"export_id={row.id}",
+        detail={"caller": "export link", "size": row.size}, ip=request.client.host if request.client else None,
+    )  # fmt: skip
+    await AuditRepo(session).add(entry)
+    if (sink := getattr(request.app.state, "audit_sink", None)) is not None:
+        await sink.emit(AuditEvent(row.org_id, None, entry.action, entry.target, entry.detail, entry.ip))
+    await session.close()
+    headers = attachment(f"agentcanvas-{row.org_id}-{row.created_at:%Y%m%d}.zip")
+    if row.size is not None:
+        headers["Content-Length"] = str(row.size)
+    return StreamingResponse(
+        org_export.stream_parts(request.app.state.db, row.id), media_type="application/zip", headers=headers
+    )
+
+
 class StopRunsIn(BaseModel):
     reason: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)] = Field(
         description="why, for the audit log"

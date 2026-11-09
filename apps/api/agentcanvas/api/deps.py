@@ -107,6 +107,10 @@ WHILE_DELETING = {
     ("GET", "/me"),
     ("GET", "/org/deletion"),
     ("DELETE", "/org/deletion"),
+    ("POST", "/org/export"),
+    ("GET", "/org/export"),
+    ("GET", "/org/export/{export_id}"),
+    ("POST", "/org/export/{export_id}/link"),
 }
 
 
@@ -270,11 +274,12 @@ ROLE_EXCEPTIONS = {
 def required_role(method: str, path: str) -> str:
     """The weakest role allowed `method` on the route template `path` (with or without the /v1 prefix)."""
     path = path.removeprefix("/v1")
-    # the log, spending, everyone's tokens, the SCIM token, where notifications go and the organisation's deletion:
-    # admins only
-    if path.startswith(
-        ("/org/audit", "/org/spending", "/org/tokens", "/org/scim", "/org/notifications", "/org/deletion", "/server/")
-    ):
+    # the log, spending, everyone's tokens, the SCIM token, where notifications go, the organisation's deletion and
+    # its export: admins only
+    if path.startswith((
+        "/org/audit", "/org/spending", "/org/tokens", "/org/scim", "/org/notifications", "/org/deletion",
+        "/org/export", "/server/",
+    )):  # fmt: skip
         return "admin"
     if path.startswith("/org/") and path.endswith("/export"):  # someone else's data (E-7)
         return "admin"
