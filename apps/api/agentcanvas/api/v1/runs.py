@@ -773,13 +773,43 @@ async def fork_thread(
 
 @router.delete("/threads/{thread_id}", status_code=204)
 async def delete_thread(
-    thread_id: str, session: AsyncSession = Depends(get_session), r: Runner = Depends(runner)
+    thread_id: str,
+    session: AsyncSession = Depends(get_session),
+    r: Runner = Depends(runner),
+    settings: Settings = Depends(get_settings_dep),
 ) -> Response:
+    """Delete a conversation. Its run, if one is going, is stopped first: it writes its last checkpoint and status as
+    it stops, and deleting under it would leave that state behind. A run on another replica is asked to stop through
+    its row and stops at that replica's next heartbeat; this waits for it, or answers 409 if it did not stop."""
     await _thread(session, thread_id)
-    await r.forget_threads([thread_id])  # its run stopped first: it writes its last checkpoint as it stops
+    if r.handles.get(r.active_by_thread.get(thread_id, "")) is None:  # running elsewhere, or not at all
+        await _stop_elsewhere(session, thread_id, settings.handover_interval_s + STOP_MARGIN_S)
+    await r.forget_threads([thread_id])  # a run here is stopped first: it writes its last checkpoint as it stops
     await delete_thread_rows(session, thread_id)
     await session.commit()
     return Response(status_code=204)
+
+
+STOP_MARGIN_S = 5.0  # beyond one heartbeat interval: the run's replica stops it and saves its outcome
+
+
+async def _stop_elsewhere(session: AsyncSession, thread_id: str, timeout_s: float) -> None:
+    """Ask the thread's run on another replica to stop (its heartbeat reads the mark) and wait until it has."""
+    running = (Run.thread_id == thread_id, Run.status == "running")
+    asked = await session.execute(
+        update(Run)
+        .where(*running)
+        .values(stop_requested=True, stop_reason=func.coalesce(Run.stop_reason, CANCELLED_BY_USER))
+    )
+    await session.commit()
+    if asked.rowcount == 0:  # type: ignore[attr-defined]
+        return
+    deadline = time.monotonic() + timeout_s
+    while await session.scalar(select(func.count()).select_from(Run).where(*running)):
+        if time.monotonic() >= deadline:
+            raise Conflict("this conversation's run is still stopping on another server; try again in a few seconds")
+        await asyncio.sleep(0.5)
+        await session.commit()  # a fresh snapshot for the next look
 
 
 # ------------------------------------------------------------------- inbox ----

@@ -13,6 +13,7 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 
 import httpx
+from sqlalchemy import select
 from test_kill_switch import SLOW, _start_slow
 from test_redeploy import run_row
 from test_runs_v1 import make
@@ -84,3 +85,37 @@ async def test_stop_pressed_while_a_redeploy_hands_the_run_over_cancels_it(app, 
     assert (row.status, row.error, row.handover) == ("cancelled", CANCELLED_BY_USER, False)
     async with app.state.db.sessionmaker() as s:
         assert (await s.get(Thread, thread_id)).status == "idle"  # type: ignore[union-attr]
+
+
+async def test_deleting_a_conversation_on_another_replica_stops_its_run_first(app, api_client, settings):
+    wf = await make(api_client, SLOW)
+    run_id = await _start_slow(app, api_client, wf)
+    thread_id = (await run_row(app, run_id)).thread_id
+    async with replica(settings) as (_, b):
+        deleting = asyncio.create_task(b.delete(f"/v1/threads/{thread_id}"))
+        await asyncio.sleep(0.5)
+        assert not deleting.done()  # it waits for the run to stop: the run would write to deleted rows
+        assert (await run_row(app, run_id)).stop_requested is True
+        await app.state.runner.heartbeat()
+        res = await asyncio.wait_for(deleting, 10)
+        assert res.status_code == 204, res.text
+        assert app.state.runner.handles[run_id].status == "cancelled"
+    async with app.state.db.sessionmaker() as s:
+        assert await s.get(Thread, thread_id) is None
+        assert (await s.scalars(select(Run.id).where(Run.thread_id == thread_id))).all() == []
+
+
+async def test_deleting_a_conversation_whose_run_does_not_stop_is_refused(app, api_client, settings, monkeypatch):
+    """The run's instance did not stop it in time (stalled, or gone and not swept yet): 409, nothing deleted."""
+    from agentcanvas.api.v1 import runs as runs_module
+
+    monkeypatch.setattr(runs_module, "STOP_MARGIN_S", 0.2)
+    wf = await make(api_client, SLOW)
+    run_id = await _start_slow(app, api_client, wf)
+    thread_id = (await run_row(app, run_id)).thread_id
+    async with replica(settings.model_copy(update={"handover_interval_s": 0.1})) as (_, b):
+        res = await b.delete(f"/v1/threads/{thread_id}")
+        assert res.status_code == 409 and "stopping" in res.json()["detail"]
+    assert (await run_row(app, run_id)).status == "running"  # still there: delete again once it has stopped
+    await app.state.runner.cancel(run_id)
+    await app.state.runner.wait(run_id)
