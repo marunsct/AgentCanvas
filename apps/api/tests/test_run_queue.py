@@ -524,3 +524,38 @@ async def test_a_runs_mcp_calls_name_the_run(app, monkeypatch):
             finally:
                 CURRENT.reset(token)
     assert [nesting.caller(v) for v in seen] == ["run_a", "run_b"]
+
+
+async def test_operators_can_see_the_queue(app, api_client, limited):
+    """Prometheus: how many runs wait and how long they waited; the run's own record says it is waiting; Settings >
+    Server shows the limit."""
+    from prometheus_client import REGISTRY
+
+    def sample(name: str) -> float:
+        return REGISTRY.get_sample_value(name) or 0.0
+
+    runner = app.state.runner
+    waited_before = sample("agentcanvas_run_queue_wait_seconds_count")
+    first = await _start_slow(app, api_client, limited)
+    second = await _start(api_client, limited, 0)
+    assert await _queued(app, second)
+    assert sample("agentcanvas_runs_queued") == 1
+    assert (await api_client.get(f"/v1/runs/{second}")).json()["queued"] is True
+    assert (await api_client.get(f"/v1/runs/{first}")).json()["queued"] is False
+    await runner.cancel(first)
+    assert (await asyncio.wait_for(runner.wait(second), 10)).status == "success"
+    assert sample("agentcanvas_runs_queued") == 0
+    assert sample("agentcanvas_run_queue_wait_seconds_count") == waited_before + 2  # every run under a limit
+    assert (await api_client.get(f"/v1/runs/{second}")).json()["queued"] is False
+
+    timeouts = sample("agentcanvas_run_queue_timeouts_total")
+    runner.admission.max_wait_s = 0.2
+    third = await _start_slow(app, api_client, limited)
+    fourth = await _start(api_client, limited, 0)
+    assert (await asyncio.wait_for(runner.wait(fourth), 10)).status == "error"
+    assert sample("agentcanvas_run_queue_timeouts_total") == timeouts + 1
+    await runner.cancel(third)
+
+    rows = {r["env"]: r["value"] for r in (await api_client.get("/v1/server/settings")).json()}
+    assert rows["AGENTCANVAS_MAX_CONCURRENT_RUNS"] == "no limit"  # the server's; the organisation set 1
+    assert rows["AGENTCANVAS_MAX_QUEUE_WAIT_S"] == "3600 seconds"

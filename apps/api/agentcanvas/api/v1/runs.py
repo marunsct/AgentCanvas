@@ -121,6 +121,7 @@ class RunOut(BaseModel):
     tokens_out: int = 0
     cost_usd: float = 0.0
     traced: bool = False  # GET /v1/runs/{id}/trace opens it in LangSmith
+    queued: bool = Field(False, description="still waiting for a slot in the organisation's run queue (status running)")
 
 
 def _run_out(run: Run) -> RunOut:
@@ -137,6 +138,7 @@ def _run_out(run: Run) -> RunOut:
         tokens_out=run.tokens_out or 0,
         cost_usd=float(run.cost_usd or 0),
         traced=bool(run.trace_url),
+        queued=bool(run.queued) and run.status == "running",
     )
 
 

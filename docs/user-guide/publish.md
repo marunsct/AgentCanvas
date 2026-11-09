@@ -72,7 +72,9 @@ The answer:
 
 Request fields: `input` (the workflow's input channels), `thread_id` (continue a conversation), `context`, and
 `user_id` (your end user, used for per-user memory). When `status` is `interrupted`, `interrupts` says what the
-run is waiting for.
+run is waiting for. When the organisation has a runs-at-once limit and it is reached, a run waits for a free slot
+first (see [Settings](settings.md)), and the wait counts towards `runs/wait`'s 5 minutes (after them it answers
+`"status": "running"`); a run that waits too long for its slot ends with an error whose code is `queue_timeout`.
 
 Through the web server (production setups) the same paths are under `/api/`. The public API is rate-limited per
 key, per webhook and per project (`429` with `Retry-After` when exceeded). Errors, versioning and where to get the

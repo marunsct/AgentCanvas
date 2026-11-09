@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import random
+import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -81,6 +82,8 @@ class Admission:
         self._passes: dict[str, asyncio.Task[None]] = {}  # organisation -> the task making its admission passes
         self._wake: dict[str, asyncio.Event] = {}
         self._locks: dict[str, asyncio.Lock] = {}  # one pass per organisation at a time in this process
+        # told when a run leaves the queue: (seconds waited, "slot" | "gave_up" | "stopped") (metrics)
+        self.left_hooks: list[Callable[[float, str], None]] = []
 
     def freed(self) -> None:
         """A run of this server ended: every organisation's waiting runs look again at once."""
@@ -134,10 +137,13 @@ class Admission:
         w = _Waiter(run_id, project_id, on_queued)
         self._waiting.setdefault(org_id, {})[run_id] = w
         self._serve(org_id)
+        began, outcome = time.perf_counter(), "stopped"
         try:
             async with asyncio.timeout(self.max_wait_s or None):
                 await asyncio.shield(w.admitted)  # a stop cancels the wait, never the pass's future
+            outcome = "slot"
         except TimeoutError:
+            outcome = "gave_up"
             await self._leave(run_id)
             raise QueueTimeout(
                 f"waited {self.max_wait_s:g} s for a free run slot (the organisation's runs-at-once limit) and gave "
@@ -145,6 +151,11 @@ class Admission:
             ) from None
         finally:
             self._waiting.get(org_id, {}).pop(run_id, None)
+            for hook in self.left_hooks:
+                try:
+                    hook(time.perf_counter() - began, outcome)
+                except Exception:
+                    log.exception("admission.hook_failed", run_id=run_id)
 
     async def _holds_slot(self, run_id: str, org_id: str) -> bool:
         async with self.db.sessionmaker() as s:

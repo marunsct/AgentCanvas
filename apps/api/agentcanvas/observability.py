@@ -1,8 +1,9 @@
 """Metrics and traces (M8-T3).
 
 - **Prometheus** at `GET /metrics` (`AGENTCANVAS_METRICS_ENABLED`, on by default): runs started and finished by
-  status, run duration, tokens and cost, active runs, open event streams, HTTP requests by route and status, and
-  online evaluation (mean score per deployment and evaluator, open drift alerts).
+  status, run duration, tokens and cost, active runs, the run queue (runs waiting, how long they waited, runs that
+  gave up), open event streams, HTTP requests by route and status, and online evaluation (mean score per deployment
+  and evaluator, open drift alerts).
   The web image's nginx does not proxy it; scrape the API pods directly.
 - **OpenTelemetry** traces for FastAPI, SQLAlchemy and httpx when `OTEL_EXPORTER_OTLP_ENDPOINT` is set (the
   standard OTel environment variables configure the exporter). Each request span carries the request id, and log
@@ -34,11 +35,21 @@ RUNS_STARTED = Counter("agentcanvas_runs_started_total", "Runs started", ["origi
 RUNS_FINISHED = Counter("agentcanvas_runs_finished_total", "Runs finished", ["origin", "status"])
 RUN_DURATION = Histogram(
     "agentcanvas_run_duration_seconds",
-    "Run duration until it finishes or pauses",
+    "Run duration until it finishes or pauses, from when it took its slot in the run queue",
     ["status"],
     buckets=(0.1, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300, 900),
 )
-RUNS_ACTIVE = Gauge("agentcanvas_runs_active", "Runs in progress in this process")
+RUNS_ACTIVE = Gauge("agentcanvas_runs_active", "Runs in progress in this process (waiting in the run queue too)")
+# the run queue (runtime/admission.py), per process: no organisation label, so the series stay few
+RUNS_QUEUED = Gauge("agentcanvas_runs_queued", "Runs of this process waiting for a slot in the run queue")
+RUN_QUEUE_WAIT = Histogram(
+    "agentcanvas_run_queue_wait_seconds",
+    "How long a run waited in the run queue before it took its slot",
+    buckets=(0.5, 1, 5, 15, 30, 60, 120, 300, 600, 1800, 3600),
+)
+RUN_QUEUE_TIMEOUTS = Counter(
+    "agentcanvas_run_queue_timeouts_total", "Runs that gave up waiting for a slot (AGENTCANVAS_MAX_QUEUE_WAIT_S)"
+)
 TOKENS = Counter("agentcanvas_tokens_total", "Model tokens", ["direction"])
 COST = Counter("agentcanvas_cost_usd_total", "Model cost in US dollars (priced models only)")
 MODEL_CACHE_HITS = Counter("agentcanvas_model_cache_hits_total", "Model answers taken from the answer cache")
@@ -77,23 +88,27 @@ JOB_LAST_SUCCESS = Gauge(
 # what runs: which pods run which release, during an upgrade or after a rollback
 BUILD_INFO = Gauge("agentcanvas_build_info", "The release and commit this process runs (1)", ["version", "commit"])
 BUILD_INFO.labels(version=VERSION, commit=COMMIT_LABEL).set(1)
-RUNS_QUEUED = Gauge("agentcanvas_runs_queued", "Runs of this process waiting for a slot under a runs-at-once limit")
-
-_started: dict[str, float] = {}
 
 
 def run_started(h: RunHandle) -> None:
-    _started[h.run_id] = time.monotonic()
     RUNS_STARTED.labels(origin=h.origin).inc()
     RUNS_ACTIVE.inc()
+
+
+def queue_left(waited_s: float, outcome: str) -> None:
+    """Admission hook: a run left the run queue ("slot", "gave_up" or "stopped") after `waited_s`."""
+    if outcome == "slot":
+        RUN_QUEUE_WAIT.observe(waited_s)
+    elif outcome == "gave_up":
+        RUN_QUEUE_TIMEOUTS.inc()
 
 
 async def run_finished(h: RunHandle, status: str, _error: str | None, _interrupts: list[dict[str, Any]]) -> None:
     """Runner finish hook."""
     RUNS_ACTIVE.dec()
     RUNS_FINISHED.labels(origin=h.origin, status=status).inc()
-    if (began := _started.pop(h.run_id, None)) is not None:
-        RUN_DURATION.labels(status=status).observe(time.monotonic() - began)
+    # from when it took its slot: time waiting in the run queue is not the run's (it never began: 0)
+    RUN_DURATION.labels(status=status).observe(time.perf_counter() - (h.admitted_at or time.perf_counter()))
     TOKENS.labels(direction="input").inc(h.usage.get("input_tokens", 0))
     TOKENS.labels(direction="output").inc(h.usage.get("output_tokens", 0))
     COST.inc(h.usage.get("cost_usd", 0.0))

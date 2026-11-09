@@ -100,6 +100,18 @@ async def server_settings(request: Request) -> list[ServerSetting]:
             f"{s.rate_limit_per_share_client} a minute",
             "AGENTCANVAS_RATE_LIMIT_PER_SHARE_CLIENT",
         ),
+        (
+            "Limits",
+            "Runs at once per organisation (unless it sets a lower limit)",
+            str(s.max_concurrent_runs) if s.max_concurrent_runs else "no limit",
+            "AGENTCANVAS_MAX_CONCURRENT_RUNS",
+        ),
+        (
+            "Limits",
+            "Longest wait for a run slot",
+            f"{s.max_queue_wait_s:g} seconds" if s.max_queue_wait_s else "no limit",
+            "AGENTCANVAS_MAX_QUEUE_WAIT_S",
+        ),
         ("Limits", "Steps per run", str(s.recursion_limit), "AGENTCANVAS_RECURSION_LIMIT"),
         ("Limits", "Largest attached file", _mb(s.max_upload_mb), "AGENTCANVAS_MAX_UPLOAD_MB"),
         ("Limits", "Attached files kept per project", _mb(s.max_project_files_mb), "AGENTCANVAS_MAX_PROJECT_FILES_MB"),
