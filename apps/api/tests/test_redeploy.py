@@ -300,3 +300,29 @@ async def test_a_hand_over_that_keeps_failing_ends_after_a_few_tries(app, api_cl
     assert lost.status == "error" and lost.handover is False
     assert "ConnectionError (see the server log)" in (lost.error or "")
     assert await job.tick() == []
+
+
+async def test_runs_keep_their_heartbeat_while_the_server_drains(settings, monkeypatch):
+    """The hand-over job is what refreshes this server's runs' heartbeats: it stops after the drain, not before, or
+    another server would take a run still finishing in the grace period for orphaned and run it a second time."""
+    from agentcanvas.api.main import create_app
+    from agentcanvas.runtime.runner import Runner
+    from agentcanvas.services.redeploy import HandoverJob
+
+    order: list[str] = []
+    drain, stop = Runner.drain, HandoverJob.stop
+
+    async def drained(self, grace_s):
+        order.append("drain")
+        return await drain(self, grace_s)
+
+    async def stopped(self):
+        order.append("handover.stop")
+        await stop(self)
+
+    monkeypatch.setattr(Runner, "drain", drained)
+    monkeypatch.setattr(HandoverJob, "stop", stopped)
+    application = create_app(settings)
+    async with application.router.lifespan_context(application):
+        pass
+    assert order == ["drain", "handover.stop"]

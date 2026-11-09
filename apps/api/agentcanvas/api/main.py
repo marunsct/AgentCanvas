@@ -316,7 +316,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 """From the stop signal on (api/shutdown.py): no more work starts here, and the runs drain."""
                 app.state.presence.close()  # endless streams end: uvicorn's wait for connections need not last
                 await app.state.experiments.stop()  # before the drain: its runs are handed over with the rest
-                await app.state.handover.stop()  # claims no more handed-over runs on a server about to stop
                 await app.state.cron.stop()
                 await app.state.retention.stop()
                 await app.state.crawl.stop()
@@ -324,6 +323,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 if app.state.matura_feed is not None:
                     await app.state.matura_feed.stop()
                 await runner.drain(settings.drain_grace_s)  # FR-X-10: other instances continue what is left
+                # after the drain: its ticks keep the heartbeat of runs finishing in the grace period (a draining
+                # server neither sweeps nor claims), so no other server takes them for orphaned and runs them twice
+                await app.state.handover.stop()
 
             app.state.wind_down = WindDown(wind_down)
             try:
