@@ -101,6 +101,43 @@ def test_flowise_chatflow():
     assert any("Buffer Memory" in r for r in report)
 
 
+def _prompt_of(wf: Workflow) -> str:
+    (step,) = [n for n in wf.nodes if n.type == "core.llm"]
+    return step.config["prompt"]
+
+
+def test_langflow_prompts_keep_literal_braces_as_text():
+    """Langflow prompts are Python format strings: a doubled brace is a literal one. A JSON example or a Markdown
+    anchor imports as plain text that renders as written, not as a broken template."""
+    from agentcanvas.expr import render_template
+
+    doc = _load("langflow_basic_prompting")
+    (prompt,) = [n for n in doc["data"]["nodes"] if n["data"].get("type") == "Prompt"]
+    prompt["data"]["node"]["template"]["template"]["value"] = (
+        'Reply as JSON like {{"answer": "..."}}. See {{#setup}}, {{{{ not a tag }}}} and {%x}. Q: {user_input}'
+    )
+    _, ir, report, _ = import_document(doc, wf_id="wf_new")
+    wf = Workflow.model_validate(ir)
+    assert not [d for d in validate(wf) if d.severity == "error"]
+    text = render_template(_prompt_of(wf), {"user_input": "hi", "messages": [{"content": "hello"}]})
+    assert text.startswith('Reply as JSON like {"answer": "..."}. See {#setup}, {{ not a tag }} and {%x}. Q: hi')
+    assert any("kept as plain text" in line for line in report)
+
+
+def test_flowise_prompts_keep_literal_braces_and_values_as_text():
+    from agentcanvas.expr import render_template
+
+    doc = _load("flowise_chatflow")
+    (prompt,) = [n for n in doc["nodes"] if n["data"]["name"] == "promptTemplate"]
+    prompt["data"]["inputs"]["template"] = 'A name for {product} as {{"name": "..."}} {{#tag}}?'
+    prompt["data"]["inputs"]["promptValues"] = json.dumps({"product": "shoes {% endraw %}{#"})
+    _, ir, _, _ = import_document(doc, wf_id="wf_new")
+    wf = Workflow.model_validate(ir)
+    assert not [d for d in validate(wf) if d.severity == "error"]
+    chain = next(n for n in wf.nodes if n.name == "llm_chain")
+    assert render_template(chain.config["prompt"], {}) == 'A name for shoes {% endraw %}{# as {"name": "..."} {#tag}?'
+
+
 def test_flowise_agentflow():
     _, wf, report, _ = _imported("flowise_agentflow")
     nodes = {n.name: n for n in wf.nodes}

@@ -304,18 +304,60 @@ def model_id(provider: str, name: Any, report: Builder | None = None) -> str:
     return f"{pid}:{model}"
 
 
-_BRACE_VAR = re.compile(r"(?<!\{)\{([A-Za-z_][A-Za-z0-9_]*)\}(?!\})")
+_FORMAT_PART = re.compile(r"\{\{|\}\}|\{([A-Za-z_][A-Za-z0-9_]*)\}")
+_TAG_OPENERS = ("{{", "{%", "{#")
+PLAIN_TEXT_NOTE = "Prompt text that looks like a template tag ({{, {% or {#) is kept as plain text."
 
 
-def brace_template(text: str, value_of: Any) -> str:
-    """A `{name}` template (Langflow, Flowise prompts) as `{{ state.<field> }}` text; `value_of(name)` gives each
-    variable's expression (already wrapped in `{{ }}`) or None to keep it as written."""
+class Text(str):
+    """What a `brace_template` variable stands for when it is literal text (a value typed into the builder), not an
+    expression: it is kept as written."""
 
-    def sub(m: re.Match[str]) -> str:
+
+def jinja_text(text: str) -> str:
+    """`text` as a template (Jinja here, Nunjucks in Mastra code) that renders exactly `text`."""
+    if not any(tag in text for tag in _TAG_OPENERS) and not text.endswith("{"):  # a "{" would join the next tag
+        return text
+    if "endraw" not in text:
+        return "{% raw %}" + text + "{% endraw %}"
+    return text.replace("{", '{{ "{" }}')
+
+
+def brace_template(text: str, value_of: Any, report: Builder | None = None) -> str:
+    """A Langflow or Flowise prompt as `{{ state.<field> }}` text. Their prompts are Python format strings: `{name}`
+    is a variable and a doubled brace a literal one. `value_of(name)` gives each variable's expression (already
+    wrapped in `{{ }}`), literal `Text`, or None to keep it as written. Literal text that would read as a tag (a
+    JSON example, a Markdown anchor) is kept as plain text, so the prompt renders as it did in the builder."""
+    source = str(text or "")
+    pieces: list[str] = []
+    literal: list[str] = []
+    escaped = False
+
+    def flush() -> None:
+        nonlocal escaped
+        run = "".join(literal)
+        literal.clear()
+        pieces.append(jinja_text(run))
+        escaped = escaped or pieces[-1] != run
+
+    pos = 0
+    for m in _FORMAT_PART.finditer(source):
+        literal.append(source[pos : m.start()])
+        pos = m.end()
+        if m.group(1) is None:
+            literal.append(m.group(0)[0])  # a doubled brace is one literal brace
+            continue
         found = value_of(m.group(1))
-        return found if found is not None else m.group(0)
-
-    return _BRACE_VAR.sub(sub, str(text or ""))
+        if found is None or isinstance(found, Text):
+            literal.append(m.group(0) if found is None else str(found))
+        else:
+            flush()
+            pieces.append(found)
+    literal.append(source[pos:])
+    flush()
+    if escaped and report is not None:
+        report.note(PLAIN_TEXT_NOTE)
+    return "".join(pieces)
 
 
 def cel_string(value: Any) -> str:
