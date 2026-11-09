@@ -106,6 +106,60 @@ def install_problem_handlers(app: FastAPI) -> None:
         return problem(exc.status_code, _TITLES.get(exc.status_code, "Error"), detail, **extra)
 
 
+# the error body every status sends (ADR 0009); `type` identifies the kind of error, `errors` lists the invalid fields
+# of a 422, and some errors add fields of their own (`request_id` of a 500, `retry_after` of a 429)
+PROBLEM_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "title": "Problem",
+    "description": "An RFC 9457 problem document, sent as application/problem+json with every error status.",
+    "required": ["type", "title", "status", "detail"],
+    "properties": {
+        "type": {"type": "string", "description": "identifies the kind of error, e.g. .../errors/not-found"},
+        "title": {"type": "string", "description": "a short summary of the kind of error"},
+        "status": {"type": "integer", "description": "the HTTP status"},
+        "detail": {"type": "string", "description": "what went wrong with this request, in plain words"},
+        "errors": {
+            "type": "array",
+            "description": "with a 422: the invalid fields (`loc`, `msg`) or the workflow's errors (`code`, `message`)",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "loc": {"type": "string", "description": "an invalid field, as a dotted path: body.nodes.0.name"},
+                    "msg": {"type": "string"},
+                    "code": {"type": "string", "description": "a workflow error's rule, e.g. E001"},
+                    "message": {"type": "string"},
+                },
+                "additionalProperties": True,
+            },
+        },
+        "request_id": {"type": ["string", "null"], "description": "a 500's request id, to quote when reporting it"},
+        "retry_after": {"type": "integer", "description": "a 429's seconds to wait (also the Retry-After header)"},
+    },
+    "additionalProperties": True,
+}
+_PROBLEM = {"application/problem+json": {"schema": {"$ref": "#/components/schemas/Problem"}}}
+
+
+def problem_responses(doc: dict[str, Any]) -> dict[str, Any]:
+    """Make the OpenAPI document say what errors really look like: FastAPI declares its own 422 body
+    (`HTTPValidationError`, application/json), which the handler above never sends. Every operation gets the 422 as a
+    problem document where FastAPI listed one, and a `default` response with the same schema: every error status a
+    route does not declare itself (401, 403, 404, 409, 429, 5xx...)."""
+    schemas = doc.setdefault("components", {}).setdefault("schemas", {})
+    for name in ("HTTPValidationError", "ValidationError"):
+        schemas.pop(name, None)
+    schemas["Problem"] = PROBLEM_SCHEMA
+    for item in doc.get("paths", {}).values():
+        for op in item.values():
+            if not isinstance(op, dict) or "responses" not in op:
+                continue
+            responses = op["responses"]
+            if "422" in responses:
+                responses["422"] = {"description": "Invalid request", "content": _PROBLEM}
+            responses["default"] = {"description": "An error (a problem document)", "content": _PROBLEM}
+    return doc
+
+
 _TITLES = {
     400: "Bad request",
     401: "Unauthorized",

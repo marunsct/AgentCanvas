@@ -30,7 +30,7 @@ from agentcanvas.adapters.spi import MemoryAbility, require
 from agentcanvas.api.audit import record as audit_record
 from agentcanvas.api.deps import release_sessions
 from agentcanvas.api.limits import BodyLimit, RefuseClients
-from agentcanvas.api.problems import install_problem_handlers, unexpected_error
+from agentcanvas.api.problems import install_problem_handlers, problem_responses, unexpected_error
 from agentcanvas.api.scim import router as scim_router
 from agentcanvas.api.shutdown import WindDown
 from agentcanvas.api.v1 import router as v1_router
@@ -115,7 +115,7 @@ def plain_openapi(app: FastAPI) -> dict[str, Any]:
                 return [clean(v) for v in node]
             return node
 
-        app.openapi_schema = cast("dict[str, Any]", clean(doc))
+        app.openapi_schema = problem_responses(cast("dict[str, Any]", clean(doc)))
     return app.openapi_schema
 
 
