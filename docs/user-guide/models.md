@@ -88,7 +88,8 @@ OpenAI Agents SDK, CrewAI and Google ADK) and for every step and agent the block
   them that is *ready* and *allowed*, instead of the model at the top, which stays the choice when none qualifies.
   Ready: the provider has a key here (a project secret or server variable), or the block's own key or address is for
   that provider; a retired model is not ready, and a local model is never chosen (a local server may be down: list
-  it among the backup models). Allowed: swapping it in breaks no [policy](accounts.md) of your organisation that
+  it among the backup models). A winner from another provider uses that provider's own key and address, like a
+  backup model: the block's own key and address are never sent to it. Allowed: swapping it in breaks no [policy](accounts.md) of your organisation that
   the block's own model does not already break (policies that apply to every environment). Cheapest means the
   catalog price, input plus output per million tokens; a model with no price is used only when no priced model
   qualifies, because a cost budget cannot count its calls. It works with the backup models, not instead of them:

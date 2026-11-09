@@ -11,7 +11,8 @@ candidate that
 
 and is the cheapest by catalog price (input plus output price per million tokens). A model without a price is chosen
 only when no priced candidate qualifies, since a USD budget cannot count its calls. The winner becomes the block's
-`model` for this run; the block's own `model` stays the one used when no candidate qualifies, and when the block
+`model` for this run (a winner from another provider uses that provider's own key and address, as backup models
+do, never the block's); the block's own `model` stays the one used when no candidate qualifies, and when the block
 has `fallbacks` the winner is not tried a second time among them. Nothing is stored: the draft keeps both settings,
 and each run notes its choice (the `ac.route` event) so a run explains the model that answered.
 """
@@ -86,6 +87,19 @@ def unready(model: str, config: dict[str, Any], registry: Registry, secrets: dic
     return f"no {provider.key_env} here"
 
 
+OWN_KEYS = ("api_key",)  # a block's key: for its own provider only
+ADDRESS_HINTS = ("url", "endpoint", "api_base", "host", "client", "proxy")  # as the adapters': where to connect
+
+
+def switch(config: dict[str, Any], model: str) -> None:
+    """Make `model` the block's model. A model of another provider gets that provider's own key and address, as
+    backup models do: the block's key and address (its own provider's, or a proxy's) are dropped."""
+    if model.partition(":")[0] != str(config.get("model", "")).partition(":")[0]:
+        for k in [k for k in config if k in OWN_KEYS or any(h in k.lower() for h in ADDRESS_HINTS)]:
+            del config[k]
+    config["model"] = model
+
+
 def _workflow(data: dict[str, Any]) -> Workflow:
     return Workflow.model_validate({"id": "wf_routing", "name": "routing", **data})  # a subgraph's may lack both
 
@@ -94,7 +108,7 @@ def _swapped(data: dict[str, Any], rid: str, model: str) -> Workflow:
     probe = copy.deepcopy(data)
     for r in probe["resources"]:
         if r["id"] == rid:
-            r["config"]["model"] = model
+            switch(r["config"], model)
     return _workflow(probe)
 
 
@@ -149,7 +163,7 @@ def _route(
         for c in considered:
             if c["usable"] and c["model"] != chosen:
                 c["reason"] = "dearer than " + chosen if c["price_per_mtok"] is not None else "has no price"
-        config["model"] = chosen
+        switch(config, chosen)
         if config.get("fallbacks"):
             config["fallbacks"] = [b for b in config["fallbacks"] if b != chosen]
         notes.append({

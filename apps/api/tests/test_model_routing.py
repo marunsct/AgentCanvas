@@ -67,6 +67,19 @@ def test_the_blocks_own_key_makes_its_provider_ready(monkeypatch):
     assert pick(workflow(block(BIG, cheapest_of=[HAIKU], api_key={"$secret": "MY_KEY"})), {})[0]["model"] == BIG
 
 
+def test_a_model_of_another_provider_never_gets_the_blocks_own_key_or_address():
+    """The block's key and address are for its own provider (or its proxy): a winner from another provider uses
+    its provider's own key and address, as backup models do, and is never sent the block's key."""
+    own = {"base_url": "https://llm-proxy.corp.example/v1", "api_key": {"$secret": "PROXY_KEY"}, "temperature": 0.2}
+    config, _ = pick(workflow(block(BIG, cheapest_of=[HAIKU, BIG], **own)), {"ANTHROPIC_API_KEY": "k"})
+    assert config["model"] == HAIKU and "base_url" not in config and "api_key" not in config
+    assert config["temperature"] == 0.2
+    config, _ = pick(workflow(block(BIG, cheapest_of=[MINI, BIG], **own)), {})  # the same provider: kept
+    assert config["model"] == MINI and config["base_url"] == own["base_url"] and config["api_key"] == own["api_key"]
+    swapped = routing._swapped(workflow(block(BIG, **own)).model_dump(mode="json"), "r_m", HAIKU)
+    assert "api_key" not in swapped.resources[0].config  # policies judge the block as it would run
+
+
 def test_a_policy_that_forbids_a_model_skips_it():
     no_mini = Policy(name="no mini", scope="resource", match='resource.type == "model.chat"',
                      require=f'resource.config.model != "{MINI}"')  # fmt: skip
