@@ -5,7 +5,7 @@
   "category": "AI",
   "icon": "bot",
   "color": "#0EA5E9",
-  "description": "Runs an agent you built with another framework (OpenAI Agents SDK, CrewAI, Google ADK, Pydantic AI, Agno, Strands, LlamaIndex, Microsoft Agent Framework, Claude Agent SDK) as one step. Point it at the agent in your Workspace. It is a black box on the canvas: one step, with its input and answer in the trace. Runs inside this server, so the hosted edition does not offer it.",
+  "description": "Runs an agent you built with another framework (OpenAI Agents SDK, CrewAI, Google ADK, Pydantic AI, Agno, Strands, LlamaIndex, Microsoft Agent Framework, Claude Agent SDK) as one step. Point it at the agent in your Workspace. It is a black box on the canvas: one step, with its input and answer in the trace. Runs inside this server, so the hosted edition and a server that runs workspace code in a sandbox refuse it.",
   "outputs": [
     {
       "name": "next",

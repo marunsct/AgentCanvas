@@ -297,6 +297,12 @@ def build_from_plan(plan: Plan, resources: ac.Resources, checkpointer=None, stor
         elif n.type == "core.script":
             fn = ac.script_node(import_path=cfg["import_path"], resources=resources)
         elif n.type == "agent.framework":
+            if resources.script_runner is not None:  # E041 refuses it; this holds for versions validation skipped
+                raise RuntimeError(
+                    f"'{n.name}' would run workspace code inside the server, and this server runs workspace code in "
+                    "a sandbox: design the agent on an AI agent block for its framework, or call your code from a "
+                    "Script step"
+                )
             fn = interop.framework_agent_node(
                 node_id=n.id,
                 name=n.name,

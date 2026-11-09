@@ -49,8 +49,13 @@ which shows what will be sent on an approval card; a rejection skips the agent.
   never share an agent's memory.
 - The agent's tools run inside its framework, so AgentCanvas cannot see or gate them one by one. Tick what they can
   do under **Side effects** (writes, messages, code, spending) so the blast-radius view and dry runs know, and use
-  **Ask a person before it runs** where that matters. The hosted edition does not offer this block, because the
-  agent's code runs inside the server.
+  **Ask a person before it runs** where that matters.
+- The agent's code runs inside the server itself, not in the sandbox. So a server that runs workspace code in a
+  sandbox (a production server, or any server whose `AGENTCANVAS_SCRIPT_EXECUTION` is not `inprocess`) and the
+  hosted edition refuse this block with E041 and leave its templates out of the gallery. There, design the agent on
+  an **AI agent** block **Designed for** its framework, or call your code from a **Script** step. Only an operator
+  who trusts every builder with the server's own keys turns it on (`AGENTCANVAS_ALLOW_UNISOLATED_SCRIPTS=true` with
+  `inprocess`, see [deploy.md](deploy.md)).
 - **Remote agents (A2A)**: when the remote agent asks for more information (`input-required`), the run pauses and
   the question appears in the Inbox; the answer goes back to the same task. Addresses on private networks are
   refused unless you turn on **Allow private network**. Put keys in **Headers** as secrets. What the remote agent

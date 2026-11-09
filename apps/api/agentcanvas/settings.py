@@ -145,6 +145,14 @@ class Settings(BaseSettings):
     # a running run whose instance has not refreshed it for this long lost its instance and is handed over
     orphan_after_s: float = 60.0
 
+    @property
+    def isolates_workspace_code(self) -> bool:
+        """Workspace code runs outside the API process (a sandbox), so blocks that would import it into the API are
+        refused (E041). Staging and prod count as isolating unless the operator trusts every builder (S-8)."""
+        if self.script_execution != "inprocess":
+            return True
+        return self.env in ("staging", "prod") and not self.allow_unisolated_scripts
+
     @field_validator("refuse_clients")
     @classmethod
     def _networks(cls, value: list[str]) -> list[str]:

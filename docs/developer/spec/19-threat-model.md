@@ -31,6 +31,11 @@ boundaries below needs a decision in [decisions.md](../decisions.md) and a test 
 ### 1. Workspace code ↔ the server and other tenants
 - Staging and production refuse to run workspace code in the API's own process or as its user (`inprocess`,
   `subprocess`) unless the operator says so (`check_auth_settings`, S-8).
+- Blocks that import workspace code into the API process (`hosted_forbidden` in the manifest: **Agent from another
+  framework**) are refused (E041) in the hosted edition and on every server that keeps workspace code out of the API
+  (`Settings.isolates_workspace_code`: any `script_execution` but `inprocess`, and staging or prod unless the
+  operator allowed unisolated scripts). Runs, publishes and deploys check it (`run_gate`), and the interpreter
+  refuses to build the step when the project has a sandbox runner, for versions that skipped validation.
 - **The sandbox service** (`script_execution=remote`) runs code in a container with no database credentials, no
   keys, a read-only root, no capabilities and two internal networks only: `sandbox` (whose way out is the egress
   proxy) and `sandbox-control` (where the API calls it). The API answers 403 to every request from the control

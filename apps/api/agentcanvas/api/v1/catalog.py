@@ -117,8 +117,9 @@ def mcp_connectors() -> list[McpConnector]:
 @router.get("/templates", response_model=list[TemplateInfo])
 def templates(settings: Settings = Depends(get_settings_dep)) -> list[TemplateInfo]:
     """The template gallery (S23): each starter template with its category, tags, difficulty and a sample input; on
-    the hosted service, not those with a block that only runs on your own machine (E041)."""
-    return [_template_info(k, v) for k, v in list_templates(settings).items() if runs_in(settings.edition, v)]
+    the hosted service or a server that runs workspace code in a sandbox, not those with a block that runs workspace
+    code inside the server (E041)."""
+    return [_template_info(k, v) for k, v in list_templates(settings).items() if runs_in(settings, v)]
 
 
 def _template_info(key: str, doc: dict[str, Any]) -> TemplateInfo:
