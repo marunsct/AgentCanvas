@@ -40,6 +40,14 @@ spec:
               value: {{ .Values.config.oidc.issuer | default "" | quote }}
             - name: CSP_CONNECT_SRC
               value: {{ .Values.web.cspConnectSrc | default "" | quote }}
+            {{- with .Values.web.securityContact }}
+            - name: SECURITY_CONTACT   # /.well-known/security.txt
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.web.securityPolicy }}
+            - name: SECURITY_POLICY
+              value: {{ . | quote }}
+            {{- end }}
           ports:
             - { name: http, containerPort: 8080 }
           livenessProbe:

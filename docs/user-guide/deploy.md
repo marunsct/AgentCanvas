@@ -138,6 +138,7 @@ Every setting, with its default, is listed in [Server settings](server-settings.
 | `AGENTCANVAS_MAX_UPLOAD_MB`, `AGENTCANVAS_MAX_PROJECT_FILES_MB` | The largest file a person may attach to a run (default 10, at most 20: the web server accepts 20 MB bodies) and the most attached files a project keeps (default 1024; 0 = no limit) |
 | `AGENTCANVAS_RATE_LIMIT_PER_DEPLOYMENT` / `_PER_WEBHOOK` / `_PER_PROJECT` / `_PER_SHARE_CLIENT` | Public API requests per minute (120 / 120 / 600 / 30 per share-link visitor address). An organisation's admin may set lower ones for the organisation ([Settings](settings.md#what-an-organisation-may-override)) |
 | `TRUSTED_PROXIES` (web) | The address ranges (space-separated) of a load balancer or ingress in front of the web container, e.g. `10.0.0.0/8`. Only a client address it forwards is believed, for rate limits and the audit log. Default `127.0.0.1/32` (nothing in front). In Helm: `web.trustedProxies`, by default every RFC 1918 range (`10.0.0.0/8 172.16.0.0/12 192.168.0.0/16`); narrow it to your ingress controller's pod range. |
+| `SECURITY_CONTACT`, `SECURITY_POLICY` (web) | What `/.well-known/security.txt` (RFC 9116) names as the place to report a vulnerability (an `https:`, `mailto:` or `tel:` address) and the disclosure policy (an `https:` page). Default: AgentCanvas's private advisory form and security policy on GitHub; set your own security team's. Anything but a plain address stops the web container from starting. In Helm: `web.securityContact`, `web.securityPolicy`. |
 
 ## Sign-in
 

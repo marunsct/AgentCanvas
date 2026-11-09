@@ -74,6 +74,7 @@ check "pages forbid the camera, microphone and location" sh_ "curl -fsSI $B/ | g
 check "plain http is not pinned to https (no HSTS)" sh_ "test -z \"\$(curl -fsSI $B/ | grep -i strict-transport-security)\""
 check "an untrusted client claiming https gets no HSTS" sh_ "test -z \"\$(curl -fsSI -H 'X-Forwarded-Proto: https' $B/ | grep -i strict-transport-security)\""
 check "the share page is served"               sh_ "curl -fsS $B/s/sh_ci | grep -qi '<!doctype html>'"
+check "security.txt names where to report a vulnerability" sh_ "curl -fsSi $B/.well-known/security.txt | grep -qi 'content-type: text/plain; charset=utf-8' && curl -fsS $B/.well-known/security.txt | grep -q '^Contact: https://github.com/marunsct/AgentCanvas/security/advisories/new'"
 check "the chat widget script is served"       sh_ "curl -fsSI $B/widget.js | grep -qi 'content-type: application/javascript'"
 check "the bundle's licence notices are served" sh_ "curl -fsS $B/third-party-licenses.txt | grep -q '^## react - '"
 check "sign-in is on"                          sh_ "curl -fsS $B/api/v1/auth/config | grep -q '\"mode\":\"oidc\"'"

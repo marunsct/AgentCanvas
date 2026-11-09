@@ -167,6 +167,64 @@ def test_the_web_image_trusts_every_listed_proxy_range_and_nothing_else():
     assert "${TRUSTED_PROXIES}" not in template  # the raw list is never pasted into a directive
 
 
+def security_txt(env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    """The web image's start-up step for /.well-known/security.txt, then nginx's response with its values filled in."""
+    template = (ROOT / "infra" / "nginx.conf").read_text()
+    body = re.search(r'location = /\.well-known/security\.txt \{[^}]*?return 200 "([^"]*)";', template, re.S)
+    assert body is not None
+    text = body.group(1).replace("\\n", "\n").replace("${SECURITY_CONTACT}", "%s").replace("${SECURITY_POLICY}", "%s")
+    script = ROOT / "infra" / "web" / "21-security-txt.envsh"
+    return subprocess.run(
+        ["sh", "-c", f'. "{script}" && printf "$1" "$SECURITY_CONTACT" "$SECURITY_POLICY"', "sh", text],
+        capture_output=True,
+        text=True,
+        env={"PATH": os.environ.get("PATH", "/usr/bin:/bin")} | (env or {}),
+        timeout=10,
+        check=False,
+    )
+
+
+@pytest.mark.skipif(shutil.which("sh") is None, reason="no POSIX shell")
+def test_the_web_image_serves_a_security_txt_that_has_not_expired():
+    """RFC 9116: Contact and Expires (less than a year ahead) are required, as text/plain in UTF-8. The default contact
+    is the repository's private advisory form, the one .github/SECURITY.md names."""
+    from datetime import UTC, datetime, timedelta
+
+    template = (ROOT / "infra" / "nginx.conf").read_text()
+    block = template.split("location = /.well-known/security.txt {", 1)[1].split("\n  }", 1)[0]
+    assert "default_type text/plain;" in block and "charset utf-8;" in block
+    done = security_txt()
+    assert done.returncode == 0, done.stderr
+    fields = dict(line.split(": ", 1) for line in done.stdout.splitlines())
+    assert set(fields) == {"Contact", "Expires", "Policy", "Preferred-Languages"}
+    policy = (ROOT / ".github" / "SECURITY.md").read_text()
+    assert fields["Contact"] == "https://github.com/marunsct/AgentCanvas/security/advisories/new"
+    assert f"<{fields['Contact']}>" in policy
+    assert fields["Policy"].endswith("/blob/main/.github/SECURITY.md")
+    expires = datetime.fromisoformat(fields["Expires"])
+    now = datetime.now(UTC)
+    # renew it in nginx.conf (to under a year from the release) when this fails
+    assert now + timedelta(days=30) < expires <= now + timedelta(days=366), f"security.txt expires {expires}"
+    assert "21-security-txt.envsh" in (ROOT / "infra" / "Dockerfile.web").read_text()
+
+
+@pytest.mark.skipif(shutil.which("sh") is None, reason="no POSIX shell")
+def test_the_security_txt_contact_is_the_operators_and_cannot_change_the_nginx_configuration():
+    own = security_txt({"SECURITY_CONTACT": "mailto:security@example.com", "SECURITY_POLICY": "https://example.com/p"})
+    assert "Contact: mailto:security@example.com\n" in own.stdout and "Policy: https://example.com/p\n" in own.stdout
+    for bad in ['https://x.example"; return 200 "owned', "https://a b", "https://a;b", "https://a$b", "http://a"]:
+        done = security_txt({"SECURITY_CONTACT": bad})
+        assert done.returncode != 0 and "SECURITY_CONTACT" in done.stderr, bad
+    assert security_txt({"SECURITY_POLICY": "mailto:a@b.c"}).returncode != 0  # the policy is a web page
+
+
+@needs_helm
+def test_the_chart_passes_the_security_contact_only_when_set():
+    assert "SECURITY_CONTACT" not in env_of(find(render(), "Deployment", "-web") or {})
+    web = env_of(find(render("web.securityContact=mailto:security@example.com"), "Deployment", "-web") or {})
+    assert web["SECURITY_CONTACT"] == "mailto:security@example.com" and "SECURITY_POLICY" not in web
+
+
 @needs_helm
 def test_the_chart_trusts_every_private_range_by_default():
     web = find(render(), "Deployment", "-web")

@@ -115,6 +115,10 @@ web:
   # client address (rate limits, audit log). Default: every RFC 1918 private range, wherever the cluster puts its pods;
   # narrow it to your controller's pod range if you know it.
   trustedProxies: "10.0.0.0/8 172.16.0.0/12 192.168.0.0/16"
+  # /.well-known/security.txt: where to report a vulnerability in this installation (a URL or mailto:) and your
+  # disclosure policy. Empty: AgentCanvas's private advisory form and security policy on GitHub
+  securityContact: ""
+  securityPolicy: ""
   resources:
     requests: { cpu: 50m, memory: 64Mi }
     limits: { memory: 256Mi }

@@ -160,3 +160,7 @@ has no licence file. Ask the maintainers before you rely on any rights to it.
 Report it privately through GitHub's private vulnerability reporting, as the
 [security policy](https://github.com/marunsct/AgentCanvas/security/policy) describes: never in a public issue. The
 policy also lists the supported versions and how quickly reports are answered.
+
+The web server publishes the same contact at `/.well-known/security.txt` (RFC 9116), so scanners and researchers
+find it. To have reports about your installation reach your own security team instead, set `SECURITY_CONTACT` and
+`SECURITY_POLICY` on the web container ([Deploy and operate](deploy.md#essential-settings)).
