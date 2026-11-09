@@ -320,6 +320,28 @@ printf 'OK=%s|SKIP=%s|BAD=%s' "${OK[*]}" "${SKIP[*]}" "${BAD[*]}"
     assert 'partial "SQLite only, no Postgres"' in script and script.count('partial "') >= 4
 
 
+@pytest.mark.skipif(shutil.which("bash") is None, reason="no bash")
+def test_local_ci_fails_a_stage_when_any_of_its_commands_fails_not_only_the_last():
+    """bash ignores `set -e` inside an `if` condition: a stage of two commands used to pass when the first failed
+    (pip-audit's findings, `helm lint --strict`), because only the last one's status counted."""
+    script = (ROOT / "scripts" / "ci-local.sh").read_text()
+    head = script[script.index("declare -a OK") : script.index("\nskip()")]
+    probe = (
+        head
+        + """
+first_fails() { ( false ); ( true ); }
+func_fails() { f() { false; echo after; true; }; f; }
+fine() { ( true ); ( true ); }
+stage first first_fails; stage func func_fails; stage fine fine
+printf 'OK=%s|BAD=%s' "${OK[*]}" "${BAD[*]}"
+"""
+    )
+    done = subprocess.run(["bash", "-c", probe], capture_output=True, text=True, timeout=30, check=False)
+    out = done.stdout.rsplit("\n", 1)[-1]
+    assert out == "OK=fine|BAD=first func", done.stdout + done.stderr
+    assert "after" not in done.stdout  # the stage stops at its first failure
+
+
 def test_ci_runs_actions_by_commit_and_the_docs_build_with_pinned_versions():
     import re
 
