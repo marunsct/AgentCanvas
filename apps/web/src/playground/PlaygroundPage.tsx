@@ -7,15 +7,22 @@ import { postStream } from "../run/sse";
 import { Markdown } from "../ui/Markdown";
 import { PROJECT_ID, useModels, useSetup, useWorkspaceCatalog } from "../api/queries";
 import { PageHeader } from "../ui/PageHeader";
+import { type Me, useMe } from "../api/session";
 import { takesTemperature } from "./playground";
 
 interface ToolCall { name: string; args: Record<string, unknown>; result: string }
 interface Turn { role: "user" | "assistant"; content: string; tools?: ToolCall[] }
 
-// the conversation is kept while the app is open in this tab (moving to another page and back keeps it)
+// the conversation is kept while the app is open in this tab (moving to another page and back keeps it), for the
+// person, organisation and project it was held in: after signing in again as someone else, or in another
+// organisation, it is not shown, nor sent to that organisation's model with the next message
 const KEY = "agentcanvas.playground";
-function remembered(): Turn[] {
-  try { return JSON.parse(sessionStorage.getItem(KEY) ?? "[]") as Turn[]; } catch { return []; }
+const keyFor = (me: Me) => `${KEY}:${me.org_id}:${me.id}:${PROJECT_ID}`;
+function remembered(key: string): Turn[] {
+  try {
+    for (const k of Object.keys(sessionStorage)) if ((k === KEY || k.startsWith(`${KEY}:`)) && k !== key) sessionStorage.removeItem(k);
+    return JSON.parse(sessionStorage.getItem(key) ?? "[]") as Turn[];
+  } catch { return []; }
 }
 
 export function PlaygroundPage() {
@@ -26,14 +33,17 @@ export function PlaygroundPage() {
   const defaultModel = setup.data?.default_model?.model ?? "";
   const [model, setModel] = useState("");  // "" = the project's default model
   const [system, setSystem] = useState("You are a helpful assistant.");
-  const [turns, setTurns] = useState<Turn[]>(remembered);
+  const key = keyFor(useMe((st) => st.me));
+  const [turns, setTurns] = useState<Turn[]>(() => remembered(key));
+  const [keptAs, setKeptAs] = useState(key);
+  if (keptAs !== key) { setKeptAs(key); setTurns(remembered(key)); } // the session changed under the page
   const [live, setLive] = useState("");
   const [liveTools, setLiveTools] = useState<ToolCall[]>([]);
   const [tools, setTools] = useState<string[]>([]); // import paths of the workspace tools the model may call
   const catalog = useWorkspaceCatalog();
   const stream = useRef<AbortController | null>(null);
   useEffect(() => () => stream.current?.abort(), []); // leaving the page: the model stopped being asked for nothing
-  useEffect(() => { try { sessionStorage.setItem(KEY, JSON.stringify(turns)); } catch { /* not kept */ } }, [turns]);
+  useEffect(() => { try { sessionStorage.setItem(keptAs, JSON.stringify(turns)); } catch { /* not kept */ } }, [keptAs, turns]);
   const [draft, setDraft] = useState("");
   const [name, setName] = useState("My assistant");
   const [temperature, setTemperature] = useState<number | null>(null); // null = the model's (or project's) own
