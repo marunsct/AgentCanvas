@@ -26,6 +26,19 @@ describe("evaluation helpers", () => {
     expect(passed({ ...result("c", 0, true), status: "running" })).toBeUndefined();
   });
 
+  it("counts a repeated example as passing only when every run passed", () => {
+    const flaky = [result("a", 0, true), { ...result("a", 0, false), repetition: 1 }];
+    const c = compare(experiment(1, 1), [result("a", 0, true)], experiment(0.5, 0.5), flaky);
+    expect(c.regressed).toEqual(["a"]);
+  });
+
+  it("keeps each run of a repeated example on its own row", () => {
+    const runs = [result("a", 0, true, 0), result("a", 0, false, 0), result("a", 1, true, 0)];
+    runs[1] = { ...runs[1], repetition: 1 };
+    const rows = grid(runs, 2);
+    expect(rows.map((r) => [r.exampleId, r.repetition, r.cells.filter(Boolean).length])).toEqual([["a", 0, 2], ["a", 1, 1]]);
+  });
+
   it("compares two experiments per evaluator and per example", () => {
     const c = compare(
       experiment(0.5, 0.5), [result("a", 0, true), result("b", 0, false)],

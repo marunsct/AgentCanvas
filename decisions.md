@@ -12,6 +12,13 @@ Merging, deleting branches and anything outward-facing stay with you: work is de
 
 ## 2026-11-09
 
+### Repeated runs: the pass rate stays per run, and repeats skip the answer cache
+With k runs per example, the summary's `pass_rate` is still the share of runs that passed, so it compares with earlier
+experiments; pass@k and pass^k are added beside it, and release gates keep reading the pass rate. A model block's answer
+cache would hand every repeat the first answer, so repeated experiments run with it off. Compare treats an example
+as passing only if all its runs passed (the cautious reading). Left for later in F-6: argument matchers for tool calls
+and a written failure summary per experiment. *Reverse:* migration `a7d1e5b9c3f6`.
+
 ### The kill switch stops runs in flight; run priority waits for a run queue
 **Stop all runs** marks runs in the database and each server stops its own at its next heartbeat (10 s), because a run
 lives on the server that started it. It does not also refuse new runs: stopping deployments already exists, and a

@@ -137,3 +137,19 @@ async def test_a_gate_on_a_pairwise_judge(app, api_client, judge):
     same = await api_client.post(f"/v1/workflows/{wf}/publish", json={})
     assert same.status_code == 200, same.text
     assert check(same.json())["items"] == ["better: win rate vs live 0.5 (needs 0.5)"]
+
+
+async def test_pairwise_judges_each_repetition_against_its_own(app, api_client, judge):
+    """F-6: with repeated runs, the n-th run of an example is compared with the first target's n-th run (pairing by
+    example alone kept only the last run of each, so the others got no verdict)."""
+    wf, ds = await setup(api_client)
+    better = await new(api_client, wf, "better", "pairwise", JUDGE)
+    body = {"dataset_id": ds["id"], "targets": [{"version": "1.0.0"}, {}], "evaluator_ids": [better["id"]],
+            "repetitions": 2}  # fmt: skip
+    r = await api_client.post(f"/v1/workflows/{wf}/experiments", json=body)
+    assert r.status_code == 202, r.text
+    exp = await finished(app, api_client, r.json()["id"])
+    assert exp["status"] == "done", exp
+    results = (await api_client.get(f"/v1/experiments/{exp['id']}/results")).json()
+    assert len(results) == 2 * 2 * len(EXAMPLES)
+    assert all(len([s for s in x["scores"] if s["evaluator"] == "better"]) == 1 for x in results)

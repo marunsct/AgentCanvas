@@ -53,6 +53,14 @@ The results grid shows mean scores, pass rates, latency, tokens and cost per tar
 with its run timeline one click away. The AI judges' own cost (LLM and pairwise judges) is shown apart from the
 runs' cost; a judge model without a catalog price is named instead of being counted as free. **Compare** two experiments to see which examples improved or regressed.
 
+**Runs per example:** a model does not answer the same way every time, so one run per example can pass or fail by
+luck. Set **runs per example** (up to 10, `repetitions` in the API) and each example runs that many times per target.
+The summary then adds **pass@k** (examples that passed in at least one of the k runs: can the workflow do it?),
+**pass^k** (examples that passed in every run: can you rely on it?) and the **flaky** examples that passed only
+sometimes; each evaluator gets its **spread** (how much an example's score varies between runs). The pass rate stays per
+run. Repeated runs ask the model every time: the answer cache is off for them. Compare counts a repeated example as
+passing only when every run of it passed.
+
 **Simulated users:** for chat workflows, an experiment can hold a whole conversation per example with a simulated
 user (a model given a persona, a goal and a turn limit). Evaluators see the full transcript.
 

@@ -891,6 +891,10 @@ export type Mean1 = number | null;
 export type PassRate1 = number | null;
 export type Scored1 = number;
 /**
+ * repeated runs: the mean, over examples, of the standard deviation of this score across an example's runs (0: every run scored the same)
+ */
+export type Spread = number | null;
+/**
  * completed examples this evaluator gave no score (it failed, or the example lacks a reference): not in the mean, and a release gate fails on them
  */
 export type Unscored = number;
@@ -938,6 +942,10 @@ export type DatasetVersion = number | null;
  */
 export type EvaluatorIds = string[] | null;
 export type Name27 = string | null;
+/**
+ * runs per example and target: more than one reports pass@k, pass^k and flaky examples
+ */
+export type Repetitions = number;
 /**
  * what they want; an example's metadata.goal wins
  */
@@ -996,8 +1004,12 @@ export type Name28 = string;
  * pairwise judges: each target's mean is its win rate against the first target
  */
 export type Pairwise = string[];
+export type Repetitions1 = number;
 export type Split3 = string | null;
 export type Status5 = string;
+/**
+ * runs that finished
+ */
 export type Completed = number;
 export type CostUsd1 = number;
 /**
@@ -1005,7 +1017,14 @@ export type CostUsd1 = number;
  */
 export type Errors = number;
 export type Evaluators2 = EvaluatorSummary[];
+/**
+ * examples of the dataset (each runs `repetitions` times)
+ */
 export type Examples4 = number;
+/**
+ * repeated runs: examples that passed in some runs and failed in others (at most 100)
+ */
+export type Flaky = string[];
 /**
  * what the AI judges cost scoring this target (not in cost_usd)
  */
@@ -1018,9 +1037,22 @@ export type Label9 = string;
 export type LatencyP50Ms = number | null;
 export type LatencyP95Ms = number | null;
 /**
+ * repeated runs (pass^k): share of examples where every one of the k runs passed
+ */
+export type PassAllK = number | null;
+/**
+ * repeated runs: share of examples where at least one run passed every evaluator
+ */
+export type PassAtK = number | null;
+/**
  * share of completed examples that passed every evaluator
  */
 export type PassRate2 = number | null;
+export type Repetitions2 = number;
+/**
+ * runs in all: examples x repetitions
+ */
+export type Runs2 = number;
 export type Target1 = number;
 export type Tokens = number;
 export type Summary4 = TargetSummary[];
@@ -1038,6 +1070,10 @@ export type Output2 = {
   [k: string]: unknown;
 } | null;
 export type Position = number;
+/**
+ * which run of the example (0 to repetitions - 1)
+ */
+export type Repetition = number;
 export type RunId3 = string | null;
 export type RunStatus = string | null;
 export type Comment2 = string;
@@ -2785,7 +2821,7 @@ export type Fallbacks = number;
  */
 export type Id51 = string | null;
 export type Name54 = string;
-export type Runs2 = number;
+export type Runs3 = number;
 export type TokensIn2 = number;
 export type TokensOut2 = number;
 /**
@@ -2798,7 +2834,7 @@ export type Fallbacks1 = number;
 export type LimitUsd1 = number | null;
 export type Period1 = string;
 export type PeriodStart1 = string;
-export type Runs3 = number;
+export type Runs4 = number;
 export type SpentUsd1 = number;
 export type Tokens1 = number;
 /**
@@ -2816,7 +2852,7 @@ export type Fallbacks2 = number;
  */
 export type Id52 = string | null;
 export type Name55 = string;
-export type Runs4 = number;
+export type Runs5 = number;
 export type TokensIn3 = number;
 export type TokensOut3 = number;
 /**
@@ -2833,7 +2869,7 @@ export type Fallbacks3 = number;
  */
 export type Id53 = string | null;
 export type Name56 = string;
-export type Runs5 = number;
+export type Runs6 = number;
 export type TokensIn4 = number;
 export type TokensOut4 = number;
 /**
@@ -2845,7 +2881,7 @@ export type CostUsd7 = number;
  * model calls a backup model answered
  */
 export type Fallbacks4 = number;
-export type Runs6 = number;
+export type Runs7 = number;
 export type TokensIn5 = number;
 export type TokensOut5 = number;
 /**
@@ -2863,7 +2899,7 @@ export type Fallbacks5 = number;
 export type Id54 = string | null;
 export type Name57 = string;
 export type ProjectId5 = string;
-export type Runs7 = number;
+export type Runs8 = number;
 export type TokensIn6 = number;
 export type TokensOut6 = number;
 export type ByDeployment = SpendDeployment[];
@@ -2952,7 +2988,7 @@ export type LastEndedAt = string | null;
 export type LastError1 = string | null;
 export type LastRunId = string | null;
 export type LastStartedAt = string | null;
-export type Runs8 = number;
+export type Runs9 = number;
 export type Status15 = string;
 export type Title9 = string | null;
 export type Tokens2 = number;
@@ -2990,7 +3026,7 @@ export type Tokens3 = number;
 /**
  * one per run of the conversation, oldest first
  */
-export type Runs9 = TrajectoryNode[];
+export type Runs10 = TrajectoryNode[];
 export type ThreadId14 = string;
 export type WorkflowId12 = string;
 export type CreatedAt33 = string;
@@ -5014,6 +5050,7 @@ export interface EvaluatorSummary {
   mean: Mean1;
   pass_rate: PassRate1;
   scored: Scored1;
+  spread?: Spread;
   unscored?: Unscored;
 }
 /**
@@ -5088,6 +5125,7 @@ export interface ExperimentIn {
   dataset_version?: DatasetVersion;
   evaluator_ids?: EvaluatorIds;
   name?: Name27;
+  repetitions?: Repetitions;
   /**
    * chat workflows: a simulated user holds a conversation per example
    */
@@ -5139,6 +5177,7 @@ export interface ExperimentOut {
   id: Id30;
   name: Name28;
   pairwise?: Pairwise;
+  repetitions?: Repetitions1;
   simulation?: Simulation | null;
   split: Split3;
   status: Status5;
@@ -5156,12 +5195,17 @@ export interface TargetSummary {
   errors: Errors;
   evaluators: Evaluators2;
   examples: Examples4;
+  flaky?: Flaky;
   judge_cost_usd?: JudgeCostUsd1;
   judge_unpriced?: JudgeUnpriced;
   label: Label9;
   latency_p50_ms: LatencyP50Ms;
   latency_p95_ms: LatencyP95Ms;
+  pass_all_k?: PassAllK;
+  pass_at_k?: PassAtK;
   pass_rate: PassRate2;
+  repetitions?: Repetitions2;
+  runs?: Runs2;
   target: Target1;
   tokens: Tokens;
 }
@@ -5192,6 +5236,7 @@ export interface ExperimentResultOut {
   latency_ms: LatencyMs;
   output: Output2;
   position: Position;
+  repetition?: Repetition;
   run_id: RunId3;
   run_status: RunStatus;
   scores: Scores2;
@@ -6942,7 +6987,7 @@ export interface SpendDeployment {
   fallbacks: Fallbacks;
   id: Id51;
   name: Name54;
-  runs: Runs2;
+  runs: Runs3;
   tokens_in: TokensIn2;
   tokens_out: TokensOut2;
   workflow_id: WorkflowId9;
@@ -6966,7 +7011,7 @@ export interface SpendPeriod {
   limit_usd: LimitUsd1;
   period: Period1;
   period_start: PeriodStart1;
-  runs: Runs3;
+  runs: Runs4;
   spent_usd: SpentUsd1;
   tokens: Tokens1;
 }
@@ -6981,7 +7026,7 @@ export interface SpendPerson {
   fallbacks: Fallbacks2;
   id: Id52;
   name: Name55;
-  runs: Runs4;
+  runs: Runs5;
   tokens_in: TokensIn3;
   tokens_out: TokensOut3;
 }
@@ -6995,7 +7040,7 @@ export interface SpendProject {
   fallbacks: Fallbacks3;
   id: Id53;
   name: Name56;
-  runs: Runs5;
+  runs: Runs6;
   tokens_in: TokensIn4;
   tokens_out: TokensOut4;
 }
@@ -7007,7 +7052,7 @@ export interface SpendTotal {
   cache_hits: CacheHits4;
   cost_usd: CostUsd7;
   fallbacks: Fallbacks4;
-  runs: Runs6;
+  runs: Runs7;
   tokens_in: TokensIn5;
   tokens_out: TokensOut5;
 }
@@ -7022,7 +7067,7 @@ export interface SpendWorkflow {
   id: Id54;
   name: Name57;
   project_id: ProjectId5;
-  runs: Runs7;
+  runs: Runs8;
   tokens_in: TokensIn6;
   tokens_out: TokensOut6;
 }
@@ -7198,7 +7243,7 @@ export interface ThreadOut {
   last_error?: LastError1;
   last_run_id?: LastRunId;
   last_started_at?: LastStartedAt;
-  runs?: Runs8;
+  runs?: Runs9;
   status: Status15;
   title: Title9;
   tokens?: Tokens2;
@@ -7219,7 +7264,7 @@ export interface ThreadPage {
  * via the `definition` "ThreadTrajectory".
  */
 export interface ThreadTrajectory {
-  runs: Runs9;
+  runs: Runs10;
   thread_id: ThreadId14;
   workflow_id: WorkflowId12;
 }

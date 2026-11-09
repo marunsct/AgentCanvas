@@ -26,6 +26,7 @@ from agentcanvas.services import model_defaults
 from agentcanvas.services.datasets import DatasetService, Example
 from agentcanvas.services.experiments import (
     MAX_CONCURRENCY,
+    MAX_REPETITIONS,
     ExperimentService,
     TargetIn,
     TargetSummary,
@@ -49,6 +50,12 @@ class ExperimentIn(BaseModel):
     targets: list[TargetIn] = Field(default_factory=lambda: [TargetIn()], min_length=1, max_length=10)
     evaluator_ids: list[str] | None = Field(default=None, description="default: every evaluator of the workflow")
     concurrency: int = Field(default=4, ge=1, le=MAX_CONCURRENCY)
+    repetitions: int = Field(
+        default=1,
+        ge=1,
+        le=MAX_REPETITIONS,
+        description="runs per example and target: more than one reports pass@k, pass^k and flaky examples",
+    )
     simulation: Simulation | None = Field(
         default=None, description="chat workflows: a simulated user holds a conversation per example"
     )
@@ -74,6 +81,7 @@ class ExperimentOut(BaseModel):
         default_factory=list, description="pairwise judges: each target's mean is its win rate against the first target"
     )
     concurrency: int
+    repetitions: int = 1
     simulation: Simulation | None = None
     status: str
     error: str | None
@@ -87,6 +95,7 @@ class ExperimentResultOut(BaseModel):
     target: int
     example_id: str
     position: int
+    repetition: int = Field(0, description="which run of the example (0 to repetitions - 1)")
     status: str
     run_id: str | None
     thread_id: str | None
@@ -109,14 +118,16 @@ def _out(exp: Experiment, summary: list[TargetSummary]) -> ExperimentOut:
                            framework=t.get("framework")) for t in exp.targets],
         evaluators=[e["name"] for e in exp.evaluators],
         pairwise=[e["name"] for e in exp.evaluators if e["kind"] == "pairwise"], concurrency=exp.concurrency,
-        simulation=Simulation.model_validate(exp.simulation) if exp.simulation else None, status=exp.status,
+        repetitions=exp.repetitions, simulation=Simulation.model_validate(exp.simulation) if exp.simulation else None,
+        status=exp.status,
         error=exp.error, created_at=exp.created_at, ended_at=exp.ended_at, summary=summary,
     )  # fmt: skip
 
 
 def _result(r: ExperimentResult) -> ExperimentResultOut:
     return ExperimentResultOut(
-        id=r.id, target=r.target, example_id=r.example_id, position=r.position, status=r.status, run_id=r.run_id,
+        id=r.id, target=r.target, example_id=r.example_id, position=r.position, repetition=r.repetition,
+        status=r.status, run_id=r.run_id,
         thread_id=r.thread_id, run_status=r.run_status, error=r.error, output=r.output, trajectory=r.trajectory,
         scores=[Score.model_validate(s) for s in r.scores or []], tokens_in=r.tokens_in, tokens_out=r.tokens_out,
         cost_usd=r.cost_usd, latency_ms=r.latency_ms,
@@ -198,6 +209,7 @@ async def start_experiment(
         targets=targets,
         evaluators=[spec_of(e, everything) for e in evaluators],
         concurrency=body.concurrency,
+        repetitions=body.repetitions,
         created_by=user.id,
         workspace_commit=await workspace_commit(request, session, wf_id),
         simulation=body.simulation.model_dump() if body.simulation else None,

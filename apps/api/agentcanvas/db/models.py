@@ -535,6 +535,8 @@ class Experiment(Base):
     targets: Mapped[list[Any]]
     evaluators: Mapped[list[Any]]  # [{name, kind, config, threshold}]
     concurrency: Mapped[int] = mapped_column(Integer, server_default=text("4"), default=4)
+    # F-6: how many times each example runs per target (pass@k, pass^k, flaky examples)
+    repetitions: Mapped[int] = mapped_column(Integer, server_default=text("1"), default=1)
     # the project's workspace head when it started: workspace code changes behaviour without changing the IR
     workspace_commit: Mapped[str | None] = mapped_column(Text)
     # S13 FR-EVAL-07: a simulated user drives each example as a conversation (services/simulation.py)
@@ -555,13 +557,14 @@ class ExperimentResult(Base):
     __tablename__ = "experiment_result"
     __table_args__ = (
         CheckConstraint("status IN ('pending','running','done')", name="experiment_result_status"),
-        UniqueConstraint("experiment_id", "target", "example_id", name="experiment_result_example"),
+        UniqueConstraint("experiment_id", "target", "example_id", "repetition", name="experiment_result_example"),
     )
     id: Mapped[str] = mapped_column(String, primary_key=True)
     experiment_id: Mapped[str] = mapped_column(ForeignKey("experiment.id", ondelete="CASCADE"), index=True)
     target: Mapped[int] = mapped_column(Integer)  # index into Experiment.targets
     example_id: Mapped[str] = mapped_column(Text)
     position: Mapped[int] = mapped_column(Integer)  # the example's place in the dataset version
+    repetition: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)  # which run of the example
     status: Mapped[str] = mapped_column(Text, server_default=text("'pending'"), default="pending")
     run_id: Mapped[str | None] = mapped_column(Text)
     thread_id: Mapped[str | None] = mapped_column(Text)

@@ -593,6 +593,8 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
   1.9.1 and dnspython 2.9.0.
 
 ### Added
+- Experiments can run each example several times (**runs per example**, `repetitions`, up to 10) and report pass@k,
+  pass^k, the flaky examples and each evaluator's spread; pairwise judges compare each run with the baseline's same run.
 - **Stop all runs** (Settings › Organisation › General, `POST /v1/org/runs/stop`): an admin stops every run in flight in
   the organisation, or of one deployment or workflow, with a reason kept in the audit log. Runs on other servers stop at
   their next heartbeat; a stopped run is never handed over to another server.
@@ -1008,6 +1010,8 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
 
 ### Upgrading
 
+- Migration `a7d1e5b9c3f6` adds `experiment.repetitions` (1) and `experiment_result.repetition` (0), and adds the repetition to
+  `experiment_result`'s unique key.
 - Migration `f4a8c2e6b0d3` adds `run.stop_requested` (false for existing runs).
 - Agno and Strands exports and runs now trust the operating system's certificates (openai 3 and httpx2): behind a
   TLS-inspecting proxy, add its CA to the system store or set `SSL_CERT_FILE`. The images already include the system

@@ -3849,6 +3849,18 @@
             "title": "Scored",
             "type": "integer"
           },
+          "spread": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "repeated runs: the mean, over examples, of the standard deviation of this score across an example's runs (0: every run scored the same)",
+            "title": "Spread"
+          },
           "unscored": {
             "default": 0,
             "description": "completed examples this evaluator gave no score (it failed, or the example lacks a reference): not in the mean, and a release gate fails on them",
@@ -4185,6 +4197,14 @@
             ],
             "title": "Name"
           },
+          "repetitions": {
+            "default": 1,
+            "description": "runs per example and target: more than one reports pass@k, pass^k and flaky examples",
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Repetitions",
+            "type": "integer"
+          },
           "simulation": {
             "anyOf": [
               {
@@ -4288,6 +4308,11 @@
             },
             "title": "Pairwise",
             "type": "array"
+          },
+          "repetitions": {
+            "default": 1,
+            "title": "Repetitions",
+            "type": "integer"
           },
           "simulation": {
             "anyOf": [
@@ -4402,6 +4427,12 @@
           },
           "position": {
             "title": "Position",
+            "type": "integer"
+          },
+          "repetition": {
+            "default": 0,
+            "description": "which run of the example (0 to repetitions - 1)",
+            "title": "Repetition",
             "type": "integer"
           },
           "run_id": {
@@ -12373,6 +12404,7 @@
       "TargetSummary": {
         "properties": {
           "completed": {
+            "description": "runs that finished",
             "title": "Completed",
             "type": "integer"
           },
@@ -12393,8 +12425,17 @@
             "type": "array"
           },
           "examples": {
+            "description": "examples of the dataset (each runs `repetitions` times)",
             "title": "Examples",
             "type": "integer"
+          },
+          "flaky": {
+            "description": "repeated runs: examples that passed in some runs and failed in others (at most 100)",
+            "items": {
+              "type": "string"
+            },
+            "title": "Flaky",
+            "type": "array"
           },
           "judge_cost_usd": {
             "default": 0.0,
@@ -12436,6 +12477,30 @@
             ],
             "title": "Latency P95 Ms"
           },
+          "pass_all_k": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "repeated runs (pass^k): share of examples where every one of the k runs passed",
+            "title": "Pass All K"
+          },
+          "pass_at_k": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "repeated runs: share of examples where at least one run passed every evaluator",
+            "title": "Pass At K"
+          },
           "pass_rate": {
             "anyOf": [
               {
@@ -12447,6 +12512,17 @@
             ],
             "description": "share of completed examples that passed every evaluator",
             "title": "Pass Rate"
+          },
+          "repetitions": {
+            "default": 1,
+            "title": "Repetitions",
+            "type": "integer"
+          },
+          "runs": {
+            "default": 0,
+            "description": "runs in all: examples x repetitions",
+            "title": "Runs",
+            "type": "integer"
           },
           "target": {
             "title": "Target",

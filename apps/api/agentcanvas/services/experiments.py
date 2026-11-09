@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import math
+import statistics
 import time
 import uuid
 from collections.abc import Sequence
@@ -51,7 +52,9 @@ log = get_logger(__name__)
 
 EXAMPLE_TIMEOUT_S = 300.0
 MAX_CONCURRENCY = 16
-MAX_RUNS = 5000  # targets x examples per experiment
+MAX_RUNS = 5000  # targets x examples x repetitions per experiment
+MAX_REPETITIONS = 10
+FLAKY_LISTED = 100  # flaky example ids listed per target
 
 
 class TargetIn(BaseModel):
@@ -79,6 +82,18 @@ def apply_overrides(wf: Workflow, overrides: dict[str, dict[str, Any]]) -> Workf
             raise InvalidInput(f"override: '{key}' is not a resource or step of this workflow")
         items[key]["config"] = {**items[key].get("config", {}), **values}
     return Workflow.model_validate(ir)
+
+
+def uncached(wf: Workflow) -> Workflow:
+    """`wf` with its model blocks' answer cache off: repeated runs of an example must each ask the model, or pass@k
+    would measure the cache (F-6)."""
+    if not any(r.type == "model.chat" and r.config.get("cache_ttl") for r in wf.resources):
+        return wf
+    out = wf.model_copy(deep=True)
+    for r in out.resources:
+        if r.type == "model.chat":
+            r.config.pop("cache_ttl", None)
+    return out
 
 
 def context_for(wf: Workflow, given: dict[str, Any], user_id: str | None, org_id: str | None) -> dict[str, Any]:
@@ -148,6 +163,11 @@ class EvaluatorSummary(BaseModel):
     ci: list[float] | None = Field(
         default=None, description="pairwise: 95% confidence interval of the win rate (the mean; ties count half)"
     )
+    spread: float | None = Field(
+        default=None,
+        description="repeated runs: the mean, over examples, of the standard deviation of this score "
+        "across an example's runs (0: every run scored the same)",
+    )
 
 
 def confidence(values: list[float]) -> list[float] | None:
@@ -164,8 +184,20 @@ def confidence(values: list[float]) -> list[float] | None:
 class TargetSummary(BaseModel):
     target: int
     label: str
-    examples: int
-    completed: int
+    examples: int = Field(description="examples of the dataset (each runs `repetitions` times)")
+    runs: int = Field(0, description="runs in all: examples x repetitions")
+    completed: int = Field(description="runs that finished")
+    repetitions: int = 1
+    pass_at_k: float | None = Field(
+        None, description="repeated runs: share of examples where at least one run passed every evaluator"
+    )
+    pass_all_k: float | None = Field(
+        None, description="repeated runs (pass^k): share of examples where every one of the k runs passed"
+    )
+    flaky: list[str] = Field(
+        default_factory=list,
+        description=f"repeated runs: examples that passed in some runs and failed in others (at most {FLAKY_LISTED})",
+    )
     errors: int = Field(description="runs that did not end in success")
     pass_rate: float | None = Field(description="share of completed examples that passed every evaluator")
     evaluators: list[EvaluatorSummary]
@@ -179,9 +211,22 @@ class TargetSummary(BaseModel):
     )
 
 
+def _spread(done: Sequence[Any], name: str) -> float | None:
+    """The mean, over examples run more than once, of the standard deviation of one evaluator's scores."""
+    by_example: dict[str, list[float]] = {}
+    for r in done:
+        for x in r.scores or []:
+            if x["evaluator"] == name and x["score"] is not None:
+                by_example.setdefault(r.example_id, []).append(float(x["score"]))
+    sds = [statistics.pstdev(v) for v in by_example.values() if len(v) > 1]
+    return round(sum(sds) / len(sds), 4) if sds else None
+
+
 def summary(exp: Experiment, results: Sequence[Any]) -> list[TargetSummary]:
-    """Per target: completion, scores, latency and cost. `results`: result rows, or rows of `SUMMARY_COLUMNS`."""
+    """Per target: completion, scores, latency and cost; with repeated runs, pass@k, pass^k and the flaky examples.
+    `results`: result rows, or rows of `SUMMARY_COLUMNS`."""
     out = []
+    k = getattr(exp, "repetitions", 1) or 1
     for i, target in enumerate(exp.targets):
         mine = [r for r in results if r.target == i]
         done = [r for r in mine if r.status == "done"]
@@ -198,18 +243,32 @@ def summary(exp: Experiment, results: Sequence[Any]) -> list[TargetSummary]:
                     # the first target is what a pairwise judge compares the others with: it gets no score of its own
                     unscored=0 if spec["kind"] in ONLY_IN_EXPERIMENTS and i == 0 else len(done) - len(values),
                     ci=confidence(values) if spec["kind"] == "pairwise" else None,
+                    spread=_spread(done, spec["name"]) if k > 1 else None,
                 )
             )
         # a pairwise verdict compares two targets: it says nothing about whether this target's answer passes
         graded = {e["name"] for e in exp.evaluators if e["kind"] not in ONLY_IN_EXPERIMENTS}
         passed = [all(s["passed"] for s in r.scores or [] if s["evaluator"] in graded) for r in done]
+        outcomes: dict[str, list[bool]] = {}  # per example, whether each finished run passed
+        for r, ok in zip(done, passed, strict=True):
+            outcomes.setdefault(r.example_id, []).append(ok)
+        repeated = k > 1 and bool(graded) and bool(outcomes)
         latencies = [r.latency_ms for r in done if r.latency_ms is not None]
         out.append(
             TargetSummary(
                 target=i,
                 label=target["label"],
-                examples=len(mine),
+                examples=len({r.example_id for r in mine}),
+                runs=len(mine),
                 completed=len(done),
+                repetitions=k,
+                pass_at_k=round(sum(any(v) for v in outcomes.values()) / len(outcomes), 4) if repeated else None,
+                pass_all_k=round(sum(all(v) and len(v) == k for v in outcomes.values()) / len(outcomes), 4)
+                if repeated
+                else None,
+                flaky=sorted(e for e, v in outcomes.items() if any(v) and not all(v))[:FLAKY_LISTED]
+                if repeated
+                else [],
                 errors=sum(r.run_status != "success" for r in done),
                 pass_rate=round(sum(passed) / len(passed), 4) if passed and graded else None,
                 evaluators=evaluators,
@@ -225,7 +284,8 @@ def summary(exp: Experiment, results: Sequence[Any]) -> list[TargetSummary]:
 
 
 SUMMARY_COLUMNS = (
-    ExperimentResult.experiment_id, ExperimentResult.target, ExperimentResult.status, ExperimentResult.run_status,
+    ExperimentResult.experiment_id, ExperimentResult.target, ExperimentResult.example_id, ExperimentResult.status,
+    ExperimentResult.run_status,
     ExperimentResult.scores, ExperimentResult.latency_ms, ExperimentResult.tokens_in, ExperimentResult.tokens_out,
     ExperimentResult.cost_usd,
 )  # fmt: skip  # what `summary` reads: not outputs, trajectories or errors
@@ -250,14 +310,17 @@ class ExperimentService:
         created_by: str | None,
         workspace_commit: str | None = None,
         simulation: dict[str, Any] | None = None,
+        repetitions: int = 1,
     ) -> Experiment:
         """`targets` are resolved: {label, version, version_id, overrides, ir}."""
         if split is not None:
             examples = [e for e in examples if e.get("split", "") == split]
         if not examples:
             raise InvalidInput("the dataset version has no examples" + (f" in split '{split}'" if split else ""))
-        if len(examples) * len(targets) > MAX_RUNS:
-            raise InvalidInput(f"an experiment runs at most {MAX_RUNS} examples in all targets")
+        if not 1 <= repetitions <= MAX_REPETITIONS:
+            raise InvalidInput(f"repetitions is 1 to {MAX_REPETITIONS}")
+        if len(examples) * len(targets) * repetitions > MAX_RUNS:
+            raise InvalidInput(f"an experiment runs at most {MAX_RUNS} examples in all targets and repetitions")
         exp = Experiment(
             id=new_id("exp"),
             workflow_id=wf_id,
@@ -268,6 +331,7 @@ class ExperimentService:
             targets=targets,
             evaluators=[e.model_dump() for e in evaluators],
             concurrency=concurrency,
+            repetitions=repetitions,
             workspace_commit=workspace_commit,
             simulation=simulation,
             status="running",
@@ -278,11 +342,11 @@ class ExperimentService:
         await self.s.flush()
         for t in range(len(targets)):
             for pos, ex in enumerate(examples):
-                self.s.add(
-                    ExperimentResult(
-                        id=new_id("exr"), experiment_id=exp.id, target=t, example_id=ex["id"], position=pos
-                    )
-                )
+                for n in range(repetitions):
+                    self.s.add(
+                        ExperimentResult(id=new_id("exr"), experiment_id=exp.id, target=t, example_id=ex["id"],
+                                         position=pos, repetition=n)
+                    )  # fmt: skip
         await self.s.commit()
         return exp
 
@@ -303,7 +367,7 @@ class ExperimentService:
         q = (
             select(ExperimentResult)
             .where(ExperimentResult.experiment_id == exp_id)
-            .order_by(ExperimentResult.position, ExperimentResult.target)
+            .order_by(ExperimentResult.position, ExperimentResult.repetition, ExperimentResult.target)
         )
         return list((await self.s.scalars(q.offset(offset).limit(limit))).all())
 
@@ -460,7 +524,7 @@ class ExperimentJob:
                 await s.scalars(
                     select(ExperimentResult)
                     .where(ExperimentResult.experiment_id == exp_id, ExperimentResult.status == "pending")
-                    .order_by(ExperimentResult.position, ExperimentResult.target)
+                    .order_by(ExperimentResult.position, ExperimentResult.repetition, ExperimentResult.target)
                 )
             ).all()
             jobs = [(r.id, r.target, r.example_id) for r in pending]
@@ -470,11 +534,12 @@ class ExperimentJob:
             examples = {e["id"]: e for e in version.examples}
             targets, specs, created_by = exp.targets, [Spec(**e) for e in exp.evaluators], exp.created_by
             org_id = await ScopeRepo(s).org_of("workflow", exp.workflow_id)
-            concurrency, sim = exp.concurrency, exp.simulation
+            concurrency, sim, repeated = exp.concurrency, exp.simulation, exp.repetitions > 1
         if row is not None:
             PROJECT_OF[exp.workflow_id] = row.project_id
         try:  # a target that no longer parses ends the experiment, else every instance would retry it forever
             workflows = [Workflow.model_validate(t["ir"]) for t in targets]
+            workflows = [uncached(w) for w in workflows] if repeated else workflows
         except (ValueError, KeyError, TypeError) as exc:  # pydantic.ValidationError is a ValueError
             log.warning("experiment.bad_target", experiment_id=exp_id)
             await self._finish(exp_id, "error", f"a target's workflow is not valid: {exc}"[:500])
@@ -523,9 +588,9 @@ class ExperimentJob:
         against the first target, and the first target's result the opposite score (one per comparison)."""
         async with self.db.sessionmaker() as s:
             rows = (await s.scalars(select(ExperimentResult).where(ExperimentResult.experiment_id == exp_id))).all()
-        by_example: dict[str, dict[int, ExperimentResult]] = {}
+        by_example: dict[tuple[str, int], dict[int, ExperimentResult]] = {}  # each run of an example on its own
         for r in rows:
-            by_example.setdefault(r.example_id, {})[r.target] = r
+            by_example.setdefault((r.example_id, r.repetition), {})[r.target] = r
         added: dict[str, list[dict[str, Any]]] = {r.id: [] for r in rows}
 
         def observed(r: ExperimentResult) -> Observation:
@@ -549,7 +614,7 @@ class ExperimentJob:
             *(
                 judge(spec, ex_id, by_target[0], r)
                 for spec in specs
-                for ex_id, by_target in by_example.items()
+                for (ex_id, _), by_target in by_example.items()
                 if 0 in by_target
                 for t, r in sorted(by_target.items())
                 if t > 0
