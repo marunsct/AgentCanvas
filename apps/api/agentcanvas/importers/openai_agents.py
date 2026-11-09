@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import ast
 import builtins
+import re
 from typing import Any
 
 from agentcanvas.agentspec import ident
@@ -40,8 +41,13 @@ TOOLS_HEAD = ('"""Tools imported from OpenAI Agents SDK code."""\n\nfrom __futur
 MAX_SOURCE = 500_000  # characters of Python in one file
 
 
+_SDK_IMPORT = re.compile(r"^\s*(from\s+agents(\.classic)?\s+import|import\s+agents\b)", re.M)
+
+
 def looks_like(text: Any) -> bool:
-    return isinstance(text, str) and ("from agents import" in text or "import agents" in text) and "Agent(" in text
+    """Agents SDK code: `from agents import ...`, or `from agents.classic import ...` (where the next major release
+    of the SDK keeps today's API, beside its new native runtime)."""
+    return isinstance(text, str) and bool(_SDK_IMPORT.search(text)) and "Agent(" in text
 
 
 def _name(node: ast.AST) -> str | None:

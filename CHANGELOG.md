@@ -581,6 +581,7 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
   1.9.1 and dnspython 2.9.0.
 
 ### Added
+- The OpenAI Agents SDK importer also reads code written with `from agents.classic import ...`, where the SDK's next major release keeps today's API.
 - Framework upgrades: `make framework-versions` lists every agent framework pin with its latest release and changelog, `make framework-bump PKG= VERSION=` moves a pin everywhere it is written, Dependabot watches a generated list of the pins (one pull request per framework), and the build guide has the upgrade procedure.
 - Costs and budgets count GPT-5.6 Sol, Terra and Luna (with their price above 272K prompt tokens) and Gemini 3.8 Flash, at the providers' published prices (Gemini at its price from 2027-01-01; it is half that until then).
 - A staging or production server now warns at startup when AGENTCANVAS_KMS_KEY is empty, and the deployment guide

@@ -404,3 +404,17 @@ async def test_the_import_route_takes_agents_sdk_code_and_writes_its_tools(app, 
     assert bad.status_code == 422 and "not valid Python" in bad.json()["detail"]
     both = await api_client.post("/v1/projects/prj_default/workflows/import", json={"code": SDK_CODE, "file": {}})
     assert both.status_code == 422
+
+
+def test_agents_sdk_code_written_against_agents_classic_imports_too():
+    """The Agents SDK's next major release keeps today's API under `agents.classic` (its root package becomes a new
+    runtime). Code written that way is the same workflow."""
+    from agentcanvas.importers import import_document
+
+    classic = SDK_CODE.replace("from agents import", "from agents.classic import")
+    assert "from agents.classic import" in classic
+    kind, ir, _, _ = import_document(classic, wf_id="wf_SDK1")
+    plain_kind, plain_ir, _, _ = import_document(SDK_CODE, wf_id="wf_SDK1")
+    assert kind == plain_kind == "openai_agents"
+    shape = lambda d: sorted((n["type"], n["name"]) for n in d["nodes"])  # noqa: E731
+    assert shape(ir) == shape(plain_ir)
