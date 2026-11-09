@@ -10,7 +10,7 @@ heartbeat read, instead of every run ever made; on Postgres it is built concurre
 committed, so the run table stays readable and writable while it builds.
 
 Revision ID: 1ec6eb9f62ed
-Revises: b8e2f6a0c4d7
+Revises: fe5b2feda682
 Create Date: 2026-11-10 18:00:00
 """
 
@@ -23,7 +23,7 @@ from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
 
 revision: str = "1ec6eb9f62ed"
-down_revision: str | None = "b8e2f6a0c4d7"
+down_revision: str | None = "fe5b2feda682"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
