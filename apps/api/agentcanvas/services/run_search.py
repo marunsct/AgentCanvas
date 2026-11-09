@@ -212,9 +212,13 @@ class RunSearchService:
             total = int(await s.scalar(total_q) or 0)
             # every row with this model, not only the CANDIDATES ranked: else a big project is "stale" for good
             in_index = int(await s.scalar(rows_q.with_only_columns(func.count()).order_by(None)) or 0)
-            names = dict((await s.execute(select(WorkflowRow.id, WorkflowRow.name))).all())
+            names: dict[str, str] = {}
             started: dict[str, Any] = {}
-            if rows:
+            if rows:  # the names of the workflows found only, not every workflow of the installation
+                found_wfs = select(WorkflowRow.id, WorkflowRow.name).where(
+                    WorkflowRow.id.in_({r.workflow_id for r in rows})
+                )
+                names = dict((await s.execute(found_wfs)).tuples().all())
                 found = await s.execute(select(Run.id, Run.started_at).where(Run.id.in_([r.run_id for r in rows])))
                 started = dict(found.all())
         chunks = [

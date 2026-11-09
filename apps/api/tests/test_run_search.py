@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select, update
+from test_efficiency import statements
 from test_org_scope import act_as_b, org_b  # noqa: F401 - fixture
 from test_simulation import make_chat
 
@@ -135,6 +136,18 @@ async def test_the_index_follows_retention_and_deleting_a_conversation(app, api_
         assert await s.scalar(select(func.count()).select_from(Run)) == 1
     out = await search(api_client, "hotel in Rome")
     assert {h["thread_id"] for h in out["hits"]} <= {"th_refund"}  # the hotel and password conversations are gone
+
+
+async def test_search_reads_only_the_names_of_the_workflows_it_found(app, api_client):
+    """Not every workflow of the installation, on every search."""
+    wf = await make_chat(api_client)
+    await converse(app, api_client, wf)
+    await api_client.post(f"{P}/workflows", json={"name": "Unrelated"})
+    with statements(app) as seen:
+        out = await search(api_client, "kettle refund")
+    assert out["hits"][0]["workflow_name"] == "Chat"
+    names = [q for q in seen if "workflow.name" in q and "FROM workflow" in q]
+    assert names and all("WHERE" in q for q in names), names
 
 
 async def test_search_stays_in_the_organisation(app, api_client, org_b):  # noqa: F811
