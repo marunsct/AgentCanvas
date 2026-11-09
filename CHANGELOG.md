@@ -575,6 +575,7 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
   1.9.1 and dnspython 2.9.0.
 
 ### Added
+- Costs and budgets count GPT-5.6 Sol, Terra and Luna (with their price above 272K prompt tokens) and Gemini 3.8 Flash, at the providers' published prices (Gemini at its price from 2027-01-01; it is half that until then).
 - A staging or production server now warns at startup when AGENTCANVAS_KMS_KEY is empty, and the deployment guide
   explains how to change AGENTCANVAS_SECRET_KEY without losing project secrets.
 - GAPS.md of an export lists the workflow budget limits it does not enforce, and the editor warns about them (W026).
