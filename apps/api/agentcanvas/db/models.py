@@ -306,6 +306,8 @@ class Run(Base):
     events: Mapped[list[Any] | None] = mapped_column(Json)
     # FR-X-10: stopped by a server shutdown before it finished; the next instance continues the thread
     handover: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    # F-5 kill switch: an admin asked to stop it; its instance stops it at the next heartbeat (never handed over)
+    stop_requested: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     # S12: refreshed while the run's instance is alive; a running run without a fresh heartbeat lost its instance
     heartbeat_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
     # S13: what the deployment API caller tagged the run with (online evaluator filters, annotation rules)

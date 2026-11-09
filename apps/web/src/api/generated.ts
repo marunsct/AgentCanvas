@@ -2878,6 +2878,26 @@ export type CheckpointId1 = string | null;
  * a turn was answering on this server and has been ended; its text is kept
  */
 export type Stopped = boolean;
+/**
+ * only the runs of this deployment
+ */
+export type DeploymentId3 = string | null;
+/**
+ * why, for the audit log
+ */
+export type Reason3 = string;
+/**
+ * only the runs of this workflow (drafts and deployments)
+ */
+export type WorkflowId10 = string | null;
+/**
+ * runs that were waiting for another server to continue them
+ */
+export type Cancelled = string[];
+/**
+ * runs in flight: each stops within one heartbeat (10 s) on its server
+ */
+export type Stopping = string[];
 export type Name58 = string | null;
 /**
  * @minItems 1
@@ -2926,7 +2946,7 @@ export type CreatedAt32 = string;
 /**
  * set when the conversation came through a deployment's API
  */
-export type DeploymentId3 = string | null;
+export type DeploymentId4 = string | null;
 export type Id57 = string;
 export type LastEndedAt = string | null;
 export type LastError1 = string | null;
@@ -2937,7 +2957,7 @@ export type Status15 = string;
 export type Title9 = string | null;
 export type Tokens2 = number;
 export type UpdatedAt11 = string;
-export type WorkflowId10 = string;
+export type WorkflowId11 = string;
 export type WorkflowName2 = string | null;
 export type Items2 = ThreadOut[];
 export type NextCursor = string | null;
@@ -2972,7 +2992,7 @@ export type Tokens3 = number;
  */
 export type Runs9 = TrajectoryNode[];
 export type ThreadId14 = string;
-export type WorkflowId11 = string;
+export type WorkflowId12 = string;
 export type CreatedAt33 = string;
 export type Email4 = string;
 export type ExpiresAt1 = string | null;
@@ -3045,7 +3065,7 @@ export type SecretKey = {
 } | null;
 export type MissingSecrets = string[];
 export type CreatedAt35 = string;
-export type DeploymentId4 = string | null;
+export type DeploymentId5 = string | null;
 export type Enabled11 = boolean;
 export type Id61 = string;
 export type Kind11 = string;
@@ -3055,10 +3075,10 @@ export type Url4 = string | null;
  * what would stop this trigger's runs from working
  */
 export type Warnings = string[];
-export type DeploymentId5 = string | null;
+export type DeploymentId6 = string | null;
 export type Kind12 = "webhook" | "cron";
 export type CreatedAt36 = string;
-export type DeploymentId6 = string | null;
+export type DeploymentId7 = string | null;
 export type Enabled12 = boolean;
 export type Id62 = string;
 export type Kind13 = string;
@@ -3546,6 +3566,8 @@ export interface ApiSchemas {
   SpendingOut?: SpendingOut;
   StateEdit?: StateEdit;
   StopOut?: StopOut;
+  StopRunsIn?: StopRunsIn;
+  StopRunsOut?: StopRunsOut;
   SubgraphRequest?: SubgraphRequest;
   Surface?: Surface;
   TargetIn?: TargetIn;
@@ -7038,6 +7060,23 @@ export interface StopOut {
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "StopRunsIn".
+ */
+export interface StopRunsIn {
+  deployment_id?: DeploymentId3;
+  reason: Reason3;
+  workflow_id?: WorkflowId10;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
+ * via the `definition` "StopRunsOut".
+ */
+export interface StopRunsOut {
+  cancelled: Cancelled;
+  stopping: Stopping;
+}
+/**
+ * This interface was referenced by `ApiSchemas`'s JSON-Schema
  * via the `definition` "SubgraphRequest".
  */
 export interface SubgraphRequest {
@@ -7153,7 +7192,7 @@ export interface TextIn {
 export interface ThreadOut {
   cost_usd?: CostUsd9;
   created_at: CreatedAt32;
-  deployment_id?: DeploymentId3;
+  deployment_id?: DeploymentId4;
   id: Id57;
   last_ended_at?: LastEndedAt;
   last_error?: LastError1;
@@ -7164,7 +7203,7 @@ export interface ThreadOut {
   title: Title9;
   tokens?: Tokens2;
   updated_at: UpdatedAt11;
-  workflow_id: WorkflowId10;
+  workflow_id: WorkflowId11;
   workflow_name?: WorkflowName2;
 }
 /**
@@ -7182,7 +7221,7 @@ export interface ThreadPage {
 export interface ThreadTrajectory {
   runs: Runs9;
   thread_id: ThreadId14;
-  workflow_id: WorkflowId11;
+  workflow_id: WorkflowId12;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -7292,7 +7331,7 @@ export interface Guides {
 export interface TriggerCreated {
   config: Config7;
   created_at: CreatedAt35;
-  deployment_id: DeploymentId4;
+  deployment_id: DeploymentId5;
   enabled: Enabled11;
   id: Id61;
   kind: Kind11;
@@ -7309,7 +7348,7 @@ export interface Config7 {
  */
 export interface TriggerIn {
   config?: Config8;
-  deployment_id?: DeploymentId5;
+  deployment_id?: DeploymentId6;
   kind: Kind12;
 }
 export interface Config8 {
@@ -7322,7 +7361,7 @@ export interface Config8 {
 export interface TriggerOut {
   config: Config9;
   created_at: CreatedAt36;
-  deployment_id: DeploymentId6;
+  deployment_id: DeploymentId7;
   enabled: Enabled12;
   id: Id62;
   kind: Kind13;

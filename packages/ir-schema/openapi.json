@@ -12161,6 +12161,72 @@
         "title": "StopOut",
         "type": "object"
       },
+      "StopRunsIn": {
+        "properties": {
+          "deployment_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "only the runs of this deployment",
+            "title": "Deployment Id"
+          },
+          "reason": {
+            "description": "why, for the audit log",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "workflow_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "only the runs of this workflow (drafts and deployments)",
+            "title": "Workflow Id"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "StopRunsIn",
+        "type": "object"
+      },
+      "StopRunsOut": {
+        "properties": {
+          "cancelled": {
+            "description": "runs that were waiting for another server to continue them",
+            "items": {
+              "type": "string"
+            },
+            "title": "Cancelled",
+            "type": "array"
+          },
+          "stopping": {
+            "description": "runs in flight: each stops within one heartbeat (10 s) on its server",
+            "items": {
+              "type": "string"
+            },
+            "title": "Stopping",
+            "type": "array"
+          }
+        },
+        "required": [
+          "stopping",
+          "cancelled"
+        ],
+        "title": "StopRunsOut",
+        "type": "object"
+      },
       "SubgraphRequest": {
         "properties": {
           "name": {
@@ -22342,6 +22408,73 @@
           }
         ],
         "summary": "Replace Policy",
+        "tags": [
+          "organisation"
+        ]
+      }
+    },
+    "/v1/org/runs/stop": {
+      "post": {
+        "description": "The kill switch (admins): stop every run in flight in the organisation, or of one deployment or workflow.\nAudited with its reason. It does not refuse new runs; stop a deployment on its page for that.",
+        "operationId": "stop_all_runs_v1_org_runs_stop_post",
+        "parameters": [
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StopRunsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StopRunsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Stop All Runs",
         "tags": [
           "organisation"
         ]

@@ -33,6 +33,7 @@ from agentcanvas.errors import Conflict, Unavailable
 from agentcanvas.ir.contract import contract
 from agentcanvas.ir.models import Workflow
 from agentcanvas.log import get_logger
+from agentcanvas.runtime.runner import STOPPED_BY_ADMIN
 
 log = get_logger(__name__)
 
@@ -127,17 +128,24 @@ class HandoverJob:
         mine = set(self.runner.active())
         swept: list[str] = []
         async with self.db.sessionmaker() as s:
-            rows = (await s.execute(select(Run.id, Run.thread_id).where(*stale).limit(BATCH))).all()
-            for run_id, thread_id in rows:
+            rows = (await s.execute(select(Run.id, Run.thread_id, Run.stop_requested).where(*stale).limit(BATCH))).all()
+            for run_id, thread_id, stop in rows:
                 if run_id in mine:  # alive here; its heartbeat is just late
                     continue
+                # a run an admin asked to stop (F-5) is cancelled, not continued on another instance
+                values = (
+                    {"status": "cancelled", "error": STOPPED_BY_ADMIN, "handover": False}
+                    if stop
+                    else {"status": "interrupted", "error": ORPHANED, "handover": True}
+                )
                 res = await s.execute(
                     update(Run)
                     .where(Run.id == run_id, *stale)  # exactly one instance sweeps it
-                    .values(status="interrupted", error=ORPHANED, ended_at=datetime.now(UTC), handover=True)
+                    .values(ended_at=datetime.now(UTC), **values)
                 )
                 if res.rowcount == 1:  # type: ignore[attr-defined]
-                    await s.execute(update(Thread).where(Thread.id == thread_id).values(status="interrupted"))
+                    thread_status = "idle" if stop else "interrupted"
+                    await s.execute(update(Thread).where(Thread.id == thread_id).values(status=thread_status))
                     swept.append(run_id)
             await s.commit()
         if swept:
@@ -154,7 +162,9 @@ class HandoverJob:
         async with self.db.sessionmaker() as s:
             rows = (
                 await s.execute(
-                    select(Run.id, Run.thread_id, Run.workflow_version_id).where(Run.handover.is_(True)).limit(BATCH)
+                    select(Run.id, Run.thread_id, Run.workflow_version_id)
+                    .where(Run.handover.is_(True), Run.stop_requested.is_(False))
+                    .limit(BATCH)
                 )
             ).all()
         for run_id, thread_id, version_id in rows:

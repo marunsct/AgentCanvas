@@ -15,6 +15,7 @@ import { ConnectionsSettings } from "./ConnectionsSettings";
 import { ModelDefaults } from "./ModelDefaults";
 import { OrgLimits } from "./OrgLimits";
 import { OrgSettings } from "./OrgSettings";
+import { StopRuns } from "./StopRuns";
 import { KnowledgeSettings } from "./KnowledgeSettings";
 import { ProjectSettings } from "./ProjectSettings";
 import { SandboxSettings } from "./SandboxSettings";
@@ -37,7 +38,7 @@ export const SECTIONS: Section[] = [
   { id: "sandbox", group: "Project", label: "Sandbox", render: () => <SandboxSettings /> },
   { id: "knowledge", group: "Project", label: "Knowledge", render: () => <KnowledgeSettings /> },
   { id: "observability", group: "Project", label: "Observability", render: () => <TraceExportSettings /> },
-  { id: "organisation", group: "Organisation", label: "General", render: () => <><OrgSettings /><OrgLimits /></> },
+  { id: "organisation", group: "Organisation", label: "General", render: () => <><OrgSettings /><OrgLimits /><StopRuns /></> },
   { id: "members", group: "Organisation", label: "Members", render: () => <MembersPage /> },
   { id: "policies", group: "Organisation", label: "Policies", render: () => <PoliciesPage /> },
   { id: "spending", group: "Organisation", label: "Spending", read: "admin", render: () => <SpendingSettings /> },

@@ -12,6 +12,15 @@ Merging, deleting branches and anything outward-facing stay with you: work is de
 
 ## 2026-11-09
 
+### The kill switch stops runs in flight; run priority waits for a run queue
+**Stop all runs** marks runs in the database and each server stops its own at its next heartbeat (10 s), because a run
+lives on the server that started it. It does not also refuse new runs: stopping deployments already exists, and a
+switch that blocks everything until someone finds the "off" again is a second outage. Its reason is required and
+audited. **Run priority is not built**: AgentCanvas starts every run at once (there is no queue or concurrency limit),
+so a priority would change nothing until there is admission control. That is its own design (a per-organisation
+concurrency limit, a queue shared by every server, fairness between projects); I would rather do it properly than add
+a field that does nothing. *Reverse:* migration `f4a8c2e6b0d3` and `services/kill_switch.py`.
+
 ### Cards are cached for five minutes; the Server Card's name comes from the public host
 A2A 1.0 (section 8.6) and the MCP Server Card rules ask for `Cache-Control` and an `ETag`; the Server Card example
 uses an hour. I chose 300 seconds so a republished or stopped deployment's card is not stale for long. The Server
