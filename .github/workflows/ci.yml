@@ -306,7 +306,7 @@ jobs:
         run: |
           for d in "$EXPORTS"/local/*/*; do [ -f "$d/Makefile" ] || continue; (cd "$d" && make -s test) || exit 1; done  # S28: make install sets up parts
           for d in "$EXPORTS"/openai_agents/*/* "$EXPORTS"/crewai/*/* "$EXPORTS"/google_adk/*/* "$EXPORTS"/pydantic_ai/*/* "$EXPORTS"/agno/*/* "$EXPORTS"/microsoft_agent_framework/*/* "$EXPORTS"/strands/*/* "$EXPORTS"/llamaindex/*/*; do (cd "$d" && uv sync -q && uv run pytest -q) || exit 1; done
-          for d in "$EXPORTS"/mastra/*/*; do (cd "$d" && npm install -s --no-audit --no-fund && npm test) || exit 1; done  # S36: TypeScript
+          for d in "$EXPORTS"/mastra/*/*; do (cd "$d" && npm ci -s --no-audit --no-fund && npm test) || exit 1; done  # S36: TypeScript
       - name: Docker Compose, for real (support triage; DEMO_MODE, no model keys)
         working-directory: exports/local/ticket_triage/support-triage
         run: |

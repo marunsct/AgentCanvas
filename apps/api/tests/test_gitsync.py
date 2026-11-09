@@ -534,7 +534,7 @@ def test_a_mastra_export_with_python_tools_installs_their_requirements():
     files = ["package.json", "src/workflow.ts", "python/sidecar.py", "python/requirements.txt"]
     steps = yaml.safe_load(gitsync.ci_file(link, "main", "X", files))["jobs"]["export-tests"]["steps"]
     runs = [s.get("run") for s in steps if "run" in s]
-    assert runs == ["pip install -r python/requirements.txt", "npm install --no-audit --no-fund", "npm test"]
+    assert runs == ["pip install -r python/requirements.txt", "npm ci --no-audit --no-fund", "npm test"]
 
 
 def test_the_ci_file_is_valid_yaml_for_any_folder():

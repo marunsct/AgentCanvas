@@ -419,7 +419,7 @@ parts: pauses for people, and tool calls that wait for approval (the agent's sus
 Node.js {codegen.NODE_VERSION} or later runs the TypeScript as it is: there is no build step.
 
 ```bash
-npm install
+npm ci                  # installs the exact package versions in package-lock.json, the ones AgentCanvas tested
 cp .env.example .env    # then fill in your keys, and `set -a; . ./.env; set +a`
 node src/main.ts '{{"input": {{}}}}'
 ```
@@ -484,9 +484,14 @@ def package(
         "scripts": {"start": "node src/main.ts", "test": "node --test tests/workflow.test.ts"},
         "dependencies": dict(sorted(codegen.PACKAGES.items())),
     }
+    lock = json.loads((API_ROOT / "adapters" / "mastra" / "package-lock.json").read_text())  # what the server runs
+    named = {"name": manifest["name"], "version": version}
+    lock = {**named, **{k: v for k, v in lock.items() if k not in named}}
+    lock["packages"][""] = {**named, **{k: v for k, v in lock["packages"][""].items() if k not in named}}
     host = HOST.replace("__MODELS__", json.dumps(models, indent=2)).replace("__TOOLS__", json.dumps(tools, indent=2))
     files: dict[str, str | bytes] = {
         "package.json": json.dumps(manifest, indent=2) + "\n",
+        "package-lock.json": json.dumps(lock, indent=2) + "\n",
         "tsconfig.json": json.dumps(TSCONFIG, indent=2) + "\n",
         "GAPS.md": gaps_md(wf, "a Mastra flow"),
         "README.md": _readme(wf, pkg, models, python),

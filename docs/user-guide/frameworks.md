@@ -372,7 +372,8 @@ reducers). What is Mastra's own:
 - **Not yet:** the flow is not written as Mastra's own `createWorkflow` chain. Saved history, state editing, replay
   and breakpoints are missing here too.
 
-**Export** gives a TypeScript project: `npm install`, then `node src/main.ts '{"input": {...}}'` runs it (a pause is
+**Export** gives a TypeScript project with a `package-lock.json`: `npm ci` installs exactly the package versions
+AgentCanvas tested, then `node src/main.ts '{"input": {...}}'` runs it (a pause is
 saved in `.runs/` and continued with `{"thread_id": ..., "resume": ...}`) and `npm test` replays the saved test cases
 with a scripted model. Node.js runs the TypeScript as it is, with no build step. When the workflow has tools, Python
 steps or knowledge bases, a small Python helper in `python/` runs them with `python3`.

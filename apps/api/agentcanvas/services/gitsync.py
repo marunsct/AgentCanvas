@@ -92,7 +92,7 @@ def ci_steps(files: Iterable[str] = ()) -> list[str]:
         if "python/requirements.txt" in found:  # tools, code steps, knowledge search: python/sidecar.py
             steps += ["- uses: actions/setup-python@v5\n        with:\n          python-version: \"3.12\"",
                       "- run: pip install -r python/requirements.txt"]  # fmt: skip
-        return [*steps, "- run: npm install --no-audit --no-fund", "- run: npm test"]
+        return [*steps, "- run: npm ci --no-audit --no-fund", "- run: npm test"]
     return ["- uses: astral-sh/setup-uv@v5", "- run: uv sync", "- run: uv run pytest -q"]
 
 
