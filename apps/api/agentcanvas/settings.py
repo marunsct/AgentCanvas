@@ -105,7 +105,10 @@ class Settings(BaseSettings):
     # an event handler's dedup values (`@on(dedup_key=...)`) are kept this many days: the same value delivered again
     # later runs the handler again. Never longer than the organisation's conversation retention; 0 = only that
     event_dedup_days: int = Field(default=30, ge=0)
-    # long-term memory's semantic index "builtin" or "<provider>:<model>"; empty (default): by words.
+    # a decision nobody gave for this many days expires: its run is cancelled and the conversation then follows the
+    # conversation retention like any other. 0 = approvals wait forever (and keep their conversations forever)
+    approval_expiry_days: int = Field(default=90, ge=0)
+    # long-term memory's semantic index : "builtin" or "<provider>:<model>"; empty (default): by words.
     # One size of vector per server (the pgvector column), so one model for every project; a model other than the
     # built-in or a well-known hosted one needs its size in `memory_embedding_dims` (0: measured at startup)
     memory_embedding: str = ""

@@ -27,7 +27,10 @@ and the Run tab shows **Approval needed** with the value under review.
 ![A run waiting for approval](img/approval.png)
 
 - **Approve** or **Reject**. Approvals can also edit the value before approving.
-- Paused runs are durable: you can close the browser or restart the server and resume later.
+- Paused runs are durable: you can close the browser or restart the server and resume later. A decision nobody
+  gives within 90 days (the operator's `AGENTCANVAS_APPROVAL_EXPIRY_DAYS`) expires: the run is cancelled with
+  *the approval expired*, the item leaves the Inbox, and the conversation is then deleted with the others once the
+  organisation's retention has passed.
 - The **Inbox** (top bar) lists every pending decision across all workflows you can see, so reviewers don't need
   to open the editor. Reviewers (and above) can answer.
 

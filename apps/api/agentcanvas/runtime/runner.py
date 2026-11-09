@@ -607,6 +607,19 @@ class Runner:
         if resume.interrupt_id:
             pending = pending.where(InterruptTask.id == resume.interrupt_id)
         ids = list((await s.scalars(pending)).all())
+        if not ids:  # the question expired unanswered (retention.py): its run was cancelled and must not go on
+            expired = select(InterruptTask.id).where(
+                InterruptTask.thread_id == thread_id, InterruptTask.status == "expired"
+            )
+            if resume.interrupt_id:
+                expired = expired.where(InterruptTask.id == resume.interrupt_id)
+            else:  # what the conversation's last run asked (not this new one): an older expiry does not stop a
+                # later breakpoint
+                ended = (Run.thread_id == thread_id, Run.status != "running")
+                last = select(Run.id).where(*ended).order_by(Run.id.desc()).limit(1)
+                expired = expired.where(InterruptTask.run_id == last.scalar_subquery())
+            if await s.scalar(expired.limit(1)):
+                raise Conflict("this approval expired: nobody answered it in time, and its run was cancelled")
         q = update(InterruptTask).where(InterruptTask.id.in_(ids), InterruptTask.status == "pending")
         decision = resume.value if isinstance(resume.value, dict) else {"value": resume.value}
         res = await s.execute(

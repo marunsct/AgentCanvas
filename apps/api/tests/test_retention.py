@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy import func, select, update
 from test_publish import make_greeter
+from test_runs_v1 import events, triage_api  # noqa: F401 - a fixture
 
 from agentcanvas.db.models import Organization, Run, Thread
 
@@ -185,3 +186,42 @@ async def test_event_payloads_and_handler_dedup_values_expire(app, api_client):
     await job.tick(now + timedelta(days=400))
     async with app.state.db.sessionmaker() as s:
         assert list((await s.scalars(select(EventLog.id))).all()) == ["evt_1"]
+
+
+async def test_an_approval_nobody_answers_expires_and_its_conversation_then_follows_retention(
+    app,
+    triage_api,  # noqa: F811 - the fixture
+):
+    """A conversation waiting for a person is kept, but not forever: its approval expires after
+    AGENTCANVAS_APPROVAL_EXPIRY_DAYS (90), the run is cancelled, and retention then deletes it like any other."""
+    from agentcanvas.db.models import InterruptTask
+
+    api, wf = triage_api, triage_api.wf_id
+    for thread_id in ("th_low_abandoned", "th_low_fresh"):
+        r = await api.post(f"/v1/workflows/{wf}/runs/stream", json={"input": {"ticket": "?"}, "thread_id": thread_id})
+        assert events(r.text)[-1]["status"] == "interrupted"
+    await age(app, "th_low_abandoned", 100)
+    async with app.state.db.sessionmaker() as s:
+        await s.execute(
+            update(InterruptTask)
+            .where(InterruptTask.thread_id == "th_low_abandoned")
+            .values(created_at=datetime.now(UTC) - timedelta(days=100))
+        )
+        await s.commit()
+    job = app.state.retention
+    assert job.server.approval_expiry_days == 90
+
+    assert await job.tick(datetime.now(UTC)) == []  # nothing deleted yet: the expiry starts its retention
+    [expired] = (await api.get("/v1/inbox", params={"status": "expired"})).json()
+    assert expired["thread_id"] == "th_low_abandoned"
+    assert [x["thread_id"] for x in (await api.get("/v1/inbox")).json()] == ["th_low_fresh"]
+    assert (await api.get("/v1/threads/th_low_abandoned")).json()["status"] == "idle"
+    [run] = (await api.get("/v1/threads/th_low_abandoned/runs")).json()
+    assert run["status"] == "cancelled" and "expired" in run["error"] and run["ended_at"]
+    late = await api.post(f"/v1/inbox/{expired['id']}/decision", json={"value": {"decisions": [{"type": "approve"}]}})
+    assert late.status_code == 409 and "expired" in late.text
+    late = await api.post("/v1/threads/th_low_abandoned/resume", json={"value": {"decisions": [{"type": "approve"}]}})
+    assert late.status_code == 409 and "expired" in late.text  # nor by the conversation: its run was cancelled
+    assert (await api.get("/v1/threads/th_low_fresh")).json()["status"] == "interrupted"
+
+    assert "th_low_abandoned" in await job.tick(datetime.now(UTC) + timedelta(days=91))

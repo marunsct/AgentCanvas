@@ -111,6 +111,7 @@ async def server_settings(request: Request) -> list[ServerSetting]:
         ),
         ("Retention", "Audit log", _days(s.audit_retention_days), "AGENTCANVAS_AUDIT_RETENTION_DAYS"),
         ("Retention", "Long-term memories", _days(s.memory_retention_days), "AGENTCANVAS_MEMORY_RETENTION_DAYS"),
+        ("Retention", "Undecided approvals", _days(s.approval_expiry_days), "AGENTCANVAS_APPROVAL_EXPIRY_DAYS"),
         ("Observability", "Prometheus metrics", "on" if s.metrics_enabled else "off", "AGENTCANVAS_METRICS_ENABLED"),
     ]
     return [ServerSetting(group=g, label=label, value=v, env=e) for g, label, v, e in rows]

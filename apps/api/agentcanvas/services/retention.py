@@ -3,7 +3,9 @@
 A conversation (thread) is deleted, with its checkpoints, runs and decisions, once it has been inactive for
 longer than its organisation keeps conversations: `Organization.retention_days`, or `AGENTCANVAS_RETENTION_DAYS`
 (default 90) when the organisation sets none; 0 keeps them forever. Conversations that are running or waiting
-for a person (interrupted) are kept whatever their age.
+for a person (interrupted) are kept whatever their age, but a decision nobody gives for
+`AGENTCANVAS_APPROVAL_EXPIRY_DAYS` (default 90) expires: the Inbox item is marked expired, the run that asked is
+cancelled, and the conversation becomes idle, so retention deletes it once it has been inactive long enough.
 
 The same job deletes audit-log rows older than `AGENTCANVAS_AUDIT_RETENTION_DAYS` (default 400) and, when
 `AGENTCANVAS_MEMORY_RETENTION_DAYS` is set (off by default), long-term memories not updated for that long (S12).
@@ -25,11 +27,21 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
 from prometheus_client import Counter
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 
 from agentcanvas import observability
 from agentcanvas.adapters.spi import MemoryAbility, supports
-from agentcanvas.db.models import AuditLog, EventDedup, EventLog, Organization, Project, Thread, WorkflowRow
+from agentcanvas.db.models import (
+    AuditLog,
+    EventDedup,
+    EventLog,
+    InterruptTask,
+    Organization,
+    Project,
+    Run,
+    Thread,
+    WorkflowRow,
+)
 from agentcanvas.db.repositories import delete_thread_rows
 from agentcanvas.log import get_logger
 from agentcanvas.services import org_settings
@@ -40,6 +52,7 @@ log = get_logger(__name__)
 
 DELETED = Counter("agentcanvas_threads_expired_total", "Conversations deleted by the retention job")
 EVENTS_DELETED = Counter("agentcanvas_events_expired_total", "Event-log rows deleted by the retention job")
+APPROVALS_EXPIRED = Counter("agentcanvas_approvals_expired_total", "Inbox items nobody decided in time")
 BATCH = 500
 BUDGET_S = 300.0  # the most a tick spends deleting conversations; the rest is the next tick's
 
@@ -117,6 +130,7 @@ class RetentionJob:
 
     async def tick(self, now: datetime) -> list[str]:
         """Delete the conversations that expired by `now`; returns their ids."""
+        await self.expire_approvals(now)
         deleted: list[str] = []
         until = time.monotonic() + BUDGET_S
         async with self.db.sessionmaker() as s:
@@ -149,6 +163,69 @@ class RetentionJob:
         await self.expire_audit(now)
         await self.expire_memory(now, [org_id for org_id, _ in orgs])
         return deleted
+
+    async def expire_approvals(self, now: datetime) -> int:
+        """Mark the Inbox items nobody decided within the approval expiry as expired. A conversation left with
+        nothing to wait for is no longer waiting: the run that asked is cancelled and the conversation becomes idle,
+        so it follows conversation retention from now on. Returns the items expired."""
+        days = self.server.approval_expiry_days
+        if days <= 0:
+            return 0
+        cutoff, until, n = now - timedelta(days=days), time.monotonic() + BUDGET_S, 0
+        error = f"no one answered within {days} days: the approval expired"
+        while time.monotonic() < until:
+            busy = list(self.runner.active_by_thread)  # being answered here right now
+            async with self.db.sessionmaker() as s:
+                rows = (
+                    await s.execute(
+                        select(InterruptTask.id, InterruptTask.thread_id, InterruptTask.run_id)
+                        .where(
+                            InterruptTask.status == "pending",
+                            InterruptTask.created_at < cutoff,
+                            InterruptTask.thread_id.not_in(busy),
+                        )
+                        .order_by(InterruptTask.created_at)
+                        .limit(BATCH)
+                    )
+                ).all()
+                res = await s.execute(
+                    update(InterruptTask)  # a decision that won the race keeps its item
+                    .where(InterruptTask.id.in_([r.id for r in rows]), InterruptTask.status == "pending")
+                    .values(status="expired")
+                )
+                runs: dict[str, set[str]] = {}
+                for r in rows:
+                    runs.setdefault(r.thread_id, set()).add(r.run_id)
+                for thread_id, run_ids in runs.items():
+                    waiting = await s.scalar(
+                        select(InterruptTask.id)
+                        .where(InterruptTask.thread_id == thread_id, InterruptTask.status == "pending")
+                        .limit(1)
+                    )
+                    handed = await s.scalar(  # a run a restart paused continues on its own: not abandoned
+                        select(Run.id)
+                        .where(Run.thread_id == thread_id, Run.status == "interrupted", Run.handover.is_(True))
+                        .limit(1)
+                    )
+                    if waiting or handed:
+                        continue
+                    await s.execute(
+                        update(Run)
+                        .where(Run.id.in_(run_ids), Run.status == "interrupted")
+                        .values(status="cancelled", error=error, ended_at=now)
+                    )
+                    waits = (Thread.id == thread_id, Thread.status == "interrupted")
+                    await s.execute(update(Thread).where(*waits).values(status="idle"))  # updated now: retention
+                    # counts its inactivity from the expiry
+                await s.commit()
+            gone = res.rowcount or 0  # type: ignore[attr-defined]
+            n += gone
+            if gone:
+                log.info("retention.approvals_expired", items=gone, days=days)
+            if len(rows) < BATCH:
+                break
+        APPROVALS_EXPIRED.inc(n)
+        return n
 
     async def expire_events(self, now: datetime, orgs: list[tuple[str, int]]) -> int:
         """Each organisation's event log older than its conversation retention, and its handlers' dedup values older
