@@ -19,10 +19,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.audit import note, payload_hash
 from agentcanvas.api.deps import CurrentUser, current_user, get_session
+from agentcanvas.api.urls import api_url
 from agentcanvas.api.v1.files import FileOut, file_out, file_service, read_upload
 from agentcanvas.api.v1.gates import gate_for
 from agentcanvas.api.v1.gitsync import GitSyncOut, sync_after_version
-from agentcanvas.api.v1.runs import SSE_HEADERS, _context, _sse
+from agentcanvas.api.v1.runs import SSE_HEADERS, _context, _sse, stop_run
 from agentcanvas.api.v1.versions import workspace_commit
 from agentcanvas.api.v1.workflows import service
 from agentcanvas.db.models import (
@@ -47,7 +48,7 @@ from agentcanvas.services.deployments import Check, DeploymentService
 from agentcanvas.services.disclosure import AI_HEADER, GeneratedBy, generated_by, marked
 from agentcanvas.services.projects import PROJECT_OF
 from agentcanvas.services.redeploy import thread_version
-from agentcanvas.services.run_results import RunResult, from_handle
+from agentcanvas.services.run_results import ResultRepo, RunResult, from_handle
 from agentcanvas.services.testcases import TestCaseService
 from agentcanvas.services.versions import VersionService
 from agentcanvas.services.workflows import WorkflowService
@@ -440,7 +441,8 @@ async def api_run_wait(
     authorization: str | None = Header(None),
     session: AsyncSession = Depends(get_session),
 ) -> ApiResult:
-    """Run the published version and return its final state (or its pending interrupts)."""
+    """Run the published version and return its final state (or its pending interrupts). After 5 minutes it answers
+    `status: running`; the result is then read with `GET .../runs/{run_id}`."""
     h = await _start(request, session, dep_id, body, authorization)
     response.headers.update(AI_HEADER)
     await session.close()  # no connection held while the run works
@@ -517,6 +519,57 @@ async def _key_holder(
     """The deployment whose key the caller holds; a dependency, so a request without a key is refused (401) before
     its body is read."""
     return (await _caller(request, session, dep_id, authorization))[0]
+
+
+@public_router.post("/deployments/{dep_id}/runs", response_model=ApiResult, status_code=202)
+async def api_run_start(
+    dep_id: str,
+    body: ApiRunIn,
+    request: Request,
+    response: Response,
+    authorization: str | None = Header(None),
+    session: AsyncSession = Depends(get_session),
+) -> ApiResult:
+    """Start a run of the published version and answer at once (202, `status: running`): read its result later with
+    `GET .../runs/{run_id}` (its address is in `Location`), from any server."""
+    h = await _start(request, session, dep_id, body, authorization)
+    response.headers["Location"] = api_url(request, "api_run_get", dep_id=dep_id, run_id=h.run_id)
+    return ApiResult(run_id=h.run_id, thread_id=h.thread_id, status="running")
+
+
+@public_router.get("/deployments/{dep_id}/runs/{run_id}", response_model=ApiResult, name="api_run_get")
+async def api_run_get(
+    run_id: str,
+    request: Request,
+    dep: Deployment = Depends(_key_holder),
+    session: AsyncSession = Depends(get_session),
+) -> ApiResult:
+    """A run of this deployment: `running` while it works (or waits for a run slot), then its output, the pauses it
+    waits for, or its error. Any server answers; a run another deployment made is not found."""
+    found = await ResultRepo(session, request.app.state.runner).of(run_id, dep.id)
+    if found is None:
+        raise NotFound(f"run '{run_id}' not found")
+    return api_result(found)
+
+
+class CancelOut(BaseModel):
+    cancelled: bool = Field(description="the run was stopped, or will be")
+    pending: bool = Field(description="it runs on another server, which stops it within a few seconds")
+
+
+@public_router.post("/deployments/{dep_id}/runs/{run_id}/cancel", response_model=CancelOut, status_code=202)
+async def api_run_cancel(
+    run_id: str,
+    request: Request,
+    dep: Deployment = Depends(_key_holder),
+    session: AsyncSession = Depends(get_session),
+) -> CancelOut:
+    """Stop a run of this deployment, wherever it runs. A run that already ended answers `cancelled: false`."""
+    found = await ResultRepo(session, request.app.state.runner).of(run_id, dep.id)
+    if found is None:
+        raise NotFound(f"run '{run_id}' not found")
+    # a run a restart stopped continues as another run: that one is stopped
+    return CancelOut(**await stop_run(session, request.app.state.runner, found.run_id))
 
 
 @public_router.post("/deployments/{dep_id}/runs/{run_id}/feedback", status_code=204)

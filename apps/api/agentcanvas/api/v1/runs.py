@@ -394,6 +394,11 @@ async def cancel_run(
     """Stop a run. One running on this instance stops now. Requests are spread over the replicas, so the run may be
     running on another one: it is marked in the database and that instance stops it at its next heartbeat
     (`pending`, within `AGENTCANVAS_HANDOVER_INTERVAL_S`)."""
+    return await stop_run(session, r, run_id)
+
+
+async def stop_run(session: AsyncSession, r: Runner, run_id: str) -> dict[str, Any]:
+    """Stop a run wherever it runs (see `cancel_run`): {cancelled, pending}."""
     if await r.cancel(run_id):
         return {"cancelled": True, "pending": False}
     if (h := r.handles.get(run_id)) is not None and not h.done.is_set():  # here, saving its outcome: let it
