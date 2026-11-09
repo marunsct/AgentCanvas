@@ -1,0 +1,236 @@
+{
+ "name": "Research Translation Loop",
+ "description": "Langflow 1.13 starter project (trimmed): a Loop over arXiv papers.",
+ "data": {
+  "nodes": [
+   {
+    "id": "ArXivComponent-zGqWh",
+    "type": "genericNode",
+    "position": {
+     "x": 81.59312530546094,
+     "y": 3.9397854556273906
+    },
+    "data": {
+     "id": "ArXivComponent-zGqWh",
+     "type": "ArXivComponent",
+     "node": {
+      "display_name": "arXiv",
+      "template": {
+       "search_query": {
+        "value": ""
+       }
+      }
+     }
+    }
+   },
+   {
+    "id": "ChatOutput-scvYG",
+    "type": "genericNode",
+    "position": {
+     "x": 1161.842067639501,
+     "y": 380.6300719873473
+    },
+    "data": {
+     "id": "ChatOutput-scvYG",
+     "type": "ChatOutput",
+     "node": {
+      "display_name": "Chat Output",
+      "template": {
+       "input_value": {
+        "value": ""
+       }
+      }
+     }
+    }
+   },
+   {
+    "id": "ChatInput-MBlfD",
+    "type": "genericNode",
+    "position": {
+     "x": -303.21079570415833,
+     "y": 107.75353484470551
+    },
+    "data": {
+     "id": "ChatInput-MBlfD",
+     "type": "ChatInput",
+     "node": {
+      "display_name": "Chat Input",
+      "template": {}
+     }
+    }
+   },
+   {
+    "id": "LanguageModelComponent-ps5yd",
+    "type": "genericNode",
+    "position": {
+     "x": 1630.638479427766,
+     "y": 116.0160835115366
+    },
+    "data": {
+     "id": "LanguageModelComponent-ps5yd",
+     "type": "LanguageModelComponent",
+     "node": {
+      "display_name": "Language Model",
+      "template": {
+       "input_value": {
+        "value": ""
+       },
+       "model": {
+        "type": "model",
+        "value": [
+         {
+          "name": "gpt-5.5",
+          "provider": "OpenAI"
+         }
+        ]
+       },
+       "temperature": {
+        "value": 0.1
+       }
+      }
+     }
+    }
+   },
+   {
+    "id": "LoopComponent-E7Ur0",
+    "type": "genericNode",
+    "position": {
+     "x": 581.346082615804,
+     "y": 105.19270617605812
+    },
+    "data": {
+     "id": "LoopComponent-E7Ur0",
+     "type": "LoopComponent",
+     "node": {
+      "display_name": "Loop",
+      "template": {
+       "data": {
+        "value": ""
+       }
+      }
+     }
+    }
+   },
+   {
+    "id": "ParserComponent-V2o48",
+    "type": "genericNode",
+    "position": {
+     "x": 1102.2949192976482,
+     "y": -80.12506181353082
+    },
+    "data": {
+     "id": "ParserComponent-V2o48",
+     "type": "ParserComponent",
+     "node": {
+      "display_name": "Parser",
+      "template": {
+       "input_data": {
+        "value": ""
+       },
+       "pattern": {
+        "value": "Title: {title}\nSummary: {summary}"
+       }
+      }
+     }
+    }
+   }
+  ],
+  "edges": [
+   {
+    "source": "ChatInput-MBlfD",
+    "target": "ArXivComponent-zGqWh",
+    "data": {
+     "sourceHandle": {
+      "dataType": "ChatInput",
+      "id": "ChatInput-MBlfD",
+      "name": "message"
+     },
+     "targetHandle": {
+      "fieldName": "search_query",
+      "id": "ArXivComponent-zGqWh",
+      "type": "str"
+     }
+    }
+   },
+   {
+    "source": "LoopComponent-E7Ur0",
+    "target": "ParserComponent-V2o48",
+    "data": {
+     "sourceHandle": {
+      "dataType": "LoopComponent",
+      "id": "LoopComponent-E7Ur0",
+      "name": "item"
+     },
+     "targetHandle": {
+      "fieldName": "input_data",
+      "id": "ParserComponent-V2o48",
+      "type": "other"
+     }
+    }
+   },
+   {
+    "source": "ParserComponent-V2o48",
+    "target": "LanguageModelComponent-ps5yd",
+    "data": {
+     "sourceHandle": {
+      "dataType": "ParserComponent",
+      "id": "ParserComponent-V2o48",
+      "name": "parsed_text"
+     },
+     "targetHandle": {
+      "fieldName": "input_value",
+      "id": "LanguageModelComponent-ps5yd",
+      "type": "str"
+     }
+    }
+   },
+   {
+    "source": "LanguageModelComponent-ps5yd",
+    "target": "LoopComponent-E7Ur0",
+    "data": {
+     "sourceHandle": {
+      "dataType": "LanguageModelComponent",
+      "id": "LanguageModelComponent-ps5yd",
+      "name": "text_output"
+     },
+     "targetHandle": {
+      "id": "LoopComponent-E7Ur0",
+      "name": "item"
+     }
+    }
+   },
+   {
+    "source": "ArXivComponent-zGqWh",
+    "target": "LoopComponent-E7Ur0",
+    "data": {
+     "sourceHandle": {
+      "dataType": "ArXivComponent",
+      "id": "ArXivComponent-zGqWh",
+      "name": "dataframe"
+     },
+     "targetHandle": {
+      "fieldName": "data",
+      "id": "LoopComponent-E7Ur0",
+      "type": "other"
+     }
+    }
+   },
+   {
+    "source": "LoopComponent-E7Ur0",
+    "target": "ChatOutput-scvYG",
+    "data": {
+     "sourceHandle": {
+      "dataType": "LoopComponent",
+      "id": "LoopComponent-E7Ur0",
+      "name": "done"
+     },
+     "targetHandle": {
+      "fieldName": "input_value",
+      "id": "ChatOutput-scvYG",
+      "type": "other"
+     }
+    }
+   }
+  ]
+ }
+}

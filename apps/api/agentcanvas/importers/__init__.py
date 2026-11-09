@@ -300,7 +300,7 @@ def model_id(provider: str, name: Any, report: Builder | None = None) -> str:
     if not model:
         model = DEFAULT_MODELS.get(pid, "model")
         if report is not None:
-            report.note(f"A {provider} model had no model name; it uses {pid}:{model}. Pick the one you want.")
+            report.note(f"A model from {provider} had no model name; it uses {pid}:{model}. Pick the one you want.")
     return f"{pid}:{model}"
 
 

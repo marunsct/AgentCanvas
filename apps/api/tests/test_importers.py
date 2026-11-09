@@ -118,6 +118,41 @@ def test_flowise_agentflow():
     assert any("customFunctionAgentflow" in r and "placeholder" in r for r in report)
 
 
+def test_langflow_1_13_loop_imports_without_its_loop_back():
+    """Langflow 1.13's Research Translation Loop starter: the model reads a parser listed after it in the file (that
+    failed to import), its model is the 1.13 model selector, and the loop body hands items back to the Loop."""
+    _, wf, report, _ = _imported("langflow_loop")
+    nodes = {n.name: n for n in wf.nodes}
+    assert nodes["language_model"].type == "core.llm"
+    assert nodes["language_model"].config["prompt"] == "{{ state.parser_result }}"
+    (model,) = [r for r in wf.resources if r.type == "model.chat"]
+    assert model.config["model"] == "openai:gpt-5.5"
+    assert not [n for n in wf.nodes if n.type == "core.join"]  # no wait for a step that waits for it
+    assert ("language_model", None, "END") in _flows(wf)
+    assert "loop_result" in {c.name for c in wf.state.channels if c.io in ("out", "inout")}  # Chat Output shows it
+    text = "\n".join(report)
+    assert "loop back from 'Language Model' into 'Loop' was left out" in text
+    assert "placeholder to replace with a Repeat for each item step" in text
+    assert "not a step" not in text and "had no model name" not in text
+
+
+def test_langflow_1_13_agent_model_selector():
+    doc = _load("langflow_agent")
+    agent = next(n for n in doc["data"]["nodes"] if n["data"]["type"] == "Agent")
+    template = agent["data"]["node"]["template"]
+    for old in ("agent_llm", "model_name"):
+        template.pop(old, None)
+    template["model"] = {"type": "model", "value": [{"name": "claude-sonnet-5-5", "provider": "Anthropic"}]}
+    doc["data"]["edges"] = [
+        e
+        for e in doc["data"]["edges"]
+        if e["target"] != agent["id"] or e["data"]["targetHandle"].get("fieldName") not in ("agent_llm", "llm", "model")
+    ]
+    _, ir, _, _ = import_document(doc, wf_id="wf_new")
+    models = [r["config"]["model"] for r in ir["resources"] if r["type"] == "model.chat"]
+    assert models == ["anthropic:claude-sonnet-5-5"]
+
+
 def test_n8n_ai_agent():
     _, wf, report, _ = _imported("n8n_ai_agent")
     (agent,) = wf.nodes
