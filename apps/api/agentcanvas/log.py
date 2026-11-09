@@ -3,21 +3,27 @@
 from __future__ import annotations
 
 import logging
+import sys
 from collections.abc import MutableMapping
 from typing import Any
 
 import structlog
 
 
+class _JsonLines(logging.StreamHandler):
+    """The handler `configure_logging(json=True)` puts on the root logger (found again by its class)."""
+
+
 def configure_logging(json: bool = False, level: int = logging.INFO) -> None:
     from agentcanvas.observability import add_trace_ids
 
-    processors: list[structlog.types.Processor] = [
+    shared: list[structlog.types.Processor] = [
         structlog.contextvars.merge_contextvars,
         add_trace_ids,
         structlog.processors.add_log_level,
         structlog.processors.TimeStamper(fmt="iso", utc=True),
     ]
+    processors = shared[:]
     if json:  # JSON lines carry the traceback as text (the console renderer formats it itself)
         processors.append(structlog.processors.format_exc_info)
     processors.append(hide_secret_values)
@@ -27,6 +33,29 @@ def configure_logging(json: bool = False, level: int = logging.INFO) -> None:
         wrapper_class=structlog.make_filtering_bound_logger(level),
         cache_logger_on_first_use=True,
     )
+    root = logging.getLogger()
+    root.handlers = [h for h in root.handlers if not isinstance(h, _JsonLines)]
+    if not json:
+        return
+    # uvicorn (access lines, a crash outside the app) and libraries log through the standard library: without this
+    # their lines are plain text, without the request id, and a traceback there keeps secrets in clear. Levels stay
+    # as they are (uvicorn's own at --log-level, other libraries at warning).
+    handler = _JsonLines(sys.stdout)
+    handler.setFormatter(
+        structlog.stdlib.ProcessorFormatter(
+            foreign_pre_chain=[*shared, structlog.stdlib.add_logger_name],
+            processors=[
+                structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+                structlog.processors.format_exc_info,
+                hide_secret_values,
+                structlog.processors.JSONRenderer(),
+            ],
+        )
+    )
+    root.addHandler(handler)
+    for name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+        server = logging.getLogger(name)
+        server.handlers, server.propagate = [], True
 
 
 def hide_secret_values(_logger: Any, _method: str, event: MutableMapping[str, Any]) -> MutableMapping[str, Any]:

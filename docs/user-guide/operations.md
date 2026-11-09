@@ -72,7 +72,7 @@ The settings to decide first are in [Deploy and operate](deploy.md#essential-set
 
 ## Observability
 
-- **Logs:** JSON (structlog) to stdout in the images; ship with your platform's collector. Fields: `request_id`, `workflow_id`, `thread_id`, `run_id`, `level`, `event`, and `trace_id` / `span_id` inside a traced request.
+- **Logs:** JSON (structlog) to stdout in the images (`AGENTCANVAS_LOG_JSON=true`), one object per line, uvicorn's access and error lines and other libraries' warnings included (those also carry `logger`); ship with your platform's collector. Fields: `request_id`, `workflow_id`, `thread_id`, `run_id`, `level`, `event`, `timestamp`, `exception` (a traceback, project secret values masked), and `trace_id` / `span_id` inside a traced request.
 - **Metrics:** Prometheus at `GET /metrics` on each API pod (`AGENTCANVAS_METRICS_ENABLED`, on by default). The web image's nginx answers 404 for `/api/metrics`, so scrape the pods directly; the Helm chart adds `prometheus.io/*` pod annotations and lets the `monitoring` namespace through its NetworkPolicy (`observability.metrics.*`).
 
   | Metric | Labels | Meaning |

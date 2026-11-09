@@ -155,3 +155,50 @@ async def test_a_crash_is_counted_logged_with_its_request_id_and_masked(app, api
     crashed = [e for e in logs if e["event"] == "http.unhandled"]
     assert len(crashed) == 1 and crashed[0]["request_id"] == "req_crash_1" and crashed[0]["route"] == route
     assert "RuntimeError" in crashed[0]["exception"] and "sk-crash-secret-value" not in crashed[0]["exception"]
+
+
+def test_library_and_server_logs_are_json_lines_too(capsys, monkeypatch):
+    """With JSON logs on (the images), only the app's own lines were JSON: uvicorn's access and error lines and every
+    library's warnings went out as plain text, without the request id, and a traceback there kept secrets in clear."""
+    import logging
+
+    from structlog.contextvars import bind_contextvars, clear_contextvars
+
+    from agentcanvas.log import configure_logging
+    from agentcanvas.services import projects
+
+    root = logging.getLogger()
+    saved = {n: (lg.handlers[:], lg.propagate, lg.level) for n in ("", "uvicorn", "uvicorn.error", "uvicorn.access")
+             for lg in [logging.getLogger(n or None)]}  # fmt: skip
+    registry = type("R", (), {"secrets": {"p": {"API_KEY": "sk-library-secret"}}})()
+    monkeypatch.setattr(projects, "CURRENT", registry)
+    try:
+        access = logging.getLogger("uvicorn.access")  # as uvicorn's own configuration leaves it
+        access.handlers, access.propagate, access.level = [logging.StreamHandler()], False, logging.INFO
+        configure_logging(json=True)
+        bind_contextvars(request_id="req_lib_1")
+        logging.getLogger("uvicorn.access").info('%s - "%s %s HTTP/%s" %d', "10.0.0.1", "GET", "/healthz", "1.1", 200)
+        try:
+            raise RuntimeError("refused sk-library-secret")
+        except RuntimeError:
+            logging.getLogger("uvicorn.error").exception("Exception in ASGI application")
+        logging.getLogger("httpx").info("HTTP Request: GET https://example.test")  # library chatter stays out
+        logging.getLogger("some.library").warning("deprecated option")
+    finally:
+        clear_contextvars()
+        for name, (handlers, propagate, level) in saved.items():
+            lg = logging.getLogger(name or None)
+            lg.handlers, lg.propagate, lg.level = handlers, propagate, level
+        configure_logging()
+    lines = [json.loads(line) for line in capsys.readouterr().out.splitlines() if line.strip()]
+    events = {e["event"]: e for e in lines}
+    assert set(events) == {
+        '10.0.0.1 - "GET /healthz HTTP/1.1" 200',
+        "Exception in ASGI application",
+        "deprecated option",
+    }
+    crash = events["Exception in ASGI application"]
+    assert crash["level"] == "error" and crash["request_id"] == "req_lib_1" and crash["logger"] == "uvicorn.error"
+    assert "RuntimeError" in crash["exception"] and "sk-library-secret" not in crash["exception"]
+    assert events["deprecated option"]["level"] == "warning" and root.handlers == saved[""][0]
+    assert all("timestamp" in e for e in lines)
