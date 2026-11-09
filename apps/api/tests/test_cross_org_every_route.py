@@ -24,14 +24,16 @@ from agentcanvas.api.deps import current_user
 from agentcanvas.ir.models import Workflow
 
 PROJECT = "prj_default"
-# Not a tenant boundary: a share link is public by design (its token is the capability), so is the A2A agent card
-# (protocols.py: clients read it before they authenticate; the deployment id is the capability), and the user guide
+# Not a tenant boundary: a share link is public by design (its token is the capability), so are the A2A agent card and
+# the MCP Server Card (protocols.py: clients read them before they authenticate; the deployment id is the capability;
+# neither contains the key), and the user guide
 # ships with the server, the same for every organisation; the streams stay open.
 SKIP = {
     "/v1/share/{token}",
     "/v1/guide/{page}",
     "/v1/deployments/{dep_id}/a2a/.well-known/agent-card.json",
     "/v1/deployments/{dep_id}/a2a/.well-known/agent.json",
+    "/v1/deployments/{dep_id}/mcp/server-card",
     "/v1/runs/{run_id}/events",
     "/v1/projects/{project_id}/events",
     "/v1/workflows/{wf_id}/presence/stream",  # a stream; tests/test_presence.py checks it stays in the organisation
