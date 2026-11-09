@@ -89,7 +89,7 @@ the local admin): don't expose it to other people. For a shared server follow [D
 | Tool | Version | Why | Check |
 |---|---|---|---|
 | Git | any recent | clone the repo; project workspaces are git repositories | `git --version` |
-| [uv](https://docs.astral.sh/uv/) | 0.8 or newer | Python packages; it also downloads Python 3.12 if you don't have it | `uv --version` |
+| [uv](https://docs.astral.sh/uv/) | 0.8 or newer | Python packages; it also downloads Python 3.14 (the version in `apps/api/.python-version`, as in the image) if you don't have it | `uv --version` |
 | Node.js | 22 | the web app | `node -v` |
 | pnpm | 10.34 (`packageManager` in `apps/web/package.json`; `corepack enable` fetches exactly that one) | web packages | `pnpm -v` in `apps/web` |
 | make | any | the shortcuts below (optional: every target is a plain command you can type) | `make -v` |

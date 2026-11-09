@@ -496,3 +496,11 @@ def test_the_web_bundle_ships_its_licence_notices_and_each_image_gets_an_sbom():
     assert "--format cyclonedx" in images and ".cdx.json" in images
     workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
     assert "--format cyclonedx" in workflow and "/third-party-licenses.txt" in workflow
+
+
+def test_the_gates_run_the_python_the_api_image_ships():
+    """With no .python-version, `uv sync` and `uv run` (and so the suite, ruff and pyright, locally and in CI) used
+    uv's default Python, 3.13, while the image runs 3.14: a change could pass every gate and fail only in the image."""
+    image = re.search(r"^FROM python:(\d+\.\d+)-slim", (ROOT / "infra" / "Dockerfile.api").read_text(), re.M)
+    pinned = ROOT / "apps" / "api" / ".python-version"
+    assert image and pinned.is_file() and pinned.read_text().strip() == image.group(1)

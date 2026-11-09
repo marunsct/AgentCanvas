@@ -53,7 +53,7 @@ These come from the owner in the project chat; they override defaults.
 ## 2. Repository map
 
 ```
-apps/api/agentcanvas/      FastAPI control plane + runner (Python 3.12+, uv; the image runs 3.14)
+apps/api/agentcanvas/      FastAPI control plane + runner (uv; Python 3.14 as in the image, from .python-version)
   api/v1/                  REST routes; protocols.py = MCP + A2A per deployment, traces.py = trace export settings
   adapters/langchain/      the only place LangChain/LangGraph may be imported (import-linter contract, ADR 0011)
   runtime/                 framework-neutral runner, run handles, finish hooks, masking
