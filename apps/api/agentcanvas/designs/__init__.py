@@ -48,7 +48,7 @@ AGENT_FRAMEWORKS: dict[str, AgentFramework] = {
     f.id: f
     for f in [
         AgentFramework("openai_agents", "OpenAI Agents SDK", ("openai-agents==0.24.0",), "agents", "openai"),
-        AgentFramework("crewai", "CrewAI", ("crewai==1.15.33",), "crewai", "openai", own_env=True),
+        AgentFramework("crewai", "CrewAI", ("crewai==1.15.39",), "crewai", "openai", own_env=True),
         AgentFramework("google_adk", "Google ADK", ("google-adk==2.14.0", "litellm==1.105.7"), "google.adk", "openai",
                        own_env=True),
         AgentFramework("pydantic_ai", "Pydantic AI", ("pydantic-ai-slim[openai]==2.66.0",), "pydantic_ai", "openai"),

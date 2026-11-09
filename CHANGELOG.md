@@ -916,6 +916,7 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
 - An e2e check that every control in the inspector has an accessible name and stays in the tab order.
 
 ### Changed
+- CrewAI 1.15.39 for flows, exports and the agent block. The Docker image now runs CrewAI on its own Python 3.13 (CrewAI supports Python below 3.14; it had been installed on 3.14), and exported CrewAI projects declare Python below 3.14 so `uv sync` resolves.
 - Google ADK 2.14.0 for flows, exports and the agent block; LiteLLM stays at 1.105.7, inside ADK's own supported range. None of ADK's breaking changes (enum tool arguments, structured skill-script arguments, Vertex sessions) touch what AgentCanvas generates or runs.
 - Microsoft Agent Framework 1.25.0 (with its OpenAI client 1.18.1, which needs it) for flows, exports and the agent block. It now needs Python 3.11 or newer; none of its breaking changes (MCP discovery limits, AG-UI workflow scopes, declarative MCP sessions, workflow span names) touch what AgentCanvas uses.
 - The server runs LangGraph 1.2.20, LangChain 1.4.9 (core 1.7.6), Deep Agents 0.7.34, the MCP SDK 2.3.0 and FastMCP 4.1.6.

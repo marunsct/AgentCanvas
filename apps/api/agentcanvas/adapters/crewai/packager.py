@@ -44,7 +44,7 @@ def _pyproject(wf: Workflow, pkg: str, version: str, extra: list[str]) -> str:
 name = "{pkg.replace("_", "-")}"
 version = "{version}"
 description = {toml_string(f"{wf.name} — a CrewAI flow exported from AgentCanvas")}
-requires-python = ">=3.12,<3.15"
+requires-python = ">=3.12,<3.14"  # CrewAI supports Python <3.14
 dependencies = [
 {deps}]
 

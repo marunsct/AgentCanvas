@@ -87,7 +87,7 @@ jobs:
       matrix:
         include:  # versions match interop.FRAMEWORKS and designs.AGENT_FRAMEWORKS (what exports install)
           - { check: openai_agents, with: "openai-agents==0.24.0" }
-          - { check: crewai, with: "crewai==1.15.33" }
+          - { check: crewai, with: "crewai==1.15.39" }
           - { check: google_adk, with: "google-adk==2.14.0 litellm==1.105.7" }
           - { check: pydantic_ai, with: "pydantic-ai-slim[openai]==2.66.0" }
           - { check: agno, with: "agno==3.1.11 openai==2.54.0" }

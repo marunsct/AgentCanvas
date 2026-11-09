@@ -144,7 +144,7 @@ def test_rules_exports_and_hosted_edition(ws):
                    "side_effects": ["external_write"]})  # fmt: skip
     assert "E070" not in codes(wf)  # the approval comes before the agent acts
     assert "E041" in {d.code for d in validate(wf, edition="hosted")}  # runs workspace code in the server process
-    assert "crewai==1.15.33" in dependencies(wf)
+    assert "crewai==1.15.39" in dependencies(wf)
     bad = agent_wf({"framework": "crewai", "import_path": "os:system"})
     assert "E080" in errors(bad)
     assert errors(agent_wf({"framework": "langflow", "import_path": "tools.fw:crew"}))

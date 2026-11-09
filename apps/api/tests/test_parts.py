@@ -217,7 +217,7 @@ def test_a_mixed_export_installs_each_framework_where_it_fits():
 
     pyproject = read("pyproject.toml")
     assert "openai-agents==0.24.0" in pyproject and "crewai" not in pyproject  # the host has what fits
-    assert read("parts/writer/requirements.txt") == "crewai==1.15.33\n"
+    assert read("parts/writer/requirements.txt") == "crewai==1.15.39\n"
     assert read("parts/writer/worker.py").startswith('"""A part\'s worker (S28)')
     assert "src/mixed_framework_team/agents/researcher.py" in files and "parts/researcher/agent.py" not in files
     contracts = json.loads(read("contracts.json"))

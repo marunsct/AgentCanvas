@@ -32,7 +32,7 @@ which shows what will be sent on an approval card; a rejection skips the agent.
 | Framework | Package (exports install this version) | Point the block at |
 |---|---|---|
 | OpenAI Agents SDK | `openai-agents==0.24.0` | an `Agent` |
-| CrewAI | `crewai==1.15.33` | a `Crew` (its task texts can use `{input}` and other field names), an `Agent` or a `Flow` |
+| CrewAI | `crewai==1.15.39` | a `Crew` (its task texts can use `{input}` and other field names), an `Agent` or a `Flow` |
 | Google ADK | `google-adk==2.14.0` | an agent (`LlmAgent`, …) |
 | Pydantic AI | `pydantic-ai-slim==2.66.0` | an `Agent` |
 | Agno | `agno==3.1.11` | an `Agent` or `Team` |

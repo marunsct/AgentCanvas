@@ -428,7 +428,7 @@ def test_export_is_a_crewai_project(tmp_path):
     assert {"src/support/flow.py", "src/support/host.py", "src/tools/orders.py", "README.md", ".env.example",
             "src/agentcanvas/adapters/crewai/runtime.py", "tests/test_flow.py"} <= names  # fmt: skip
     assert not any("langchain" in n for n in names)
-    assert "crewai==1.15.33" in (project / "pyproject.toml").read_text()
+    assert "crewai==1.15.39" in (project / "pyproject.toml").read_text()
     assert (project / ".env.example").read_text() == "OPENAI_API_KEY=\n"
     for py in project.rglob("*.py"):
         compile(py.read_text(), str(py), "exec")

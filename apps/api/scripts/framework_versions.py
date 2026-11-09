@@ -58,7 +58,15 @@ CONSTANTS = {
 TEXT_NAMES = {"Makefile"}  # files without a suffix that pins are written in (and Dockerfile.*)
 TEXT_SUFFIXES = {".py", ".json", ".yml", ".yaml", ".md", ".sh", ".toml", ".txt", ".ts", ".tmpl", ".j2"}
 SKIP_DIRS = {"node_modules", ".venv", ".frameworks", ".git", "dist", "site", "test-results", ".ci-tmp"}
-SKIP_FILES = {"CHANGELOG.md", "uv.lock", "pnpm-lock.yaml", "package-lock.json", "decisions.md"}  # history and locks
+# history, lockfiles, and this tool's own test (its fixtures spell out old pins on purpose)
+SKIP_FILES = {
+    "CHANGELOG.md",
+    "uv.lock",
+    "pnpm-lock.yaml",
+    "package-lock.json",
+    "decisions.md",
+    "test_framework_versions.py",
+}
 
 
 @dataclass

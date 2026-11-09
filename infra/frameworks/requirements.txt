@@ -6,7 +6,7 @@ agent-framework-core==1.25.0
 agent-framework-openai==1.18.1
 agno==3.1.11
 claude-agent-sdk==0.2.174
-crewai==1.15.33
+crewai==1.15.39
 google-adk==2.14.0
 litellm==1.105.7
 llama-index-core==0.14.25
