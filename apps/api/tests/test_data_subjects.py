@@ -173,9 +173,8 @@ async def test_a_deployment_erases_its_end_user_by_the_user_id_it_sent(app, api_
                 deployment_id=dep,
             )
         )
-        await s.execute(
-            update(Run).where(Run.thread_id == bob[1]).values(recording={"input": {"f": {"id": "fil_01BOBSFILE0000000000000000"}}})
-        )  # fmt: skip
+        used = {"input": {"f": {"id": "fil_01BOBSFILE0000000000000000"}}}
+        await s.execute(update(Run).where(Run.thread_id == bob[1]).values(recording=used))
         await s.commit()
     store = app.state.runner.adapter.store
     await store.aput((f"org:{ORG}", "prefs", "user", f"api:{dep}:bob"), "likes", {"value": "tea"})
@@ -226,3 +225,72 @@ async def test_an_admin_erases_an_end_user_across_every_deployment(app, api_clie
         assert (await api_client.post("/v1/org/end-users/erase", json=body)).status_code == 403
     finally:
         app.dependency_overrides.pop(current_user)
+
+
+async def test_an_admin_exports_a_members_data_and_the_log_says_so(app, api_client, org_b):  # noqa: F811
+    made = await ana_with_data(app, api_client)
+    async with app.state.db.sessionmaker() as s:
+        s.add(Membership(org_id=ORG_B, user_id=ANA, role="viewer"))
+        await s.commit()
+    r = await api_client.get(f"/v1/org/members/{ANA}/export")
+    assert r.status_code == 200, r.text
+    assert r.headers["content-disposition"].startswith("attachment;")
+    data = r.json()
+    assert data["person"]["email"] == "ana@example.com"
+    assert [m["org_id"] for m in data["memberships"]] == [ORG]  # not where else she belongs
+    assert [t["id"] for t in data["api_tokens"]] == ["tok_ana"] and "token_hash" not in data["api_tokens"][0]
+    assert [c["id"] for c in data["conversations"]] == [made["hers"]]
+    run = data["conversations"][0]["runs"][0]
+    assert run["status"] == "success" and run["output"]["out"] == "Hello Ana" and run["input"] == {"who": "Ana"}
+    assert [m["value"] for m in data["memories"]] == [{"value": "green"}]
+    assert data["memories"][0]["namespace"] == ["prefs", "user", ANA]
+    assert [c["id"] for c in data["copilot_conversations"]] == ["cc_ana"]
+    assert [f["id"] for f in data["files"]] == ["fil_ana"] and [c["id"] for c in data["connections"]] == ["oc_ana"]
+    assert [a["action"] for a in data["audit_log"]] == ["create_workflow"]
+    async with app.state.db.sessionmaker() as s:
+        entry = await s.scalar(select(AuditLog).where(AuditLog.action == "export_member"))
+        assert entry is not None and entry.actor_id == "usr_dev" and entry.target == f"user_id={ANA}"
+    assert (await api_client.get("/v1/org/members/usr_b/export")).status_code == 404  # another organisation's
+    app.dependency_overrides[current_user] = lambda: CurrentUser(id="usr_dev", org_id=ORG, role="builder")
+    try:
+        assert (await api_client.get(f"/v1/org/members/{ANA}/export")).status_code == 403
+    finally:
+        app.dependency_overrides.pop(current_user)
+
+
+async def test_everyone_exports_their_own_data(app, api_client, org_b):  # noqa: F811
+    made = await ana_with_data(app, api_client)
+    async with app.state.db.sessionmaker() as s:
+        s.add(Membership(org_id=ORG_B, user_id=ANA, role="viewer"))
+        await s.commit()
+    app.dependency_overrides[current_user] = lambda: CurrentUser(
+        id=ANA, org_id=ORG, role="viewer", memberships={ORG: "viewer", ORG_B: "viewer"}
+    )
+    try:
+        r = await api_client.get("/v1/me/export")
+    finally:
+        app.dependency_overrides.pop(current_user)
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert sorted(m["org_id"] for m in data["memberships"]) == sorted([ORG, ORG_B])  # all of her own
+    assert [c["id"] for c in data["conversations"]] == [made["hers"]]
+    async with app.state.db.sessionmaker() as s:
+        assert await s.scalar(select(AuditLog.id).where(AuditLog.action == "export_member", AuditLog.actor_id == ANA))
+
+
+async def test_an_end_users_data_is_exported_by_key_or_by_an_admin(app, api_client):
+    _, dep, key = await published(api_client)
+    bob, carol = await talk(api_client, dep, key, "bob"), await talk(api_client, dep, key, "carol")
+    await app.state.runner.adapter.store.aput((f"org:{ORG}", "prefs", "user", f"api:{dep}:bob"), "k", {"value": 1})
+    r = await api_client.post(f"/v1/deployments/{dep}/end-users/export", json={"user_id": "bob"}, headers=bearer(key))
+    assert r.status_code == 200, r.text
+    assert [c["id"] for c in r.json()["conversations"]] == [bob] and len(r.json()["memories"]) == 1
+    assert r.json()["conversations"][0]["runs"][0]["output"]["out"] == "Hello bob"
+    r = await api_client.post("/v1/org/end-users/export", json={"user_id": "carol", "reason": "DSAR 9"})
+    assert r.status_code == 200 and [c["id"] for c in r.json()["conversations"]] == [carol]
+    assert r.json()["memories"] == []
+    async with app.state.db.sessionmaker() as s:
+        actions = set((await s.scalars(select(AuditLog.action))).all())
+        assert {"api_export_end_user", "export_end_user"} <= actions
+    no_key = await api_client.post(f"/v1/deployments/{dep}/end-users/export", json={"user_id": "bob"})
+    assert no_key.status_code == 401

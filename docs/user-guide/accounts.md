@@ -51,6 +51,9 @@ leads to no one. The answer and the audit entry give the counts. Someone already
 way, as long as they belong to no other organisation. You cannot erase yourself; with Matura, people are removed
 in Matura.
 
+Everyone can download their own data as JSON with `GET /v1/me/export`, and an admin can download a member's with
+`GET /v1/org/members/{user_id}/export` (see [Your data](security.md#your-data)); both are recorded in the audit log.
+
 To bootstrap a new install, list the first admins' emails in `AGENTCANVAS_BOOTSTRAP_ADMIN_EMAILS`; they become
 admins of the default organisation on first sign-in.
 

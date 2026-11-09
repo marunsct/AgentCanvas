@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, File, Header, Request, Response, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field, StringConstraints
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -685,6 +685,26 @@ async def api_erase_end_user(
     counts = await erase_end_user(session, request.app.state.runner, org_id, body.user_id, dep.id)
     note(request, target=end_user_ref(body.user_id), **counts)
     return counts
+
+
+@public_router.post("/deployments/{dep_id}/end-users/export")
+async def api_export_end_user(
+    body: ApiEndUserIn,
+    request: Request,
+    dep: Deployment = Depends(_key_holder),
+    session: AsyncSession = Depends(get_session),
+) -> JSONResponse:
+    """One of your end users' data as JSON (GDPR Art. 15 and 20), by the `user_id` you sent with their runs: their
+    conversations on this deployment with each run's input, answer and steps, long-term memories and the files their
+    runs used (names and sizes)."""
+    from agentcanvas.api.v1.org import download
+    from agentcanvas.db.repositories import ScopeRepo
+    from agentcanvas.services.data_subjects import export_end_user
+
+    org_id = await ScopeRepo(session).org_of("deployment", dep.id) or ""
+    data = await export_end_user(session, request.app.state.runner, org_id, body.user_id, dep.id)
+    note(request, target=end_user_ref(body.user_id), conversations=len(data["conversations"]))
+    return download(data, "agentcanvas-end-user.json")
 
 
 @public_router.post("/deployments/{dep_id}/threads/{thread_id}/resume", response_model=ApiResult)

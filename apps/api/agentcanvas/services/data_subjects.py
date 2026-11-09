@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import UTC, datetime
 from typing import Any, cast
 
 from sqlalchemy import Text, delete, func, select
@@ -23,8 +24,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.adapters.spi import MemoryAbility, supports
 from agentcanvas.db.models import (
+    AppUser,
     AuditLog,
     CopilotConversation,
+    InterruptTask,
     Membership,
     OAuthConnection,
     OAuthFlow,
@@ -255,3 +258,147 @@ async def erase_end_user(
     namespaces = await end_user_namespaces(runner, org_id, user_id, deployments)
     counts["memories"] = sum([await cast(MemoryAbility, runner.adapter).memory_erase(ns) for ns in namespaces])
     return counts
+
+
+# ------------------------------------------------------------------------------------------- export ----
+def _at(value: Any) -> str | None:
+    return value.isoformat() if value is not None else None
+
+
+async def conversations_of(session: AsyncSession, thread_ids: list[str]) -> list[dict[str, Any]]:
+    """Conversations as a person may take them away (GDPR Art. 15 and 20): each run's input, answer and steps."""
+    out: list[dict[str, Any]] = []
+    for i in range(0, len(thread_ids), 200):
+        page = thread_ids[i : i + 200]
+        threads = (await session.scalars(select(Thread).where(Thread.id.in_(page)).order_by(Thread.created_at))).all()
+        runs: dict[str, list[dict[str, Any]]] = {}
+        for r in (await session.scalars(select(Run).where(Run.thread_id.in_(page)).order_by(Run.started_at))).all():
+            recording = r.recording or {}
+            runs.setdefault(r.thread_id, []).append({
+                "id": r.id, "status": r.status, "started_at": _at(r.started_at), "ended_at": _at(r.ended_at),
+                "input": recording.get("input"), "output": recording.get("output"), "error": r.error,
+                "events": r.events or [],
+            })  # fmt: skip
+        out += [
+            {"id": t.id, "workflow_id": t.workflow_id, "deployment_id": t.deployment_id, "title": t.title,
+             "created_at": _at(t.created_at), "updated_at": _at(t.updated_at), "runs": runs.get(t.id, [])}
+            for t in threads
+        ]  # fmt: skip
+    return out
+
+
+async def memories_in(runner: Any, org_id: str, namespaces: list[tuple[str, ...]]) -> list[dict[str, Any]]:
+    """The items of memory namespaces, shown without the organisation's root."""
+    memory = cast(MemoryAbility, runner.adapter)
+    items: list[dict[str, Any]] = []
+    for ns in namespaces:
+        for item in await memory.memory_items(ns, None, 10_000):
+            if tuple(item["namespace"]) == ns:  # a search also returns deeper namespaces: each is listed itself
+                items.append({**item, "namespace": list(ns[1:])})
+    return items
+
+
+def _files(rows: Any) -> list[dict[str, Any]]:
+    return [
+        {"id": f.id, "name": f.name, "media_type": f.media_type, "size": f.size, "created_at": _at(f.created_at)}
+        for f in rows
+    ]
+
+
+async def export_member(
+    session: AsyncSession, runner: Any, org_id: str, user_id: str, *, every_organisation: bool
+) -> dict[str, Any]:
+    """What the organisation holds about a member (GDPR Art. 15 and 20), as JSON. `every_organisation`: list all of
+    their memberships (their own request); an admin's request shows only this organisation's."""
+    if not await is_or_was_member(session, org_id, user_id):
+        raise NotFound(f"user '{user_id}' is not a member")
+    person = await session.get(AppUser, user_id)
+    if person is None:
+        raise NotFound(f"user '{user_id}' is not a member")
+    workflows = org_workflows(org_id)
+    memberships = select(Membership).where(Membership.user_id == user_id)
+    if not every_organisation:
+        memberships = memberships.where(Membership.org_id == org_id)
+    threads = list(
+        (
+            await session.scalars(
+                select(Thread.id).where(Thread.created_by == user_id, Thread.workflow_id.in_(workflows))
+            )
+        ).all()
+    )
+    tokens = (
+        await session.scalars(
+            select(PersonalToken).where(PersonalToken.org_id == org_id, PersonalToken.user_id == user_id)
+        )
+    ).all()
+    connections = (
+        await session.scalars(
+            select(OAuthConnection).where(OAuthConnection.org_id == org_id, OAuthConnection.owner == user_id)
+        )
+    ).all()
+    chats = (
+        await session.scalars(
+            select(CopilotConversation).where(
+                CopilotConversation.user_id == user_id, CopilotConversation.workflow_id.in_(workflows)
+            )
+        )
+    ).all()
+    decisions = (
+        await session.scalars(
+            select(InterruptTask).where(
+                InterruptTask.decided_by == user_id,
+                InterruptTask.thread_id.in_(select(Thread.id).where(Thread.workflow_id.in_(workflows))),
+            )
+        )
+    ).all()
+    files = (
+        await session.scalars(
+            select(StoredFile).where(StoredFile.created_by == user_id, StoredFile.project_id.in_(org_projects(org_id)))
+        )
+    ).all()
+    audit = (
+        await session.scalars(
+            select(AuditLog).where(AuditLog.org_id == org_id, AuditLog.actor_id == user_id).order_by(AuditLog.id)
+        )
+    ).all()
+    return {
+        "exported_at": _at(datetime.now(UTC)),
+        "organisation": org_id,
+        "person": {"id": person.id, "email": person.email, "display_name": person.display_name,
+                   "preferences": person.preferences, "created_at": _at(person.created_at)},
+        "memberships": [{"org_id": m.org_id, "role": m.role, "accepted": m.accepted, "deactivated": m.suspended,
+                         "last_used_at": _at(m.last_used_at)} for m in (await session.scalars(memberships)).all()],
+        "api_tokens": [{"id": t.id, "name": t.name, "prefix": t.prefix, "role": t.role, "created_at": _at(t.created_at),
+                        "expires_at": _at(t.expires_at), "last_used_at": _at(t.last_used_at),
+                        "revoked_at": _at(t.revoked_at)} for t in tokens],
+        "connections": [{"id": c.id, "resource": c.resource, "issuer": c.issuer, "scope": c.scope, "status": c.status,
+                         "created_at": _at(c.created_at)} for c in connections],
+        "copilot_conversations": [{"id": c.id, "workflow_id": c.workflow_id, "title": c.title, "messages": c.messages,
+                                   "created_at": _at(c.created_at), "archived_at": _at(c.archived_at)} for c in chats],
+        "conversations": await conversations_of(session, threads),
+        "decisions": [{"id": d.id, "thread_id": d.thread_id, "kind": d.kind, "decision": d.decision,
+                       "decided_at": _at(d.decided_at)} for d in decisions],
+        "memories": await memories_in(runner, org_id, await memory_namespaces(runner, org_id, user_id)),
+        "files": _files(files),
+        "audit_log": [{"id": a.id, "created_at": _at(a.created_at), "action": a.action, "target": a.target,
+                       "detail": a.detail, "ip": a.ip} for a in audit],
+    }  # fmt: skip
+
+
+async def export_end_user(
+    session: AsyncSession, runner: Any, org_id: str, user_id: str, deployment_id: str | None = None
+) -> dict[str, Any]:
+    """What the organisation holds about a deployment's end user, as JSON (GDPR Art. 15 and 20)."""
+    deployments = await scope_deployment(session, org_id, deployment_id)
+    threads = await end_user_threads(session, org_id, user_id, deployments)
+    files = await end_user_files(session, org_id, threads)
+    rows = (await session.scalars(select(StoredFile).where(StoredFile.id.in_(files)))).all()
+    namespaces = await end_user_namespaces(runner, org_id, user_id, deployments)
+    return {
+        "exported_at": _at(datetime.now(UTC)),
+        "user_id": user_id,
+        "deployment_id": deployment_id,
+        "conversations": await conversations_of(session, threads),
+        "memories": await memories_in(runner, org_id, namespaces),
+        "files": _files(rows),
+    }

@@ -8,12 +8,14 @@ from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query, Request, Response
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, StringConstraints
 from sqlalchemy import null, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agentcanvas.api.audit import note
-from agentcanvas.api.deps import CurrentUser, current_user, get_session, members_here, refuse_token
+from agentcanvas.api.audit import note, record_read
+from agentcanvas.api.deps import CurrentUser, attachment, current_user, get_session, members_here, refuse_token
 from agentcanvas.db.models import Organization, Project, SpendCapAlert
 from agentcanvas.db.repositories import AuditRepo, MemberRepo, PolicyRepo
 from agentcanvas.errors import Conflict, InvalidInput, NotFound
@@ -165,6 +167,50 @@ async def erase_end_user(
     )
     note(request, target=end_user_ref(body.user_id), deployment_id=body.deployment_id, reason=body.reason, **counts)
     return counts
+
+
+def download(data: dict[str, Any], filename: str) -> JSONResponse:
+    return JSONResponse(jsonable_encoder(data), headers=attachment(filename))
+
+
+@router.get("/members/{user_id}/export")
+async def export_member(
+    user_id: str,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    user: CurrentUser = Depends(current_user),
+) -> JSONResponse:
+    """A member's data in this organisation as JSON (GDPR Art. 15 and 20): their account, membership, API tokens
+    (never the secret), app-connector sign-ins, Copilot chats, the conversations they started with each run's input,
+    answer and steps, their decisions, long-term memories, files and audit entries. Admins; audited. Also for
+    someone already removed who belongs nowhere else."""
+    from agentcanvas.services import data_subjects
+
+    data = await data_subjects.export_member(
+        session, request.app.state.runner, user.org_id, user_id, every_organisation=False
+    )
+    await record_read(request, "export_member", f"user_id={user_id}")
+    return download(data, f"agentcanvas-{user_id}.json")
+
+
+@router.post("/end-users/export")
+async def export_end_user(
+    body: EndUserIn,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    user: CurrentUser = Depends(current_user),
+) -> JSONResponse:
+    """An end user's data as JSON (GDPR Art. 15 and 20), by the `user_id` the deployment API was sent: their
+    conversations with each run's input, answer and steps, long-term memories and the files their runs used (names
+    and sizes). Admins; audited (the log names them by a hash)."""
+    from agentcanvas.services import data_subjects
+
+    data = await data_subjects.export_end_user(
+        session, request.app.state.runner, user.org_id, body.user_id, body.deployment_id
+    )
+    note(request, target=end_user_ref(body.user_id), deployment_id=body.deployment_id, reason=body.reason,
+         conversations=len(data["conversations"]))  # fmt: skip
+    return download(data, "agentcanvas-end-user.json")
 
 
 class StopRunsIn(BaseModel):

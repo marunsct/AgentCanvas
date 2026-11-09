@@ -127,3 +127,19 @@ async def record(request: Request, response: Response) -> None:
         log.exception("audit.write_failed", action=name, target=target)
     if name in SECURITY_ACTIONS and (sink := getattr(request.app.state, "audit_sink", None)) is not None:
         await sink.emit(AuditEvent(org_id, row.actor_id, name, target, detail, row.ip))
+
+
+async def record_read(request: Request, action: str, target: str, **detail: Any) -> None:
+    """Record a read that is security-relevant, which `record` leaves out (reads are not changes): an export of a
+    person's data (E-7). Written before the data is sent, so a failure to record refuses the export."""
+    user = request.state.user
+    row = AuditLog(
+        org_id=user.org_id, actor_id=user.id, action=action, target=target,
+        detail={"method": request.method, "path": request.url.path, **detail,
+                **({"caller": f"personal token {user.token_id}"} if user.token_id else {})},
+        ip=request.client.host if request.client else None,
+    )  # fmt: skip
+    async with request.app.state.db.sessionmaker() as s:
+        await AuditRepo(s).add(row)
+    if action in SECURITY_ACTIONS and (sink := getattr(request.app.state, "audit_sink", None)) is not None:
+        await sink.emit(AuditEvent(user.org_id, user.id, action, target, row.detail, row.ip))

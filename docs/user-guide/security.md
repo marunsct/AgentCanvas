@@ -144,10 +144,13 @@ knowledge bases and workspaces is the project's and stays; remove it by hand if 
 
 What AgentCanvas offers to answer data-protection requests (GDPR Art. 15, 17, 20 and 28(3)(g)) and to return or
 delete an organisation's data when it leaves. Every action is for admins and is recorded in the audit log with
-counts, never the content.
+counts, never the content; exports are recorded too, though reads otherwise are not.
 
 | Request | How |
 |---|---|
+| A person's own data (Art. 15 and 20) | `GET /v1/me/export`, for anyone signed in: their account and memberships, and in the organisation they act in their API tokens (never the secret), app-connector sign-ins, Copilot chats, the conversations they started with each run's input, answer and steps, their approval decisions, long-term memories, files and audit entries, as one JSON file |
+| A member's data, for an admin answering a request | `GET /v1/org/members/{user_id}/export`: the same, limited to this organisation (other memberships are not shown) |
+| A deployment end user's data | `POST /v1/org/end-users/export` (admins; body `user_id`, optional `deployment_id`, `reason`) or `POST /v1/deployments/{id}/end-users/export` with the deployment's key: their conversations, long-term memories and the names and sizes of the files their runs used |
 | Erase a member (Art. 17) | `POST /v1/org/members/{user_id}/erase`: removes them with their tokens, sign-ins, memories and Copilot chats (and, if asked, the conversations they started), and pseudonymises their account when they belong to no other organisation ([Members](accounts.md#members)) |
 | Erase a deployment's end user (Art. 17) | by the `user_id` the deployment API was sent: `POST /v1/org/end-users/erase` (admins; one deployment or every one) or `POST /v1/deployments/{id}/end-users/erase` with the deployment's key, so your own systems can answer the request. Their conversations, long-term memories and the files their runs used are deleted. The audit log names them by a hash of the id ([Call a deployment](publish.md#call-a-deployment)) |
 | Delete the whole organisation (end of contract) | `DELETE /v1/org`: suspended at once, deleted for good after a grace period of 7 days (`AGENTCANVAS_ORG_DELETION_GRACE_DAYS`), which an admin can take back until then ([Deleting the organisation](settings.md#deleting-the-organisation)) |

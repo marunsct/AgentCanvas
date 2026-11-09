@@ -276,6 +276,8 @@ def required_role(method: str, path: str) -> str:
         ("/org/audit", "/org/spending", "/org/tokens", "/org/scim", "/org/notifications", "/org/deletion", "/server/")
     ):
         return "admin"
+    if path.startswith("/org/") and path.endswith("/export"):  # someone else's data (E-7)
+        return "admin"
     if path.startswith("/org/"):
         return "viewer" if method == "GET" else "admin"
     if (method, path) in ROLE_EXCEPTIONS:
