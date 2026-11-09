@@ -1041,6 +1041,27 @@ class AuditLog(Base):
     created_at: Mapped[datetime] = _now()
 
 
+class AuditOutbox(Base):
+    """An audit entry still to be delivered to one destination (a SIEM webhook, Splunk), written in the same
+    transaction as the entry: delivered rows are deleted, `dead` ones gave up after the last attempt."""
+
+    __tablename__ = "audit_outbox"
+    __table_args__ = (
+        Index("audit_outbox_due_idx", "state", "next_attempt_at"),
+        Index("audit_outbox_audit_idx", "audit_id"),
+        CheckConstraint("state IN ('pending','dead')", name="audit_outbox_state"),
+    )
+    id: Mapped[int] = mapped_column(BigId, primary_key=True, autoincrement=True)
+    audit_id: Mapped[int] = mapped_column(ForeignKey("audit_log.id", ondelete="CASCADE"))
+    org_id: Mapped[str | None] = mapped_column(ForeignKey("organization.id"))
+    destination: Mapped[str] = mapped_column(String(32))
+    state: Mapped[str] = mapped_column(String(16), default="pending", server_default=text("'pending'"))
+    attempts: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    next_attempt_at: Mapped[datetime] = mapped_column(UtcDateTime())
+    last_error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = _now()
+
+
 class OrgPolicy(Base):
     """An organisation rule over workflows (FR-X-19): CEL predicates checked by the validator and at publish."""
 

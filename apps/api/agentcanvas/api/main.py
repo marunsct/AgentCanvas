@@ -49,9 +49,8 @@ from agentcanvas.runtime.paused import DatabasePaused, DatabaseReplies, MemoryPa
 from agentcanvas.runtime.runner import Runner
 from agentcanvas.security.auth import check_auth_settings
 from agentcanvas.security.kms import Keyring
-from agentcanvas.services import oauth, routing
+from agentcanvas.services import audit_sink, oauth, routing
 from agentcanvas.services import projects as projects_module
-from agentcanvas.services.audit_sink import sink_for
 from agentcanvas.services.callbacks import CallbackJob
 from agentcanvas.services.events import EventService
 from agentcanvas.services.experiments import ExperimentJob
@@ -332,8 +331,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 app.state.matura_feed = MaturaFeed(db, settings)
                 if settings.env != "test":
                     app.state.matura_feed.start()
-            app.state.audit_sink = sink_for(settings)  # TS26: security-relevant entries also leave the app
-            app.state.offboarding.sink = app.state.audit_sink
+            # security-relevant entries (or all) also leave the server, through the outbox (services/audit_sink.py)
+            destinations = audit_sink.destinations_for(settings)
+            audit_sink.install(audit_sink.Forwarding(tuple(d.name for d in destinations), settings.audit_forward_all))
+            app.state.audit_forward = audit_sink.AuditForwarder(
+                db, destinations, max_attempts=settings.audit_forward_max_attempts,
+                interval_s=settings.audit_forward_interval_s,
+            )  # fmt: skip
+            if settings.env != "test" and destinations:
+                app.state.audit_forward.start()
             if settings.env in ("staging", "prod") and not os.getenv("LANGGRAPH_AES_KEY"):
                 log.warning("checkpoints.unencrypted", hint="set LANGGRAPH_AES_KEY (16, 24 or 32 characters)")
             log.info(
@@ -351,6 +357,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 await app.state.offboarding.stop()
                 await app.state.crawl.stop()
                 await app.state.secrets.stop()
+                await app.state.audit_forward.stop()  # what it has not sent stays in the outbox for the others
                 if app.state.matura_feed is not None:
                     await app.state.matura_feed.stop()
                 await runner.drain(settings.drain_grace_s)  # FR-X-10: other instances continue what is left
@@ -372,8 +379,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 await runner.shutdown()
                 await asyncio.to_thread(app.state.trace_export.exporter.shutdown)  # flushes queued traces
                 await app.state.projects.aclose()
-                if hasattr(app.state.audit_sink, "aclose"):  # tests may put a recorder in its place
-                    await app.state.audit_sink.aclose()
+                await app.state.audit_forward.aclose()
+                audit_sink.install(audit_sink.Forwarding())
                 await db.dispose()
                 paused_runs.install(MemoryPaused())  # this database is gone
                 interop.install_replies(interop.MemoryReplies())

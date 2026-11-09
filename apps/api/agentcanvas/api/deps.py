@@ -148,9 +148,8 @@ async def _signed_in(
     user, first = await repo.provision(identity.subject, email, identity.name, identity.email_verified)
     uid, user_email = user.id, user.email  # read before anything below commits or rolls back
     await sso_groups.apply(  # the provider's groups decide roles (G-13)
-        session, uid, identity.claims, add_members=settings.sso_groups_add_members,
-        sink=getattr(request.app.state, "audit_sink", None),
-    )  # fmt: skip
+        session, uid, identity.claims, add_members=settings.sso_groups_add_members
+    )
     memberships = await repo.memberships(uid)
     # bootstrap happens once, at the first sign-in with a verified email (a first try without one, e.g. Entra ID
     # before AGENTCANVAS_OIDC_TRUST_EMAIL, must not lose it): removing a bootstrap admin later sticks

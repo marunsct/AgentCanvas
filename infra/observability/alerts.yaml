@@ -100,3 +100,25 @@ groups:
         annotations:
           summary: Runs wait more than 2 minutes for a slot in the run queue, or give up waiting
           runbook: docs/user-guide/operations.md#runbooks
+      - alert: AgentCanvasAuditForwardingFailing
+        # a SIEM destination (webhook, Splunk, Matura) refuses or does not answer: entries wait in the outbox and are
+        # retried with a growing delay, and given up on (dead) after AGENTCANVAS_AUDIT_FORWARD_MAX_ATTEMPTS
+        expr: |
+          sum by (destination) (increase(agentcanvas_audit_forward_failed_total[15m])) > 0
+            unless sum by (destination) (increase(agentcanvas_audit_forwarded_total[15m])) > 0
+        for: 15m
+        labels: { severity: ticket }
+        annotations:
+          summary: "Audit entries cannot be delivered to {{ $labels.destination }} (search the logs for audit.forward_failed)"
+          runbook: docs/user-guide/operations.md#runbooks
+      - alert: AgentCanvasAuditUndelivered
+        # entries given up on after the last attempt, or waiting for a destination this server no longer has: the
+        # SIEM misses them until an operator sends them again or discards them (python -m agentcanvas.audit)
+        expr: |
+          max by (destination) (agentcanvas_audit_outbox{state="dead"}) > 0
+            or max by (destination) (agentcanvas_audit_outbox{state="pending"}) > 1000
+        for: 30m
+        labels: { severity: ticket }
+        annotations:
+          summary: "Audit entries for {{ $labels.destination }} were given up on, or pile up undelivered"
+          runbook: docs/user-guide/operations.md#runbooks

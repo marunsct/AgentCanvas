@@ -20,6 +20,7 @@ from agentcanvas.db.models import (
     ApprovalNotice,
     AppUser,
     AuditLog,
+    AuditOutbox,
     Dataset,
     Deployment,
     Evaluator,
@@ -42,6 +43,7 @@ from agentcanvas.db.models import (
 )
 from agentcanvas.errors import Conflict, NotFound
 from agentcanvas.ids import new_id
+from agentcanvas.services import audit_sink
 
 DEV_ORG, DEV_USER, DEV_PROJECT = "org_default", "usr_dev", "prj_default"
 USED_EVERY = timedelta(minutes=1)  # how often choosing an organisation is written down (`UserRepo.used`)
@@ -322,8 +324,21 @@ class AuditRepo:
         self.s = s
 
     async def add(self, row: AuditLog) -> None:
+        """Every audit entry is written here, and commits. One that is forwarded (services/audit_sink.py) is queued
+        for each destination in the same transaction, so a recorded entry always leaves the server too."""
+        forwarding = audit_sink.forwarding()
+        forwarded = forwarding.forwards(row.action)
+        row.created_at = row.created_at or datetime.now(UTC)
         self.s.add(row)
+        if forwarded and forwarding.destinations:
+            await self.s.flush()  # the row's id
+            self.s.add_all(
+                AuditOutbox(audit_id=row.id, org_id=row.org_id, destination=name, next_attempt_at=row.created_at)
+                for name in forwarding.destinations
+            )
         await self.s.commit()
+        if forwarded:
+            audit_sink.log_event(audit_sink.AuditEvent.of(row))
 
     async def list(
         self,

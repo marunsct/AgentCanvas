@@ -63,7 +63,7 @@ async def scim_service(request: Request, session: AsyncSession = Depends(get_ses
         raise ScimError(401, "send Authorization: Bearer scim_...")
     org = await scim.organisation_of(session, token.strip())
     networks.check(request, org.id, org.settings, "SCIM")
-    return ScimService(session, org.id, getattr(request.app.state, "audit_sink", None))
+    return ScimService(session, org.id)
 
 
 async def _body(request: Request) -> dict[str, Any]:

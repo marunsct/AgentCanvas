@@ -67,6 +67,16 @@ class Settings(BaseSettings):
     # always logged as `audit.event`. The secret signs them (AgentCanvas-Signature) and is needed with the URL.
     audit_sink_url: str | None = None
     audit_sink_secret: str | None = None
+    # security-relevant audit entries, also sent to Splunk's HTTP Event Collector: the full URL (e.g.
+    # https://splunk.example.com:8088/services/collector/event) and an HEC token, needed with the URL
+    audit_splunk_hec_url: str | None = None
+    audit_splunk_hec_token: str | None = None
+    # forward every audit entry (every change anyone makes), not only the security-relevant ones
+    audit_forward_all: bool = False
+    # a delivery that keeps failing is retried with a growing delay (up to an hour) this many times, about 15 hours
+    # in all with the default, then kept as undelivered (dead) for an operator to retry
+    audit_forward_max_attempts: int = Field(default=24, ge=1)
+    audit_forward_interval_s: float = Field(default=2.0, gt=0)  # how often each server looks for entries to deliver
     matura_sync_interval_s: int = 3600  # how often the change feed is read (webhooks bring changes in between)
     # emails that become admins of the default organisation on first sign-in (bootstraps an empty install)
     bootstrap_admin_emails: list[str] = []

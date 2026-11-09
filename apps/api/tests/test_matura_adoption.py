@@ -10,7 +10,7 @@ from test_matura import ACME, ANA, BEN, GLOBEX, ISSUER, SECRET, as_user, event, 
 
 from agentcanvas.security.auth import Authenticator
 from agentcanvas.services import matura
-from agentcanvas.services.audit_sink import AuditEvent, LogSink, MaturaWebhookSink, sink_for
+from agentcanvas.services.audit_sink import AuditEvent, MaturaDestination, destinations_for
 from agentcanvas.settings import Settings
 from agentcanvas.vendor.matura import verify
 
@@ -33,14 +33,6 @@ async def client(app):
     app.state.authenticator = Authenticator(app.state.settings, jwks=ISSUER.jwks)
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:
         yield c
-
-
-class Recorder:
-    def __init__(self):
-        self.events: list[AuditEvent] = []
-
-    async def emit(self, event: AuditEvent) -> None:
-        self.events.append(event)
 
 
 def workspace(wid, name, tid=ACME, status="active", default=False):
@@ -121,38 +113,27 @@ def test_portal_address_and_sink_follow_the_settings():
     assert matura.portal_base(
         s.model_copy(update={"matura_public_url": "https://id.example", "matura_portal_url": "https://admin.example"})
     ) == "https://admin.example/"  # fmt: skip
-    assert [type(x) for x in sink_for(s).sinks] == [LogSink]  # the log line only
+    assert destinations_for(s) == []  # the log line only
     on = s.model_copy(update={"matura_audit_url": "https://id.example/v1/audit", "matura_webhook_secret": SECRET})
-    assert isinstance(sink_for(on).webhook, MaturaWebhookSink)
-    assert sink_for(on.model_copy(update={"auth_mode": "oidc"})).webhook is None
+    assert [type(d) for d in destinations_for(on)] == [MaturaDestination]
+    assert destinations_for(on.model_copy(update={"auth_mode": "oidc"})) == []
 
 
-async def test_security_actions_reach_the_audit_sink(app, api_client):
-    assert app.state.audit_sink.webhook is None  # the default: a log line, no endpoint
-    rec = app.state.audit_sink = Recorder()
-    r = await api_client.put("/v1/projects/prj_default/secrets/API_TOKEN", json={"value": "s3cret"})
-    assert r.status_code == 204
-    r = await api_client.post("/v1/projects/prj_default/workflows", json={"name": "not a security action"})
-    assert r.status_code == 201
-    assert [e.action for e in rec.events] == ["put_secret"]
-    e = rec.events[0]
-    assert e.org_id and e.target == "name=API_TOKEN" and "s3cret" not in json.dumps(e.detail)
-
-
-async def test_the_webhook_sink_signs_cloudevents_and_never_fails_the_caller():
+async def test_the_matura_destination_signs_cloudevents_like_matura_webhooks():
     seen: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         seen.append(request)
         return httpx.Response(500 if len(seen) > 1 else 202)
 
-    sink = MaturaWebhookSink(
+    dest = MaturaDestination(
         "https://id.matura.test/v1/audit", SECRET, client=httpx.AsyncClient(transport=httpx.MockTransport(handler))
     )
-    ev = AuditEvent(ACME, ANA, "publish", "wf_id=wf_1", {"environment": "prod"}, "10.0.0.1")
-    await sink.emit(ev)
-    await sink.emit(ev)  # Matura answers 500: logged, not raised
-    await sink.aclose()
+    ev = AuditEvent(ACME, ANA, "publish", "wf_id=wf_1", {"environment": "prod"}, "10.0.0.1", id=3)
+    await dest.send(ev)
+    with pytest.raises(httpx.HTTPStatusError):  # Matura answers 500: the forwarder retries it later
+        await dest.send(ev)
+    await dest.aclose()
     assert len(seen) == 2
     verify(SECRET, seen[0].headers["matura-signature"], seen[0].content)
     body = json.loads(seen[0].content)

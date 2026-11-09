@@ -133,6 +133,8 @@ Every setting, with its default, is listed in [Server settings](server-settings.
 | `AGENTCANVAS_EGRESS_PROXY`, `AGENTCANVAS_EGRESS_SECRET` | The egress proxy the sandbox reaches the hosts of a project's `sandbox.json` through (`egress:3128` in the compose files, the `-egress` Service in the chart), and the secret (32+ random characters) it checks each call's list with. You provide the secret; with `docker` and no proxy set, the API starts an `agentcanvas-egress` container itself. `AGENTCANVAS_EGRESS_PROXY_RESOLVE=true` (set by the chart) hands the sandbox the proxy's address instead of its name, so the sandbox pods need no DNS |
 | `AGENTCANVAS_CORS_ORIGINS` | The web app's origin, as a JSON list |
 | `AGENTCANVAS_AUDIT_SINK_URL`, `AGENTCANVAS_AUDIT_SINK_SECRET` | Optional: where security events are also POSTed as signed CloudEvents, and the secret that signs them ([Security events](#security-events-and-audit-forwarding)) |
+| `AGENTCANVAS_AUDIT_SPLUNK_HEC_URL`, `AGENTCANVAS_AUDIT_SPLUNK_HEC_TOKEN` | Optional: Splunk's HTTP Event Collector, which also receives security events, and its token ([Security events](#security-events-and-audit-forwarding)) |
+| `AGENTCANVAS_AUDIT_FORWARD_ALL` | `true` forwards every audit entry, not only security events (default `false`) |
 | `AGENTCANVAS_PUBLIC_URL` | Where people reach the web app, e.g. `https://canvas.example.com`. Signing in to app connectors ([App connectors](agents-and-connectors.md#sign-in-per-person)) returns the browser to `<this>/oauth/callback`, and servers that support Client ID Metadata Documents fetch ours from `<this>/api/v1/oauth/client-metadata.json` (it must be https and public for that). Unset: the first CORS origin, which is right for the development server only |
 | `AGENTCANVAS_RETENTION_DAYS` | Delete conversations idle this long (default 90; 0 keeps them). Files people attached to runs go when no conversation has used them for as long |
 | `AGENTCANVAS_MAX_UPLOAD_MB`, `AGENTCANVAS_MAX_PROJECT_FILES_MB` | The largest file a person may attach to a run (default 10, at most 20: the web server accepts 20 MB bodies) and the most attached files a project keeps (default 1024; 0 = no limit) |
@@ -290,13 +292,28 @@ memories, git connections and pushes, app connector servers that changed tools a
   `action`, `target`, `detail`, `ip` and `at`. Ship the API's logs to your SIEM and filter on it.
 - **With `AGENTCANVAS_AUDIT_SINK_URL`** (and `AGENTCANVAS_AUDIT_SINK_SECRET`, which the server refuses to start
   without), each entry is POSTed there as a CloudEvent (`agentcanvas.audit.<action>`, `tenantid` = the
-  organisation) signed in the `AgentCanvas-Signature` header: `t=<unix time>,v1=<hex HMAC-SHA256 of "<t>.<body>">`
-  with the secret. Check the signature and refuse a `t` older than five minutes.
+  organisation, `id` = `audit-<the entry's id>`) signed in the `AgentCanvas-Signature` header:
+  `t=<unix time>,v1=<hex HMAC-SHA256 of "<t>.<body>">` with the secret. Check the signature and refuse a `t` older
+  than five minutes.
+- **With `AGENTCANVAS_AUDIT_SPLUNK_HEC_URL`** (the collector's full URL, such as
+  `https://splunk.example.com:8088/services/collector/event`) and `AGENTCANVAS_AUDIT_SPLUNK_HEC_TOKEN`, each entry
+  goes to Splunk's HTTP Event Collector as one event (`sourcetype` `agentcanvas:audit`, `source` `agentcanvas`, the
+  entry's time); the token's default index receives it. Staging and production refuse an `http://` URL, which would
+  send the token in clear.
 - **In Matura mode with `AGENTCANVAS_MATURA_AUDIT_URL`**, the same CloudEvents go to Matura, signed like its webhooks
   (`Matura-Signature`, with the webhook secret). Matura has no audit ingest API yet: this is for later.
 
-Deliveries happen once, in the background and best effort: a failed one is logged (`audit.forward_failed`) and the
-entry stays in the audit log.
+Set `AGENTCANVAS_AUDIT_FORWARD_ALL=true` to forward every audit entry (every change anyone makes), not only the
+security-relevant ones.
+
+Delivery is reliable. Each forwarded entry is queued for every destination in the database (the audit outbox), in the
+same transaction that records it, and every API server delivers the queue: a row is claimed by one server at a time,
+so several replicas share the work without sending an entry twice. A failed delivery is retried after 5 s, doubling
+up to an hour, `AGENTCANVAS_AUDIT_FORWARD_MAX_ATTEMPTS` times (24 by default, about 15 hours); then the entry is kept
+as undelivered (dead) for an operator to send again. A server restart or a receiver outage loses nothing. A receiver
+may rarely see an entry twice (a server stopped between sending it and recording that it was sent): drop copies by
+the event's `id`. The metrics, alerts and commands for this are in the
+[Operations reference](operations.md#runbooks).
 
 Refused requests are logged too: a 401 (an unknown, revoked or expired API token, SCIM token or deployment key, a
 missing or invalid sign-in) as a warning `auth.refused`, a 403 (a role or organisation refusal) as `auth.forbidden`,

@@ -104,8 +104,10 @@ user unless the operator explicitly allows it ([Sandbox](workspace.md#sandbox)).
 Every successful change is recorded: who made it (a person, a token, a deployment key or SCIM), what it touched,
 when and from which address. Approvals record a hash of exactly what was approved. Reads and failed attempts are
 not recorded. Admins read it under **Settings › Audit log** ([Audit log](accounts.md#audit-log)); rows are kept 400
-days by default (`AGENTCANVAS_AUDIT_RETENTION_DAYS`). Security-relevant entries (publishing, keys, secrets,
-approvals, members, settings and policies) can also be forwarded to Matura as signed events
+days by default (`AGENTCANVAS_AUDIT_RETENTION_DAYS`). Security-relevant entries (publishing, keys, share links,
+secrets, approvals, members, settings and policies, the kill switch, deletions), or every entry, can also be
+forwarded to your SIEM as signed CloudEvents or to Splunk's HTTP Event Collector, reliably: they are queued in the
+database with the entry and retried until delivered
 ([Security events and audit forwarding](deploy.md#security-events-and-audit-forwarding)).
 
 ## Third parties your data reaches

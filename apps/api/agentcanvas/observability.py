@@ -88,6 +88,23 @@ JOB_LAST_SUCCESS = Gauge(
     "Unix time the background job's last round finished (the pod's start until the first one does)",
     ["job"],
 )
+# audit forwarding to a SIEM (services/audit_sink.py): the outbox is counted in the database, the same on every pod
+AUDIT_FORWARDED = Counter(
+    "agentcanvas_audit_forwarded_total", "Audit entries delivered to a forwarding destination", ["destination"]
+)
+AUDIT_FORWARD_FAILED = Counter(
+    "agentcanvas_audit_forward_failed_total", "Deliveries of audit entries that failed (retried later)", ["destination"]
+)
+AUDIT_FORWARD_DEAD = Counter(
+    "agentcanvas_audit_forward_dead_total",
+    "Audit entries given up on after the last attempt (kept as dead in the outbox)",
+    ["destination"],
+)
+AUDIT_OUTBOX = Gauge(
+    "agentcanvas_audit_outbox",
+    "Audit entries waiting for delivery (pending) or given up on (dead), counted in the database",
+    ["destination", "state"],
+)
 # what runs: which pods run which release, during an upgrade or after a rollback
 BUILD_INFO = Gauge("agentcanvas_build_info", "The release and commit this process runs (1)", ["version", "commit"])
 BUILD_INFO.labels(version=VERSION, commit=COMMIT_LABEL).set(1)
