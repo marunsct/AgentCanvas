@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import func, select, update
 from test_efficiency import statements
 from test_org_scope import act_as_b, org_b  # noqa: F401 - fixture
+from test_runs_v1 import triage_api  # noqa: F401 - fixture
 from test_simulation import make_chat
 
 from agentcanvas.db.models import Run, RunSearch, Thread
@@ -136,6 +137,41 @@ async def test_the_index_follows_retention_and_deleting_a_conversation(app, api_
         assert await s.scalar(select(func.count()).select_from(Run)) == 1
     out = await search(api_client, "hotel in Rome")
     assert {h["thread_id"] for h in out["hits"]} <= {"th_refund"}  # the hotel and password conversations are gone
+
+
+async def test_a_resumed_run_is_indexed_with_the_question_that_started_it(app, triage_api):  # noqa: F811
+    """A resume keeps no recording of its own (SQL NULL, not a JSON null that a "has a recording" lookup took for
+    the conversation's first run): its index text starts with what was asked."""
+    api, wf = triage_api, triage_api.wf_id
+    r = await api.post(
+        f"/v1/workflows/{wf}/runs/stream", json={"input": {"ticket": "Printer on fire"}, "thread_id": "th_p"}
+    )
+    assert "RUN_FINISHED" in r.text
+    r = await api.post("/v1/threads/th_p/resume", json={"value": {"decisions": [{"type": "approve"}]}})
+    assert '"success"' in r.text
+    await app.state.run_search.drain()
+    async with app.state.db.sessionmaker() as s:
+        texts = (await s.scalars(select(RunSearch.text).where(RunSearch.thread_id == "th_p"))).all()
+        recorded = (await s.scalars(select(Run.id).where(Run.thread_id == "th_p", Run.recording.is_not(None)))).all()
+    assert len(texts) == 2 and all(t.startswith("User: Printer on fire") for t in texts), texts
+    assert len(recorded) == 1  # the first run's; the resume's is NULL
+
+
+def test_json_nulls_written_before_become_sql_null(tmp_path):
+    import sqlite3
+
+    from agentcanvas.db.session import run_alembic
+
+    db = tmp_path / "m.db"
+    run_alembic(f"sqlite+aiosqlite:///{db}", "upgrade", "b8e2f6a0c4d7")
+    con = sqlite3.connect(db)
+    con.execute("INSERT INTO organization (id, name, settings, sso_groups) VALUES ('org_x', 'X', 'null', '{}')")
+    con.commit()
+    con.close()
+    run_alembic(f"sqlite+aiosqlite:///{db}", "upgrade", "head")
+    con = sqlite3.connect(db)
+    assert con.execute("SELECT settings, sso_groups FROM organization WHERE id = 'org_x'").fetchone() == (None, "{}")
+    con.close()
 
 
 async def test_search_reads_only_the_names_of_the_workflows_it_found(app, api_client):

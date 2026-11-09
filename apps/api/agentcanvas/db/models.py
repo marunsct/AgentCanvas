@@ -50,7 +50,9 @@ class UtcDateTime(TypeDecorator[datetime]):
         return value.replace(tzinfo=UTC) if value is not None and value.tzinfo is None else value
 
 
-Json = JSON().with_variant(JSONB(), "postgresql")
+# None is SQL NULL, not the JSON value null: else `column IS NOT NULL` matches rows that hold nothing (a resume's
+# recording, which a "the conversation's last fresh run" lookup then took for the run with the question)
+Json = JSON(none_as_null=True).with_variant(JSONB(none_as_null=True), "postgresql")
 BigId = BigInteger().with_variant(Integer(), "sqlite")  # SQLite autoincrement needs INTEGER
 
 
