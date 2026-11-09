@@ -27,7 +27,10 @@ docker compose -f infra/compose.prod.yml --env-file infra/.env.prod up -d --wait
 This starts Postgres, a one-shot migration, two API replicas and the web server on port 8080 (`WEB_PORT`) of
 `127.0.0.1`: it speaks plain HTTP, so put a TLS-terminating proxy in front on the same host (or set `WEB_BIND=0.0.0.0`
 when the proxy runs elsewhere and the port is firewalled) and keep response buffering **off** for `/api/` (runs stream
-Server-Sent Events). The API containers run with a read-only root (writable: the workspaces volume, `/tmp` and the
+Server-Sent Events). Have the proxy speak HTTP/2 to browsers (Caddy, Traefik and cloud load balancers do by default;
+nginx needs `http2 on;` next to `listen 443 ssl;`): over HTTP/1.1 a browser opens at most six connections to a site
+for all its tabs, and each open editor, run or Copilot answer holds one, so with several tabs open other requests
+wait. The API containers run with a read-only root (writable: the workspaces volume, `/tmp` and the
 app user's home, both in memory), no capabilities and a 2 GB memory limit (`API_MEM_LIMIT`); `API_READ_ONLY=false`
 turns the read-only root off should a framework need to write elsewhere.
 

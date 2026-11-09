@@ -92,4 +92,46 @@ describe("presence in the editor", () => {
     expect(apiFetch).toHaveBeenLastCalledWith(`/workflows/wf1/presence/${session}`, { method: "DELETE" });
     expect(usePresence.getState().peers).toEqual([]);
   });
+
+  it("closes the stream while the tab is hidden and opens it again when it is shown", async () => {
+    // over HTTP/1.1 a browser has 6 connections per site for all its tabs: a hidden editor must not hold one
+    function Host({ id }: { id: string }) { usePresenceChannel(id); return null; }
+    let hidden = false;
+    const hiddenProp = Object.getOwnPropertyDescriptor(Document.prototype, "hidden");
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => hidden });
+    try {
+      const { unmount } = render(<Host id="wf1" />);
+      await vi.waitFor(() => expect(getStream).toHaveBeenCalledTimes(1));
+      const first = getStream.mock.calls[0][2] as AbortSignal;
+      expect(first.aborted).toBe(false);
+      const beats = apiFetch.mock.calls.length;
+
+      hidden = true;
+      document.dispatchEvent(new Event("visibilitychange"));
+      expect(first.aborted).toBe(true);
+
+      hidden = false;
+      document.dispatchEvent(new Event("visibilitychange"));
+      await vi.waitFor(() => expect(getStream).toHaveBeenCalledTimes(2));
+      expect((getStream.mock.calls[1][2] as AbortSignal).aborted).toBe(false);
+      expect(apiFetch.mock.calls.length).toBeGreaterThan(beats); // back: tells the others at once, and hears who is here
+      unmount();
+      expect((getStream.mock.calls[1][2] as AbortSignal).aborted).toBe(true);
+    } finally {
+      delete (document as { hidden?: boolean }).hidden;
+      if (hiddenProp) Object.defineProperty(Document.prototype, "hidden", hiddenProp);
+    }
+  });
+
+  it("does not open the stream in a tab that starts hidden", async () => {
+    function Host({ id }: { id: string }) { usePresenceChannel(id); return null; }
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
+    try {
+      render(<Host id="wf1" />);
+      await vi.waitFor(() => expect(apiFetch).toHaveBeenCalled()); // still says it is here
+      expect(getStream).not.toHaveBeenCalled();
+    } finally {
+      delete (document as { hidden?: boolean }).hidden;
+    }
+  });
 });

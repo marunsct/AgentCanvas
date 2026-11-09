@@ -99,7 +99,8 @@ top, as before. When another person's tab reports a newer version than yours, a 
 version (v7; you have v6)* with an **Update** button, so you see their change before you make a conflicting one.
 
 Presence needs no setup: each open editor sends a heartbeat every ten seconds and listens on a small event stream,
-and a tab that closes or stops beating disappears after 30 seconds. It works across several API servers because the
+and a tab that closes or stops beating disappears after 30 seconds. A tab in the background keeps its heartbeat but
+closes the stream (browsers share a few connections per site among all tabs), and catches up as soon as it is shown. It works across several API servers because the
 state is kept in the database.
 
 ## Problems
