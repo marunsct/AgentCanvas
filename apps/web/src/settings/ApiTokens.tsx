@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { apiFetch } from "../api/client";
-import type { TokenCreated, TokenOut } from "../api/generated";
+import type { OrgSettingsOut, TokenCreated, TokenOut } from "../api/generated";
 import { useCan, useMe, type Role } from "../api/session";
 import { confirmDialog, toast } from "../ui/dialog";
 import { QueryStatus } from "../ui/QueryStatus";
@@ -11,6 +11,13 @@ import { ago, exact } from "../ui/time";
 
 const ROLES: Role[] = ["viewer", "reviewer", "builder", "admin"];
 const EXPIRY: [string, number | null][] = [["30 days", 30], ["90 days", 90], ["1 year", 365], ["Never", null]];
+
+/** The lifetimes offered when the organisation allows at most `cap` days (0: no limit, and "Never" too). */
+export function expiryChoices(cap: number): [string, number | null][] {
+  if (!cap) return EXPIRY;
+  const within = EXPIRY.filter(([, n]) => n !== null && n <= cap);
+  return within.some(([, n]) => n === cap) ? within : [...within, [`${cap} days`, cap]];
+}
 
 /** The roles a token may have: up to the person's own. */
 export function tokenRoles(mine: Role): Role[] {
@@ -34,7 +41,11 @@ export function ApiTokens() {
   });
   const [name, setName] = useState("");
   const [role, setRole] = useState<Role>(mine);
-  const [days, setDays] = useState<number | null>(90);
+  const settings = useQuery({ queryKey: ["org-settings"], queryFn: () => apiFetch<OrgSettingsOut>("/org/settings") });
+  const cap = Number((settings.data?.limits.effective as Record<string, unknown> | undefined)?.max_token_days ?? 0);
+  const choices = expiryChoices(cap);
+  const [picked, setDays] = useState<number | null>(90);
+  const days = choices.some(([, n]) => n === picked) ? picked : choices[choices.length - 1][1]; // the longest allowed
   const [made, setMade] = useState<TokenCreated | null>(null);
   const refresh = () => void qc.invalidateQueries({ queryKey: ["tokens"] });
   const create = useMutation({
@@ -104,7 +115,7 @@ export function ApiTokens() {
         </label>
         <label className="row">Expires
           <select aria-label="token expiry" value={days ?? ""} onChange={(e) => setDays(e.target.value ? Number(e.target.value) : null)}>
-            {EXPIRY.map(([label, n]) => <option key={label} value={n ?? ""}>{label}</option>)}
+            {choices.map(([label, n]) => <option key={label} value={n ?? ""}>{label}</option>)}
           </select>
         </label>
         <button type="submit" className="primary" disabled={!name.trim() || create.isPending}>Create token</button>

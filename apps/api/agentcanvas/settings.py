@@ -139,6 +139,9 @@ class Settings(BaseSettings):
     # runs in flight at once in one organisation, across every server; past it a run waits in the organisation's
     # queue (highest priority, then oldest, first). 0 = no limit. An organisation may set a lower one.
     max_concurrent_runs: int = Field(default=0, ge=0)
+    # the longest an API token may live, in days; 0 = no limit (a token may also never expire). An organisation may set
+    # a shorter one.
+    max_token_days: int = Field(default=0, ge=0, le=3650)
     retention_interval_s: int = 3600  # how often the retention job looks for expired conversations
     # a cron occurrence no scheduler ticked in (a restart, an outage) fires once when ticking resumes, if it is no
     # older than this; 0 = only the minute a scheduler ticks in

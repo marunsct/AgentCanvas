@@ -60,6 +60,10 @@ curl -H "Authorization: Bearer act_…" https://<your AgentCanvas>/api/v1/projec
 - A token cannot make another token, the organisation's SCIM token, invite or remove members, or change which groups
   give which roles: those need a real sign-in, so a leaked token cannot leave access behind that outlives revoking
   it.
+- An admin can cap how long tokens live (**Settings › Organisation › General › Limits and policies › Longest API
+  token lifetime**), and the operator can set a ceiling for every organisation (`AGENTCANVAS_MAX_TOKEN_DAYS`). With a
+  cap, a new token must expire within it (**Never** is not offered); tokens made before keep their expiry, so revoke
+  any that live longer.
 - Every change made with a token is in the audit log under your name, with the token's id (`personal token tok_…`);
   making and revoking tokens are recorded too.
 

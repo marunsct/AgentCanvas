@@ -17,12 +17,14 @@ const ROWS: { key: string; label: string; env: string; unit?: string; kind: "swi
   { key: "rate_limit_per_project", label: "Runs per project", env: "AGENTCANVAS_RATE_LIMIT_PER_PROJECT", unit: "a minute", kind: "lower" },
   { key: "rate_limit_per_share_client", label: "Messages per share-link visitor", env: "AGENTCANVAS_RATE_LIMIT_PER_SHARE_CLIENT", unit: "a minute", kind: "lower" },
   { key: "max_concurrent_runs", label: "Runs at once", env: "AGENTCANVAS_MAX_CONCURRENT_RUNS", unit: "runs at once (more wait in a queue)", kind: "lower" },
+  { key: "max_token_days", label: "Longest API token lifetime", env: "AGENTCANVAS_MAX_TOKEN_DAYS", unit: "days", kind: "lower" },
   { key: "audit_retention_days", label: "Audit log kept", env: "AGENTCANVAS_AUDIT_RETENTION_DAYS", unit: "days (0: forever)", kind: "longer" },
   { key: "memory_retention_days", label: "Long-term memories kept", env: "AGENTCANVAS_MEMORY_RETENTION_DAYS", unit: "days (0: forever)", kind: "any" },
 ];
 
 const shown = (key: string, v: number | boolean | undefined) =>
-  typeof v === "boolean" ? (v ? "allowed" : "not allowed") : key.endsWith("_days") ? (v === 0 ? "forever" : `${v} days`)
+  typeof v === "boolean" ? (v ? "allowed" : "not allowed")
+    : key.endsWith("_days") ? (v === 0 ? (key === "max_token_days" ? "no limit" : "forever") : `${v} days`)
     : v === 0 ? "no limit" : key === "max_concurrent_runs" ? `${v} at once` : `${v} a minute`;
 
 export function OrgLimits() {
@@ -44,8 +46,8 @@ export function OrgLimits() {
       <h2>Limits and policies</h2>
       <p className="muted small">
         The server's value (set by its operator) applies unless this organisation sets its own. An organisation can
-        switch local MCP servers off but not on, lower a rate limit but not raise it, and keep its audit log longer
-        but not shorter than the server does.
+        switch local MCP servers off but not on, lower a rate limit or the longest API token lifetime but not raise it,
+        and keep its audit log longer but not shorter than the server does.
       </p>
       <table className="table org-limits">
         <thead><tr><th>Setting</th><th>Server</th><th>This organisation</th><th>Applies now</th></tr></thead>
