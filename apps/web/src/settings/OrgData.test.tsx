@@ -35,11 +35,11 @@ async function renderIt(node: React.ReactNode) {
   });
 }
 
-const ready = { id: "exp_1", status: "ready", created_at: "2026-11-10T10:00:00Z", finished_at: null, expires_at: "2026-11-11T10:00:00Z", size: 2097152, sha256: "x", error: null };
+const ready = { id: "oex_1", status: "ready", created_at: "2026-11-10T10:00:00Z", finished_at: null, expires_at: "2026-11-11T10:00:00Z", size: 2097152, sha256: "x", error: null };
 
 describe("Settings › Organisation › the organisation's data", () => {
   it("downloads a built export through its one-time link", async () => {
-    answers({ "GET /org/export": [ready], "GET /org/deletion": { scheduled: false }, "POST /org/export/exp_1/link": { path: "/v1/exports/acx_t" } });
+    answers({ "GET /org/export": [ready], "GET /org/deletion": { scheduled: false }, "POST /org/export/oex_1/link": { path: "/v1/exports/acx_t" } });
     const assign = vi.fn();
     Object.defineProperty(window, "location", { value: { assign }, configurable: true });
     await renderIt(<OrgData />);

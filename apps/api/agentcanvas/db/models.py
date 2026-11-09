@@ -1243,7 +1243,7 @@ class OrgExport(Base):
         Index("org_export_org_idx", "org_id", "created_at"),
         Index("org_export_status_idx", "status"),
     )
-    id: Mapped[str] = mapped_column(String, primary_key=True)  # exp_<ulid>
+    id: Mapped[str] = mapped_column(String, primary_key=True)  # oex_<ulid> (exp_ is an experiment)
     org_id: Mapped[str] = mapped_column(ForeignKey("organization.id", ondelete="CASCADE"))
     status: Mapped[str] = mapped_column(Text, server_default=text("'queued'"), default="queued")
     requested_by: Mapped[str | None] = mapped_column(Text)

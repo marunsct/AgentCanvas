@@ -50,6 +50,7 @@ PREFIXES = {
     "oac",  # an OAuth connection (G-7)
     "dky",  # a deployment's API key (E-8)
     "ntc",  # a notification about an Inbox item (E-6)
+    "oex",  # an organisation export (E-7)
 }
 
 

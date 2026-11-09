@@ -79,6 +79,7 @@ async def _seed(app, api) -> dict[str, str]:
         "file": await api.put(f"/v1/projects/{PROJECT}/files/scripts/mine.py", json={"content": "x = 1\n"}),
         "secret": await api.put(f"/v1/projects/{PROJECT}/secrets/A_TOKEN", json={"value": "a-secret-value"}),
         "experiment": await api.post(f"/v1/workflows/{wf}/experiments", json={"dataset_id": ds["id"]}),
+        "export": await api.post("/v1/org/export"),  # E-7: an organisation export, looked up by its id
     }
     bad = {k: (r.status_code, r.text[:120]) for k, r in made.items() if r.status_code >= 300}
     assert not bad, f"the seed failed: {bad}"

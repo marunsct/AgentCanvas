@@ -108,7 +108,7 @@ async def request_export(session: AsyncSession, org_id: str, user_id: str) -> Or
     )
     if busy is not None:
         raise Conflict(f"an export is already being made: '{busy}'", export_id=busy)
-    row = OrgExport(id=new_id("exp"), org_id=org_id, status="queued", requested_by=user_id)
+    row = OrgExport(id=new_id("oex"), org_id=org_id, status="queued", requested_by=user_id)
     session.add(row)
     await session.commit()
     return row
