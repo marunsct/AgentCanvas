@@ -82,6 +82,7 @@ class RunHandle:
     stop_requested: bool = False
     stop_reason: str | None = None  # why it was stopped (`Run.stop_reason`); none: the person pressed Stop here
     decided: list[str] = field(default_factory=list)  # Inbox items this run answers (back to pending if it fails)
+    requested_by: str | None = None  # whose request it serves: its Inbox items name them (self-approval policy)
     deployment_id: str | None = None  # a run of a published deployment (online evaluators score these, S13)
     version_id: str | None = None
     labels: dict[str, str] = field(default_factory=dict)  # what the deployment API caller tagged it with
@@ -535,8 +536,12 @@ class Runner:
                     )
                 )
                 decided: list[str] = []
+                requested_by = user_id
                 if resume is not None:
                     decided = await self._decide_interrupts(s, thread_id, resume, decided_by or user_id)
+                    # an answer continues the request of whoever asked, not of who answered
+                    asked_by = select(InterruptTask.requested_by).where(InterruptTask.id.in_(decided))
+                    requested_by = next((u for u in (await s.scalars(asked_by)).all() if u), None)
                 await s.commit()
         except IntegrityError as exc:
             self.active_by_thread.pop(thread_id, None)
@@ -582,6 +587,7 @@ class Runner:
         handle.project_id, handle.priority = project_id, priority_of(priority, origin)
         handle.fresh = fresh
         handle.decided = decided  # an error before the answer is applied puts them back in the Inbox (R-4)
+        handle.requested_by = requested_by
         if input is not None and resume is None and checkpoint_id is None and origin != "test":
             handle.input = _plain(input)  # a copy: the engine may turn the caller's message dicts into objects in place
         self.handles[run_id] = handle
@@ -860,7 +866,7 @@ class Runner:
                 for intr in interrupts:
                     asked = {
                         "run_id": h.run_id, "canvas_node_id": intr.get("canvas_node_id") or "", "kind": intr["kind"],
-                        "payload": _as_object(intr["payload"]),
+                        "payload": _as_object(intr["payload"]), "requested_by": h.requested_by,
                     }  # fmt: skip
                     row = await s.get(InterruptTask, intr["id"])
                     if row is None:

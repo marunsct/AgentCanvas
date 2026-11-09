@@ -8,9 +8,9 @@ const apiFetch = vi.hoisted(() => vi.fn());
 vi.mock("../api/client", () => ({ ApiError: class extends Error {}, apiFetch }));
 vi.mock("../api/session", () => ({ can: () => admin.is, useCan: () => admin.is, ME: { role: "admin" } }));
 
-const none = { allow_local_mcp: null, rate_limit_per_deployment: null, rate_limit_per_webhook: null, rate_limit_per_project: null,
+const none = { allow_local_mcp: null, approve_own_runs: null, rate_limit_per_deployment: null, rate_limit_per_webhook: null, rate_limit_per_project: null,
   rate_limit_per_share_client: null, max_concurrent_runs: null, max_token_days: null, audit_retention_days: null, memory_retention_days: null };
-const server = { allow_local_mcp: true, rate_limit_per_deployment: 120, rate_limit_per_webhook: 120, rate_limit_per_project: 600,
+const server = { allow_local_mcp: true, approve_own_runs: true, rate_limit_per_deployment: 120, rate_limit_per_webhook: 120, rate_limit_per_project: 600,
   rate_limit_per_share_client: 30, max_concurrent_runs: 0, max_token_days: 0, audit_retention_days: 400, memory_retention_days: 0 };
 apiFetch.mockImplementation(async (_path: string, init?: { method?: string; json?: { limits: Record<string, unknown> } }) => {
   const own = { ...none, ...(init?.json?.limits ?? {}) };
@@ -48,6 +48,15 @@ describe("Settings › Organisation › Limits", () => {
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Save limits" })); });
     expect(apiFetch).toHaveBeenCalledWith("/org/settings", { method: "PUT", json: { limits: { max_concurrent_runs: 4 } } });
     await waitFor(() => expect(screen.getByTestId("applies-max_concurrent_runs").textContent).toBe("4 at once"));
+  });
+
+  it("can forbid approving your own runs", async () => {
+    renderIt();
+    expect((await screen.findByTestId("applies-approve_own_runs")).textContent).toBe("allowed");
+    fireEvent.change(screen.getByLabelText("Approving your own runs"), { target: { value: "off" } });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Save limits" })); });
+    expect(apiFetch).toHaveBeenCalledWith("/org/settings", { method: "PUT", json: { limits: { approve_own_runs: false } } });
+    await waitFor(() => expect(screen.getByTestId("applies-approve_own_runs").textContent).toBe("not allowed"));
   });
 
   it("caps how long API tokens live", async () => {

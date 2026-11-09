@@ -33,6 +33,13 @@ and the Run tab shows **Approval needed** with the value under review.
   organisation's retention has passed.
 - The **Inbox** (top bar) lists every pending decision across all workflows you can see, so reviewers don't need
   to open the editor. Reviewers (and above) can answer.
+- By default you may approve a run you started yourself. For a four-eyes control (payments, outbound email,
+  destructive tools), an admin turns **Approving your own runs** off under **Settings › Organisation › General ›
+  Limits and policies** (the operator can turn it off for every organisation with
+  `AGENTCANVAS_APPROVE_OWN_RUNS=false`). Then the person who started a run cannot
+  approve or answer what it asks, in the Run tab, the Inbox or through the API: another reviewer must. An answer
+  continues the request of the person who asked, so the approver of one step may approve the next one too. Runs of
+  a published deployment (API keys, share links) are answered by their callers as before.
 
 ## Breakpoints
 

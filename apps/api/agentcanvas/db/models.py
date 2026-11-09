@@ -407,6 +407,9 @@ class InterruptTask(Base):
     payload: Mapped[dict[str, Any]]
     status: Mapped[str] = mapped_column(Text, server_default=text("'pending'"), default="pending")
     assignee_role: Mapped[str | None] = mapped_column(Text)
+    # the person whose run asked (a resumed run keeps the first one): with self-approval off, not the one to decide.
+    # A plain id, not a foreign key: it is a record of who asked, kept as it was.
+    requested_by: Mapped[str | None] = mapped_column(Text)
     decision: Mapped[dict[str, Any] | None] = mapped_column(Json)
     decided_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
     created_at: Mapped[datetime] = _now()

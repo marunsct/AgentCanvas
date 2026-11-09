@@ -12,6 +12,7 @@ type Own = Record<string, number | boolean | null>;
 /** `kind`: how the server's value limits the organisation's. */
 const ROWS: { key: string; label: string; env: string; unit?: string; kind: "switch" | "lower" | "longer" | "any" }[] = [
   { key: "allow_local_mcp", label: "Local MCP servers", env: "AGENTCANVAS_ALLOW_LOCAL_MCP", kind: "switch" },
+  { key: "approve_own_runs", label: "Approving your own runs", env: "AGENTCANVAS_APPROVE_OWN_RUNS", kind: "switch" },
   { key: "rate_limit_per_deployment", label: "Calls per deployment", env: "AGENTCANVAS_RATE_LIMIT_PER_DEPLOYMENT", unit: "a minute", kind: "lower" },
   { key: "rate_limit_per_webhook", label: "Calls per webhook", env: "AGENTCANVAS_RATE_LIMIT_PER_WEBHOOK", unit: "a minute", kind: "lower" },
   { key: "rate_limit_per_project", label: "Runs per project", env: "AGENTCANVAS_RATE_LIMIT_PER_PROJECT", unit: "a minute", kind: "lower" },
@@ -46,8 +47,8 @@ export function OrgLimits() {
       <h2>Limits and policies</h2>
       <p className="muted small">
         The server's value (set by its operator) applies unless this organisation sets its own. An organisation can
-        switch local MCP servers off but not on, lower a rate limit or the longest API token lifetime but not raise it,
-        and keep its audit log longer but not shorter than the server does.
+        switch local MCP servers or approving your own runs off but not on, lower a rate limit or the longest API
+        token lifetime but not raise it, and keep its audit log longer but not shorter than the server does.
       </p>
       <table className="table org-limits">
         <thead><tr><th>Setting</th><th>Server</th><th>This organisation</th><th>Applies now</th></tr></thead>

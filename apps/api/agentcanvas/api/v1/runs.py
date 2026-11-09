@@ -34,6 +34,7 @@ from agentcanvas.runtime.runner import CANCELLED_BY_USER, RunHandle, Runner
 from agentcanvas.runtime.tracing import web_url
 from agentcanvas.runtime.trajectory import compact
 from agentcanvas.runtime.types import ResumeSpec, ThreadState, is_tool_recording
+from agentcanvas.services import org_settings
 from agentcanvas.services.explain import explain
 from agentcanvas.services.redeploy import thread_version
 from agentcanvas.services.run_search import RunSearchResult, RunSearchService
@@ -687,6 +688,10 @@ async def resume_thread(
         # reviewers answer what the run asks; pins and scripted replies would let them drive its tools
         raise Forbidden(f"your role '{user.role}' can resume but not with debug pins, mocks or dry runs")
     t = await _thread(session, thread_id)
+    asked = select(InterruptTask).where(InterruptTask.thread_id == t.id, InterruptTask.status == "pending")
+    if body.interrupt_id:
+        asked = asked.where(InterruptTask.id == body.interrupt_id)
+    await _not_your_own(session, settings, user, t, list((await session.scalars(asked)).all()))
     wf, target_kw = await _thread_target(session, settings, t)
     note(request, interrupt_id=body.interrupt_id, payload_sha256=payload_hash(body.value))
     h = await r.start(
@@ -883,6 +888,17 @@ async def inbox(
     return [_intr(x, wid, name, irs.get(wid), project) for x, wid, name, project in rows]
 
 
+async def _not_your_own(
+    session: AsyncSession, settings: Settings, user: CurrentUser, t: Thread, tasks: list[InterruptTask]
+) -> None:
+    """With approving your own runs off (the organisation's or the server's setting), the person whose run asked
+    (else who started the conversation) may not answer it: an approval step is then a four-eyes control."""
+    if not tasks or (await org_settings.of_org(session, settings, user.org_id)).approve_own_runs:
+        return
+    if any((x.requested_by or t.created_by) == user.id for x in tasks):
+        raise Forbidden("your organisation does not let you approve or answer a run you started: ask another reviewer")
+
+
 @router.post("/inbox/{interrupt_id}/decision", tags=["inbox"])
 async def decide(
     interrupt_id: str,
@@ -901,6 +917,7 @@ async def decide(
     if task.status != "pending":
         raise Conflict(f"inbox item '{interrupt_id}' is already {task.status}")
     t = await _thread(session, task.thread_id)
+    await _not_your_own(session, settings, user, t, [task])
     wf, target_kw = await _thread_target(session, settings, t)
     h = await r.start(
         wf,
