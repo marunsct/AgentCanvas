@@ -130,7 +130,7 @@
         "type": "array",
         "title": "Discovered tools",
         "readOnly": true,
-        "description": "Filled by Browse tools; used to check approvals (W002, E033)",
+        "description": "Filled by Browse tools; used to check approvals (W002, E033). Publishing pins these tools: a deployment offers only them, as they were when browsed",
         "items": {
           "type": "object",
           "properties": {
@@ -145,6 +145,9 @@
             },
             "read_only": {
               "type": "boolean"
+            },
+            "hash": {
+              "type": "string"
             }
           }
         }

@@ -29,6 +29,9 @@ class McpToolInfo(BaseModel):
     description: str = ""
     destructive: bool = False
     read_only: bool = False
+    hash: str | None = Field(
+        None, description="SHA-256 of the tool's description, input schema and annotations: publishing pins it"
+    )
 
 
 @router.post("/mcp/inspect", response_model=list[McpToolInfo])

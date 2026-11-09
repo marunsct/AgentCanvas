@@ -883,14 +883,32 @@ async def mcp_tools(target: Any) -> list[BaseTool]:
 
 
 def mcp_tool_info(tool: BaseTool) -> dict[str, Any]:
-    """Name, description and MCP annotations of a discovered tool (the inspector caches these on the resource)."""
-    annotations = ((tool.metadata or {}).get("mcp", {}).get("tool", {}) or {}).get("annotations") or {}
+    """Name, description, MCP annotations and fingerprint of a discovered tool (the inspector caches these on the
+    resource; a published version pins the fingerprints)."""
+    annotations = _mcp_annotations(tool)
     return {
         "name": tool.name,
         "description": (tool.description or "")[:500],
         "destructive": bool(annotations.get("destructive_hint")),
         "read_only": bool(annotations.get("read_only_hint")),
+        "hash": mcp_tool_hash(tool),
     }
+
+
+def _mcp_annotations(tool: BaseTool) -> dict[str, Any]:
+    return ((tool.metadata or {}).get("mcp", {}).get("tool", {}) or {}).get("annotations") or {}
+
+
+def mcp_tool_hash(tool: BaseTool) -> str:
+    """SHA-256 of what a model reads about an MCP tool: its whole description, input schema and annotations. A
+    server that rewrites any of them after the builder reviewed the tool gives it another hash."""
+    schema = tool.args_schema
+    if schema is not None and not isinstance(schema, dict):  # MCP tools carry a dict; anything else, its JSON schema
+        dump = getattr(schema, "model_json_schema", None)
+        schema = dump() if callable(dump) else str(schema)
+    doc = {"description": tool.description or "", "input_schema": schema, "annotations": _mcp_annotations(tool)}
+    text = json.dumps(doc, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+    return "sha256:" + hashlib.sha256(text.encode()).hexdigest()
 
 
 # ----------------------------------------------------------- tools: HTTP ----
