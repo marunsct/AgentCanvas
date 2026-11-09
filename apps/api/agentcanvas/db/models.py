@@ -349,6 +349,10 @@ class Run(Base):
     recording: Mapped[dict[str, Any] | None] = mapped_column(Json)
     # G-10: the run's events, compact (`runtime/trajectory.py`): the trajectory view once they left memory
     events: Mapped[list[Any] | None] = mapped_column(Json)
+    # a deployment run's answer and the pauses it ended with, whole: what its caller reads later, on any server.
+    # Deferred: only the run's result reads them
+    output: Mapped[dict[str, Any] | None] = mapped_column(Json, deferred=True)
+    interrupts: Mapped[list[Any] | None] = mapped_column(Json, deferred=True)
     # FR-X-10: stopped by a server shutdown before it finished; the next instance continues the thread
     handover: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     # someone asked to stop it (Stop, Delete conversation, the F-5 kill switch), maybe on another instance: the one

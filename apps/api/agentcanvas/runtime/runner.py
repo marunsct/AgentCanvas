@@ -157,6 +157,16 @@ def _recording(h: RunHandle, status: str) -> dict[str, Any] | None:
     return {"input": h.input, "mocks": mocks, "status": status, "route": route, "output": output}
 
 
+def _result_columns(h: RunHandle, interrupts: list[dict[str, Any]]) -> dict[str, Any]:
+    """A deployment run's answer and pauses, whole, for its caller to read later from any server (E-2). Other runs
+    are read in the app, from their conversation: they keep nothing extra."""
+    if h.deployment_id is None:
+        return {}
+    finished = next((e for e in reversed([*h.events, *h.held]) if e["type"] == "RUN_FINISHED"), None)
+    output = finished.get("output") if finished else None
+    return {"output": _plain(output) if isinstance(output, dict) else None, "interrupts": _plain(interrupts) or None}
+
+
 class BudgetExceeded(Exception):
     """A run went over its workflow budget (FR-X-15)."""
 
@@ -898,6 +908,7 @@ class Runner:
                         recording=_recording(h, status),
                         events=compact([*h.events, *h.held], h.event_times, time.time_ns()),
                         handover=h.drained,
+                        **_result_columns(h, interrupts),
                     )
                 )
                 if res.rowcount == 0:  # type: ignore[attr-defined]

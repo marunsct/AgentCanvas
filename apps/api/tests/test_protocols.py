@@ -343,7 +343,7 @@ async def test_a2a_tasks_get_reads_one_run_whatever_the_conversation_holds(app, 
     with statements(app) as seen:
         got = (await api_client.post(url, json=rpc("tasks/get", {"id": task["id"]}), headers=auth)).json()["result"]
     assert got["status"]["state"] == "completed"
-    runs = [s for s in seen if "FROM run" in s and "run.thread_id" in s]
+    runs = [s for s in seen if "FROM run" in s and "WHERE run.thread_id" in s]  # the conversation's runs
     assert runs and all("LIMIT" in s for s in runs), runs
 
 

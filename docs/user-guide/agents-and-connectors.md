@@ -136,7 +136,8 @@ conversation, pass the `thread_id` of the earlier run to the workflow's tool.
   only text input). The answer is a task whose artifact holds the output.
 - A pause becomes the `input-required` state. Send the answer to the same task (`taskId`): "yes" or "no" for an
   approval, or the answer to a question.
-- `contextId` continues a conversation; `tasks/get` reads a task again.
+- `contextId` continues a conversation; `tasks/get` reads a task again, with its output or what it waits for,
+  from whichever server answers: the result is kept with the run, not only in the memory of the server that ran it.
 - A2A 1.0 clients use `SendMessage` and `GetTask` (the same behaviour, in 1.0's form: `TASK_STATE_COMPLETED`,
   parts without `kind`); the agent card comes in 1.0's form when read with `A2A-Version: 1.0`, and lists both
   versions either way.

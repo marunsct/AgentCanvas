@@ -7,6 +7,7 @@ version — editing the draft never changes what callers get.
 from __future__ import annotations
 
 import asyncio
+from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 
@@ -46,6 +47,7 @@ from agentcanvas.services.deployments import Check, DeploymentService
 from agentcanvas.services.disclosure import AI_HEADER, GeneratedBy, generated_by, marked
 from agentcanvas.services.projects import PROJECT_OF
 from agentcanvas.services.redeploy import thread_version
+from agentcanvas.services.run_results import RunResult, from_handle
 from agentcanvas.services.testcases import TestCaseService
 from agentcanvas.services.versions import VersionService
 from agentcanvas.services.workflows import WorkflowService
@@ -420,17 +422,13 @@ async def _result(h: RunHandle) -> ApiResult:
         await asyncio.wait_for(h.done.wait(), WAIT_TIMEOUT_S)
     except TimeoutError:
         return ApiResult(run_id=h.run_id, thread_id=h.thread_id, status="running")
-    res = ApiResult(run_id=h.run_id, thread_id=h.thread_id, status="error", generated_by=generated_by(h.events))
-    for ev in h.events:
-        if ev["type"] == "RUN_FINISHED":
-            res.status, res.output = ev.get("status") or "success", ev.get("output")
-            res.interrupts = ev.get("interrupts") or []
-        elif ev["type"] == "RUN_ERROR":
-            # "redeploy": the server restarted mid-run; another instance continues the conversation (FR-X-10)
-            code = ev.get("code")
-            res.status = {"cancelled": "cancelled", "redeploy": "interrupted"}.get(code, "error")  # type: ignore[assignment]
-            res.error = ev.get("message")
+    res = api_result(from_handle(h))
+    res.generated_by = generated_by(h.events)  # E-5: which models wrote it (none for a run read back from the database)
     return res
+
+
+def api_result(res: RunResult) -> ApiResult:
+    return ApiResult(**asdict(res))
 
 
 @public_router.post("/deployments/{dep_id}/runs/wait", response_model=ApiResult)
