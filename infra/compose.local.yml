@@ -27,6 +27,7 @@ services:
       args:  # frameworks whose workflows run here, built into the image: all by default; FRAMEWORKS=none (or ids) for fewer
         FRAMEWORKS: ${FRAMEWORKS:-all}
         WITH_MASTRA: ${WITH_MASTRA:-true}
+        GIT_SHA: ${GIT_SHA:-}  # the commit Settings > About shows (`make docker-up` passes it)
     image: ${API_IMAGE:-agentcanvas-api:latest}
     # every setting in infra/.env.local reaches the API (any AGENTCANVAS_* setting, OTEL_*, LANGSMITH_*...); the
     # `environment` below wins where both name one
@@ -115,7 +116,7 @@ services:
     restart: unless-stopped
 
   web:
-    build: { context: .., dockerfile: infra/Dockerfile.web }
+    build: { context: .., dockerfile: infra/Dockerfile.web, args: { GIT_SHA: "${GIT_SHA:-}" } }
     image: ${WEB_IMAGE:-agentcanvas-web:latest}
     environment:
       API_UPSTREAM: http://api:8000

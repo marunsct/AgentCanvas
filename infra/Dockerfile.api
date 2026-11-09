@@ -93,7 +93,16 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
 COPY --from=build --chown=app:app /app /app
 COPY --from=mastra --chown=app:app /opt/mastra /opt/mastra
 WORKDIR /app
+# what this image is: the release (kept equal to pyproject.toml by a test) and the commit it was built from, pass it
+# with --build-arg GIT_SHA=$(git rev-parse HEAD). The API reports both (GET /v1/version, Settings > About, the
+# agentcanvas_build_info metric, the api.started log line); `docker inspect` shows the labels
+ARG VERSION="0.32.3"
+ARG GIT_SHA=""
+LABEL org.opencontainers.image.title="AgentCanvas API" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${GIT_SHA}"
 ENV PATH=/app/.venv/bin:/opt/mastra/bin:$PATH \
+    AGENTCANVAS_GIT_SHA=${GIT_SHA} \
     AGENTCANVAS_IN_DOCKER=1 \
     AGENTCANVAS_MASTRA_DIR=/opt/mastra \
     PYTHONUNBUFFERED=1 \

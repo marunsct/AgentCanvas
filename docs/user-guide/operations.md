@@ -87,6 +87,7 @@ The settings to decide first are in [Deploy and operate](deploy.md#essential-set
   | `agentcanvas_online_score_mean` | `deployment`, `evaluator` | mean online score over the evaluator's alert window (S13) |
   | `agentcanvas_eval_alert_open` | `deployment`, `evaluator`, `kind` (below, drop) | 1 while a drift alert is open; every pod refreshes it from the database once a minute |
   | `agentcanvas_eval_alerts_total` | `kind` | drift alerts opened |
+  | `agentcanvas_build_info` | `version`, `commit` | always 1: the release and commit this pod runs (`unknown` commit when the image was built without `GIT_SHA`) |
   | `agentcanvas_runs_queued` | | runs of this pod waiting for a slot under a runs-at-once limit (sum over pods for the whole queue) |
   | `agentcanvas_job_failures_total` | `job` (handover, cron, retention, knowledge_crawl, experiments, online_metrics, secrets, matura_feed) | background job rounds that failed |
   | `agentcanvas_job_last_success_timestamp_seconds` | `job` | when the job last finished a round in this pod (its start until the first one does) |

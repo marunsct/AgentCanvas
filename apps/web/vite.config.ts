@@ -1,6 +1,11 @@
 /// <reference types="vitest/config" />
+import { readFileSync } from "node:fs";
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
+
+// Settings › About shows what this bundle is: the release in package.json, and the commit when the build is given
+// GIT_SHA (the web image passes its build argument)
+const release = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")).version as string;
 
 // During development (and `vite preview`), /api/* is forwarded to the Python API on :8000 (E2E_API_PORT moves it,
 // for a machine where another program already holds 8000)
@@ -31,6 +36,7 @@ const securityHeaders: Plugin = {
 
 export default defineConfig({
   plugins: [react(), securityHeaders],
+  define: { __APP_VERSION__: JSON.stringify(release), __APP_COMMIT__: JSON.stringify(process.env.GIT_SHA ?? "") },
   build: {
     // pages are lazy chunks; the only chunk over 500 kB is ELK (~1.4 MB), fetched on the first "Tidy"
     chunkSizeWarningLimit: 1500,

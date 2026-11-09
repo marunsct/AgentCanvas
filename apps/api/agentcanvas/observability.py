@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
 
 from agentcanvas.log import get_logger
+from agentcanvas.version import COMMIT_LABEL, VERSION
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
@@ -70,6 +71,9 @@ JOB_LAST_SUCCESS = Gauge(
     "Unix time the background job's last round finished (the pod's start until the first one does)",
     ["job"],
 )
+# what runs: which pods run which release, during an upgrade or after a rollback
+BUILD_INFO = Gauge("agentcanvas_build_info", "The release and commit this process runs (1)", ["version", "commit"])
+BUILD_INFO.labels(version=VERSION, commit=COMMIT_LABEL).set(1)
 RUNS_QUEUED = Gauge("agentcanvas_runs_queued", "Runs of this process waiting for a slot under a runs-at-once limit")
 
 _started: dict[str, float] = {}

@@ -21,7 +21,7 @@ from fastapi.responses import JSONResponse, Response
 from sqlalchemy import text
 from structlog.contextvars import bind_contextvars, clear_contextvars
 
-from agentcanvas import observability
+from agentcanvas import observability, version
 from agentcanvas.adapters import get_adapter, installed_adapters, model_service
 from agentcanvas.adapters.langchain import interop
 from agentcanvas.adapters.langchain.answer_cache import DatabaseAnswerCache
@@ -303,8 +303,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if settings.env in ("staging", "prod") and not os.getenv("LANGGRAPH_AES_KEY"):
                 log.warning("checkpoints.unencrypted", hint="set LANGGRAPH_AES_KEY (16, 24 or 32 characters)")
             log.info(
-                "api.started", env=settings.env, edition=settings.edition, auth=settings.auth_mode,
-                database=db.engine.dialect.name,
+                "api.started", version=version.VERSION, commit=version.COMMIT, env=settings.env,
+                edition=settings.edition, auth=settings.auth_mode, database=db.engine.dialect.name,
             )  # fmt: skip
 
             async def wind_down() -> None:
@@ -340,7 +340,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # interactive docs and the schema stay off in production: they map the attack surface (S15)
     docs: dict = {"docs_url": None, "redoc_url": None, "openapi_url": None} if settings.env == "prod" else {}
-    app = FastAPI(title="AgentCanvas API", version="0.32.3", lifespan=lifespan, **docs)
+    app = FastAPI(title="AgentCanvas API", version=version.VERSION, lifespan=lifespan, **docs)
     app.state.settings = settings
     app.openapi = lambda: plain_openapi(app)  # type: ignore[method-assign]
     install_problem_handlers(app)

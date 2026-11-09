@@ -175,6 +175,7 @@ jobs:
           build-args: |  # the Docker app's image, so the scan sees every framework environment and Mastra
             FRAMEWORKS=all
             WITH_MASTRA=true
+            GIT_SHA=${{ github.sha }}
           load: true
           tags: agentcanvas-api:ci
           cache-from: type=gha,scope=api
@@ -184,6 +185,7 @@ jobs:
         with:
           context: .
           file: infra/Dockerfile.web
+          build-args: GIT_SHA=${{ github.sha }}
           load: true
           tags: agentcanvas-web:ci
           cache-from: type=gha,scope=web

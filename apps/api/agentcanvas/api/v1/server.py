@@ -1,11 +1,13 @@
 """The server's own settings as Settings > Server shows them (admins, read-only): what this server does and which
-environment variable changes it. Values that are secrets, or addresses that carry credentials, are never shown."""
+environment variable changes it. Values that are secrets, or addresses that carry credentials, are never shown.
+Also the release it runs (Settings > About, every signed-in user)."""
 
 from __future__ import annotations
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
+from agentcanvas import version
 from agentcanvas.adapters import installed_adapters
 
 router = APIRouter(tags=["server"])
@@ -16,6 +18,17 @@ class ServerSetting(BaseModel):
     label: str
     value: str
     env: str = Field(description="the environment variable an operator sets it with")
+
+
+class VersionOut(BaseModel):
+    version: str = Field(description="the release, e.g. 0.33.0")
+    commit: str | None = Field(description="the git commit the server's image was built from, when it was given")
+
+
+@router.get("/version", response_model=VersionOut)
+async def server_version() -> VersionOut:
+    """The release and commit this server runs (Settings > About), for any signed-in user: what support asks for."""
+    return VersionOut(version=version.VERSION, commit=version.COMMIT)
 
 
 def _days(n: int) -> str:

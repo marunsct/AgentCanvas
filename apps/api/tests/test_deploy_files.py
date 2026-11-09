@@ -556,3 +556,22 @@ def test_the_grace_period_covers_the_stream_wait_the_drain_and_the_work_after_it
     assert values["api"]["terminationGracePeriodSeconds"] >= needed
     compose = yaml.safe_load((ROOT / "infra" / "compose.prod.yml").read_text())
     assert int(compose["services"]["api"]["stop_grace_period"].rstrip("s")) >= needed
+
+
+def test_the_version_is_the_same_everywhere_and_the_image_carries_its_commit():
+    """One release number: the package (pyproject.toml, what the API reports), the web app, the Helm chart's appVersion
+    and the published API description. The API image records the commit it was built from (GIT_SHA build argument)."""
+    import json
+    import tomllib
+
+    version = tomllib.loads((ROOT / "apps" / "api" / "pyproject.toml").read_text())["project"]["version"]
+    web = json.loads((ROOT / "apps" / "web" / "package.json").read_text())["version"]
+    chart = yaml.safe_load((ROOT / "infra" / "helm" / "agentcanvas" / "Chart.yaml").read_text())["appVersion"]
+    spec = json.loads((ROOT / "packages" / "ir-schema" / "openapi.json").read_text())["info"]["version"]
+    assert web == chart == spec == version
+    for image in ("api", "web"):
+        runtime = (ROOT / "infra" / f"Dockerfile.{image}").read_text().split("AS runtime", 1)[1]
+        assert 'ARG GIT_SHA=""' in runtime and 'org.opencontainers.image.revision="${GIT_SHA}"' in runtime
+        assert f'ARG VERSION="{version}"' in runtime and 'org.opencontainers.image.version="${VERSION}"' in runtime
+    assert "AGENTCANVAS_GIT_SHA=${GIT_SHA}" in (ROOT / "infra" / "Dockerfile.api").read_text()  # GET /v1/version
+    assert 'GIT_SHA="${GIT_SHA}" pnpm build' in (ROOT / "infra" / "Dockerfile.web").read_text()  # Settings > About

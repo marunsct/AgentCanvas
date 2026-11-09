@@ -18,8 +18,9 @@ the images and the chart contain, metrics, retention, restore, and a runbook for
 ## Option 1: Docker Compose on one host
 
 ```bash
-docker build -f infra/Dockerfile.api --build-arg FRAMEWORKS=all --build-arg WITH_MASTRA=true -t agentcanvas-api apps/api
-docker build -f infra/Dockerfile.web -t agentcanvas-web .
+docker build -f infra/Dockerfile.api --build-arg FRAMEWORKS=all --build-arg WITH_MASTRA=true \
+  --build-arg GIT_SHA=$(git rev-parse HEAD) -t agentcanvas-api apps/api
+docker build -f infra/Dockerfile.web --build-arg GIT_SHA=$(git rev-parse HEAD) -t agentcanvas-web .
 cp infra/.env.prod.example infra/.env.prod      # fill it in (never commit it)
 docker compose -f infra/compose.prod.yml --env-file infra/.env.prod up -d --wait
 ```
@@ -64,8 +65,8 @@ registry your cluster can pull from.
 REGISTRY=registry.example.com/acme   # yours
 TAG=$(git rev-parse --short HEAD)
 docker build -f infra/Dockerfile.api --build-arg FRAMEWORKS=all --build-arg WITH_MASTRA=true \
-  -t $REGISTRY/agentcanvas-api:$TAG apps/api
-docker build -f infra/Dockerfile.web -t $REGISTRY/agentcanvas-web:$TAG .
+  --build-arg GIT_SHA=$(git rev-parse HEAD) -t $REGISTRY/agentcanvas-api:$TAG apps/api
+docker build -f infra/Dockerfile.web --build-arg GIT_SHA=$(git rev-parse HEAD) -t $REGISTRY/agentcanvas-web:$TAG .
 docker push $REGISTRY/agentcanvas-api:$TAG && docker push $REGISTRY/agentcanvas-web:$TAG
 ```
 
@@ -233,6 +234,10 @@ best effort.
 ## Observability
 
 - **Health:** `/healthz` (process up) and `/readyz` (database and run store reachable).
+- **Version:** which release and commit a server runs: `GET /v1/version` (signed in; Settings › You › About shows
+  it), the `agentcanvas_build_info{version,commit}` metric, the `api.started` log line, and the images' labels
+  (`docker inspect --format '{{json .Config.Labels}}' <image>`). The commit is known when the image was built with
+  `--build-arg GIT_SHA=...`, as in the commands above.
 - **Metrics:** Prometheus on `/metrics`. A Grafana dashboard and alert rules (including evaluation drift) are in
   `infra/observability/`.
 - **Traces:** set `OTEL_EXPORTER_OTLP_ENDPOINT` for OpenTelemetry; `LANGSMITH_TRACING` / `LANGSMITH_API_KEY` for

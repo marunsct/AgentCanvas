@@ -43,6 +43,7 @@ cannot change are shown read-only, with a sentence saying who can; sections your
 | Organisation › **Server** | How this server is set up (sign-in, where workspace code runs, frameworks offered, limits, retention), each with the environment variable an operator sets it with. Read-only | admins can read |
 | You › **Appearance** | Your colour theme, and whether the editor opens in Simple or Full mode (both saved with your account) | you |
 | You › **Keyboard shortcuts** | Every shortcut of the editor and the canvas (Ctrl/⌘+K opens the command palette) | read only |
+| You › **About** | The release the server runs and the commit its image was built from, and the same for the web app; quote them when you report a problem. If the two releases differ, reload the page; if they still differ, an upgrade is not finished. The same is `GET /v1/version` | everyone |
 
 The addresses pages had before Settings existed (`/setup`, `/members`, `/audit`, `/policies`) still work and open
 the matching section.

@@ -163,7 +163,7 @@ admin user. You should see:
 
 ```
 INFO:     Uvicorn running on http://127.0.0.1:8000
-... api.started  auth=dev database=sqlite edition=dev env=dev
+... api.started  auth=dev commit=None database=sqlite edition=dev env=dev version=0.32.3
 INFO:     Application startup complete.
 ```
 
