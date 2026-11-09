@@ -88,6 +88,8 @@ a Helm hook Job before the API starts.
 
 ## Essential settings
 
+Every setting, with its default, is listed in [Server settings](server-settings.md); these are the ones to decide first.
+
 | Setting | Purpose |
 |---|---|
 | `DATABASE_URL` | `postgresql://user:pass@host:5432/agentcanvas` |

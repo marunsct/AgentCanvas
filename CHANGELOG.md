@@ -593,6 +593,7 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
   1.9.1 and dnspython 2.9.0.
 
 ### Added
+- [Server settings](docs/user-guide/server-settings.md): every server setting with its default and what it does, generated from the code (a test keeps it current).
 - **Decide with AI** block (`core.decide`, LangGraph): a model picks one of the paths you describe and saves
   `{choice, confidence, reason}`; an answer outside the choices, or below a minimum confidence, takes the default path.
 - Experiments can run each example several times (**runs per example**, `repetitions`, up to 10) and report pass@k,
