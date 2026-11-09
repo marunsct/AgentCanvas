@@ -177,6 +177,10 @@ The framework pins were raised to the releases of late October (HARDENING 1.7), 
 ADK's tool calls fail with "No module named 'mcp'", a package it imports without declaring. 1.105.7 is the newest
 that passes the ADK, parts, conformance and interop tests. *Reverse:* raise it in `designs.AGENT_FRAMEWORKS` (the pins
 test lists every other place) once a LiteLLM release declares `mcp` or ADK stops importing it that way.
+*Rechecked 2026-11-09:* the import is LiteLLM's own, not ADK's: `acompletion()` with tools loads its MCP proxy
+handler, which imports `mcp.types` (a regression from LiteLLM PR #42568, issue BerriAI/litellm#46045). The fix
+(PR #45961) is merged on LiteLLM's main branch but in no release up to 1.108.3, and ADK 2.14 itself declares
+`litellm>=1.84,<1.106.3`. So 1.105.7 stays; the ADK smoke check now offers a tool, so it would catch the break.
 
 ### Merging the agents' work: cherry-picks onto the branch, not merges
 The review's fixes were made in parallel by four agents in their own worktrees, each rebased onto this branch and

@@ -72,8 +72,15 @@ agent = Crew(agents=[helper], tasks=[Task(description="Answer: {input}", expecte
     "google_adk": """
 from google.adk.agents import LlmAgent
 from google.adk.models.lite_llm import LiteLlm
+
+
+def lookup(query: str) -> str:
+    '''Look something up (offered, so the model call carries tools: LiteLLM 1.106+ failed only then).'''
+    return "nothing found"
+
+
 agent = LlmAgent(name="smoke", model=LiteLlm(model="openai/fake", api_base=BASE, api_key="k"),
-                 instruction="Reply briefly.")
+                 instruction="Reply briefly.", tools=[lookup])
 """,
     "microsoft_agent_framework": """
 from agent_framework.openai import OpenAIChatCompletionClient
