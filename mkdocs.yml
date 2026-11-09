@@ -43,6 +43,7 @@ nav:
           - Publish and integrate: user-guide/publish.md
           - Connect to other agents and tools: user-guide/agents-and-connectors.md
           - Export and deploy: user-guide/export.md
+          - API reference: user-guide/api.md
       - Settings and administration:
           - Settings and moving around: user-guide/settings.md
           - Organisations, roles and policies: user-guide/accounts.md

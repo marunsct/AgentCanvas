@@ -36,7 +36,7 @@ Then dive into the area you need:
 - [Workspace: code, secrets and events](workspace.md)
 - [Memory](memory.md)
 - [Evaluation Studio](evaluation.md)
-- [Publish and integrate](publish.md)
+- [Publish and integrate](publish.md) and the [API reference](api.md) (errors, versioning, the OpenAPI document)
 - [Settings and moving around](settings.md)
 - [Organisations, roles and policies](accounts.md)
 - Running AgentCanvas for a team: [Deploy and operate](deploy.md), the [Operations reference](operations.md)

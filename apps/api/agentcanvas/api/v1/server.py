@@ -1,10 +1,11 @@
 """The server's own settings as Settings > Server shows them (admins, read-only): what this server does and which
 environment variable changes it. Values that are secrets, or addresses that carry credentials, are never shown.
-Also the release it runs (Settings > About, every signed-in user)."""
+Also the release it runs (Settings > About) and its OpenAPI document, for every signed-in user."""
 
 from __future__ import annotations
 
 from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from agentcanvas import version
@@ -29,6 +30,14 @@ class VersionOut(BaseModel):
 async def server_version() -> VersionOut:
     """The release and commit this server runs (Settings > About), for any signed-in user: what support asks for."""
     return VersionOut(version=version.VERSION, commit=version.COMMIT)
+
+
+@router.get("/openapi.json", include_in_schema=False)
+async def api_description(request: Request) -> JSONResponse:
+    """This server's OpenAPI document, for signed-in callers (people and API tokens): in production `/openapi.json`
+    and `/docs` are off for anonymous callers, since they map the attack surface (S15), but integrators and client
+    generators still need the reference of the release they talk to."""
+    return JSONResponse(request.app.openapi())
 
 
 def _days(n: int) -> str:

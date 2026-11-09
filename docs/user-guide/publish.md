@@ -75,8 +75,8 @@ Request fields: `input` (the workflow's input channels), `thread_id` (continue a
 run is waiting for.
 
 Through the web server (production setups) the same paths are under `/api/`. The public API is rate-limited per
-key, per webhook and per project (`429` with `Retry-After` when exceeded). Full, interactive API reference:
-`http://localhost:8000/docs` in development.
+key, per webhook and per project (`429` with `Retry-After` when exceeded). Errors, versioning and where to get the
+full OpenAPI reference (production included): [API reference](api.md).
 
 ## Share as an app or a chat widget
 

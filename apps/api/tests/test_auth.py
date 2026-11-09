@@ -241,6 +241,24 @@ async def test_api_docs_are_off_in_production(settings):
             assert (await c.get(path)).status_code == 404, path
 
 
+async def test_the_api_description_is_there_for_signed_in_callers_in_production(settings):
+    """/docs and /openapi.json stay off for anonymous callers in production (S15); a signed-in caller (a person or an
+    API token) reads the running server's own OpenAPI document at /v1/openapi.json, for clients and generators."""
+    from agentcanvas.api.main import create_app
+
+    prod = create_app(
+        settings.model_copy(update={"env": "prod", "secret_key": "k" * 64, "allow_unisolated_scripts": True})
+    )
+    async with prod.router.lifespan_context(prod):
+        prod.state.authenticator = Authenticator(prod.state.settings, jwks={"keys": [SIGNING_JWK]})
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=prod), base_url="http://test") as c:
+            assert (await c.get("/openapi.json")).status_code == 404
+            assert (await c.get("/v1/openapi.json")).status_code == 401
+            r = await c.get("/v1/openapi.json", headers=bearer(token()))
+            assert r.status_code == 200 and r.json() == prod.openapi()
+            assert "/v1/version" in r.json()["paths"] and "/v1/openapi.json" not in r.json()["paths"]
+
+
 async def test_cors_refuses_other_origins(client):
     """S21: a browser on another origin gets no CORS grant (allowed origins come from AGENTCANVAS_CORS_ORIGINS)."""
     pre = {"Access-Control-Request-Method": "POST", "Access-Control-Request-Headers": "authorization"}
