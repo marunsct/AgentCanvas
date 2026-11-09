@@ -122,22 +122,31 @@ def test_components_with_two_or_more_replicas_get_a_disruption_budget_and_spread
     assert "topologySpreadConstraints" not in pod_spec(docs, "-api")
 
 
-def trusted(value: str | None) -> subprocess.CompletedProcess[str]:
-    """The web image's start-up step that turns TRUSTED_PROXIES into nginx's set_real_ip_from directives."""
+def trusted(value: str | None, var: str = "TRUSTED_PROXIES_REAL_IP") -> subprocess.CompletedProcess[str]:
+    """The web image's start-up step that turns TRUSTED_PROXIES into nginx's set_real_ip_from directives and the
+    entries of the geo block that decides whether X-Forwarded-Proto is believed."""
     env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin")} | ({"TRUSTED_PROXIES": value} if value is not None else {})
     script = ROOT / "infra" / "web" / "19-trusted-proxies.envsh"
-    return subprocess.run(["sh", "-c", f'. "{script}" && printf %s "$TRUSTED_PROXIES"'], capture_output=True,
+    return subprocess.run(["sh", "-c", f'. "{script}" && printf %s "${var}"'], capture_output=True,
                           text=True, env=env, timeout=10, check=False)  # fmt: skip
 
 
 @pytest.mark.skipif(shutil.which("sh") is None, reason="no POSIX shell")
 def test_the_web_image_trusts_every_listed_proxy_range_and_nothing_else():
-    assert trusted(None).stdout == "127.0.0.1/32"
-    assert trusted("10.0.0.0/8").stdout == "10.0.0.0/8"
-    many = trusted("10.0.0.0/8 172.16.0.0/12,192.168.0.0/16").stdout
-    assert many == "10.0.0.0/8; set_real_ip_from 172.16.0.0/12; set_real_ip_from 192.168.0.0/16"
+    assert trusted(None).stdout == "set_real_ip_from 127.0.0.1/32; "
+    assert trusted("10.0.0.0/8").stdout == "set_real_ip_from 10.0.0.0/8; "
+    many = "10.0.0.0/8 172.16.0.0/12,192.168.0.0/16"
+    assert trusted(many).stdout == (
+        "set_real_ip_from 10.0.0.0/8; set_real_ip_from 172.16.0.0/12; set_real_ip_from 192.168.0.0/16; "
+    )
+    # the geo block takes "range value;" entries: several ranges once broke the start of nginx ("invalid number
+    # of the geo parameters") with the chart's default of three
+    assert trusted(many, "TRUSTED_PROXIES_GEO").stdout == "10.0.0.0/8 1; 172.16.0.0/12 1; 192.168.0.0/16 1; "
     bad = trusted("10.0.0.0/8; return 200")
     assert bad.returncode != 0 and "not an address range" in bad.stderr
+    template = (ROOT / "infra" / "nginx.conf").read_text()
+    assert "${TRUSTED_PROXIES_REAL_IP}" in template and "${TRUSTED_PROXIES_GEO}" in template
+    assert "${TRUSTED_PROXIES}" not in template  # the raw list is never pasted into a directive
 
 
 @needs_helm

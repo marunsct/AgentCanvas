@@ -116,6 +116,7 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
   and metadata addresses are never reached, and a list naming one is refused (HARDENING S-1).
 
 ### Fixed
+- The web image starts with several `TRUSTED_PROXIES` ranges (the Helm chart's default lists three); nginx refused to start with "invalid number of the geo parameters".
 - A request that conflicts with a change saved at the same moment now gets a 409 Conflict asking to retry, instead of an
   internal error.
 - When one organisation's data key cannot be unwrapped (for example after changing AGENTCANVAS_SECRET_KEY without
