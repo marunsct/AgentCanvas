@@ -18,7 +18,7 @@ from agentcanvas.db.session import Database
 from agentcanvas.errors import Conflict, Forbidden, InvalidInput, NotFound, PreconditionRequired, Unauthorized
 from agentcanvas.log import get_logger
 from agentcanvas.security.auth import Authenticator
-from agentcanvas.services import matura, sso_groups, tokens
+from agentcanvas.services import matura, networks, sso_groups, tokens
 from agentcanvas.settings import Settings
 
 log = get_logger(__name__)
@@ -71,6 +71,16 @@ async def current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     org: str | None = Header(None, alias="X-Org-Id", description="organisation to act in (default: last used)"),
     session: AsyncSession = Depends(get_session),
+) -> CurrentUser:
+    """The signed-in user and the organisation this request acts in, from an address the organisation's IP
+    allow-list admits (403 otherwise, `services/networks.py`)."""
+    user = await _signed_in(request, credentials, org, session)
+    await networks.check_org(request, session, user.org_id, "API token" if user.token_id else "sign-in")
+    return user
+
+
+async def _signed_in(
+    request: Request, credentials: HTTPAuthorizationCredentials | None, org: str | None, session: AsyncSession
 ) -> CurrentUser:
     """The signed-in user and the organisation this request acts in.
 

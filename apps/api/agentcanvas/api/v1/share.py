@@ -48,7 +48,7 @@ from agentcanvas.log import get_logger
 from agentcanvas.observability import counted_stream
 from agentcanvas.runtime.runner import RunHandle
 from agentcanvas.runtime.types import ResumeSpec
-from agentcanvas.services import annotation
+from agentcanvas.services import annotation, networks
 from agentcanvas.services.deployments import DeploymentService
 from agentcanvas.services.disclosure import AI_HEADER
 from agentcanvas.services.files import FileService, ref_of
@@ -200,6 +200,7 @@ class ShareFeedbackIn(FeedbackIn):
 
 async def _open(request: Request, session: AsyncSession, token: str, count: bool = True):
     share, dep, wf = await ShareService(session).open(token)
+    await networks.check_deployment(request, session, dep.id, "share link")
     if count:  # the deployment's and project's limits, and this link's per-client one (visitor secrets are free)
         client = request.client.host if request.client else "unknown"
         row = await session.get(WorkflowRow, dep.workflow_id)

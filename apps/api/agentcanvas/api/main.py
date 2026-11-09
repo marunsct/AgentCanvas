@@ -171,6 +171,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             log.warning("sandbox.not_isolated", mode=settings.script_execution, hint=hint)
         if hint := kms_hint(settings):
             log.warning("kms.derived_from_secret_key", hint=hint)
+        if settings.ignore_org_networks:
+            log.warning(
+                "networks.ignored", hint="organisations' IP allow-lists are off: unset AGENTCANVAS_IGNORE_ORG_NETWORKS"
+            )
         if settings.script_execution == "subprocess":
             _not_dumpable()  # sandbox children run as this user: keep them from reading this process's memory
         observability.trace_engine(db.engine)

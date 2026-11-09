@@ -83,6 +83,9 @@ has no row-level security.
 - **Programmatic access**: personal API tokens act as their owner with the lower of the two roles; each published
   deployment has its own API key, which can be rotated; public calls are rate-limited per deployment, webhook,
   project and share-link visitor ([API tokens](accounts.md#api-tokens)).
+- **Allowed networks**: an admin can accept the organisation's requests only from listed networks, for every kind of
+  credential, sign-ins, API tokens, deployment keys, share links and SCIM alike
+  ([Allowed networks](accounts.md#allowed-networks)).
 
 ## Workspace code and the sandbox
 

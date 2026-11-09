@@ -15,6 +15,7 @@ import { ApiTokens } from "./ApiTokens";
 import { ConnectionsSettings } from "./ConnectionsSettings";
 import { ModelDefaults } from "./ModelDefaults";
 import { OrgLimits } from "./OrgLimits";
+import { OrgSecurity } from "./OrgSecurity";
 import { OrgSettings } from "./OrgSettings";
 import { StopRuns } from "./StopRuns";
 import { KnowledgeSettings } from "./KnowledgeSettings";
@@ -40,6 +41,7 @@ export const SECTIONS: Section[] = [
   { id: "knowledge", group: "Project", label: "Knowledge", render: () => <KnowledgeSettings /> },
   { id: "observability", group: "Project", label: "Observability", render: () => <TraceExportSettings /> },
   { id: "organisation", group: "Organisation", label: "General", render: () => <><OrgSettings /><OrgLimits /><StopRuns /></> },
+  { id: "security", group: "Organisation", label: "Security", render: () => <OrgSecurity /> },
   { id: "members", group: "Organisation", label: "Members", render: () => <MembersPage /> },
   { id: "policies", group: "Organisation", label: "Policies", render: () => <PoliciesPage /> },
   { id: "spending", group: "Organisation", label: "Spending", read: "admin", render: () => <SpendingSettings /> },

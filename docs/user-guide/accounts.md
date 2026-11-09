@@ -117,6 +117,27 @@ Every change is in the audit log without a person, marked `scim`. Supported: `Us
 `ResourceTypes` and `Schemas` documents; bulk, sorting and ETags are not. In Matura mode members come from Matura and
 SCIM is off.
 
+## Allowed networks
+
+An admin can limit where the organisation can be used from: **Settings › Organisation › Security › Allowed
+networks** takes one address (`203.0.113.7`) or network (`203.0.113.0/24`, IPv6 too) per line, up to 100. With a list,
+every request that acts in the organisation must come from one of them, whatever it carries: a person's sign-in, a
+personal API token, a deployment key (also over MCP and A2A), a share link or the SCIM token. Anything else gets
+`403` with the address it came from (problem type `…/errors/network-not-allowed`). An empty list, the default,
+accepts any address. Webhook triggers are not covered: the services that send them do not have fixed addresses, and
+their signature already proves who sent them.
+
+- The page shows **your address** as the server sees it, and saving a list that leaves it out is refused, so an
+  admin cannot lock themselves out by mistake.
+- A request outside the list is refused before its key or token is checked, so keys cannot be tried from outside.
+- Other organisations on the same server are not affected; a person in several organisations is limited only while
+  acting in the one with the list.
+- The address is the one the audit log records. With a load balancer in front of AgentCanvas, the operator lists it
+  in `TRUSTED_PROXIES`, or every request seems to come from it ([Operations](operations.md)).
+- Locked out anyway (your address changed)? The operator sets `AGENTCANVAS_IGNORE_ORG_NETWORKS=true` and restarts,
+  which switches every organisation's list off (the page says so) until you fix yours; then they unset it.
+- Changes are in the audit log (`put_org_settings`).
+
 ## Audit log
 
 **Settings › Audit log** (admins) records every change: who did it, what it touched, when and from where. Approvals record a

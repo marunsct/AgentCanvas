@@ -99,6 +99,9 @@ class Settings(BaseSettings):
     # networks whose requests get 403: the one the API shares with the sandbox service (compose: sandbox-control), so
     # workspace code there cannot call the API from inside
     refuse_clients: list[str] = []
+    # an emergency switch: true ignores every organisation's IP allow-list, for an admin locked out by their own (say,
+    # their address changed). Switch it off again once the list is fixed.
+    ignore_org_networks: bool = False
     log_json: bool = False  # one JSON object per log line (for a log collector) instead of readable text
     metrics_enabled: bool = True  # Prometheus at GET /metrics
     # conversations (threads, their checkpoints and runs) are deleted this many days after their last activity

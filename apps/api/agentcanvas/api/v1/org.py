@@ -17,7 +17,7 @@ from agentcanvas.db.models import Organization
 from agentcanvas.db.repositories import AuditRepo, MemberRepo, PolicyRepo
 from agentcanvas.errors import Conflict, InvalidInput, NotFound
 from agentcanvas.expr import ExpressionError
-from agentcanvas.services import matura, org_settings, scim, tokens
+from agentcanvas.services import matura, networks, org_settings, scim, tokens
 from agentcanvas.services.org_settings import OrgLimits
 from agentcanvas.services.spending import spending
 from agentcanvas.services.sso_groups import GroupMapping
@@ -215,9 +215,28 @@ class OrgSettings(BaseModel):
     sso_groups: GroupMapping | None = Field(
         None, description="OIDC groups claim -> roles, applied at sign-in; null: roles are set by hand"
     )
+    security: OrgSecurity | None = Field(None, description="the IP allow-list")
 
 
 DEFAULT_ENVIRONMENTS = ["dev", "staging", "prod"]
+
+
+class OrgSecurity(BaseModel):
+    """Who may act in the organisation, and from where; a field left out keeps its value."""
+
+    allowed_networks: (
+        list[Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=50)]] | None
+    ) = Field(
+        None, max_length=networks.MAX_NETWORKS,
+        description="the only networks (CIDR or addresses) requests may come from, for every sign-in, token, "
+        "deployment key, share link and SCIM; [] or null: any address. Your own address must be on it",
+    )  # fmt: skip
+
+
+class OrgSecurityOut(BaseModel):
+    allowed_networks: list[str] = Field(description="[]: requests may come from any address")
+    your_address: str | None = Field(description="the address this request came from, as the allow-list sees it")
+    networks_ignored: bool = Field(description="the operator switched every allow-list off (an emergency)")
 
 
 class OrgLimitsOut(BaseModel):
@@ -238,6 +257,7 @@ class OrgSettingsOut(BaseModel):
     limits: OrgLimitsOut = Field(description="the settings an organisation may override, and what applies")
     sso_groups: GroupMapping | None = Field(description="the groups claim -> roles table, or null")
     sso_groups_editable: bool = Field(description="false in Matura mode, where roles come from Matura")
+    security: OrgSecurityOut
 
 
 async def _settings_out(session: AsyncSession, request: Request, org_id: str) -> OrgSettingsOut:
@@ -258,6 +278,10 @@ async def _settings_out(session: AsyncSession, request: Request, org_id: str) ->
         ),
         sso_groups=GroupMapping.model_validate(org.sso_groups) if org.sso_groups else None,
         sso_groups_editable=server.auth_mode == "oidc",
+        security=OrgSecurityOut(
+            allowed_networks=networks.of(org.settings), your_address=str(ip) if (ip := networks.client_ip(request))
+            else None, networks_ignored=server.ignore_org_networks,
+        ),
     )  # fmt: skip
 
 
@@ -298,9 +322,20 @@ async def put_org_settings(
     if body.limits is not None:
         changes = body.limits.model_dump(include=body.limits.model_fields_set)
         org_settings.check(request.app.state.settings, changes)
-        merged = {**org_settings.stored(org.settings), **changes}
+        kept = {k: v for k, v in (org.settings or {}).items() if k not in org_settings.FIELDS}  # the security ones
+        merged = {**kept, **org_settings.stored(org.settings), **changes}
         org.settings = {k: v for k, v in merged.items() if v is not None} or None
         request.app.state.org_settings.forget()  # this replica reads the new values at once
+    if body.security is not None and "allowed_networks" in body.security.model_fields_set:
+        allowed = networks.parse(body.security.allowed_networks or [])
+        here = networks.client_ip(request)
+        if allowed and not networks.allows(allowed, here):  # the admin saving it would be refused at once
+            raise InvalidInput(
+                f"your own address ({here or 'unknown'}) is not on the list: saving it would lock you out. Add your "
+                "network, or save it from a network on the list"
+            )
+        rest = {k: v for k, v in (org.settings or {}).items() if k != networks.KEY}
+        org.settings = {**rest, networks.KEY: allowed} if allowed else rest or None
     if "sso_groups" in body.model_fields_set:
         if request.app.state.settings.auth_mode != "oidc":
             raise Conflict("groups map to roles only when people sign in with OpenID Connect (AUTH_MODE=oidc)")

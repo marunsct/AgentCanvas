@@ -41,7 +41,7 @@ from agentcanvas.ir.models import Workflow
 from agentcanvas.runtime import nesting
 from agentcanvas.runtime.runner import RunHandle
 from agentcanvas.runtime.types import ResumeSpec
-from agentcanvas.services import annotation, gates
+from agentcanvas.services import annotation, gates, networks
 from agentcanvas.services.deployments import Check, DeploymentService
 from agentcanvas.services.disclosure import AI_HEADER, GeneratedBy, generated_by, marked
 from agentcanvas.services.projects import PROJECT_OF
@@ -332,7 +332,9 @@ async def _caller(
     request: Request, session: AsyncSession, dep_id: str, authorization: str | None
 ) -> tuple[Deployment, Workflow]:
     """The key's deployment and workflow, after counting the request against the deployment's and the project's
-    rate limits (429 when over)."""
+    rate limits (429 when over). The organisation's IP allow-list comes first, so a caller outside it cannot even
+    learn whether a key is valid."""
+    await networks.check_deployment(request, session, dep_id, "deployment key")
     dep, wf = await DeploymentService(session).authenticate(dep_id, authorization)
     await count_call(request, session, dep, wf)
     return dep, wf

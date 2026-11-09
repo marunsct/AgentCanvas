@@ -16,7 +16,7 @@ from starlette.responses import JSONResponse
 from agentcanvas.api.deps import get_session
 from agentcanvas.api.urls import api_base
 from agentcanvas.errors import DomainError
-from agentcanvas.services import scim
+from agentcanvas.services import networks, scim
 from agentcanvas.services.scim import ScimError, ScimService
 
 MEDIA = "application/scim+json"
@@ -62,6 +62,7 @@ async def scim_service(request: Request, session: AsyncSession = Depends(get_ses
     if scheme.lower() != "bearer" or not token.strip():
         raise ScimError(401, "send Authorization: Bearer scim_...")
     org = await scim.organisation_of(session, token.strip())
+    networks.check(request, org.id, org.settings, "SCIM")
     return ScimService(session, org.id, getattr(request.app.state, "audit_sink", None))
 
 
