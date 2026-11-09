@@ -737,13 +737,7 @@ async def delete_thread(
     thread_id: str, session: AsyncSession = Depends(get_session), r: Runner = Depends(runner)
 ) -> Response:
     await _thread(session, thread_id)
-    h = r.handles.get(r.active_by_thread.get(thread_id, ""))
-    if h is not None and await r.cancel(h.run_id):
-        try:  # the run writes its last checkpoint and status as it stops: let it, then delete
-            await asyncio.wait_for(h.done.wait(), timeout=10)
-        except TimeoutError:
-            pass
-    await r.forget_thread(thread_id)
+    await r.forget_threads([thread_id])  # its run stopped first: it writes its last checkpoint as it stops
     await delete_thread_rows(session, thread_id)
     await session.commit()
     return Response(status_code=204)

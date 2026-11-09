@@ -14,7 +14,8 @@ Links your role cannot use are not shown: viewers see no Playground, for example
 
 **Workflows** (Home) lists your workflows five to a page, newest change first: search by name, filter by when they
 changed (last 7 days, last 30 days, older) and sort; each row's **⋯** menu renames, duplicates or deletes it (deleting
-asks first). Below the list is the template gallery.
+asks first). Deleting a workflow, or its project, stops its running conversations and deletes them with their saved
+state, so a new conversation that reuses one of their ids starts empty. Below the list is the template gallery.
 
 **Runs** lists the project's conversations, newest first: status (done, running, waiting for a person, failed),
 which workflow, where the run came from (the editor, a deployment, a schedule, an event), how long it took and what

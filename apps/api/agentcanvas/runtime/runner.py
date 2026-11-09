@@ -44,6 +44,7 @@ ResourcesFactory = Callable[[str, Workflow | None], Any]
 
 
 STOPPED_BY_ADMIN = "stopped by an admin (stop all runs)"  # the kill switch (F-5); its reason is in the audit log
+FORGET_PAGE = 500  # conversations whose saved state is deleted per query, when a workflow or project goes
 
 
 @dataclass
@@ -88,6 +89,7 @@ class RunHandle:
     event_times: list[int] = field(default_factory=list)  # wall clock (ns) of each event, for trace export (S15)
     alerted: set[tuple[str, float]] = field(default_factory=set)  # (period, share) cost alerts this run checked
     routing: list[dict[str, Any]] = field(default_factory=list)  # the model each routed block got (services/routing.py)
+    fresh: bool = False  # it started a new conversation (created its thread)
     project_id: str | None = None
     priority: int = 0  # in the run queue: 1 high, 0 normal, -1 low (runtime/admission.py)
 
@@ -338,6 +340,42 @@ class Runner:
             if supports(a, "thread_state"):
                 await cast(ThreadStateAbility, a).delete_thread(thread_id)
 
+    async def forget_threads(self, thread_ids: list[str], wait_s: float = 10.0) -> None:
+        """Delete conversations' saved state, stopping first the runs this instance has on them: a run writes its
+        last checkpoint as it stops, which must not land after the delete."""
+        stopping = []
+        for thread_id in thread_ids:
+            h = self.handles.get(self.active_by_thread.get(thread_id, ""))
+            if h is not None and await self.cancel(h.run_id):
+                stopping.append(h.done.wait())
+        if stopping:
+            try:
+                await asyncio.wait_for(asyncio.gather(*stopping), timeout=wait_s)
+            except TimeoutError:
+                pass
+        for thread_id in thread_ids:
+            await self.forget_thread(thread_id)
+
+    async def forget_conversations(self, s: Any, *where: Any) -> int:
+        """Delete the saved state of every conversation matching `where` (on `Thread` and its `WorkflowRow`), a
+        page at a time; called before their rows go (a workflow or project deleted), since the rows are the only
+        index of what to delete, and before the caller writes anything (each page's read is ended, so no
+        transaction stays open while runs stop). Returns how many conversations."""
+        done, after = 0, ""
+        while True:
+            q = (
+                select(Thread.id)
+                .join(WorkflowRow, WorkflowRow.id == Thread.workflow_id)
+                .where(Thread.id > after, *where)
+            )
+            page = list((await s.scalars(q.order_by(Thread.id).limit(FORGET_PAGE))).all())
+            await s.commit()
+            await self.forget_threads(page)
+            done += len(page)
+            if len(page) < FORGET_PAGE:
+                return done
+            after = page[-1]
+
     def resources(self, thread_id: str, wf: Workflow | None) -> Any:
         return self.resources_factory(thread_id, wf)
 
@@ -403,6 +441,7 @@ class Runner:
                 await prepare(wf)
             async with self.db.sessionmaker() as s:
                 thread = await s.get(Thread, thread_id)
+                fresh = thread is None
                 if thread is None:
                     s.add(
                         Thread(
@@ -503,6 +542,7 @@ class Runner:
         handle.event_depth = event_depth
         handle.routing = routing
         handle.project_id, handle.priority = project_id, priority_of(priority, origin)
+        handle.fresh = fresh
         handle.decided = decided  # an error before the answer is applied puts them back in the Inbox (R-4)
         if input is not None and resume is None and checkpoint_id is None and origin != "test":
             handle.input = _plain(input)  # a copy: the engine may turn the caller's message dicts into objects in place
@@ -581,6 +621,10 @@ class Runner:
         try:
             if h.stop_requested:  # stopped before its task began (`_stop_task`)
                 raise asyncio.CancelledError
+            if h.fresh:  # a new conversation starts empty, whatever saved state a deleted one left under its id
+                # (callers choose ids, across organisations); cleared once its thread row is ours, so never under a
+                # run another server has on it
+                await self.forget_thread(h.thread_id)
             await self._emit(
                 h,
                 {

@@ -14,7 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.deps import CurrentUser, current_user, get_session, get_settings_dep
-from agentcanvas.db.models import Organization, Project
+from agentcanvas.db.models import Organization, Project, WorkflowRow
 from agentcanvas.db.repositories import ProjectRepo
 from agentcanvas.errors import Conflict, InvalidInput
 from agentcanvas.registry import default_registry
@@ -145,6 +145,10 @@ async def delete_project(
     answering), runs, datasets, knowledge, secrets and the workspace's code. An organisation keeps at least one
     project (409 for the last one). Admins only."""
     p = await ProjectRepo(session).require(project_id)
+    if await session.scalar(select(func.count()).select_from(Project).where(Project.org_id == user.org_id)) == 1:
+        raise Conflict("this is the organisation's only project: create another one before deleting it")
+    # its conversations' saved state first: their rows are the only index of it, and go with the project
+    await request.app.state.runner.forget_conversations(session, WorkflowRow.project_id == project_id)
     # one delete at a time per organisation (a row lock on Postgres) and the count after the write (on SQLite the
     # write lock makes a parallel delete wait, then see this one): two at once cannot remove the last two projects
     await session.execute(select(Organization.id).where(Organization.id == user.org_id).with_for_update())

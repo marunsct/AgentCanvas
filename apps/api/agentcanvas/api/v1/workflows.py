@@ -218,7 +218,10 @@ async def duplicate_workflow(
 
 
 @router.delete("/workflows/{wf_id}", status_code=204)
-async def delete_workflow(wf_id: str, svc: WorkflowService = Depends(service)) -> Response:
+async def delete_workflow(wf_id: str, request: Request, svc: WorkflowService = Depends(service)) -> Response:
+    """Delete a workflow with its versions, deployments and conversations, the conversations' saved state too."""
+    await svc.repo.require(wf_id)
+    await request.app.state.runner.forget_conversations(svc.repo.s, Thread.workflow_id == wf_id)
     await svc.delete(wf_id)
     return Response(status_code=204)
 
