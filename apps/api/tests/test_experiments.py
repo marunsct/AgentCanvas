@@ -253,6 +253,7 @@ def test_failures_group_alike_reasons():
         {"name": "exact", "kind": "exact"},
         {"name": "judge", "kind": "llm_judge"},
         {"name": "pw", "kind": "pairwise"},
+        {"name": "tone", "kind": "classifier"},
     ]
 
     def row(ex: str, status: str = "success", error: str | None = None, **scores: tuple) -> SimpleNamespace:
@@ -274,6 +275,9 @@ def test_failures_group_alike_reasons():
         ("exact", "could not score: the example has no reference output", 1, ["e"]),
     ]  # the pairwise verdict is not a failure of the target's own answer
     assert groups[2].sample == "Rude, says 'go away'"
+    toned = failures([row("f", tone=(0.0, False, "chose rude (0.80): curt")),
+                      row("g", tone=(0.0, False, "chose rude (0.95): says 'go away'"))], specs)  # fmt: skip
+    assert [(g.reason, g.runs, g.sample) for g in toned] == [("chose rude (N)", 2, "chose rude (0.80): curt")]
     assert failure_text(groups, 4, 5) == (
         "4 of 5 runs failed. Most often: run error (2): no result after N s; exact (2): differs: out; "
         "judge (2): scored below its threshold."

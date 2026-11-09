@@ -273,6 +273,8 @@ def failures(done: Sequence[Any], specs: list[dict[str, Any]]) -> list[FailureGr
                 comment = str(x.get("comment") or "")
                 if x["score"] is None:
                     add(x["evaluator"], f"could not score: {_reason(comment)}", r.example_id)
+                elif kinds[x["evaluator"]] == "classifier":  # "chose rude (0.80): …": grouped by the category
+                    add(x["evaluator"], _reason(comment.split(":", 1)[0]), r.example_id, comment[:300])
                 elif kinds[x["evaluator"]] in FREE_TEXT:
                     add(x["evaluator"], "scored below its threshold", r.example_id, comment[:300])
                 else:

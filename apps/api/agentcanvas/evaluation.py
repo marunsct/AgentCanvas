@@ -15,6 +15,7 @@ Each evaluator turns an `Observation` (the example's input and reference, and wh
 | `pairwise` | `model`, `rubric`, `channels` | experiments only: each target against the first, see `pairwise` |
 | `retrieval` | `channel`, `k`, `metric`, `match_by` | recall / precision / hit / MRR at k of found passages (S24) |
 | `red_team` | `model`, `policy` | 1 when the workflow held against an attack example (`agentcanvas.red_team`, G-10) |
+| `classifier` | `model`, `question`, `choices`, `passing` | 1 when a model puts the output in a passing category |
 
 An example's trajectory lists tool names, or calls with arguments: `{"name": "search", "args": {"query": "refund"}}`.
 An expected argument is matched by equality, or by a pattern written `{"$regex": "..."}`; `args` says whether the
@@ -48,12 +49,23 @@ from pydantic import BaseModel, Field, ValidationError
 
 from agentcanvas import safe_regex
 from agentcanvas.errors import InvalidInput
+from agentcanvas.expr import decide_prompt, decision
 from agentcanvas.knowledge_search import retrieval_metrics
 from agentcanvas.registry import default_registry
 from agentcanvas.workspace.bundle import collect
 
 Kind = Literal[
-    "exact", "regex", "json_schema", "llm_judge", "trajectory", "code", "composite", "pairwise", "retrieval", "red_team"
+    "exact",
+    "regex",
+    "json_schema",
+    "llm_judge",
+    "trajectory",
+    "code",
+    "composite",
+    "pairwise",
+    "retrieval",
+    "red_team",
+    "classifier",
 ]
 DEFAULT_THRESHOLD: dict[str, float] = {"llm_judge": 0.7, "composite": 0.7, "pairwise": 0.5, "retrieval": 0.5}
 ONLY_IN_EXPERIMENTS = ("pairwise",)
@@ -125,6 +137,25 @@ class RedTeamConfig(BaseModel):
     policy: str = Field(default="", max_length=2000, description="what the workflow is for and must never do")
 
 
+class Category(BaseModel):
+    label: str = Field(pattern=r"^[a-z][a-z0-9_]*$", description="a short name in lowercase, e.g. polite")
+    description: str = Field(min_length=1, description="what the model reads to choose it")
+
+
+class ClassifierConfig(BaseModel):
+    """F-4's Decide with AI as an evaluator: the same question, options and reading of the model's answer."""
+
+    model: str
+    question: str = Field(min_length=1, max_length=2000, description="what to decide about the output")
+    choices: list[Category] = Field(min_length=2, max_length=20)
+    passing: list[str] = Field(min_length=1, description="the labels that pass")
+    min_confidence: float | None = Field(
+        default=None, ge=0, le=1, description="below this the run fails even in a passing category"
+    )
+    channels: list[str] | None = Field(default=None, description="output channels the model sees (default: all)")
+    include_reference: bool = False
+
+
 class RetrievalConfig(BaseModel):
     channel: str = Field(default="passages", description="where the Search knowledge block saved its passages")
     k: int = Field(default=5, ge=1, le=50, description="how many of the first passages count")
@@ -148,7 +179,10 @@ KINDS: dict[str, tuple[str, str]] = {
     "pairwise": ("Pairwise judge", "Experiments only: a model says which of two targets answered better."),
     "retrieval": ("Retrieval", "A Search knowledge block found the documents the example lists as relevant."),
     "red_team": ("Red team", "The workflow held against an attack example: no leak, a refusal or a safety block."),
-}
+    "classifier": (
+        "AI classification", "A model puts the output in one of your categories (polite or rude, on topic or not)."
+    ),
+}  # fmt: skip
 SERVER_SET = {"pinned", "parts"}  # config fields the server fills in; not for the form
 
 
@@ -157,11 +191,9 @@ def kind_schema(kind: str) -> dict[str, Any]:
     optional (the project's judge model is used when it is left empty)."""
     schema = CONFIGS[kind].model_json_schema(by_alias=True)
     props = {k: v for k, v in schema.get("properties", {}).items() if k not in SERVER_SET}
-    required = [
-        r for r in schema.get("required", []) if r in props and not (kind in ("llm_judge", "pairwise") and r == "model")
-    ]
+    required = [r for r in schema.get("required", []) if r in props and not (kind in JUDGES and r == "model")]
     out = {**schema, "properties": props, "required": required}
-    if kind in ("llm_judge", "pairwise", "red_team") and "model" in props:
+    if kind in (*JUDGES, "red_team") and "model" in props:
         empty = "rules alone decide" if kind == "red_team" else "the project's judge model"
         props["model"] = {**props["model"], "description": f"provider:model; empty: {empty}"}
     return out
@@ -178,7 +210,9 @@ CONFIGS: dict[str, type[BaseModel]] = {
     "pairwise": PairwiseConfig,
     "retrieval": RetrievalConfig,
     "red_team": RedTeamConfig,
+    "classifier": ClassifierConfig,
 }
+JUDGES = ("llm_judge", "pairwise", "classifier")  # a model grades: saved without one, the project's judge model
 
 
 def check_config(kind: str, config: dict[str, Any]) -> dict[str, Any]:
@@ -197,6 +231,15 @@ def check_config(kind: str, config: dict[str, Any]) -> dict[str, Any]:
             Draft202012Validator.check_schema(parsed.schema_)
         except SchemaError as exc:
             raise InvalidInput(f"json_schema evaluator: invalid schema: {exc.message}") from None
+    elif isinstance(parsed, ClassifierConfig) and (
+        problem := _classifier_problem(parsed)
+        or (
+            None
+            if default_registry().usable_model(parsed.model)
+            else f"'{parsed.model}' is not a catalog model or a known provider's model"
+        )
+    ):
+        raise InvalidInput(f"classifier evaluator: {problem}")
     elif isinstance(parsed, JudgeConfig | PairwiseConfig) and not default_registry().usable_model(parsed.model):
         raise InvalidInput(f"{kind} evaluator: '{parsed.model}' is not a catalog model or a known provider's model")
     elif isinstance(parsed, RedTeamConfig) and parsed.model and not default_registry().usable_model(parsed.model):
@@ -216,6 +259,15 @@ def check_config(kind: str, config: dict[str, Any]) -> dict[str, Any]:
         if not re.fullmatch(r"scripts(\.\w+)+:\w+", parsed.function):
             raise InvalidInput("code evaluator: the function must be 'scripts.<module>:<function>' in the workspace")
     return parsed.model_dump(by_alias=True, exclude_none=True)
+
+
+def _classifier_problem(cfg: ClassifierConfig) -> str | None:
+    labels = [c.label for c in cfg.choices]
+    if len(set(labels)) != len(labels):
+        return "each category once"
+    if unknown := sorted(set(cfg.passing) - set(labels)):
+        return f"passing names categories it does not have: {unknown}"
+    return None
 
 
 class Observation(BaseModel):
@@ -486,6 +538,10 @@ async def score(
             return done(*retrieval_score(cfg, obs))
         if isinstance(cfg, RedTeamConfig):
             return done(*await red_team_score(cfg, obs, complete))
+        if isinstance(cfg, ClassifierConfig):
+            if complete is None:
+                return done(None, "no model available for the classifier")
+            return done(*await classifier_score(cfg, obs, complete))
         if isinstance(cfg, PairwiseConfig):
             return done(None, "a pairwise judge compares two experiment targets: it scores in experiments only")
         assert isinstance(cfg, CodeConfig)
@@ -501,6 +557,29 @@ async def score(
         return done(None if out.get("score") is None else float(out["score"]), str(out.get("comment") or ""))
     except Exception as exc:  # noqa: BLE001 - an evaluator that breaks scores None, it never stops an experiment
         return done(None, f"{type(exc).__name__}: {exc}"[:500])
+
+
+CLASSIFY_SYSTEM = "You put the output of an AI workflow in one of the categories you are given." + DATA_RULE
+
+
+async def classifier_score(cfg: ClassifierConfig, obs: Observation, complete: Complete) -> tuple[float | None, str]:
+    """1 when the model puts the output in a passing category (sure enough), else 0; None when it names none."""
+    shown = {k: v for k, v in obs.output.items() if cfg.channels is None or k in cfg.channels}
+    data = f"Input:\n{data_block('input', _text(obs.input))}\n\nOutput:\n{data_block('output', _text(shown))}"
+    if cfg.include_reference and obs.reference:
+        data += f"\n\nReference output:\n{data_block('reference', _text(obs.reference))}"
+    choices = {c.label: c.description for c in cfg.choices}
+    prompt = decide_prompt(f"{cfg.question}\n\n{data}", choices)
+    reply = await asyncio.wait_for(complete(CLASSIFY_SYSTEM, prompt, cfg.model), JUDGE_TIMEOUT_S)
+    made = decision(reply, choices)
+    if made["choice"] is None:
+        return None, f"the model named no category: {reply.strip()[:200]!r}"
+    sure = "" if made["confidence"] is None else f" ({made['confidence']:.2f})"
+    comment = f"chose {made['choice']}{sure}: {made['reason']}".strip().removesuffix(":")
+    unsure = cfg.min_confidence is not None and (made["confidence"] is None or made["confidence"] < cfg.min_confidence)
+    if made["choice"] in cfg.passing and unsure:
+        return 0.0, f"{comment} (less sure than {cfg.min_confidence:g})"
+    return float(made["choice"] in cfg.passing), comment
 
 
 async def red_team_score(cfg: RedTeamConfig, obs: Observation, complete: Complete | None) -> tuple[float | None, str]:

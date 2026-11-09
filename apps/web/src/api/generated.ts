@@ -850,7 +850,8 @@ export type Kind3 =
   | "composite"
   | "pairwise"
   | "retrieval"
-  | "red_team";
+  | "red_team"
+  | "classifier";
 export type Name25 = string;
 /**
  * passes at score >= threshold
@@ -874,7 +875,8 @@ export type Kind5 =
   | "composite"
   | "pairwise"
   | "retrieval"
-  | "red_team";
+  | "red_team"
+  | "classifier";
 export type Name26 = string;
 /**
  * passes at score >= threshold
