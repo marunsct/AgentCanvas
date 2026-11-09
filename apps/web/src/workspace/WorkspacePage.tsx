@@ -152,7 +152,7 @@ export function WorkspacePage() {
           <FileTree label={folder ? "shared files" : "workspace files"} files={shared} selected={selected} onOpen={(path) => void open(path)} />
           <p className="muted small secrets-moved">API keys and passwords for this code are under <Link to="/settings/secrets" data-testid="secrets-link">Settings › Secrets</Link>.
             What it may reach is the sandbox policy: <Link to="/settings/sandbox">Settings › Sandbox</Link>, or
-            {" "}<button type="button" className="link" onClick={() => void openPolicy()} aria-label="Open the sandbox policy as a file">sandbox.json</button> as a file.</p>
+            {" "}<button type="button" className="link" onClick={() => void openPolicy()} aria-label="sandbox.json: open the sandbox policy as a file">sandbox.json</button> as a file.</p>
         </aside>
         <section aria-label="editor">
           {selected && !file.data && <QueryStatus q={file} what={selected} />}

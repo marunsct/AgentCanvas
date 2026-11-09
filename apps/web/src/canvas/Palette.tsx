@@ -81,17 +81,17 @@ export function Palette() {
           <h4>Workspace</h4>
           {workspaceItems.map((i) => (
             <div
-              key={i.key} className="palette-item kind-workspace" draggable role="button" tabIndex={0}
+              key={i.key} className="palette-item kind-workspace" draggable
               title={i.preset.config?.import_path as string} data-testid={`palette-ws-${i.label}`}
               onDragStart={(e) => {
                 e.dataTransfer.setData(DND_MIME, `${i.type}\n${JSON.stringify(i.preset)}`);
                 e.dataTransfer.effectAllowed = "move";
               }}
               onDoubleClick={() => addElement(i.type, undefined, i.preset)}
-              onKeyDown={onActivate(() => addElement(i.type, undefined, i.preset))}
             >
-              <b>{i.label}</b>
-              <small>{i.hint}</small>
+              <b role="button" tabIndex={0} aria-describedby={`palette-blurb-ws-${i.key}`}
+                onKeyDown={onActivate(() => addElement(i.type, undefined, i.preset))}>{i.label}</b>
+              <small id={`palette-blurb-ws-${i.key}`}>{i.hint}</small>
             </div>
           ))}
         </section>
@@ -101,18 +101,18 @@ export function Palette() {
           <summary><h4>App connectors ({connectorItems.length})</h4></summary>
           {connectorItems.map((c) => (
             <div
-              key={c.id} className="palette-item kind-resource" draggable role="button" tabIndex={0}
+              key={c.id} className="palette-item kind-resource" draggable
               title={`${c.description}${c.setup ? `\n${c.setup}` : ""}`} data-testid={`palette-connector-${c.id}`}
-              aria-label={`${c.name} connector`}
               onDragStart={(e) => {
                 e.dataTransfer.setData(DND_MIME, `mcp.server\n${JSON.stringify(connectorPreset(c))}`);
                 e.dataTransfer.effectAllowed = "move";
               }}
               onDoubleClick={() => addElement("mcp.server", undefined, connectorPreset(c))}
-              onKeyDown={onActivate(() => addElement("mcp.server", undefined, connectorPreset(c)))}
             >
-              <b>{c.name}</b>
-              <small className="blurb">
+              <b role="button" tabIndex={0} aria-describedby={`palette-blurb-connector-${c.id}`}
+                onKeyDown={onActivate(() => addElement("mcp.server", undefined, connectorPreset(c)))}>
+                {c.name}<span className="visually-hidden"> connector</span></b>
+              <small className="blurb" id={`palette-blurb-connector-${c.id}`}>
                 {c.description}
                 {(c.secrets ?? []).length > 0 && ` · needs ${(c.secrets ?? []).map((x) => x.name).join(", ")}`}
                 {c.local && " · local edition"}
@@ -127,17 +127,18 @@ export function Palette() {
           <h4>{cat}</h4>
           {items.map((m) => (
             <div
-              key={m.type} className={`palette-item kind-${m.kind}`} draggable role="button" tabIndex={0}
-              title={`${m.description ?? ""}\n(${m.type})`} data-testid={`palette-${m.type}`} aria-label={m.label}
+              key={m.type} className={`palette-item kind-${m.kind}`} draggable
+              title={`${m.description ?? ""}\n(${m.type})`} data-testid={`palette-${m.type}`}
               style={{ borderLeftColor: m.color ?? "#64748b" }}
               onDragStart={(e) => { e.dataTransfer.setData(DND_MIME, m.type); e.dataTransfer.effectAllowed = "move"; }}
               onDoubleClick={() => addElement(m.type)}
-              onKeyDown={onActivate(() => addElement(m.type))}
             >
-              <b>{m.label}{m.stability && m.stability !== "stable" && (
+              {/* the button is the block's name (its visible label, WCAG 2.5.3); the blurb beside it is its description */}
+              <b role="button" tabIndex={0} aria-describedby={`palette-blurb-${m.type}`} onKeyDown={onActivate(() => addElement(m.type))}>
+                {m.label}{m.stability && m.stability !== "stable" && (
                 <span className="badge beta" title="This block may still change; its settings or behaviour can differ in a later version">
                   {m.stability}</span>)}</b>
-              <small className="blurb">{firstSentence(m.description) || m.type}{m.provenance === "workspace" ? " · workspace" : ""}</small>
+              <small className="blurb" id={`palette-blurb-${m.type}`}>{firstSentence(m.description) || m.type}{m.provenance === "workspace" ? " · workspace" : ""}</small>
             </div>
           ))}
         </section>

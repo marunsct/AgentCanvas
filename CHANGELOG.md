@@ -116,6 +116,7 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
   and metadata addresses are never reached, and a list naming one is refused (HARDENING S-1).
 
 ### Fixed
+- Accessibility (WCAG 2.5.3, Label in Name, found by axe-core 4.14): each block in the palette is now a button named by its visible label, with its description read separately, and the Workspace page's sandbox.json button is named by its visible text.
 - The web image starts with several `TRUSTED_PROXIES` ranges (the Helm chart's default lists three); nginx refused to start with "invalid number of the geo parameters".
 - A request that conflicts with a change saved at the same moment now gets a 409 Conflict asking to retry, instead of an
   internal error.
