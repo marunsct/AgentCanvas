@@ -464,6 +464,9 @@ class DatasetVersion(Base):
     message: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
     # [{id, input, context, reference, trajectory, split, metadata}] — the whole set, so a version never changes
     examples: Mapped[list[Any]]
+    # counted when the version is written, so lists and the version history never load the examples to count them
+    example_count: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    splits: Mapped[dict[str, Any]] = mapped_column(Json, server_default=text("'{}'"), default=dict)  # split -> count
     created_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
     created_at: Mapped[datetime] = _now()
 

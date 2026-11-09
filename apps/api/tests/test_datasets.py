@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+from test_efficiency import statements
 from test_org_scope import act_as_b, org_b  # noqa: F401 - fixture
 from test_publish import make_greeter
 
@@ -54,6 +55,45 @@ async def test_examples_are_checked_and_every_change_is_a_version(api_client):
     assert [(v["number"], v["examples"]) for v in versions] == [(4, 1), (3, 2), (2, 2), (1, 0)]
     listed = (await api_client.get(f"/v1/workflows/{wf}/datasets")).json()
     assert [(d["id"], d["version"], d["examples"]) for d in listed] == [(ds["id"], 4, 1)]
+
+
+async def test_the_dataset_list_and_version_history_read_no_examples(app, api_client):
+    """Each edit writes a version holding the whole set (up to 10,000 examples): counting them must not load them."""
+    wf = await make_greeter(api_client)
+    ds = await new_dataset(api_client, wf)
+    base = f"/v1/datasets/{ds['id']}"
+    for who in ("Ada", "Bob"):
+        body = {"examples": [{"input": {"who": who}, "split": "test" if who == "Ada" else ""}]}
+        assert (await api_client.post(f"{base}/examples", json=body)).status_code == 200
+    with statements(app) as seen:
+        versions = (await api_client.get(f"{base}/versions")).json()
+        listed = (await api_client.get(f"/v1/workflows/{wf}/datasets")).json()
+    assert [(v["number"], v["examples"]) for v in versions] == [(3, 2), (2, 1), (1, 0)]
+    assert [(d["examples"], d["splits"]) for d in listed] == [(2, {"test": 1, "": 1})]
+    assert not [q for q in seen if "dataset_version.examples" in q]
+    page = (await api_client.get(f"{base}/versions", params={"limit": 1, "before": 3})).json()
+    assert [v["number"] for v in page] == [2]
+
+
+def test_versions_written_before_get_their_counts(tmp_path):
+    import sqlite3
+
+    from agentcanvas.db.session import run_alembic
+
+    db = tmp_path / "m.db"
+    run_alembic(f"sqlite+aiosqlite:///{db}", "upgrade", "c4d13ac418cd")
+    con = sqlite3.connect(db)
+    examples = [{"input": {}, "split": "test"}, {"input": {}, "split": ""}, {"input": {}, "split": "test"}]
+    for n, items in ((1, []), (2, examples)):
+        con.execute("INSERT INTO dataset_version (id, dataset_id, number, examples) VALUES (?, 'ds_1', ?, ?)",
+                    (f"dsv_{n}", n, json.dumps(items)))  # fmt: skip
+    con.commit()
+    con.close()
+    run_alembic(f"sqlite+aiosqlite:///{db}", "upgrade", "head")
+    con = sqlite3.connect(db)
+    got = {i: (n, json.loads(sp)) for i, n, sp in con.execute("SELECT id, example_count, splits FROM dataset_version")}
+    con.close()
+    assert got == {"dsv_1": (0, {}), "dsv_2": (3, {"test": 2, "": 1})}
 
 
 def test_csv_references_keep_the_type_of_the_output_they_are_compared_with():
