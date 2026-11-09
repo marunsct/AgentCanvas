@@ -85,6 +85,8 @@ sandbox:
   nodeSelector: {}
   tolerations: []
   affinity: {}
+  # Kubernetes has no per-pod process limit: each call's code may start about 256 processes, and the kubelet's
+  # podPidsLimit on the sandbox nodes bounds the whole pod (see docs/user-guide/deploy.md)
   resources:
     requests: { cpu: 250m, memory: 512Mi }
     limits: { memory: 2Gi }

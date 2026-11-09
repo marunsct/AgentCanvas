@@ -99,6 +99,11 @@ lists everything else. The chart refuses to render without the image repositorie
 issuer and audience, and `helm install` / `helm upgrade` fail when the Secret lacks a required key. Migrations run as
 a Helm hook Job before the API starts.
 
+Kubernetes puts no limit on the processes a pod starts unless the kubelet's `podPidsLimit` is set (the compose files
+set `pids_limit` on the sandbox containers). Each sandbox call's code may start about 256 processes or threads, so a
+fork loop stops there; still set `podPidsLimit` (e.g. 1024) on the nodes the sandbox pods run on
+(`sandbox.nodeSelector`), so that no pod can use up a node's process table.
+
 ## Essential settings
 
 Every setting, with its default, is listed in [Server settings](server-settings.md); these are the ones to decide first.

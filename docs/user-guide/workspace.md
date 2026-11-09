@@ -112,7 +112,8 @@ edits the project's `sandbox.json`: time and memory limits, and the hosts code m
 
 Outside the API process, every piece of workspace code runs there: Script steps, custom widgets, event handlers and
 Python tools (each tool call is one sandbox run; the tool's name and arguments are read from its source). A child
-process gets time, memory and file limits and no network, but runs as the server's user and is not an isolation
+process gets time, memory, file and process limits (its code may start about 256 processes or threads; a fork
+loop stops there) and no network, but runs as the server's user and is not an isolation
 boundary. The sandbox service is: each call sends it only the project's files, it runs them with the same limits,
 and it holds no database credentials, keys or other projects' files. Use it, or Docker, for code you do not trust.
 
