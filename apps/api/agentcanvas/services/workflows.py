@@ -143,6 +143,7 @@ class WorkflowService:
             wf, registry, edition=settings.edition, allow_local_mcp=settings.allow_local_mcp,
             isolated=settings.isolates_workspace_code,
             policies=await self.policies(project_id) if project_id else None, environment=environment,
+            publishing=environment is not None,
         )  # fmt: skip
         if not any(r.type == "mcp.server" for r in wf.resources):
             return found

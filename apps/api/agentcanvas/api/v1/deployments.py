@@ -24,6 +24,7 @@ from agentcanvas.api.v1.files import FileOut, file_out, file_service, read_uploa
 from agentcanvas.api.v1.gates import gate_for
 from agentcanvas.api.v1.gitsync import GitSyncOut, sync_after_version
 from agentcanvas.api.v1.runs import SSE_HEADERS, _context, _sse, stop_run
+from agentcanvas.api.v1.tools import refresh_pins
 from agentcanvas.api.v1.versions import workspace_commit
 from agentcanvas.api.v1.workflows import service
 from agentcanvas.db.models import (
@@ -39,6 +40,7 @@ from agentcanvas.db.models import (
 )
 from agentcanvas.errors import Conflict, Forbidden, InvalidInput, NotFound
 from agentcanvas.ids import new_id
+from agentcanvas.ir.commands import UpdateResource
 from agentcanvas.ir.contract import breaking_changes, contract
 from agentcanvas.ir.models import Workflow
 from agentcanvas.runtime import nesting
@@ -156,7 +158,13 @@ async def publish(
     """Pre-publish checklist (validation, policies, secrets, test cases), then pin the draft as a version behind a
     key."""
     view = await svc.get(wf_id)
-    wf, project_id = view.workflow, view.row.project_id
+    project_id = view.row.project_id
+    # connectors browsed before tool fingerprints were recorded get them now, so the version pins its tools (E-4)
+    if refreshed := await refresh_pins(request, view.workflow, project_id):
+        fill = [UpdateResource(id=rid, patch={"config": {"discovered": tools}}) for rid, tools in refreshed.items()]
+        view, _ = await svc.apply_commands(wf_id, list(fill), view.row.version)
+        note(request, pinned_tools_of=sorted(r.name for r in view.workflow.resources if r.id in refreshed))
+    wf = view.workflow
     org = await session.get(Organization, user.org_id)
     if org is not None and org.environments and body.environment not in org.environments:
         raise InvalidInput(

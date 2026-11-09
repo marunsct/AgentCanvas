@@ -132,6 +132,10 @@
       "what": "A tool or remote agent is allowed to reach private or internal network addresses, which the hosted service never allows.",
       "fix": "Turn off \"Allow private network\" on it, and give it a public address instead."
     },
+    "E045": {
+      "what": "Publishing pins an app connector’s tools as you reviewed them, so a server that changes later cannot reach the published agent. This connector’s tools were never listed, so there is nothing to pin.",
+      "fix": "Select the connector, click Browse tools and check its tools (untick the ones the agent should not have), then publish."
+    },
     "E050": {
       "what": "A password or API key is typed straight into a setting, where others could see it.",
       "fix": "Store it as a project secret (Workspace \u2192 Secrets) and pick it from the list instead."

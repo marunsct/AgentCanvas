@@ -197,7 +197,12 @@ An app's server can change after you reviewed its tools: a new tool appears, or 
 the agent (a "rug pull" or tool poisoning). A published agent does not pick such changes up on its own.
 
 - **Browse tools** records, for every tool, a fingerprint of its whole description, its arguments and its
-  annotations (such as *destructive*). Publishing keeps that list with the version.
+  annotations (such as *destructive*). Publishing keeps that list with the version, narrowed by **Only these tools**.
+- Publishing refuses a connector whose tools were never browsed (**E045**; in the editor it is only a note, and
+  draft runs work). Naming tools in **Only these tools** is not enough: browse them.
+- A connector browsed before fingerprints were recorded gets them when you publish: AgentCanvas lists the server's
+  tools again and fingerprints the ones you saw. If one of them now reads differently (description, *destructive*
+  or *read-only*), publishing is refused until you browse the tools again. Tools you never saw are not added.
 - Runs of a deployment, and runs started by a schedule or webhook, offer the agent only the tools in that list, and
   only while their fingerprint is unchanged. A tool the server added since is left out. A tool whose description,
   arguments or annotations changed is left out too; set **When a published tool changes** to **fail** on the block
@@ -211,7 +216,8 @@ the agent (a "rug pull" or tool poisoning). A published agent does not pick such
 - To accept a change, select the block, click **Browse tools**, review the tools, and publish again.
 
 A version published before tools were pinned keeps working: tools browsed then are pinned by name only, and a block
-that was never browsed offers the server's current tools, with a warning on every run. Publish again to pin them.
+that was never browsed offers the server's current tools, with a warning on every run (and a W045 note in the
+editor). Publish again to pin them.
 
 ### Sign-in per person
 

@@ -31,13 +31,15 @@ every publish. See [Git round trip](export.md#git-round-trip-a-pull-request-for-
 ## Publish
 
 **Publish** (or **Publish to prod**) creates a **deployment**: one per environment (`prod`, `staging`, `dev`, …),
-always pinned to a version. Editing the draft never changes what callers get until you publish again.
+always pinned to a version. Editing the draft never changes what callers get until you publish again, and neither
+does an app connector's server: the version offers only the tools you browsed, as they were then
+([Published tools are pinned](agents-and-connectors.md#published-tools-are-pinned)).
 
 Publishing first runs a checklist, and refuses on a failure:
 
 | Check | Passes when |
 |---|---|
-| validation | the workflow has no errors |
+| validation | the workflow has no errors; every app connector's tools were browsed, so they can be [pinned](agents-and-connectors.md#published-tools-are-pinned) |
 | policies | every organisation policy holds |
 | secrets | every `{"$secret": …}` reference exists |
 | tests | the saved test cases pass |
