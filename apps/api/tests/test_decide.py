@@ -223,13 +223,14 @@ async def test_mastra_reads_an_answer_as_python_does(text, tmp_path):
     shutil.copy(Path(mastra_adapter.__file__).parent / "flow.ts", tmp_path / "flow.ts")
     (tmp_path / "node_modules").symlink_to(Path(here) / "node_modules")  # what flow.ts imports
     script = tmp_path / "check.ts"
+    paths = {"billing": "a", "tech": "b", "vip": "big spenders ($$$ accounts), $& / $` / $' tags"}  # $ as is
     script.write_text(
         'import { aiDecision, decidePrompt, DECIDE_INSTRUCTIONS } from "./flow.ts";\n'
         f"console.log(JSON.stringify([aiDecision({json.dumps(text)}, {{billing: 'a', tech: 'b'}}), "
-        "decidePrompt('Q', {billing: 'a', tech: 'b'}), DECIDE_INSTRUCTIONS]));\n"
+        f"decidePrompt('Q', {json.dumps(paths)}), DECIDE_INSTRUCTIONS]));\n"
     )
     out = subprocess.run([node, str(script)], cwd=tmp_path, capture_output=True, text=True, timeout=60, check=True)
     made, prompt, words = json.loads(out.stdout)
     assert made == decision(text, ["billing", "tech"])
-    assert prompt == decide_prompt("Q", {"billing": "a", "tech": "b"})
+    assert prompt == decide_prompt("Q", paths)
     assert words == DECIDE_INSTRUCTIONS.replace("{{", "{").replace("}}", "}")

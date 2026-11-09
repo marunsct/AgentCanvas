@@ -605,7 +605,8 @@ export const DECIDE_INSTRUCTIONS =
 
 export function decidePrompt(prompt: string, choices: Record<string, string>): string {
   const options = Object.entries(choices).map(([route, when]) => `- ${route}: ${when}`).join("\n");
-  return `${prompt}\n\n` + DECIDE_INSTRUCTIONS.replace("{options}", options);
+  // a function, not a string: `$&`, `$$` and the like in a path's description stay as written, as in Python
+  return `${prompt}\n\n` + DECIDE_INSTRUCTIONS.replace("{options}", () => options);
 }
 
 const NUMBER = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
