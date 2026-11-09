@@ -132,7 +132,13 @@ def tool_name(wf: Workflow) -> str:
     return slug or "run_workflow"
 
 
-def _describe_pause(interrupts: list[dict[str, Any]]) -> str:
+def _people_decide(interrupt: dict[str, Any], wf: Workflow | None) -> bool:
+    """The pause's step names who decides it and does not let the caller answer (E-6): it waits in the Inbox."""
+    stored = approvers.node_approvers(wf).get(interrupt.get("canvas_node_id") or "") if wf is not None else None
+    return approvers.caller_refusal(approvers.Approvers.of(stored)) is not None
+
+
+def _describe_pause(interrupts: list[dict[str, Any]], wf: Workflow | None = None) -> str:
     lines = []
     for i in interrupts:
         payload = i.get("payload")
@@ -144,8 +150,16 @@ def _describe_pause(interrupts: list[dict[str, Any]]) -> str:
         kind = {"approval": "an approval", "tool_approval": "approval of a tool call", "input": "an answer"}.get(
             i.get("kind") or "", "an answer"
         )
-        lines.append(f"- it needs {kind}" + (f": {what}" if what else "") + f" (interrupt_id {i.get('id')})")
+        theirs = " (decided by the people its workflow names, in AgentCanvas)" if _people_decide(i, wf) else ""
+        lines.append(f"- it needs {kind}" + (f": {what}" if what else "") + f" (interrupt_id {i.get('id')}){theirs}")
     return "\n".join(lines)
+
+
+def _next_step(interrupts: list[dict[str, Any]], wf: Workflow | None, answer: str) -> str:
+    """What the caller can do about a pause: answer it, or wait for the people who decide it."""
+    if interrupts and all(_people_decide(i, wf) for i in interrupts):
+        return "It waits for a person to decide it in AgentCanvas; you cannot answer it."
+    return answer
 
 
 def answer_value(interrupt: dict[str, Any] | None, approve: bool | None, text: str | None, value: Any) -> Any:
@@ -282,10 +296,11 @@ def _mcp_tools(wf: Workflow, c: Contract, caller: Caller = LEGACY) -> list[dict[
     return tools
 
 
-def _tool_result(res: ApiResult, result_url: str | None = None) -> dict[str, Any]:
+def _tool_result(res: ApiResult, result_url: str | None = None, wf: Workflow | None = None) -> dict[str, Any]:
     data = res.model_dump(exclude_none=True)
     if res.status == "interrupted":
-        text = f"The run paused (thread_id {res.thread_id}):\n{_describe_pause(res.interrupts)}\nCall `answer`."
+        then = _next_step(res.interrupts, wf, "Call `answer`.")
+        text = f"The run paused (thread_id {res.thread_id}):\n{_describe_pause(res.interrupts, wf)}\n{then}"
     elif res.status == "success":
         text = json.dumps(res.output, ensure_ascii=False, indent=1)
     elif res.status == "running":
@@ -374,9 +389,20 @@ def _call_result(
     request: Request, dep: Deployment, wf: Workflow, res: ApiResult, tool: str, args: dict[str, Any], caller: Caller
 ) -> dict[str, Any]:
     """A tool call's answer: a pause asks the person through a client that shows forms, else the run's result."""
-    if caller.ask and res.status == "interrupted" and res.interrupts:
-        return _input_required(request, dep, wf, res.thread_id, res.interrupts[0], tool, args)
-    return _tool_result(res, _result_url(request, dep, res))
+    # a pause its workflow's named people decide (E-6) is not asked of the caller: it waits in the Inbox
+    askable = [i for i in res.interrupts if not _people_decide(i, wf)] if res.status == "interrupted" else []
+    if caller.ask and askable:
+        return _input_required(request, dep, wf, res.thread_id, askable[0], tool, args)
+    return _tool_result(res, _result_url(request, dep, res), wf)
+
+
+def _presented_key(request: Request) -> str:
+    """The hash of the deployment key this call was made with: a request state is bound to that key, so another of
+    the deployment's keys (E-8), or this one once revoked, cannot answer the pause it asks about."""
+    from agentcanvas.services.deployments import hash_key
+
+    raw = request.headers.get("authorization") or ""
+    return hash_key(raw.split(" ", 1)[1].strip() if raw.lower().startswith("bearer ") else raw)
 
 
 def _input_required(
@@ -391,7 +417,8 @@ def _input_required(
     """MRTR: one form for the pause (the next one, if several wait: each answer asks the next), and the signed state
     the client echoes when it retries the call with the person's answer."""
     state = mcp_input.issue(
-        request.app.state.settings.secret_key, deployment_id=dep.id, key=mcp_input.key_fingerprint(dep.api_key_hash),
+        request.app.state.settings.secret_key, deployment_id=dep.id,
+        key=mcp_input.key_fingerprint(_presented_key(request)),
         thread_id=thread_id, interrupt_id=str(interrupt["id"]), tool=tool, arguments=args,
     )  # fmt: skip
     return {
@@ -416,7 +443,7 @@ async def _answer_asked(
     try:
         state = mcp_input.verify(
             request.app.state.settings.secret_key, params.get("requestState"), deployment_id=dep.id,
-            key=mcp_input.key_fingerprint(dep.api_key_hash), tool=tool, arguments=args,
+            key=mcp_input.key_fingerprint(_presented_key(request)), tool=tool, arguments=args,
         )  # fmt: skip
     except mcp_input.InvalidState as exc:
         raise RpcError(-32602, f"{exc}; call the tool again without it") from None
@@ -728,7 +755,7 @@ async def _mcp_task(
         return {**out, "status": "cancelled", "statusMessage": res.error or "cancelled"}
     # done (a failed run is a tool result with isError, not a protocol failure); a pause the client cannot show a
     # form for completes with the result the tool call itself gives (it says to call `answer`)
-    return {**out, "status": "completed", "result": _tool_result(res, _result_url(request, dep, res))}
+    return {**out, "status": "completed", "result": _tool_result(res, _result_url(request, dep, res), wf)}
 
 
 @router.get("/deployments/{dep_id}/mcp")
@@ -842,13 +869,15 @@ def _input_from(message: dict[str, Any], c: Contract) -> dict[str, Any]:
     return fields
 
 
-def _task(res: ApiResult, task_id: str) -> dict[str, Any]:
+def _task(res: ApiResult, task_id: str, wf: Workflow | None = None) -> dict[str, Any]:
     state = {"success": "completed", "interrupted": "input-required", "running": "working",
              "cancelled": "canceled"}.get(res.status, "failed")  # fmt: skip
     status: dict[str, Any] = {"state": state, "timestamp": datetime.now(UTC).isoformat()}
     if res.status == "interrupted":
         status["message"] = _agent_message(
-            task_id, res.thread_id, f"Paused:\n{_describe_pause(res.interrupts)}\nReply to this task to continue.",
+            task_id, res.thread_id,
+            f"Paused:\n{_describe_pause(res.interrupts, wf)}\n"
+            + _next_step(res.interrupts, wf, "Reply to this task to continue."),
             {"interrupts": res.interrupts},
         )  # fmt: skip
     elif state == "failed":
@@ -921,7 +950,7 @@ async def _a2a_send(
             approve = text.strip().lower() in YES
         value = answer_value(pending, approve, text, data.get("value"))
         res = await _resume(request, session, dep, wf, thread.id, value, None, labels={"a2a_task": task_id})
-        return _task(res, task_id)
+        return _task(res, task_id, wf)
     fields = _input_from(message, contract(wf))
     context_id = message.get("contextId")
     try:
@@ -933,7 +962,7 @@ async def _a2a_send(
         raise RpcError(TASK_NOT_FOUND, f"context '{context_id}' not found") from None
     await session.close()
     res = await _result(h)
-    return _task(res, res.run_id)
+    return _task(res, res.run_id, wf)
 
 
 async def _a2a_get(request: Request, session: AsyncSession, dep: Deployment, params: dict[str, Any]) -> dict[str, Any]:

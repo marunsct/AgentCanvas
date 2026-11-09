@@ -124,6 +124,9 @@ async def test_the_caller_answers_only_when_the_step_allows_it(app, api_client):
     call = rpc("tools/call", {"name": "triage", "arguments": {"ticket": "down"}})
     paused = (await api_client.post(f"/v1/deployments/{dep}/mcp", json=call, headers=auth)).json()["result"]
     thread = paused["structuredContent"]["thread_id"]
+    said = paused["content"][0]["text"]  # the calling agent is told to wait, not to call `answer`
+    assert "decided by the people its workflow names" in said and "you cannot answer it" in said
+    assert "Call `answer`" not in said
     answer = rpc("tools/call", {"name": "answer", "arguments": {"thread_id": thread, "approve": True}})
     refused = (await api_client.post(f"/v1/deployments/{dep}/mcp", json=answer, headers=auth)).json()["result"]
     assert refused["isError"] is True and "Inbox" in refused["content"][0]["text"]
@@ -131,6 +134,7 @@ async def test_the_caller_answers_only_when_the_step_allows_it(app, api_client):
     a2a = f"/v1/deployments/{dep}/a2a"
     msg = {"message": {"role": "user", "messageId": "m1", "parts": [{"kind": "text", "text": "down"}]}}
     task = (await api_client.post(a2a, json=rpc("message/send", msg), headers=auth)).json()["result"]
+    assert "you cannot answer it" in task["status"]["message"]["parts"][0]["text"]
     reply = {"message": {"role": "user", "messageId": "m2", "taskId": task["id"], "contextId": task["contextId"],
                          "parts": [{"kind": "text", "text": "yes"}]}}  # fmt: skip
     err = (await api_client.post(a2a, json=rpc("message/send", reply), headers=auth)).json()
