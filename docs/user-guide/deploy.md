@@ -150,6 +150,17 @@ The first admins, and everyone you invite, are matched by a **verified** email i
 message that says so, and the server logs `oidc.email_unverified`; set it, and the next sign-in of a bootstrap
 email still makes that person admin.
 
+The web app sends the provider's **access token**, and the API reads it as a signed JWT whose `iss` is the issuer
+and whose `aud` is the audience you set. What that takes, provider by provider:
+
+| Provider | Setup |
+|---|---|
+| Keycloak | A public client with PKCE; an "audience" mapper that adds `AGENTCANVAS_OIDC_AUDIENCE` to the access token. Issuer `https://<host>/realms/<realm>`. Keycloak sends `email_verified`. |
+| Okta | A custom authorization server (the org server's access tokens are not for your API): its audience is `AGENTCANVAS_OIDC_AUDIENCE`, its issuer `https://<org>.okta.com/oauth2/<server id>`. Add `email` (and `groups`) as access-token claims. |
+| Auth0 | An API whose identifier is `AGENTCANVAS_OIDC_AUDIENCE` (the web app asks for it as `audience`), and a single-page application. Auth0 puts no email in access tokens: add `email` and `email_verified` with a post-login Action, and set `AGENTCANVAS_OIDC_EMAIL_CLAIM` to the claim name it uses. Issuer `https://<tenant>.auth0.com/`. |
+| Entra ID | An app registration with a single-page-application redirect URI. **Expose an API**: its Application ID URI (e.g. `api://agentcanvas`) is `AGENTCANVAS_OIDC_AUDIENCE`; add a scope (e.g. `access`) and ask for it in `AGENTCANVAS_OIDC_SCOPES` (`openid profile email offline_access api://agentcanvas/access`), or the access token is for Microsoft Graph, not AgentCanvas. In the manifest set `accessTokenAcceptedVersion` (`requestedAccessTokenVersion`) to `2`: otherwise access tokens carry the v1 issuer `https://sts.windows.net/<tenant>/`, which does not match the v2 issuer `https://login.microsoftonline.com/<tenant>/v2.0` and every request is refused with "Invalid issuer". Add `email` (and `groups`) as optional claims of the access token, and set `AGENTCANVAS_OIDC_TRUST_EMAIL=true`: Entra ID sends no `email_verified`. |
+| Google | Not directly: Google's access tokens are opaque, not JWTs. Use a broker with Google as its upstream (Keycloak, Auth0, Dex). |
+
 To give roles by group (see [Roles from groups](accounts.md#roles-from-groups)), add
 the groups to the **access token** the SPA sends, as a claim in your provider (a "groups" mapper in Keycloak, a
 groups claim in Okta or Entra ID). The API reads the claim from that token only.

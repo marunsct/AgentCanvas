@@ -2,8 +2,10 @@
 
 ## Signing in
 
-In production AgentCanvas signs people in through your identity provider (any OpenID Connect provider: Keycloak,
-Okta, Entra ID, Auth0, Google…). The administrator configures it once (see [Deploy and operate](deploy.md#sign-in));
+In production AgentCanvas signs people in through your identity provider: any OpenID Connect provider that issues
+signed JWT access tokens for the AgentCanvas API (Keycloak, Okta, Entra ID, Auth0, Dex…). Google's own sign-in issues
+opaque access tokens and cannot be used directly: put a broker in front (Keycloak, Auth0 or Dex with Google as its
+upstream). The administrator configures it once (see [Deploy and operate](deploy.md#sign-in));
 people then click through to their usual login page. Sessions renew silently. The top bar shows who you are and
 your role, with **Sign out** (sign in again to use a different account). Signing out, switching account or switching
 organisation also clears what the app kept in that browser tab, such as the Playground conversation, so the next

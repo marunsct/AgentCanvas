@@ -191,6 +191,30 @@ def test_dev_mode_is_refused_in_production():
     check_auth_settings(Settings(env="dev"))
 
 
+async def test_what_the_sign_in_guide_says_about_entra_id_and_google(settings):
+    """deploy.md#sign-in: Entra ID works with v2 access tokens for an exposed API and AGENTCANVAS_OIDC_TRUST_EMAIL;
+    a v1 token's issuer does not match the v2 one in discovery, and Google's opaque access tokens are not JWTs."""
+    from agentcanvas.errors import Unauthorized
+
+    tid = "72f988bf-86f1-41af-91ab-2d7cd011db47"
+    entra = settings.model_copy(update={"oidc_issuer": f"https://login.microsoftonline.com/{tid}/v2.0",
+                                        "oidc_audience": "api://agentcanvas", "oidc_trust_email": True})  # fmt: skip
+    auth = Authenticator(entra, jwks={"keys": [SIGNING_JWK]})
+    now = int(time.time())
+    claims = {"iss": entra.oidc_issuer, "aud": "api://agentcanvas", "sub": "AAAA-entra-sub", "iat": now,
+              "exp": now + 300, "ver": "2.0", "email": "alice@example.com",
+              "preferred_username": "alice@example.com"}  # fmt: skip
+    v2 = jwt.encode(claims, SIGNING_KEY, algorithm="RS256", headers={"kid": "k1"})  # no email_verified: Entra's way
+    who = await auth.verify(v2)
+    assert who.email == "alice@example.com" and who.email_verified is True and who.name == "alice@example.com"
+    v1 = jwt.encode({**claims, "iss": f"https://sts.windows.net/{tid}/", "ver": "1.0"}, SIGNING_KEY,
+                    algorithm="RS256", headers={"kid": "k1"})  # fmt: skip
+    with pytest.raises(Unauthorized, match=r"[Ii]ssuer"):
+        await auth.verify(v1)
+    with pytest.raises(Unauthorized):
+        await Authenticator(settings, jwks={"keys": [SIGNING_JWK]}).verify("ya29.a0AfH6SMBopaqueGoogleAccessToken")
+
+
 async def test_email_trust_override_only_covers_a_missing_claim(settings):
     """`oidc_trust_email` accepts an email the provider sends without `email_verified`, never an explicit false."""
     trusting = Authenticator(settings.model_copy(update={"oidc_trust_email": True}), jwks={"keys": [SIGNING_JWK]})
