@@ -3,9 +3,10 @@
 The SDK has agents, tools and handoffs but no graph, so a workflow becomes plain Python (see `codegen`): one `Agent`
 per AI block, one async function per block, and a `Flow` that names the steps and what follows each. This module
 runs that `Flow` in supersteps, the way the canvas draws it: steps side by side run in the same round, a "wait for
-all" step waits for every branch, paths follow the first CEL rule that matches, and fields merge with their
-reducers. AI steps are `Runner.run` calls; a tool that needs approval pauses the run with the SDK's own `RunState`,
-which is saved with the pause and approved or rejected when a person answers.
+all" step waits for every branch, paths follow the first CEL rule that matches (a "Decide with AI" step's path is
+the choice its model made), and fields merge with their reducers. AI steps are `Runner.run` calls; a tool that needs
+approval pauses the run with the SDK's own `RunState`, which is saved with the pause and approved or rejected when a
+person answers.
 
 A paused run is a `Paused` value that turns into JSON and back, so the caller decides where it lives (AgentCanvas
 keeps it in memory, an exported project in a file). The same module runs inside AgentCanvas and in exports: what
@@ -25,7 +26,7 @@ from typing import Any, Protocol
 from agents import Agent, MaxTurnsExceeded, Model, Runner, RunState, set_tracing_disabled
 from jsonschema import Draft202012Validator
 
-from agentcanvas.expr import eval_condition, render_template
+from agentcanvas.expr import chosen, decide_prompt, decision, eval_condition, render_template
 
 set_tracing_disabled(True)  # runs are traced by AgentCanvas (or your own tracer), never sent to OpenAI's
 
@@ -105,6 +106,8 @@ class Step:
     run: StepFn | None = None  # None: a path (router) or "wait for all" (join), which change nothing
     cases: list[tuple[str, str]] = field(default_factory=list)  # router: (CEL rule, route), first match wins
     default: str = "default"
+    decides: str | None = None  # a Decide with AI step: the field its decision is saved in, which picks the path
+    min_confidence: float | None = None  # ... below which it takes `default`
     disabled: bool = False
 
 
@@ -123,7 +126,10 @@ class Flow:
         nxt = self.start if node_id == "START" else self.next.get(node_id, [])
         if isinstance(nxt, dict):
             step = self.steps[node_id]
-            route = next((r for when, r in step.cases if eval_condition(when, values)), step.default)
+            if step.decides is not None:
+                route = chosen(values.get(step.decides), step.default, step.min_confidence)
+            else:
+                route = next((r for when, r in step.cases if eval_condition(when, values)), step.default)
             return list(nxt.get(route, []))
         return list(nxt)
 
@@ -344,6 +350,14 @@ class Run:
         """One answer from `agent` to `prompt` (an "Ask AI" step)."""
         result = await Runner.run(agent, prompt, max_turns=self.flow.max_turns)
         return str(result.final_output)
+
+    def decide_prompt(self, prompt: str, choices: dict[str, str]) -> str:
+        """What a Decide with AI step asks its model: the rendered question, the options and the answer's shape."""
+        return decide_prompt(prompt, choices)
+
+    def decision(self, reply: str, choices: dict[str, str], *, output: str) -> dict[str, Any]:
+        """The model's decision, saved in `output`; FLOW follows its choice (see `Step.decides`)."""
+        return {output: decision(reply, choices)}
 
     async def agent(
         self,

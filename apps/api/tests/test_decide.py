@@ -11,8 +11,8 @@ from agentcanvas.ir.models import Workflow
 from agentcanvas.validation import validate
 
 ROUTE = {"route": "billing", "description": "invoices and payments"}
-FLOWS = ["pydantic_ai", "agno", "microsoft_agent_framework", "strands", "llamaindex"]
-REFUSED = ["openai_agents", "google_adk", "crewai", "mastra"]
+FLOWS = ["pydantic_ai", "agno", "microsoft_agent_framework", "strands", "llamaindex", "openai_agents"]
+REFUSED = ["google_adk", "crewai", "mastra"]
 
 
 def decide_wf(**config) -> dict:
@@ -121,7 +121,7 @@ async def test_the_exported_code_decides_as_the_canvas_does(tmp_path, reply, tea
 @pytest.mark.parametrize(
     ("framework", "reply", "minimum", "team"),
     [
-        pytest.param(f, reply, minimum, team, marks=installed(f))
+        pytest.param(f, reply, minimum, team, marks=() if f == "openai_agents" else installed(f))  # in-process
         for f in FLOWS
         for reply, minimum, team in [
             ('{"choice": "tech", "confidence": 0.9, "reason": "an outage"}', None, "tech"),
