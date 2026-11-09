@@ -23,10 +23,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.db.models import Deployment, DeploymentShare, ShareThread, WorkflowVersion
+from agentcanvas.db.repositories import ScopeRepo
 from agentcanvas.errors import InvalidInput, NotFound
 from agentcanvas.ir.contract import contract
 from agentcanvas.ir.files import accepts, is_file_schema
 from agentcanvas.ir.models import Workflow
+from agentcanvas.services import offboarding
 
 TOKEN_PREFIX = "sh_"
 TEXT_FIELDS = ("message", "question", "query", "input", "text", "request", "prompt", "ticket")
@@ -293,6 +295,8 @@ class ShareService:
             or not hmac.compare_digest(share.token, token)
         ):
             raise NotFound("this link does not work any more; ask its owner for a new one")
+        if await offboarding.closed(self.s, await ScopeRepo(self.s).org_of("deployment", dep.id) or ""):
+            raise NotFound("this link does not work any more; ask its owner for a new one")  # E-7: being deleted
         version = await self.s.get(WorkflowVersion, dep.version_id)
         if version is None:
             raise NotFound("this link does not work any more; ask its owner for a new one")

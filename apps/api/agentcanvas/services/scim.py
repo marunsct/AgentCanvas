@@ -77,6 +77,8 @@ async def organisation_of(session: AsyncSession, token: str) -> Organization:
         org = await session.scalar(select(Organization).where(Organization.scim_token_hash == hash_token(token)))
     if org is None or not hmac.compare_digest(org.scim_token_hash or "", hash_token(token)):
         raise ScimError(401, "a valid SCIM token is required (Authorization: Bearer scim_...)")
+    if org.suspended_at is not None or org.deleted_at is not None:  # E-7: being deleted
+        raise ScimError(403, "this organisation is being deleted")
     return org
 
 

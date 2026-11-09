@@ -89,6 +89,32 @@ later lowers a server limit, an organisation's higher value stops applying at on
 operator set with `AGENTCANVAS_RATE_LIMIT_BY_ENVIRONMENT` keeps applying to that environment's deployments. Other
 replicas of the server pick up a change within about 15 seconds.
 
+### Deleting the organisation
+
+An admin can delete the organisation with everything in it, for example when a contract ends. It happens in two
+steps, so a mistake can be undone:
+
+1. **The request suspends the organisation at once.** Send `DELETE /v1/org` with the organisation's name typed
+   exactly as it is shown and a reason for the audit log, signed in (an API token cannot do it):
+   `{"confirm": "Acme", "reason": "contract ended"}`. From then on nobody can use it: sign-ins, API tokens,
+   deployment keys, share links (they answer as if switched off), SCIM and run starts of any kind (schedules,
+   webhooks, events) are refused with a message that says the organisation is being deleted. The runs in flight stop
+   within about 10 seconds, as with **Stop all runs**. The answer says when the deletion happens.
+2. **After the grace period it is deleted for good.** `AGENTCANVAS_ORG_DELETION_GRACE_DAYS` (7 days by default)
+   later, a background job on one of the servers deletes the conversations with their saved state, long-term
+   memories, projects with their workflows, versions, deployments, files, knowledge, datasets, evaluations, secrets,
+   run-search index and workspaces, the members' API tokens and app-connector sign-ins, the policies, the SCIM groups
+   and the organisation's data key. People who belong to no other organisation are pseudonymised (their email,
+   name and preferences are removed; a later sign-in makes a new account). The audit log goes too, except the
+   request to delete and the job's record of what it deleted (counts, no content), which stay with an empty
+   organisation record as proof of the deletion.
+
+During the grace period an admin can still sign in to read the request (`GET /v1/org/deletion`) and take it back
+(`DELETE /v1/org/deletion`): the organisation opens again as it was, but the runs that were stopped stay stopped.
+Once the job has started, the deletion can no longer be taken back. With Matura, organisations are removed in
+Matura instead. Copies of the database in your backups keep the data until those backups expire
+([Backups and recovery](security.md#backups-and-recovery)).
+
 ## Approval notifications
 
 Under **Settings › Organisation › Notifications** an admin chooses who is told that an approval or a question waits

@@ -126,6 +126,11 @@ class Settings(BaseSettings):
     # conversation retention like any other, unless its step escalates it to a role (then it waits as long again).
     # 0 = approvals wait forever (and keep their conversations forever)
     approval_expiry_days: int = Field(default=90, ge=0)
+    # an organisation an admin deletes is suspended at once and deleted for good this many days later; until then an
+    # admin can take the deletion back
+    org_deletion_grace_days: int = Field(default=7, ge=1, le=365)
+    # how often each server looks for organisations due for deletion (and, later, exports to build)
+    offboarding_interval_s: float = Field(default=60, gt=0)
     # long-term memory's semantic index: "builtin" or "<provider>:<model>"; empty (default): by words.
     # One size of vector per server (the pgvector column), so one model for every project; a model other than the
     # built-in or a well-known hosted one needs its size in `memory_embedding_dims` (0: measured at startup)

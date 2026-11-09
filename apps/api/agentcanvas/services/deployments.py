@@ -28,9 +28,11 @@ from agentcanvas.db.models import (
     WorkflowRow,
     WorkflowVersion,
 )
+from agentcanvas.db.repositories import ScopeRepo
 from agentcanvas.errors import Conflict, InvalidInput, NotFound, Unauthorized
 from agentcanvas.ids import new_id
 from agentcanvas.ir.models import Workflow
+from agentcanvas.services import offboarding
 
 KEY_PREFIX = "ac_"
 MAX_KEYS = 20  # keys that work at once, per deployment
@@ -275,6 +277,7 @@ class DeploymentService:
             raise Unauthorized(f"this deployment key ({key.prefix}…) was revoked")
         if key.expires_at is not None and key.expires_at <= now:
             raise Unauthorized(f"this deployment key ({key.prefix}…) expired")
+        await offboarding.refuse_if_closed(self.s, await ScopeRepo(self.s).org_of("deployment", dep.id))
         version = await self.s.get(WorkflowVersion, dep.version_id)
         if version is None:
             raise InvalidInput("the deployment's version is missing")

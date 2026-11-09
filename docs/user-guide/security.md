@@ -143,6 +143,16 @@ namespace on the **Memory** page ([The Memory page](memory.md#the-memory-page));
 datasets, knowledge bases and workspaces. Their account record (email and name) stays, and so do their audit-log
 entries until the audit log's retention removes them; removing either sooner needs direct access to the database.
 
+## Your data
+
+What AgentCanvas offers to answer data-protection requests (GDPR Art. 15, 17, 20 and 28(3)(g)) and to return or
+delete an organisation's data when it leaves. Every action is for admins and is recorded in the audit log with
+counts, never the content.
+
+| Request | How |
+|---|---|
+| Delete the whole organisation (end of contract) | `DELETE /v1/org`: suspended at once, deleted for good after a grace period of 7 days (`AGENTCANVAS_ORG_DELETION_GRACE_DAYS`), which an admin can take back until then ([Deleting the organisation](settings.md#deleting-the-organisation)) |
+
 ## Backups and recovery
 
 `infra/scripts/backup.sh` dumps the database and archives the workspaces; `infra/scripts/restore.sh` restores both.

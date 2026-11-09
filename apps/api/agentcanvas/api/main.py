@@ -59,6 +59,7 @@ from agentcanvas.services.files import FileStore
 from agentcanvas.services.knowledge import CrawlJob, Searcher, knowledge_embedder
 from agentcanvas.services.matura import MaturaFeed
 from agentcanvas.services.notifier import NotifierJob
+from agentcanvas.services.offboarding import OffboardingJob
 from agentcanvas.services.online import OnlineScorer
 from agentcanvas.services.org_settings import OrgSettingsCache
 from agentcanvas.services.presence import PresenceHub
@@ -302,6 +303,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 db, runner, settings.retention_days, settings.retention_interval_s,
                 audit_days=settings.audit_retention_days, memory_days=settings.memory_retention_days, server=settings,
             )  # fmt: skip
+            app.state.offboarding = OffboardingJob(
+                db, runner, app.state.projects, settings.workspaces_dir, settings.offboarding_interval_s
+            )
 
             async def handover_target(s, thread_id, version_id):
                 return await runs_module.handover_target(s, settings, thread_id, version_id)
@@ -316,6 +320,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 app.state.cron.start()
                 app.state.retention.start()
                 app.state.notifier.start()
+                app.state.offboarding.start()
                 app.state.crawl.start()
                 app.state.handover.start()
                 app.state.callbacks.start()
@@ -327,6 +332,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 if settings.env != "test":
                     app.state.matura_feed.start()
             app.state.audit_sink = sink_for(settings)  # TS26: security-relevant entries also leave the app
+            app.state.offboarding.sink = app.state.audit_sink
             if settings.env in ("staging", "prod") and not os.getenv("LANGGRAPH_AES_KEY"):
                 log.warning("checkpoints.unencrypted", hint="set LANGGRAPH_AES_KEY (16, 24 or 32 characters)")
             log.info(
@@ -341,6 +347,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 await app.state.cron.stop()
                 await app.state.retention.stop()
                 await app.state.notifier.stop()
+                await app.state.offboarding.stop()
                 await app.state.crawl.stop()
                 await app.state.secrets.stop()
                 if app.state.matura_feed is not None:

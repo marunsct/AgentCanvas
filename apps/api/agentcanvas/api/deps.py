@@ -21,7 +21,7 @@ from agentcanvas.db.session import Database
 from agentcanvas.errors import Conflict, Forbidden, InvalidInput, NotFound, PreconditionRequired, Unauthorized
 from agentcanvas.log import get_logger
 from agentcanvas.security.auth import Authenticator
-from agentcanvas.services import matura, mfa, networks, sso_groups, tokens
+from agentcanvas.services import matura, mfa, networks, offboarding, sso_groups, tokens
 from agentcanvas.settings import Settings
 
 log = get_logger(__name__)
@@ -78,25 +78,41 @@ async def current_user(
     session: AsyncSession = Depends(get_session),
 ) -> CurrentUser:
     """The signed-in user and the organisation this request acts in, from an address the organisation's IP
-    allow-list admits (403 otherwise, `services/networks.py`)."""
-    user = await _signed_in(request, credentials, org, session)
-    own = await session.scalar(select(Organization.settings).where(Organization.id == user.org_id))
-    networks.check(request, user.org_id, own, "API token" if user.token_id else "sign-in")
-    if user.claims is not None:  # the organisation may require multi-factor sign-in (services/mfa.py)
-        mfa.check_org(request.app.state.settings, own, user.claims)
-    return user
-
-
-async def _signed_in(
-    request: Request, credentials: HTTPAuthorizationCredentials | None, org: str | None, session: AsyncSession
-) -> CurrentUser:
-    """The signed-in user and the organisation this request acts in.
+    allow-list admits (403 otherwise, `services/networks.py`).
 
     `auth_mode = dev` (local work, tests): the seeded development admin. `oidc`: the bearer token's
     subject, provisioned on first sign-in; 401 without a valid token, 403 without a membership. `matura`: the
     token's organisation (`tid`) and the role its permissions give (`services/matura.py`). In every mode, a personal
     API token (`act_…`, `services/tokens.py`) acts as its owner in its own organisation.
+
+    An organisation being deleted refuses everyone (E-7), but for what its admins may still do then
+    (`WHILE_DELETING`).
     """
+    user = await _signed_in(request, credentials, org, session)
+    own = await session.scalar(select(Organization.settings).where(Organization.id == user.org_id))
+    networks.check(request, user.org_id, own, "API token" if user.token_id else "sign-in")
+    if user.claims is not None:  # the organisation may require multi-factor sign-in (services/mfa.py)
+        mfa.check_org(request.app.state.settings, own, user.claims)
+    state = await offboarding.closed(session, user.org_id)
+    if state is not None:
+        route = getattr(request.scope.get("route"), "path", request.url.path).removeprefix("/v1")
+        if state.deleted_at is not None or user.role != "admin" or (request.method, route) not in WHILE_DELETING:
+            raise offboarding.refusal(state)
+    return user
+
+
+# what an admin of an organisation being deleted may still do: see who they are, read, take back or carry out the
+# deletion's grace period (exporting the organisation's data)
+WHILE_DELETING = {
+    ("GET", "/me"),
+    ("GET", "/org/deletion"),
+    ("DELETE", "/org/deletion"),
+}
+
+
+async def _signed_in(
+    request: Request, credentials: HTTPAuthorizationCredentials | None, org: str | None, session: AsyncSession
+) -> CurrentUser:
     settings: Settings = request.app.state.settings
     if credentials is not None and tokens.is_personal(credentials.credentials):
         caller = await tokens.TokenService(session).authenticate(credentials.credentials)
@@ -156,7 +172,9 @@ async def _signed_in(
                 "if it never sends email_verified (Entra ID)"
             )
         raise Forbidden("you are not a member of any organisation; ask an admin to invite you")
-    default = next(iter(memberships))  # the organisation used last
+    # the organisation used last, passing over one being deleted when there is another
+    closed = await offboarding.closed_among(session, list(memberships)) if len(memberships) > 1 else set()
+    default = next((o for o in memberships if o not in closed), next(iter(memberships)))
     org_id = org or default
     if org_id not in memberships:
         raise Forbidden(f"you are not a member of organisation '{org_id}'")
@@ -241,6 +259,7 @@ ROLE_EXCEPTIONS = {
     ("POST", "/workflows/{wf_id}/presence"): "viewer",  # anyone who has the editor open is shown as being here (G-4)
     ("DELETE", "/workflows/{wf_id}/presence/{session_id}"): "viewer",
     ("POST", "/knowledge/{kb_id}/search"): "viewer",
+    ("DELETE", "/org"): "admin",  # deleting the organisation (E-7)
     ("PATCH", "/projects/{project_id}"): "admin",  # a project's name and existence are the organisation's
     ("DELETE", "/projects/{project_id}"): "admin",  # a read: what a Search knowledge block would find (S24)
     ("PUT", "/projects/{project_id}/workspace"): "admin",  # which Matura workspace a project lives in
@@ -251,8 +270,11 @@ ROLE_EXCEPTIONS = {
 def required_role(method: str, path: str) -> str:
     """The weakest role allowed `method` on the route template `path` (with or without the /v1 prefix)."""
     path = path.removeprefix("/v1")
-    # the log, spending, everyone's tokens, the SCIM token and where notifications go: admins only
-    if path.startswith(("/org/audit", "/org/spending", "/org/tokens", "/org/scim", "/org/notifications", "/server/")):
+    # the log, spending, everyone's tokens, the SCIM token, where notifications go and the organisation's deletion:
+    # admins only
+    if path.startswith(
+        ("/org/audit", "/org/spending", "/org/tokens", "/org/scim", "/org/notifications", "/org/deletion", "/server/")
+    ):
         return "admin"
     if path.startswith("/org/"):
         return "viewer" if method == "GET" else "admin"

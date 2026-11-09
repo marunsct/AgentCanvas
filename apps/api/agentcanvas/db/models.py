@@ -81,6 +81,13 @@ class Organization(Base):
     scim_token_hash: Mapped[str | None] = mapped_column(Text, unique=True)
     scim_token_prefix: Mapped[str | None] = mapped_column(Text)
     scim_token_created_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
+    # deletion (E-7): suspended at once (nothing reaches it any more), deleted by a background job after
+    # `delete_after`; the row then stays as a tombstone (`deleted_at`) holding the deletion's audit entries
+    suspended_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
+    delete_after: Mapped[datetime | None] = mapped_column(UtcDateTime())
+    deletion_requested_by: Mapped[str | None] = mapped_column(Text)
+    purge_lease_until: Mapped[datetime | None] = mapped_column(UtcDateTime())  # the replica deleting it now
+    deleted_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
     created_at: Mapped[datetime] = _now()
 
 

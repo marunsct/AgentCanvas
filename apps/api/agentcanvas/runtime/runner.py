@@ -47,6 +47,7 @@ from agentcanvas.runtime.identity import CURRENT, RunIdentity
 from agentcanvas.runtime.tracing import trace_ref
 from agentcanvas.runtime.trajectory import compact
 from agentcanvas.runtime.types import REPLAYABLE, ResumeSpec, RunMode, RunSpec
+from agentcanvas.services import offboarding
 from agentcanvas.services.approvers import escalate_at, node_approvers
 from agentcanvas.services.audit_sink import AuditEvent
 from agentcanvas.services.files import DEFAULT_MAX_BYTES, FileService
@@ -566,6 +567,7 @@ class Runner:
                 if context is None:
                     context = await self._last_context(s, context_from or thread_id)
                 org_id = await ScopeRepo(s).org_of("workflow", wf.id)  # None for workflows outside the database
+                await offboarding.refuse_if_closed(s, org_id)  # E-7: whatever starts it (schedules, events, hand-over)
                 if self.router is not None and project_id is not None:
                     try:
                         routed, routing = await self.router(s, wf, project_id)

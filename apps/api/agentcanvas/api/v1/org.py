@@ -17,7 +17,7 @@ from agentcanvas.db.models import Organization, Project, SpendCapAlert
 from agentcanvas.db.repositories import AuditRepo, MemberRepo, PolicyRepo
 from agentcanvas.errors import Conflict, InvalidInput, NotFound
 from agentcanvas.expr import ExpressionError
-from agentcanvas.services import matura, mfa, networks, org_settings, scim, tokens
+from agentcanvas.services import matura, mfa, networks, offboarding, org_settings, scim, tokens
 from agentcanvas.services.org_settings import OrgLimits
 from agentcanvas.services.spend_caps import periods, project_caps, spent_by_project
 from agentcanvas.services.spending import spending
@@ -113,6 +113,86 @@ async def stop_all_runs(
         f"wf_id={body.workflow_id}" if body.workflow_id else f"org_id={user.org_id}")  # fmt: skip
     note(request, target=scope, reason=body.reason, stopping=len(done.running), cancelled=len(done.handed_over))
     return StopRunsOut(stopping=done.running, cancelled=done.handed_over)
+
+
+class DeleteOrgIn(BaseModel):
+    confirm: str = Field(description="the organisation's name, typed exactly as it is shown")
+    reason: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)] = Field(
+        description="why, for the audit log"
+    )
+
+
+class DeletionOut(BaseModel):
+    scheduled: bool = Field(description="true while the organisation waits to be deleted")
+    suspended_at: datetime | None = Field(description="when it was suspended: nobody can use it since")
+    delete_after: datetime | None = Field(description="when it is deleted for good; until then an admin can cancel")
+    requested_by: str | None = Field(description="the admin who asked for it")
+
+
+def _deletion(org: Organization) -> DeletionOut:
+    return DeletionOut(
+        scheduled=org.suspended_at is not None, suspended_at=org.suspended_at, delete_after=org.delete_after,
+        requested_by=org.deletion_requested_by,
+    )  # fmt: skip
+
+
+@router.get("/deletion", response_model=DeletionOut)
+async def organization_deletion(
+    session: AsyncSession = Depends(get_session), user: CurrentUser = Depends(current_user)
+) -> DeletionOut:
+    """Whether the organisation is waiting to be deleted, and when that happens (admins)."""
+    org = await session.get(Organization, user.org_id)
+    if org is None:
+        raise NotFound(f"organisation '{user.org_id}' not found")
+    return _deletion(org)
+
+
+@router.delete("/deletion", response_model=DeletionOut)
+async def cancel_organization_deletion(
+    request: Request, session: AsyncSession = Depends(get_session), user: CurrentUser = Depends(current_user)
+) -> DeletionOut:
+    """Take the deletion back during its grace period: the organisation opens again as it was. Runs the deletion
+    stopped stay stopped."""
+    refuse_token(user, "take back the organisation's deletion")
+    await offboarding.cancel_deletion(session, user.org_id)
+    note(request, target=f"org_id={user.org_id}")
+    org = await session.get(Organization, user.org_id, populate_existing=True)
+    assert org is not None
+    return _deletion(org)
+
+
+org_router = APIRouter(tags=["organisation"])  # the organisation itself, at /org
+
+
+@org_router.delete("/org", response_model=DeletionOut, status_code=202)
+async def delete_organization(
+    body: DeleteOrgIn,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    user: CurrentUser = Depends(current_user),
+) -> DeletionOut:
+    """Delete the organisation with everything in it (admins, with a real sign-in). It is suspended at once: every
+    sign-in, API token, deployment key, share link and run is refused, and the runs in flight stop. After the grace
+    period (`AGENTCANVAS_ORG_DELETION_GRACE_DAYS`, 7 days by default) a background job deletes its data for good;
+    until then an admin can take it back (`DELETE /v1/org/deletion`) and export the data."""
+    refuse_token(user, "delete the organisation")
+    settings = request.app.state.settings
+    if settings.auth_mode == "matura":
+        raise Conflict("organisations are removed" + matura.portal_hint(matura.portal_base(settings)))
+    org = await session.get(Organization, user.org_id)
+    if org is None:
+        raise NotFound(f"organisation '{user.org_id}' not found")
+    if body.confirm != org.name:
+        raise InvalidInput(f"type the organisation's name exactly to confirm: '{org.name}'")
+    org = await offboarding.request_deletion(session, user.org_id, user.id, settings.org_deletion_grace_days)
+    out = _deletion(org)
+    from agentcanvas.services.kill_switch import stop_runs
+
+    done = await stop_runs(session, request.app.state.runner, user.org_id)
+    when = org.delete_after.isoformat() if org.delete_after else None
+    note(request, target=f"org_id={user.org_id}", reason=body.reason, delete_after=when, stopping=len(done.running),
+         cancelled=len(done.handed_over))  # fmt: skip
+    return out
 
 
 class AuditOut(BaseModel):
