@@ -4,7 +4,7 @@
 with "approving your own runs" off, that person cannot decide it.
 
 Revision ID: fe5b2feda682
-Revises: b8e2f6a0c4d7
+Revises: d3f7b1c5e9a2
 Create Date: 2026-11-10 12:00:00
 """
 
@@ -16,7 +16,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "fe5b2feda682"
-down_revision: str | None = "b8e2f6a0c4d7"
+down_revision: str | None = "d3f7b1c5e9a2"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
