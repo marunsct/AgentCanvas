@@ -235,9 +235,16 @@ def _all_forms(values: list[str]) -> list[str]:
 def hide_values(payload: Any, values: list[str]) -> Any:
     """`payload` as JSON values with each of `values` (longest first, and their encoded forms) masked inside its
     strings. Masking the strings, not the JSON text, also finds values with characters JSON escapes."""
-    if not values:
-        return payload
-    values = _all_forms(values)
+    return _hide(payload, _all_forms(values)) if values else payload
+
+
+def masker(values: list[str]) -> Callable[[Any], Any]:
+    """`hide_values` with `values` fixed, their encoded forms worked out once: for a run's every event."""
+    forms = _all_forms([v for v in values if len(v) >= MIN_SECRET])
+    return (lambda payload: _hide(payload, forms)) if forms else (lambda payload: payload)
+
+
+def _hide(payload: Any, values: list[str]) -> Any:
     text = json.dumps(payload, default=str, ensure_ascii=False)
     if not any(v in text for v in values):  # the usual case (a token, a step event): one pass, no copy (F-1)
         return payload

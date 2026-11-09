@@ -73,7 +73,9 @@ boundaries below needs a decision in [decisions.md](../decisions.md) and a test 
 ### 4. Secrets ↔ outputs
 - Values are never returned by the API; they are masked as `***` in run events, traces, error messages and
   exports, in their raw, base64, URL-encoded and JSON-escaped forms; a secret needs at least 6 characters so it can
-  be masked (S-9). Errors raised before an adapter could mask them are masked by the runner (R-7).
+  be masked (S-9). The runner masks every framework's run events, and usage reported after a stop, with the
+  project's secrets before they are streamed, stored or recorded (RT-13); errors raised before an adapter ran are
+  masked there too (R-7).
 - A key typed into a header instead of a secret reference is refused by every export and flagged on the canvas (X-1,
   W021). A rotated key builds new clients at once (R-3).
 - Accepted risk: every organisation's decrypted values sit in one cache per API process. Code that runs inside the

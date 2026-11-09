@@ -38,6 +38,7 @@ from agentcanvas.runtime.tracing import trace_ref
 from agentcanvas.runtime.trajectory import compact
 from agentcanvas.runtime.types import REPLAYABLE, ResumeSpec, RunMode, RunSpec
 from agentcanvas.services.files import DEFAULT_MAX_BYTES, FileService
+from agentcanvas.services.secrets import masker
 
 log = get_logger(__name__)
 ResourcesFactory = Callable[[str, Workflow | None], Any]
@@ -616,8 +617,12 @@ class Runner:
             else:
                 await self._emit(h, event)
 
+        # every adapter's events are masked here, with the project's secret values: a framework that forgets to
+        # cannot put a key a model or a tool echoed into the stream, the stored run or its recording (RT-13)
+        hide: Callable[[Any], Any] = lambda payload: payload  # noqa: E731 - set once the resources are known
+
         def late_usage(record: dict[str, Any]) -> None:  # reported after the run stopped: before its last event
-            event = self._priced(h, {"type": "CUSTOM", "name": "ac.usage", "value": record})
+            event = self._priced(h, {"type": "CUSTOM", "name": "ac.usage", "value": hide(record)})
             at = next((i for i, e in enumerate(held) if e["type"] in ("RUN_FINISHED", "RUN_ERROR")), len(held))
             held.insert(at, event)
 
@@ -657,9 +662,11 @@ class Runner:
             before = await self._spent(h, budget) if budget else Spent()
             check_budget(budget, h.usage, before)  # a conversation that is already over budget does not start
             resources = self.resources(spec.thread_id, spec.workflow)
+            hide = masker(list((getattr(resources, "_secrets", None) or {}).values()))
             events = self.adapter_for(spec.workflow).execute(spec, resources)
             async with asyncio.timeout(budget.max_seconds if budget and budget.max_seconds else None):
-                async for raw in events:
+                async for unmasked in events:
+                    raw = hide(unmasked)
                     if raw["type"] == "CUSTOM" and raw.get("name") == "ac.usage":
                         priced = self._priced(h, raw)
                         await emit(priced)
