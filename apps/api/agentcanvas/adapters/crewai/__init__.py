@@ -175,19 +175,24 @@ class CrewAIAdapter:
             return
         with host:
             request["models"], request["tools"] = host.models(), host.tool_specs()
-            async for ev in worker.run(spec.run_id, request, host.handle):
-                for record in usage.drain():
-                    yield {"type": "CUSTOM", "name": "ac.usage", "value": record}
-                for reply in usage.drain_replies():
-                    yield {"type": "CUSTOM", "name": "ac.model_reply", "value": reply}
-                for io in usage.drain_tool_io():
-                    yield {"type": "CUSTOM", "name": "ac.tool_io", "value": io}
-                paused = ev.pop("paused", None)
-                if paused is not None:
-                    await paused_runs.save(spec.thread_id, paused)
-                elif ev.get("type") == "RUN_FINISHED" and spec.resume is not None:
-                    await paused_runs.store().drop(spec.thread_id)
-                yield run_scoped_interrupts(ev, spec.run_id)
+            try:
+                async for ev in worker.run(spec.run_id, request, host.handle):
+                    for record in usage.records():  # one at a time: a stop keeps the rest
+                        yield {"type": "CUSTOM", "name": "ac.usage", "value": record}
+                    for reply in usage.drain_replies():
+                        yield {"type": "CUSTOM", "name": "ac.model_reply", "value": reply}
+                    for io in usage.drain_tool_io():
+                        yield {"type": "CUSTOM", "name": "ac.tool_io", "value": io}
+                    paused = ev.pop("paused", None)
+                    if paused is not None:
+                        await paused_runs.save(spec.thread_id, paused)
+                    elif ev.get("type") == "RUN_FINISHED" and spec.resume is not None:
+                        await paused_runs.store().drop(spec.thread_id)
+                    yield run_scoped_interrupts(ev, spec.run_id)
+            finally:  # stopped, cancelled or timed out: what its model calls spent still counts (RT-4)
+                if spec.on_usage is not None:
+                    for record in usage.drain():
+                        spec.on_usage(record)
 
 
 def run_scoped_interrupts(ev: dict[str, Any], run_id: str) -> dict[str, Any]:

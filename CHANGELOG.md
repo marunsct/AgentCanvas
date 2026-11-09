@@ -119,6 +119,9 @@ review of 2026-10-29 ([HARDENING.md](docs/developer/hardening.md)); no version h
   and metadata addresses are never reached, and a list naming one is refused (HARDENING S-1).
 
 ### Fixed
+- Runs on CrewAI, Google ADK, the OpenAI Agents SDK and the flow frameworks (Pydantic AI, Agno, Agent Framework,
+  Strands, LlamaIndex, Mastra) that are stopped, cancelled or hit their time limit now record the tokens and cost of
+  the model calls they made before stopping, as LangGraph runs already did.
 - Importing n8n: workflows started by the old Cron or Interval nodes start with their input instead of a placeholder
   step; nodes n8n 3.0 removed (LangChain Code, Function, AI Transform, vector store Insert/Load, the document loaders,
   SerpApi), the AI Agent v1 modes and the OpenAI Assistant are named in the notes with the block to use instead.
