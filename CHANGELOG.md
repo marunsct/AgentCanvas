@@ -929,6 +929,8 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
 - An e2e check that every control in the inspector has an accessible name and stays in the tab order.
 
 ### Changed
+- Agno and Strands (exports, the flow runtime and the image) use the OpenAI client 3.46.0 instead of 2.54.0. Its HTTP
+  client is httpx2, which checks certificates against the operating system's store instead of `certifi`'s.
 - Claude Agent SDK 0.2.179 for designed-agent exports (bundled Claude Code CLI updates only).
 - Mastra 1.82.0 (with the AI SDK's OpenAI-compatible client 3.0.87) for Mastra flows and exports; 1.81 fixes resuming a paused agent run on another server instance, which is how AgentCanvas resumes approvals.
 - Agno 3.1.12 and LlamaIndex Workflows 2.26.1 for flows, exports and the agent block (LlamaIndex core 0.14.25 and its OpenAI-like client 0.8.1 are already the latest).
@@ -999,6 +1001,9 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
 
 ### Upgrading
 
+- Agno and Strands exports and runs now trust the operating system's certificates (openai 3 and httpx2): behind a
+  TLS-inspecting proxy, add its CA to the system store or set `SSL_CERT_FILE`. The images already include the system
+  CA bundle.
 - Migration `d8f2b6c0e4a9` adds `copilot_conversation.model` (empty: the project's model).
 - Migration `c6e0a4b8d2f7` adds `workflow_version.copilot_changes` (an empty list for existing versions); it runs with
   the others at start-up.

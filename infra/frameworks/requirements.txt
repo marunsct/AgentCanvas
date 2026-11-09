@@ -12,7 +12,7 @@ litellm==1.105.7
 llama-index-core==0.14.25
 llama-index-llms-openai-like==0.8.1
 llama-index-workflows==2.26.1
-openai==2.54.0
+openai==3.46.0
 openai-agents==0.24.0
 pyagentspec==26.3.1
 pydantic-ai-slim==2.66.0

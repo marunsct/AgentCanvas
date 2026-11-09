@@ -12,7 +12,7 @@ from agentcanvas.adapters.openai_agents.codegen import _py
 from agentcanvas.ir.models import Workflow
 
 AGNO_VERSION = "3.1.12"
-OPENAI_VERSION = "2.54.0"
+OPENAI_VERSION = "3.46.0"
 RUNTIME_IMPORT = "from agentcanvas.adapters.agno import runtime as rt"
 STEP_TYPES = flowgen.STEP_TYPES
 RESOURCE_TYPES = flowgen.RESOURCE_TYPES

@@ -48,7 +48,7 @@ RUN --mount=type=cache,target=/root/.cache/uv if [ "$WITH_PYDANTIC_AI" = "true" 
 ARG WITH_AGNO=false
 RUN --mount=type=cache,target=/root/.cache/uv if [ "$WITH_AGNO" = "true" ] || echo " $FRAMEWORKS " | tr , " " | grep -Eq " (all|agno) "; then \
       uv venv .frameworks/agno && uv pip install --python .frameworks/agno/bin/python \
-      agno==3.1.12 openai==2.54.0 cel-python==0.5.0 jinja2==3.1.6 jsonschema==4.26.0; fi
+      agno==3.1.12 openai==3.46.0 cel-python==0.5.0 jinja2==3.1.6 jsonschema==4.26.0; fi
 # 6) optional (S33–S34): the Microsoft Agent Framework in an environment of its own, for workflows designed for it:
 #   docker build --build-arg WITH_MICROSOFT_AGENT_FRAMEWORK=true ...
 ARG WITH_MICROSOFT_AGENT_FRAMEWORK=false
@@ -61,7 +61,7 @@ RUN --mount=type=cache,target=/root/.cache/uv if [ "$WITH_MICROSOFT_AGENT_FRAMEW
 ARG WITH_STRANDS=false
 RUN --mount=type=cache,target=/root/.cache/uv if [ "$WITH_STRANDS" = "true" ] || echo " $FRAMEWORKS " | tr , " " | grep -Eq " (all|strands) "; then \
       uv venv .frameworks/strands && uv pip install --python .frameworks/strands/bin/python \
-      "strands-agents[openai]==1.64.0" openai==2.54.0 cel-python==0.5.0 jinja2==3.1.6 jsonschema==4.26.0; fi
+      "strands-agents[openai]==1.64.0" openai==3.46.0 cel-python==0.5.0 jinja2==3.1.6 jsonschema==4.26.0; fi
 ARG WITH_LLAMAINDEX=false
 RUN --mount=type=cache,target=/root/.cache/uv if [ "$WITH_LLAMAINDEX" = "true" ] || echo " $FRAMEWORKS " | tr , " " | grep -Eq " (all|llamaindex) "; then \
       uv venv .frameworks/llamaindex && uv pip install --python .frameworks/llamaindex/bin/python \

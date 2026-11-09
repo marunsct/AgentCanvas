@@ -125,6 +125,7 @@ def scripted_model(replies: list[Any]) -> Any:
             "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
         })
 
+    # Agno passes on only an httpx client (it ignores others), which openai 3 still takes: so httpx, not httpx2
     client = httpx.AsyncClient(transport=httpx.MockTransport(answer))
     return OpenAILike(id="scripted", base_url="http://scripted/v1", api_key="scripted", http_client=client)
 '''
@@ -152,7 +153,7 @@ def scripted_model(replies: list[Any]) -> Any:
                                       middleware=[Scripted(replies)])
 '''
 
-STRANDS_MODELS = '''import httpx
+STRANDS_MODELS = '''import httpx2
 from openai import AsyncOpenAI
 from strands.models.openai import OpenAIModel
 
@@ -179,7 +180,7 @@ def _streamed(replies: list[Any]) -> Any:
     the n-th model turn of an agent's run gets reply n (the last one repeats). A reply is text, or
     {"content": ..., "tool_calls": [{"name": ..., "args": {...}}]}."""
 
-    def answer(request: httpx.Request) -> httpx.Response:
+    def answer(request: httpx2.Request) -> httpx2.Response:
         body = json.loads(request.content)
         turn = sum(1 for m in body.get("messages", []) if m.get("role") == "assistant")
         reply = (replies or [""])[min(turn, len(replies or [""]) - 1)]
@@ -196,9 +197,9 @@ def _streamed(replies: list[Any]) -> Any:
         chunks.append({**base, "choices": [], "usage": {"prompt_tokens": 0, "completion_tokens": 0,
                                                         "total_tokens": 0}})
         data = "".join(f"data: {json.dumps(c)}\\n\\n" for c in chunks) + "data: [DONE]\\n\\n"
-        return httpx.Response(200, headers={"content-type": "text/event-stream"}, content=data.encode())
+        return httpx2.Response(200, headers={"content-type": "text/event-stream"}, content=data.encode())
 
-    return httpx.AsyncClient(transport=httpx.MockTransport(answer))
+    return httpx2.AsyncClient(transport=httpx2.MockTransport(answer))  # openai 3's own HTTP client
 '''
 
 LLAMAINDEX_MODELS = '''import httpx
@@ -283,7 +284,7 @@ TARGETS = {
     "strands": Target(
         label="Strands Agents",
         slug="strands",
-        pins=[f"strands-agents[openai]=={STRANDS_VERSION}", f"openai=={OPENAI_VERSION}"],  # 1.63+ allows openai 3
+        pins=[f"strands-agents[openai]=={STRANDS_VERSION}", f"openai=={OPENAI_VERSION}"],
         docs="https://strandsagents.com/",
         how="a Strands `Agent` for each AI block (an `OpenAIModel`, tools, an `AskBefore` hook for approvals, a "
         "`structured_output_model` for typed answers)",

@@ -12,6 +12,14 @@ Merging, deleting branches and anything outward-facing stay with you: work is de
 
 ## 2026-11-09
 
+### The OpenAI client for Agno and Strands moves to 3.46.0
+This replaces "stays at 2.54.0" below. OpenAI's httpx2 migration guide says an injected legacy httpx client still works
+at runtime, and Agno 3.1.12 only passes on an `httpx.AsyncClient` (it ignores any other client), so Agno's scripted test
+model keeps httpx; Strands', which builds its own `AsyncOpenAI`, now uses httpx2. Verified on 3.46.0: the Agno and
+Strands conformance and flow tests (151), both smoke checks, and the tests of all 44 Agno, Strands and mixed exports.
+*Watch:* OpenAI calls the legacy-client path temporary; when Agno accepts httpx2 clients, move its scripted model too.
+*Reverse:* `make framework-bump PKG=openai VERSION=2.54.0` and put `import httpx` back in `STRANDS_MODELS`.
+
 ### Importer upkeep checked against real files, not a fresh Agent Builder export
 A fresh Agent Builder export needs your OpenAI account, so I used what is public: Langflow's own 27 starter projects at
 v1.13.0, n8n's 3.0 breaking-changes page, and 34 Agent Builder exports people committed to GitHub (read with `ast`, never
