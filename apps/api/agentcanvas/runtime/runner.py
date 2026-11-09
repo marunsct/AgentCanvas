@@ -32,7 +32,7 @@ from agentcanvas.ir.models import Budget, Workflow
 from agentcanvas.log import get_logger
 from agentcanvas.registry import default_registry
 from agentcanvas.runtime import masking
-from agentcanvas.runtime.admission import Admission, Priority, priority_of
+from agentcanvas.runtime.admission import Admission, Priority, QueueTimeout, priority_of
 from agentcanvas.runtime.identity import CURRENT, RunIdentity
 from agentcanvas.runtime.tracing import trace_ref
 from agentcanvas.runtime.trajectory import compact
@@ -757,6 +757,12 @@ class Runner:
                     "threadId": h.thread_id,
                 },
             )
+        except QueueTimeout as exc:  # it never began: nothing to stop or save but its outcome
+            status, error = "error", str(exc)
+            await emit(
+                {"type": "RUN_ERROR", "code": "queue_timeout", "message": error, "runId": h.run_id,
+                 "threadId": h.thread_id},
+            )  # fmt: skip
         except asyncio.CancelledError:
             if h.superseded:
                 status, error, code = "interrupted", "another server took this run over", "superseded"

@@ -237,3 +237,94 @@ async def test_a_waiting_answer_is_given_again_after_a_hand_over(app, api_client
     assert (await api_client.get("/v1/threads/th_ask")).json()["values"]["answer"] == "yes"
     async with app.state.db.sessionmaker() as s:
         assert (await s.get(InterruptTask, item["id"])).status == "decided"
+
+
+class _Counting:
+    """The database, counting the sessions opened through it."""
+
+    def __init__(self, db):
+        self.db, self.opened = db, 0
+
+    def sessionmaker(self):
+        self.opened += 1
+        return self.db.sessionmaker()
+
+
+async def test_waiting_runs_share_one_admission_pass(app, api_client, limited):
+    """However many runs wait on a server, it asks the database for the organisation's queue once per round, not
+    once per waiting run (each used to poll every second, holding a lock on the organisation's row)."""
+    runner = app.state.runner
+    first = await _start_slow(app, api_client, limited)
+    waiting = [await _start(api_client, limited, 30) for _ in range(8)]
+    for run_id in waiting:
+        assert await _queued(app, run_id)
+    counting = _Counting(app.state.db)
+    runner.admission.db = counting
+    await asyncio.sleep(0.5)  # about 10 rounds of 50 ms
+    for _ in range(5):
+        runner.admission.freed()
+        await asyncio.sleep(0.01)
+    assert counting.opened <= 20, counting.opened  # 8 waiters polling alone: about 80, plus 40 for the wake-ups
+    runner.admission.db = app.state.db
+    for run_id in [first, *waiting]:
+        await runner.cancel(run_id)
+
+
+async def test_a_run_waits_no_longer_than_the_server_allows(app, api_client, limited):
+    runner = app.state.runner
+    runner.admission.max_wait_s = 0.3
+    first = await _start_slow(app, api_client, limited)
+    second = await _start(api_client, limited, 0)
+    h = await asyncio.wait_for(runner.wait(second), 10)
+    assert h.status == "error" and h.events[-1]["code"] == "queue_timeout"
+    assert "waited 0.3 s for a free run slot" in h.events[-1]["message"]
+    row = await run_row(app, second)
+    assert row.status == "error" and row.queued is False and row.pending is None
+    assert (await api_client.get(f"/v1/threads/{h.thread_id}")).json()["status"] == "error"
+    await runner.cancel(first)
+
+
+async def test_passes_at_once_never_take_more_slots_than_the_limit(app, api_client, limited):
+    """SQLite has no row lock: passes that ran at once (every waiting run woke together when a run ended) could each
+    see the free slot and all take it."""
+    from sqlalchemy import func, select
+
+    runner = app.state.runner
+    first = await _start_slow(app, api_client, limited)
+    runner.admission.close()  # its own passes stay out of the way
+    waiting = [await _start(api_client, limited, 30) for _ in range(4)]
+    for _ in range(100):
+        if (await run_row(app, waiting[-1])).queued:
+            break
+        await asyncio.sleep(0.02)
+    await runner.cancel(first)
+    await asyncio.wait_for(runner.wait(first), 10)
+    await asyncio.gather(*(runner.admission.admit("org_default") for _ in range(4)))
+    async with app.state.db.sessionmaker() as s:
+        took = await s.scalar(
+            select(func.count()).where(Run.id.in_(waiting), Run.status == "running", Run.queued.is_(False))
+        )
+    assert took == 1
+    for run_id in waiting:
+        await runner.cancel(run_id)
+
+
+async def test_a_pass_locks_no_row_of_the_organisation(app, api_client):
+    """Postgres: the pass serialises servers with an advisory lock; a row lock on the organisation would hold up
+    every insert that references it (audit log, projects, tokens) while runs wait."""
+    if not app.state.db.is_postgres:
+        pytest.skip("row locks need Postgres")
+    from sqlalchemy import text
+
+    runner = app.state.runner
+    async with app.state.db.sessionmaker() as held:
+        await runner.admission.lock(held, "org_default")
+        async with app.state.db.sessionmaker() as other:
+            await other.execute(text("SET LOCAL lock_timeout = '200ms'"))
+            await other.execute(text("SELECT id FROM organization WHERE id = 'org_default' FOR KEY SHARE"))
+            taken = await other.scalar(
+                text("SELECT pg_try_advisory_xact_lock(:a, hashtext('org_default'))"), {"a": 0x6163_7175}
+            )
+            assert taken is False  # another server's pass waits for this one
+            await other.rollback()
+        await held.rollback()

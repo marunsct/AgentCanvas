@@ -244,7 +244,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             async def concurrent_limit(project_id: str | None) -> int:
                 return (await app.state.org_settings.for_project(settings, project_id)).max_concurrent_runs
 
-            runner.admission = Admission(db, concurrent_limit, stale_after_s=settings.orphan_after_s)
+            runner.admission = Admission(
+                db, concurrent_limit, stale_after_s=settings.orphan_after_s, max_wait_s=settings.max_queue_wait_s
+            )
             runner.prepare_hooks.append(
                 RunGate(
                     settings,

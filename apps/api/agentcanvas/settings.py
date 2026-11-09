@@ -149,6 +149,8 @@ class Settings(BaseSettings):
     # false: nobody may approve or answer an Inbox item raised by a run they started (four-eyes approvals). An
     # organisation may switch it off for itself, never on when the server has it off.
     approve_own_runs: bool = True
+    # how long a run may wait in that queue before it gives up with an error (seconds); 0 = as long as it takes
+    max_queue_wait_s: float = Field(default=3600, ge=0)
     retention_interval_s: int = 3600  # how often the retention job looks for expired conversations
     # a cron occurrence no scheduler ticked in (a restart, an outage) fires once when ticking resumes, if it is no
     # older than this; 0 = only the minute a scheduler ticks in
