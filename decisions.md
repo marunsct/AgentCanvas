@@ -10,6 +10,24 @@ Merging, deleting branches and anything outward-facing stay with you: work is de
 - No version bump or tag (yours to decide); `CHANGELOG.md` "Unreleased" and `HARDENING.md` are kept current.
 - Prefer checks that grow with the product (driven by the OpenAPI document or the template list) over lists to maintain.
 
+## 2026-11-09
+
+### Every agent framework on its latest release, with two held back
+Read from each project's own releases and changelog (links in `make framework-versions`): LangGraph 1.2.20,
+LangChain 1.4.9, Deep Agents 0.7.34, MCP SDK 2.3.0, Pydantic AI 2.66.0, Microsoft Agent Framework 1.25.0 (its OpenAI
+client 1.18.1), Google ADK 2.14.0, CrewAI 1.15.39, Strands 1.64.0, Agno 3.1.12, LlamaIndex Workflows 2.26.1, Mastra
+1.82.0, Claude Agent SDK 0.2.179; OpenAI Agents SDK 0.24.0 and Agent Spec 26.3.1 were already the latest.
+- **LiteLLM stays at 1.105.7**: see the entry above; ADK 2.14 itself declares `<1.106.3`.
+- **The OpenAI client for Agno and Strands stays at 2.54.0**: Strands 1.63 now allows 3.x and Agno has no upper
+  bound, but openai 3 made httpx2 the default client and our scripted test models use httpx; LlamaIndex's OpenAI
+  package still requires `<3`. Moving to 3 is one change for Agno and Strands together, with the scripted clients
+  ported to httpx2. *Reverse:* raise `OPENAI_VERSION` (agno/codegen.py) and the two `openai==` pins.
+- **CrewAI in the image runs on Python 3.13**: CrewAI declares `<3.14` but had been installed on the image's 3.14,
+  which nothing tested (`make crewai` and CI use 3.13).
+- **LangGraph's error-handler fix retired a workaround**: workflows with error routes stream tokens again.
+- **Upgrades from now on**: Dependabot watches `infra/frameworks/requirements.txt` (one pull request per framework),
+  `make framework-bump` moves a pin everywhere, and the procedure is build guide page 16.
+
 ## 2026-11-08
 
 ### The second review: how it was fixed
