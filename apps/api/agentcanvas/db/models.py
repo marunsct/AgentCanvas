@@ -321,8 +321,10 @@ class Run(Base):
     events: Mapped[list[Any] | None] = mapped_column(Json)
     # FR-X-10: stopped by a server shutdown before it finished; the next instance continues the thread
     handover: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
-    # F-5 kill switch: an admin asked to stop it; its instance stops it at the next heartbeat (never handed over)
+    # someone asked to stop it (Stop, Delete conversation, the F-5 kill switch), maybe on another instance: the one
+    # running it stops it at the next heartbeat, with `stop_reason` (NULL before it was kept: the kill switch's)
     stop_requested: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    stop_reason: Mapped[str | None] = mapped_column(Text)
     # the run queue (with a concurrent-run limit): 1 high, 0 normal, -1 low; `queued` while it waits for a slot
     priority: Mapped[int] = mapped_column(SmallInteger, server_default=text("0"), default=0)
     queued: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)

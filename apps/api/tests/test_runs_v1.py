@@ -237,7 +237,7 @@ async def test_cancel_reattach_and_double_texting(api_client):
     busy = await api_client.post(f"/v1/workflows/{wf}/runs/stream", json={"thread_id": thread_id, "stream": False})
     assert busy.status_code == 409 and busy.json()["run_id"] == run_id
     await asyncio.sleep(0.2)
-    assert (await api_client.post(f"/v1/runs/{run_id}/cancel")).json() == {"cancelled": True}
+    assert (await api_client.post(f"/v1/runs/{run_id}/cancel")).json() == {"cancelled": True, "pending": False}
     evs = events((await api_client.get(f"/v1/runs/{run_id}/events")).text)  # re-attach replays the buffer
     assert evs[0]["type"] == "RUN_STARTED" and evs[-1] == evs[-1] | {"type": "RUN_ERROR", "code": "cancelled"}
     assert (await api_client.get(f"/v1/runs/{run_id}")).json()["status"] == "cancelled"
@@ -759,7 +759,7 @@ async def test_an_answer_stopped_before_it_took_goes_back_to_the_inbox(triage_ap
     assert r.status_code == 202, r.text
     await asyncio.sleep(0.05)
     if stop == "cancel":
-        assert (await api.post(f"/v1/runs/{r.json()['run_id']}/cancel")).json() == {"cancelled": True}
+        assert (await api.post(f"/v1/runs/{r.json()['run_id']}/cancel")).json() == {"cancelled": True, "pending": False}
         await runner.wait(r.json()["run_id"])
     else:
         await runner.drain(0)

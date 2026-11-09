@@ -193,7 +193,7 @@ async def test_usage_of_a_cancelled_run_is_recorded(app, api_client, monkeypatch
     r = await api_client.post(f"/v1/workflows/{wf}/runs/stream", json={"input": {"who": "Ada"}, "stream": False})
     run_id = r.json()["run_id"]
     await asyncio.sleep(0.1)
-    assert (await api_client.post(f"/v1/runs/{run_id}/cancel")).json() == {"cancelled": True}
+    assert (await api_client.post(f"/v1/runs/{run_id}/cancel")).json() == {"cancelled": True, "pending": False}
     await app.state.runner.wait(run_id)
     run = (await api_client.get(f"/v1/runs/{run_id}")).json()
     assert run["status"] == "cancelled" and run["tokens_in"] == 120 and run["tokens_out"] == 30

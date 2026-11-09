@@ -16,7 +16,7 @@ from typing import Any, Literal, cast
 from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer
 
@@ -29,7 +29,7 @@ from agentcanvas.errors import Conflict, Forbidden, InvalidInput, NotFound, Upst
 from agentcanvas.ir.models import Workflow
 from agentcanvas.observability import counted_stream
 from agentcanvas.runtime.admission import Priority
-from agentcanvas.runtime.runner import RunHandle, Runner
+from agentcanvas.runtime.runner import CANCELLED_BY_USER, RunHandle, Runner
 from agentcanvas.runtime.tracing import web_url
 from agentcanvas.runtime.trajectory import compact
 from agentcanvas.runtime.types import ResumeSpec, ThreadState, is_tool_recording
@@ -371,8 +371,37 @@ async def run_events(run_id: str, after: int = Query(0, ge=0), r: Runner = Depen
 
 
 @router.post("/runs/{run_id}/cancel", status_code=202)
-async def cancel_run(run_id: str, r: Runner = Depends(runner)) -> dict[str, Any]:
-    return {"cancelled": await r.cancel(run_id)}
+async def cancel_run(
+    run_id: str, session: AsyncSession = Depends(get_session), r: Runner = Depends(runner)
+) -> dict[str, Any]:
+    """Stop a run. One running on this instance stops now. Requests are spread over the replicas, so the run may be
+    running on another one: it is marked in the database and that instance stops it at its next heartbeat
+    (`pending`, within `AGENTCANVAS_HANDOVER_INTERVAL_S`)."""
+    if await r.cancel(run_id):
+        return {"cancelled": True, "pending": False}
+    if (h := r.handles.get(run_id)) is not None and not h.done.is_set():  # here, saving its outcome: let it
+        return {"cancelled": False, "pending": False}
+    asked = await session.execute(
+        update(Run)
+        .where(Run.id == run_id, Run.status == "running")
+        .values(stop_requested=True, stop_reason=func.coalesce(Run.stop_reason, CANCELLED_BY_USER))
+    )
+    if asked.rowcount == 1:  # type: ignore[attr-defined]
+        await session.commit()
+        return {"cancelled": True, "pending": True}
+    # paused by a redeploy and waiting to be continued on another instance: cancelled here, so none continues it
+    ended = await session.execute(
+        update(Run)
+        .where(Run.id == run_id, Run.handover.is_(True), Run.status != "running")
+        .values(status="cancelled", error=CANCELLED_BY_USER, handover=False, stop_requested=True,
+                stop_reason=CANCELLED_BY_USER, ended_at=datetime.now(UTC))
+    )  # fmt: skip
+    cancelled = ended.rowcount == 1  # type: ignore[attr-defined]
+    if cancelled:
+        thread_id = await session.scalar(select(Run.thread_id).where(Run.id == run_id))
+        await session.execute(update(Thread).where(Thread.id == thread_id).values(status="idle"))
+    await session.commit()
+    return {"cancelled": cancelled, "pending": False}
 
 
 # ------------------------------------------------------------------ search ----

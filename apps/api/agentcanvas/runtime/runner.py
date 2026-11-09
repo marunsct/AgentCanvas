@@ -46,6 +46,7 @@ ResourcesFactory = Callable[[str, Workflow | None], Any]
 
 STOPPED_BY_ADMIN = "stopped by an admin (stop all runs)"  # the kill switch (F-5); its reason is in the audit log
 FORGET_PAGE = 500  # conversations whose saved state is deleted per query, when a workflow or project goes
+CANCELLED_BY_USER = "cancelled by user"  # Stop pressed on the run
 
 
 @dataclass
@@ -78,7 +79,7 @@ class RunHandle:
     # a stop is a request it reads first (RT-10)
     started: bool = False
     stop_requested: bool = False
-    stop_reason: str | None = None  # why it was stopped, when not by the person (the kill switch's reason)
+    stop_reason: str | None = None  # why it was stopped (`Run.stop_reason`); none: the person pressed Stop here
     decided: list[str] = field(default_factory=list)  # Inbox items this run answers (back to pending if it fails)
     deployment_id: str | None = None  # a run of a published deployment (online evaluators score these, S13)
     version_id: str | None = None
@@ -714,7 +715,7 @@ class Runner:
                 status, error = "interrupted", "paused for a server restart; it continues automatically"
                 code = "redeploy"
             else:
-                status, error, code = "cancelled", h.stop_reason or "cancelled by user", "cancelled"
+                status, error, code = "cancelled", h.stop_reason or CANCELLED_BY_USER, "cancelled"
             await emit(
                 {
                     "type": "RUN_ERROR",
@@ -1052,11 +1053,12 @@ class Runner:
                 update(Run).where(Run.id.in_(ids), Run.status == "running").values(heartbeat_at=datetime.now(UTC))
             )
             gone = list((await s.scalars(select(Run.id).where(Run.id.in_(ids), Run.status != "running"))).all())
-            asked = list((await s.scalars(select(Run.id).where(Run.id.in_(ids), Run.stop_requested.is_(True)))).all())
+            q = select(Run.id, Run.stop_reason).where(Run.id.in_(ids), Run.stop_requested.is_(True))
+            asked = (await s.execute(q)).all()
             await s.commit()
-        for run_id in asked:  # the kill switch, pressed on another instance (F-5)
+        for run_id, reason in asked:  # Stop or the kill switch (F-5), pressed on another instance
             if run_id not in gone:
-                await self.cancel(run_id, STOPPED_BY_ADMIN)
+                await self.cancel(run_id, reason or STOPPED_BY_ADMIN)
         for run_id in gone:
             h = self.handles.get(run_id)
             if h is not None and self._stoppable(h):

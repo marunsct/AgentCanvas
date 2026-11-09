@@ -129,13 +129,14 @@ class HandoverJob:
         mine = set(self.runner.active())
         swept: list[str] = []
         async with self.db.sessionmaker() as s:
-            rows = (await s.execute(select(Run.id, Run.thread_id, Run.stop_requested).where(*stale).limit(BATCH))).all()
-            for run_id, thread_id, stop in rows:
+            q = select(Run.id, Run.thread_id, Run.stop_requested, Run.stop_reason).where(*stale).limit(BATCH)
+            rows = (await s.execute(q)).all()
+            for run_id, thread_id, stop, reason in rows:
                 if run_id in mine:  # alive here; its heartbeat is just late
                     continue
-                # a run an admin asked to stop (F-5) is cancelled, not continued on another instance
+                # a run someone asked to stop (Stop, the F-5 kill switch) is cancelled, not continued elsewhere
                 values = (
-                    {"status": "cancelled", "error": STOPPED_BY_ADMIN, "handover": False}
+                    {"status": "cancelled", "error": reason or STOPPED_BY_ADMIN, "handover": False}
                     if stop
                     else {"status": "interrupted", "error": ORPHANED, "handover": True}
                 )
