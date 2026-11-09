@@ -100,7 +100,7 @@ when and from which address. Approvals record a hash of exactly what was approve
 not recorded. Admins read it under **Settings › Audit log** ([Audit log](accounts.md#audit-log)); rows are kept 400
 days by default (`AGENTCANVAS_AUDIT_RETENTION_DAYS`). Security-relevant entries (publishing, keys, secrets,
 approvals, members, settings and policies) can also be forwarded to Matura as signed events
-([Audit forwarding](deploy.md#audit-forwarding)).
+([Security events and audit forwarding](deploy.md#security-events-and-audit-forwarding)).
 
 ## Third parties your data reaches
 

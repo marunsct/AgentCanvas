@@ -85,9 +85,9 @@ Lists are JSON (`["a", "b"]`), booleans `true` or `false`. Settings whose names 
 | `AGENTCANVAS_MAX_QUEUE_WAIT_S` | `3600` | how long a run may wait in that queue before it gives up with an error (seconds); 0 = as long as it takes |
 | `AGENTCANVAS_RETENTION_INTERVAL_S` | `3600` | how often the retention job looks for expired conversations |
 | `AGENTCANVAS_CRON_CATCHUP_S` | `3600` | a cron occurrence no scheduler ticked in (a restart, an outage) fires once when ticking resumes, if it is no older than this; 0 = only the minute a scheduler ticks in |
-| `AGENTCANVAS_MAX_UPLOAD_MB` | `10` | G-5: the largest file a person may attach to a run (Run tab, share links, inline in API calls), in MB the web server accepts 20 MB bodies (infra/nginx.conf) |
+| `AGENTCANVAS_MAX_UPLOAD_MB` | `10` | the largest file a person may attach to a run (Run tab, share links, inline in API calls), in MB; at most 20, the largest request body the web server accepts (infra/nginx.conf) |
 | `AGENTCANVAS_MAX_PROJECT_FILES_MB` | `1024` | all of a project's attached files; 0 = no limit |
-| `AGENTCANVAS_DRAIN_GRACE_S` | `20.0` | FR-X-10 safe redeploy: from SIGTERM, how long running runs get to finish before they are handed over (keep 5 + max(30, it) + 25 below the pod's terminationGracePeriodSeconds), and how often instances look for runs to continue |
+| `AGENTCANVAS_DRAIN_GRACE_S` | `20.0` | safe redeploys: from SIGTERM, how long running runs get to finish before they are handed over (keep 5 + max(30, it) + 25 below the pod's terminationGracePeriodSeconds), and how often instances look for runs to continue |
 | `AGENTCANVAS_HANDOVER_INTERVAL_S` | `10.0` | As the row above (one comment in settings.py covers these). |
 | `AGENTCANVAS_ORPHAN_AFTER_S` | `60.0` | a running run whose instance has not refreshed it for this long lost its instance and is handed over |
 

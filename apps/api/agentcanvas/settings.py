@@ -155,10 +155,11 @@ class Settings(BaseSettings):
     # a cron occurrence no scheduler ticked in (a restart, an outage) fires once when ticking resumes, if it is no
     # older than this; 0 = only the minute a scheduler ticks in
     cron_catchup_s: int = Field(default=3600, ge=0)
-    # G-5: the largest file a person may attach to a run (Run tab, share links, inline in API calls), in MB
-    max_upload_mb: float = Field(default=10, gt=0, le=20)  # the web server accepts 20 MB bodies (infra/nginx.conf)
+    # the largest file a person may attach to a run (Run tab, share links, inline in API calls), in MB; at most 20,
+    # the largest request body the web server accepts (infra/nginx.conf)
+    max_upload_mb: float = Field(default=10, gt=0, le=20)
     max_project_files_mb: float = Field(default=1024, ge=0)  # all of a project's attached files; 0 = no limit
-    # FR-X-10 safe redeploy: from SIGTERM, how long running runs get to finish before they are handed over (keep
+    # safe redeploys: from SIGTERM, how long running runs get to finish before they are handed over (keep
     # 5 + max(30, it) + 25 below the pod's terminationGracePeriodSeconds), and how often instances look for runs
     # to continue
     drain_grace_s: float = 20.0
