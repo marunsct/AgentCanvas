@@ -74,7 +74,7 @@ s_frameworks() {   # real agents from each framework, wrapped and drawn on the c
   local spec check with
   for spec in \
     "openai_agents|openai-agents==0.24.0" "crewai|crewai==1.15.33" "google_adk|google-adk==2.13.0 litellm==1.105.7" \
-    "pydantic_ai|pydantic-ai-slim[openai]==2.63.0" "agno|agno==3.1.11 openai==2.54.0" "strands|strands-agents[openai]==1.62.0" \
+    "pydantic_ai|pydantic-ai-slim[openai]==2.66.0" "agno|agno==3.1.11 openai==2.54.0" "strands|strands-agents[openai]==1.62.0" \
     "llamaindex|llama-index-workflows==2.25.0 llama-index-core==0.14.25 llama-index-llms-openai-like==0.8.1" \
     "microsoft_agent_framework|agent-framework-core==1.23.0 agent-framework-openai==1.17.0" \
     "claude_agent_sdk|claude-agent-sdk==0.2.174" "agentspec|pyagentspec==26.3.1" \

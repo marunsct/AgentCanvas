@@ -1,7 +1,7 @@
 {
   "id": "pydantic_ai",
   "label": "Pydantic AI",
-  "framework": "pydantic-ai-slim 2.63.0",
+  "framework": "pydantic-ai-slim 2.66.0",
   "version": "0.1.0",
   "tier": "T2",
   "description": "The workflow becomes a Pydantic AI flow: an async function for each block, Pydantic AI Agents (OpenAIChatModel, Tool, NativeOutput for typed answers) for the AI blocks, and a FLOW that AgentCanvas's flow engine runs as the canvas draws it. Any catalog model works, and tool calls can wait for a person's approval (Pydantic AI's deferred tools). Runs need Pydantic AI installed on the server (`make framework FW=pydantic_ai`); designing and exporting do not. No saved history, state editing or breakpoints; a paused run lives in memory.",

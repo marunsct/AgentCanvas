@@ -41,7 +41,7 @@ RUN --mount=type=cache,target=/root/.cache/uv if [ "$WITH_GOOGLE_ADK" = "true" ]
 ARG WITH_PYDANTIC_AI=false
 RUN --mount=type=cache,target=/root/.cache/uv if [ "$WITH_PYDANTIC_AI" = "true" ] || echo " $FRAMEWORKS " | tr , " " | grep -Eq " (all|pydantic_ai) "; then \
       uv venv .frameworks/pydantic_ai && uv pip install --python .frameworks/pydantic_ai/bin/python \
-      "pydantic-ai-slim[openai]==2.63.0" cel-python==0.5.0 jinja2==3.1.6 jsonschema==4.26.0; fi
+      "pydantic-ai-slim[openai]==2.66.0" cel-python==0.5.0 jinja2==3.1.6 jsonschema==4.26.0; fi
 ARG WITH_AGNO=false
 RUN --mount=type=cache,target=/root/.cache/uv if [ "$WITH_AGNO" = "true" ] || echo " $FRAMEWORKS " | tr , " " | grep -Eq " (all|agno) "; then \
       uv venv .frameworks/agno && uv pip install --python .frameworks/agno/bin/python \

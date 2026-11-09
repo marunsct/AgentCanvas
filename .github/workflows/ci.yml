@@ -89,7 +89,7 @@ jobs:
           - { check: openai_agents, with: "openai-agents==0.24.0" }
           - { check: crewai, with: "crewai==1.15.33" }
           - { check: google_adk, with: "google-adk==2.13.0 litellm==1.105.7" }
-          - { check: pydantic_ai, with: "pydantic-ai-slim[openai]==2.63.0" }
+          - { check: pydantic_ai, with: "pydantic-ai-slim[openai]==2.66.0" }
           - { check: agno, with: "agno==3.1.11 openai==2.54.0" }
           - { check: strands, with: "strands-agents[openai]==1.62.0" }
           - { check: llamaindex, with: "llama-index-workflows==2.25.0 llama-index-core==0.14.25 llama-index-llms-openai-like==0.8.1" }
