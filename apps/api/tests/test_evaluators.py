@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 from test_org_scope import act_as_b, org_b  # noqa: F401 - fixture
 from test_publish import make_greeter
 
 from agentcanvas.api.deps import current_user
-from agentcanvas.evaluation import Observation, Spec, score, trajectory_of, trajectory_score
+from agentcanvas.evaluation import Observation, Spec, ToolCall, TrajectoryConfig, calls_score, score, trajectory_of
 
 P = "/v1/projects/prj_default"
 HAIKU = "anthropic:claude-haiku-4-5"
@@ -56,13 +58,16 @@ async def test_deterministic_evaluators(api_client):
     assert [e["name"] for e in listed] == ["exact", "greets", "shape", "tools"]
 
 
-def test_trajectory_modes_and_events():
-    assert trajectory_score("strict", ["a", "b"], ["a", "b"]) == 1
-    assert trajectory_score("strict", ["b", "a"], ["a", "b"]) == 0
-    assert trajectory_score("unordered", ["b", "a"], ["a", "b"]) == 1
-    assert trajectory_score("unordered", ["a", "a", "b"], ["a", "b"]) == 0
-    assert trajectory_score("subset", ["a", "c", "b"], ["a", "b"]) == 1
-    assert trajectory_score("subset", ["a"], ["a", "a"]) == 0
+async def test_trajectory_modes_and_events():
+    async def trajectory_score(mode: str, actual: list[str], expected: list[str]) -> float:
+        return (await calls_score(TrajectoryConfig(mode=mode), [ToolCall(name=n) for n in actual], expected))[0]
+
+    assert await trajectory_score("strict", ["a", "b"], ["a", "b"]) == 1
+    assert await trajectory_score("strict", ["b", "a"], ["a", "b"]) == 0
+    assert await trajectory_score("unordered", ["b", "a"], ["a", "b"]) == 1
+    assert await trajectory_score("unordered", ["a", "a", "b"], ["a", "b"]) == 0
+    assert await trajectory_score("subset", ["a", "c", "b"], ["a", "b"]) == 1
+    assert await trajectory_score("subset", ["a"], ["a", "a"]) == 0
 
     def reply(**r) -> dict:
         return {"type": "CUSTOM", "name": "ac.model_reply", "value": {"reply": r}}
@@ -286,3 +291,60 @@ async def test_every_kind_has_a_form(api_client):
     assert "parts" not in kinds["composite"]["config_schema"]["properties"]
     assert "schema" in kinds["json_schema"]["config_schema"]["properties"]  # the alias, as the API takes it
     assert kinds["pairwise"]["experiments_only"] and kinds["llm_judge"]["default_threshold"] == 0.7
+
+
+async def test_tool_call_arguments_are_matched(api_client):
+    wf = await make_greeter(api_client)
+    search = {"name": "search", "args": {"query": {"$regex": "(?i)refund"}}}
+    subset = await new(api_client, wf, "args", "trajectory", {"mode": "subset"})
+    assert subset["config"]["args"] == "subset"
+
+    def run(*calls: dict) -> dict:
+        return {"trajectory": [c["name"] for c in calls], "calls": list(calls)}
+
+    good = run({"name": "search", "args": {"query": "Refund policy", "k": 3}})
+    assert (await attempt(api_client, subset, expected_trajectory=[search], **good))["passed"]
+    wrong = await attempt(
+        api_client, subset, expected_trajectory=[search], **run({"name": "search", "args": {"query": "shipping"}})
+    )
+    assert not wrong["passed"] and wrong["comment"].startswith('no call matched search({"query": {"$regex"')
+    unnamed = await attempt(api_client, subset, expected_trajectory=[search], **run({"name": "search"}))
+    assert not unnamed["passed"]  # the argument the example names is missing
+    assert (await attempt(api_client, subset, expected_trajectory=["search"], **run({"name": "search"})))["passed"]
+    # a hand-written observation without arguments still scores by name
+    assert (await attempt(api_client, subset, trajectory=["search"], expected_trajectory=["search"]))["passed"]
+
+    exact = await new(api_client, wf, "exact_args", "trajectory", {"mode": "strict", "args": "exact"})
+    assert not (await attempt(api_client, exact, expected_trajectory=[search], **good))["passed"]  # k is extra
+    only = run({"name": "search", "args": {"query": "a refund"}})
+    assert (await attempt(api_client, exact, expected_trajectory=[search], **only))["passed"]
+    two = await attempt(
+        api_client, exact, expected_trajectory=[search, "fetch"], **run(*only["calls"], {"name": "lookup"})
+    )
+    assert not two["passed"] and two["comment"].startswith("call 2: expected fetch, got lookup")
+
+    ignore = await new(api_client, wf, "names", "trajectory", {"mode": "strict", "args": "ignore"})
+    shipping = run({"name": "search", "args": {"query": "shipping"}})
+    assert (await attempt(api_client, ignore, expected_trajectory=[search], **shipping))["passed"]
+
+
+async def test_unordered_calls_are_paired_one_to_one():
+    cfg = TrajectoryConfig(mode="unordered")
+    calls = [ToolCall(name="a", args={"x": 1}), ToolCall(name="a", args={"x": 2})]
+    # "a" fits both calls: pairing it with the first would leave a(x=1) without one
+    assert (await calls_score(cfg, calls, ["a", ToolCall(name="a", args={"x": 1})]))[0] == 1
+    value, why = await calls_score(cfg, calls, [ToolCall(name="a", args={"x": 1})] * 2)
+    assert value == 0 and why == "only 1 of the 2 expected calls could be matched to different calls"
+
+
+def test_calls_keep_their_arguments():
+    from agentcanvas.evaluation import calls_of
+    from agentcanvas.services.online import observation
+
+    calls = [{"name": "search", "args": {"q": "x"}}, {"name": "now"}]
+    events = [{"type": "CUSTOM", "name": "ac.model_reply", "value": {"reply": {"tool_calls": calls}}}]
+    assert calls_of(events) == [ToolCall(name="search", args={"q": "x"}), ToolCall(name="now")]
+
+    h = SimpleNamespace(input={}, events=events)
+    obs = observation(h, "success", None)
+    assert obs.trajectory == ["search", "now"] and obs.calls == calls_of(events)

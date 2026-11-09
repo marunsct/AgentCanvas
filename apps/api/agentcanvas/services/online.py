@@ -24,7 +24,7 @@ from sqlalchemy import case, func, select, update
 from sqlalchemy.exc import IntegrityError
 
 from agentcanvas.db.models import EvalAlert, Evaluator, OnlineEvaluator, Run, RunScore, WorkflowRow, WorkflowVersion
-from agentcanvas.evaluation import Observation, score, spec_of, trajectory_of
+from agentcanvas.evaluation import Observation, calls_of, score, spec_of
 from agentcanvas.ids import new_id
 from agentcanvas.ir.models import Workflow
 from agentcanvas.log import get_logger
@@ -57,10 +57,12 @@ def observation(h: Any, status: str, error: str | None, input: dict[str, Any] | 
     for ev in h.events:
         if ev["type"] == "RUN_FINISHED":
             output = ev.get("output") or {}
+    calls = calls_of(h.events)
     return Observation(
         input=input if input is not None else h.input or {},
         output=output,
-        trajectory=trajectory_of(h.events),
+        trajectory=[c.name for c in calls],
+        calls=calls,
         status=status,
         error=error,
     )

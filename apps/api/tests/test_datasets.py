@@ -177,3 +177,13 @@ async def test_datasets_stay_in_their_organisation(app, api_client, org_b):  # n
         assert r.status_code == 404
     finally:
         app.dependency_overrides.pop(current_user, None)
+
+
+async def test_an_expected_tool_call_can_name_its_arguments(api_client):
+    ds = await new_dataset(api_client, await make_greeter(api_client))
+    base = f"/v1/datasets/{ds['id']}"
+    args = {"input": {"who": "Cy"}, "trajectory": ["now", {"name": "search", "args": {"q": {"$regex": "^C"}}}]}
+    with_args = await api_client.post(f"{base}/examples", json={"examples": [args]})
+    assert with_args.status_code == 200 and with_args.json()["items"][-1]["trajectory"] == args["trajectory"]
+    nameless = {"input": {"who": "Cy"}, "trajectory": [{"args": {}}]}
+    assert (await api_client.post(f"{base}/examples", json={"examples": [nameless]})).status_code == 422

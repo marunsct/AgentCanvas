@@ -3992,7 +3992,14 @@
             "anyOf": [
               {
                 "items": {
-                  "type": "string"
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ToolCall"
+                    }
+                  ]
                 },
                 "type": "array"
               },
@@ -4000,7 +4007,7 @@
                 "type": "null"
               }
             ],
-            "description": "expected tool calls, in order",
+            "description": "expected tool calls, in order: a name, or {\"name\", \"args\"} to check arguments",
             "title": "Trajectory"
           }
         },
@@ -4072,7 +4079,14 @@
             "anyOf": [
               {
                 "items": {
-                  "type": "string"
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ToolCall"
+                    }
+                  ]
                 },
                 "type": "array"
               },
@@ -7843,6 +7857,21 @@
       },
       "Observation": {
         "properties": {
+          "calls": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ToolCall"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the same calls with their arguments (default: the trajectory's names, no arguments)",
+            "title": "Calls"
+          },
           "error": {
             "anyOf": [
               {
@@ -7858,7 +7887,14 @@
             "anyOf": [
               {
                 "items": {
-                  "type": "string"
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ToolCall"
+                    }
+                  ]
                 },
                 "type": "array"
               },
@@ -13303,6 +13339,33 @@
           "revoked_at"
         ],
         "title": "TokenOut",
+        "type": "object"
+      },
+      "ToolCall": {
+        "description": "One tool call: in an example, its arguments are what the run's call must have (a value, or {\"$regex\": \u2026}).",
+        "properties": {
+          "args": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Args"
+          },
+          "name": {
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "ToolCall",
         "type": "object"
       },
       "ToolUse": {

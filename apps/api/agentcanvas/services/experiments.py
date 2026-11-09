@@ -37,10 +37,11 @@ from agentcanvas.evaluation import (
     Observation,
     Score,
     Spec,
+    ToolCall,
+    calls_of,
     code_hash,
     pairwise,
     score,
-    trajectory_of,
 )
 from agentcanvas.ids import new_id
 from agentcanvas.ir.models import Workflow
@@ -679,7 +680,7 @@ class ExperimentJob:
         usage = (handle.usage["input_tokens"], handle.usage["output_tokens"], float(handle.usage["cost_usd"] or 0))
         await self._scored(
             result_id, wf, example, specs, run_status=run_status, error=error, output=output,
-            trajectory=trajectory_of(handle.events), usage=usage, started=started,
+            calls=calls_of(handle.events), usage=usage, started=started,
         )  # fmt: skip
 
     async def _not_started(self, result_id: str, specs: list[Spec], exc: Exception) -> None:
@@ -723,16 +724,18 @@ class ExperimentJob:
         run_status: str,
         error: str | None,
         output: dict[str, Any],
-        trajectory: list[str],
+        calls: list[ToolCall],
         usage: tuple[int, int, float],
         started: float,
     ) -> None:
         latency = round((time.perf_counter() - started) * 1000)
+        trajectory = [c.name for c in calls]
         obs = Observation(
             input=example.get("input") or {},
             output=output,
             reference=example.get("reference") or {},
             trajectory=trajectory,
+            calls=calls,
             expected_trajectory=example.get("trajectory"),
             status=run_status,
             error=error,
@@ -773,7 +776,7 @@ class ExperimentJob:
         goal = str((example.get("metadata") or {}).get("goal") or sim.goal)
         first_input = {k: v for k, v in (example.get("input") or {}).items() if k != "messages"}
         transcript: list[dict[str, str]] = []
-        trajectory: list[str] = []
+        calls: list[ToolCall] = []
         tokens_in = tokens_out = 0
         cost = 0.0
         run_status, error, output, ended = "success", None, {}, "max_turns"
@@ -813,7 +816,7 @@ class ExperimentJob:
             tokens_in += handle.usage["input_tokens"]
             tokens_out += handle.usage["output_tokens"]
             cost += float(handle.usage["cost_usd"] or 0)
-            trajectory += trajectory_of(handle.events)
+            calls += calls_of(handle.events)
             transcript.append({"role": "assistant", "content": simulation.reply_of(output)})
             if run_status != "success":
                 ended = "error"
@@ -833,5 +836,5 @@ class ExperimentJob:
         final.update(transcript=transcript, turns=sum(t["role"] == "user" for t in transcript), ended=ended)
         await self._scored(
             result_id, wf, example, specs, run_status=run_status, error=error, output=final,
-            trajectory=trajectory, usage=(tokens_in, tokens_out, round(cost, 6)), started=started,
+            calls=calls, usage=(tokens_in, tokens_out, round(cost, 6)), started=started,
         )  # fmt: skip

@@ -41,6 +41,14 @@ An evaluator scores one run from 0 to 1, passes or fails it at a threshold (*pas
 
 **Try** runs an evaluator on a sample before you rely on it.
 
+**Tool calls with arguments.** An example's expected trajectory lists tool names (`["search", "send_reply"]`), or calls
+with the arguments that matter:
+`[{"name": "search", "args": {"query": {"$regex": "(?i)refund"}}}, "send_reply"]`. An argument is compared by
+equality, or by a pattern written `{"$regex": "..."}`. The tool trajectory evaluator's **arguments** setting says how:
+**subset** (the default: the call has at least the arguments the example names), **exact** (no other arguments) or
+**ignore** (names only). In any order and subset modes, each expected call is paired with a different call of the run.
+A failed score says which expected call no call matched.
+
 ## Experiments
 
 An experiment runs one or more **targets** over a dataset version and scores every result. A target is the draft,

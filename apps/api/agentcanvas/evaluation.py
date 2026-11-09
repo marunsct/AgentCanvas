@@ -9,12 +9,17 @@ Each evaluator turns an `Observation` (the example's input and reference, and wh
 | `regex` | `channel`, `pattern` | 1 when the pattern is found in the channel's text |
 | `json_schema` | `channel`, `schema` | 1 when the channel's value fits the schema |
 | `llm_judge` | `model`, `rubric`, `channels` | the judge model's 0-1 grade, with its reasoning |
-| `trajectory` | `mode`: strict / unordered / subset | 1 when the run's tool calls match the example's |
+| `trajectory` | `mode`: strict / unordered / subset, `args` | 1 when the run's tool calls match the example's |
 | `code` | `function`: `scripts.<module>:<fn>` | what the workspace function returns |
 | `composite` | `evaluators`, `mode`: weighted / all / any, `weights` | their weighted mean, or 1 when all / any pass |
 | `pairwise` | `model`, `rubric`, `channels` | experiments only: each target against the first, see `pairwise` |
 | `retrieval` | `channel`, `k`, `metric`, `match_by` | recall / precision / hit / MRR at k of found passages (S24) |
 | `red_team` | `model`, `policy` | 1 when the workflow held against an attack example (`agentcanvas.red_team`, G-10) |
+
+An example's trajectory lists tool names, or calls with arguments: `{"name": "search", "args": {"query": "refund"}}`.
+An expected argument is matched by equality, or by a pattern written `{"$regex": "..."}`; `args` says whether the
+run's call may have arguments the example does not name (subset, the default) or not (exact), or whether arguments
+are not compared at all (ignore).
 
 A retrieval evaluator compares the passages a Search knowledge block saved with the example's `reference.relevant`
 (the documents, titles, chunk ids or phrases a good search finds).
@@ -33,7 +38,6 @@ import hashlib
 import json
 import math
 import re
-from collections import Counter
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any, Literal
@@ -79,6 +83,21 @@ class JudgeConfig(BaseModel):
 
 class TrajectoryConfig(BaseModel):
     mode: Literal["strict", "unordered", "subset"] = "strict"
+    args: Literal["subset", "exact", "ignore"] = Field(
+        default="subset",
+        description="how the arguments an expected call names are compared: the run's call has at least them "
+        "(subset), exactly them (exact), or arguments are not compared (ignore)",
+    )
+
+
+class ToolCall(BaseModel):
+    """One tool call: in an example, its arguments are what the run's call must have (a value, or {"$regex": …})."""
+
+    name: str = Field(min_length=1)
+    args: dict[str, Any] | None = None
+
+
+ExpectedCall = str | ToolCall
 
 
 class CodeConfig(BaseModel):
@@ -204,7 +223,10 @@ class Observation(BaseModel):
     output: dict[str, Any] = Field(default_factory=dict)
     reference: dict[str, Any] = Field(default_factory=dict)
     trajectory: list[str] = Field(default_factory=list, description="tool calls the run made, in order")
-    expected_trajectory: list[str] | None = None
+    calls: list[ToolCall] | None = Field(
+        default=None, description="the same calls with their arguments (default: the trajectory's names, no arguments)"
+    )
+    expected_trajectory: list[ExpectedCall] | None = None
     status: str = "success"
     error: str | None = None
 
@@ -275,12 +297,70 @@ def data_block(tag: str, text: str) -> str:
     return f"<{tag}>\n{escaped}\n</{tag}>"
 
 
-def trajectory_score(mode: str, actual: list[str], expected: list[str]) -> float:
-    if mode == "strict":
-        return float(actual == expected)
-    if mode == "unordered":
-        return float(Counter(actual) == Counter(expected))
-    return float(not (Counter(expected) - Counter(actual)))  # subset: every expected call was made
+async def _value_matches(expected: Any, actual: Any) -> bool:
+    if isinstance(expected, dict) and set(expected) == {"$regex"}:
+        return actual is not None and await safe_regex.search(str(expected["$regex"]), _text(actual))
+    return expected == actual
+
+
+async def call_matches(expected: ExpectedCall, actual: ToolCall, args: str) -> bool:
+    """Whether the run's `actual` call is the example's `expected` one: the same tool, and (unless `args` is
+    ignore, or the example names no arguments) the arguments it names."""
+    want = expected if isinstance(expected, ToolCall) else ToolCall(name=expected)
+    if want.name != actual.name:
+        return False
+    if args == "ignore" or want.args is None:
+        return True
+    got = actual.args or {}
+    if args == "exact" and set(got) != set(want.args):
+        return False
+    for key, value in want.args.items():
+        if key not in got or not await _value_matches(value, got[key]):
+            return False
+    return True
+
+
+def _pairs(fits: list[list[bool]]) -> int:
+    """The most expected calls that can each be given a different run call they fit (bipartite matching)."""
+    owner: dict[int, int] = {}
+
+    def place(i: int, seen: set[int]) -> bool:
+        for j, ok in enumerate(fits[i]):
+            if ok and j not in seen:
+                seen.add(j)
+                if j not in owner or place(owner[j], seen):
+                    owner[j] = i
+                    return True
+        return False
+
+    return sum(place(i, set()) for i in range(len(fits)))
+
+
+def _shown(call: ExpectedCall) -> str:
+    if isinstance(call, str) or call.args is None:
+        return call if isinstance(call, str) else call.name
+    return f"{call.name}({json.dumps(call.args, default=str)[:200]})"
+
+
+async def calls_score(cfg: TrajectoryConfig, actual: list[ToolCall], expected: list[ExpectedCall]) -> tuple[float, str]:
+    """The trajectory evaluator with arguments: 1 or 0, and which expected call the run did not make."""
+    fits = [[await call_matches(e, a, cfg.args) for a in actual] for e in expected]
+    if cfg.mode == "strict":
+        if len(actual) != len(expected):
+            return 0.0, f"{len(actual)} tool calls, the example expects {len(expected)}"
+        for i, e in enumerate(expected):
+            if not fits[i][i]:
+                return 0.0, f"call {i + 1}: expected {_shown(e)}, got {_shown(actual[i])}"
+        return 1.0, ""
+    if cfg.mode == "unordered" and len(actual) != len(expected):
+        return 0.0, f"{len(actual)} tool calls, the example expects {len(expected)}"
+    matched = _pairs(fits)
+    if matched == len(expected):
+        return 1.0, ""
+    missing = [_shown(e) for e, row in zip(expected, fits, strict=True) if not any(row)]
+    if missing:
+        return 0.0, f"no call matched {missing[0]}"
+    return 0.0, f"only {matched} of the {len(expected)} expected calls could be matched to different calls"
 
 
 def _text(value: Any) -> str:
@@ -380,8 +460,9 @@ async def score(
         if isinstance(cfg, TrajectoryConfig):
             if obs.expected_trajectory is None:
                 return done(None, "the example has no reference trajectory")
-            value = trajectory_score(cfg.mode, obs.trajectory, obs.expected_trajectory)
-            return done(value, "" if value else f"tool calls {obs.trajectory} vs expected {obs.expected_trajectory}")
+            calls = obs.calls if obs.calls is not None else [ToolCall(name=n) for n in obs.trajectory]
+            value, why = await calls_score(cfg, calls, obs.expected_trajectory)
+            return done(value, f"{why}; tool calls {[c.name for c in calls]}" if why else "")
         if isinstance(cfg, JudgeConfig):
             if complete is None:
                 return done(None, "no model available for the judge")
@@ -566,12 +647,19 @@ async def pairwise(spec: Spec, input: dict[str, Any], a: Observation, b: Observa
         return verdict(None, f"{type(exc).__name__}: {exc}"[:500])
 
 
-def trajectory_of(events: list[dict[str, Any]]) -> list[str]:
-    """The tool calls a run's models asked for, in order (from its `ac.model_reply` events)."""
-    calls = []
+def calls_of(events: list[dict[str, Any]]) -> list[ToolCall]:
+    """The tool calls a run's models asked for, in order, with their arguments (from its `ac.model_reply` events)."""
+    calls: list[ToolCall] = []
     for ev in events:
         if ev.get("type") == "CUSTOM" and ev.get("name") == "ac.model_reply":
             reply = (ev.get("value") or {}).get("reply")
             if isinstance(reply, dict):
-                calls += [c["name"] for c in reply.get("tool_calls") or []]
+                for c in reply.get("tool_calls") or []:
+                    args = c.get("args")
+                    calls.append(ToolCall(name=c["name"], args=args if isinstance(args, dict) else None))
     return calls
+
+
+def trajectory_of(events: list[dict[str, Any]]) -> list[str]:
+    """The tool calls a run's models asked for, in order (from its `ac.model_reply` events)."""
+    return [c.name for c in calls_of(events)]

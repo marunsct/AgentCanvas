@@ -598,6 +598,9 @@ review of 2026-10-29 ([HARDENING.md](HARDENING.md)); no version has been tagged 
 - [Server settings](docs/user-guide/server-settings.md): every server setting with its default and what it does, generated from the code (a test keeps it current).
 - **Decide with AI** block (`core.decide`, LangGraph): a model picks one of the paths you describe and saves
   `{choice, confidence, reason}`; an answer outside the choices, or below a minimum confidence, takes the default path.
+- The tool trajectory evaluator can check arguments: an example's expected call can be `{"name", "args"}`, an argument
+  matched by value or by `{"$regex": …}`, and the evaluator's **arguments** setting compares them as a subset, exactly or
+  not at all. In any order and subset modes each expected call is paired with a different run call.
 - Experiments can run each example several times (**runs per example**, `repetitions`, up to 10) and report pass@k,
   pass^k, the flaky examples and each evaluator's spread; pairwise judges compare each run with the baseline's same run.
 - **Stop all runs** (Settings › Organisation › General, `POST /v1/org/runs/stop`): an admin stops every run in flight in
