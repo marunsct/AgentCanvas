@@ -15,6 +15,14 @@ Each project has a **workspace**: a git repository of Python code used by its wo
 Click a file to edit it (with lint markers), **New file** to add one. Every save is a git commit, and a workflow
 **version** pins the workspace commit it was made with.
 
+If the file changes elsewhere while it is open (a teammate saves it, you accept a Copilot proposal that edits it, or a
+Git pull updates it), the editor shows the new version as long as you have not typed anything. With unsaved changes,
+your text stays and the page says the file changed: **Load the new version** replaces your text (Undo brings it
+back), and **Keep mine** lets the next **Save** replace the new version. A save never silently overwrites a newer
+copy. Over the API, send the `version` from `GET /v1/projects/{id}/files/{path}` as `If-Match` on the `PUT`: a file
+changed or deleted since then is refused with 409 and its current `version`. A `PUT` without `If-Match` saves
+unconditionally.
+
 ## Each workflow's own code, and shared code
 
 Open the Workspace from a workflow (the **Workspace** button in the editor, or **Open … in the Workspace** on a

@@ -7,11 +7,12 @@ use) next to the project's shared code at the root.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import re
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query, Request, Response
+from fastapi import APIRouter, Depends, Header, Query, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -51,6 +52,7 @@ class FileContent(BaseModel):
     path: str
     content: str
     diagnostics: list[LintItem] = Field(default_factory=list)
+    version: str = Field(description="send it back as If-Match when saving: a file changed since is not overwritten")
 
 
 class FileSave(BaseModel):
@@ -59,6 +61,12 @@ class FileSave(BaseModel):
 
 class SavedFile(FileOut):
     diagnostics: list[LintItem] = Field(default_factory=list)
+    version: str = Field(description="the saved text's version, for the next save's If-Match")
+
+
+def _version(text: str) -> str:
+    """A file's version is a hash of its text: a change by anyone (an editor, the Copilot, a Git pull) changes it."""
+    return hashlib.sha256(text.encode()).hexdigest()[:32]
 
 
 class NewScript(BaseModel):
@@ -142,16 +150,37 @@ def _lint(ws: Workspace, path: str, request: Request, project_id: str) -> list[L
 async def read_file(project_id: str, path: str, request: Request, ws: Workspace = Depends(workspace)) -> FileContent:
     content = _guard(lambda: ws.read(path))
     diagnostics = await asyncio.to_thread(_lint, ws, path, request, project_id)  # ruff runs as a process
-    return FileContent(path=path, content=content, diagnostics=diagnostics)
+    return FileContent(path=path, content=content, diagnostics=diagnostics, version=_version(content))
 
 
 @router.put("/files/{path:path}", response_model=SavedFile)
 async def save_file(
-    project_id: str, path: str, body: FileSave, request: Request, ws: Workspace = Depends(workspace)
+    project_id: str,
+    path: str,
+    body: FileSave,
+    request: Request,
+    ws: Workspace = Depends(workspace),
+    if_match: str | None = Header(None, alias="If-Match", description="the `version` the edit started from"),
 ) -> SavedFile:
-    info = await _off_loop(ws, lambda: ws.write(path, body.content))
+    """Save a file. With If-Match, a file changed (or deleted) since that version is refused with 409 and its current
+    `version`, rather than silently undoing the other change; without it the save is unconditional."""
+    base = if_match.strip().removeprefix("W/").strip('"') if if_match else None
+
+    def write() -> tuple[Any, str]:
+        if base is not None:  # checked and written under the workspace's lock: no save slips in between
+            try:
+                current: str | None = _version(ws.read(path))
+            except FileNotFoundError:
+                current = None
+            if current != base:
+                what = "was deleted" if current is None else "was changed by someone else"
+                raise Conflict(f"'{path}' {what} since you opened it", version=current)
+        info = ws.write(path, body.content)
+        return info, _version(ws.read(path))  # as a read gives it back (a read turns \r\n into \n)
+
+    info, version = await _off_loop(ws, write)
     diagnostics = await asyncio.to_thread(_lint, ws, path, request, project_id)
-    return SavedFile(path=info.path, size=info.size, modified=info.modified, diagnostics=diagnostics)
+    return SavedFile(path=info.path, size=info.size, modified=info.modified, diagnostics=diagnostics, version=version)
 
 
 class FileMove(BaseModel):
