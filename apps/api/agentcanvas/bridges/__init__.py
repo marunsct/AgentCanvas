@@ -122,7 +122,8 @@ def gaps(wf: Workflow, target: str) -> list[Gap]:
         if n.type == "core.approval" and n.id in gated:  # Agent Spec has no yes/no step: it became a question
             out.append(Gap(True, f"Approval '{n.name}' is a question here: the answer is text and the steps after it "
                                  "run whatever it is. Add a path after it that checks the answer."))  # fmt: skip
-        if approve := [t for t in n.config.get("approve_tools") or [] if t]:
+        # names only: a malformed setting (a list inside it, from a hand edit; the schema reports it) is skipped
+        if approve := [t for t in n.config.get("approve_tools") or [] if isinstance(t, str) and t]:
             out.append(Gap(False, f"Agent '{n.name}': {', '.join(approve)} asked a person before running on the "
                                   "canvas; set that up again where you wire its tools."))  # fmt: skip
     for ch in wf.state.channels:

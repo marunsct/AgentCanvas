@@ -196,3 +196,13 @@ def test_framework_exports_say_what_runs_differently(framework):
     assert "answer cache (600 s)" in gaps and "'draft_reply': its retry does not apply" in gaps
     assert "`GAPS.md`" in _read(data, "/README.md")
     assert "Nothing found" in _read(EXPORTS[framework](template("chat_assistant"))[1], "/GAPS.md")
+
+
+def test_a_malformed_list_of_tools_needing_approval_names_only_the_tools():
+    """A hand edit or an import can leave a list inside `approve_tools` (the schema reports it): the bridges page
+    answered 500 joining it. Only the names in it are listed. Found by the workflow fuzz test."""
+    wf = template("web_research")
+    agent = next(n for n in wf.nodes if "approve_tools" in (n.config or {}))
+    agent.config = {**agent.config, "approve_tools": [["refund"], "send_email", None, 3]}
+    texts = [g.text for g in bridges.gaps(wf, "langgraph")]
+    assert any("send_email asked a person" in t for t in texts), texts
