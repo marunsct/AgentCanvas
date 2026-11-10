@@ -82,11 +82,13 @@ which shows what will be sent on an approval card; a rejection skips the agent.
 
 ## Call a workflow from other agents
 
-[Publish](publish.md) the workflow, then open **Versions** → the deployment → **Use from other agents (MCP, A2A)**.
-The panel shows the addresses and a ready-to-paste Claude Desktop setting. Both use the deployment's API key, the
-same one as the [deployment API](publish.md), with the same rate limits. A builder can also let people sign in with
-the organisation's identity provider instead ([Sign-in with OAuth](publish.md#sign-in-with-oauth-mcp-and-a2a)): then
-each person is their own end user, with their own memories and conversations.
+[Publish](publish.md) the workflow, then open **Versions** → the deployment → **Use from other agents and front ends
+(MCP, A2A, AG-UI)**. The panel shows the addresses and a ready-to-paste Claude Desktop setting. All use the
+deployment's API key, the same one as the [deployment API](publish.md), with the same rate limits. The AG-UI address
+is for CopilotKit-style front ends: see [Connect a CopilotKit-style front end](publish.md#connect-a-copilotkit-style-front-end-ag-ui).
+A builder can also let people sign in to the MCP and A2A agents with the organisation's identity provider instead
+([Sign-in with OAuth](publish.md#sign-in-with-oauth-mcp-and-a2a)): then each person is their own end user, with their
+own memories and conversations.
 
 ### As an MCP server
 
