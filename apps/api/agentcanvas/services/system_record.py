@@ -3,8 +3,8 @@ auditor or a risk owner reads to know what a published AI system is for, who ans
 evidence backs it.
 
 People write a few fields (`RecordFields`, kept on `Deployment.system_record`): the purpose, the owner (a member),
-the risk class with its rationale, the kinds of data it handles, whether its end users are the public, and when it
-is next reviewed. Everything else is read, when the record is
+the risk class with its rationale, the kinds of data it handles, whether its end users are the public (which picks
+the default wording of its AI notice) and when it is next reviewed. Everything else is read, when the record is
 asked for, from what the server already keeps, so it cannot fall out of date:
 
 - the published version and what changed since the version before it;
@@ -96,7 +96,9 @@ class RecordFields(BaseModel):
         default_factory=list, max_length=30, description="kinds of data it handles, e.g. personal data, health data"
     )
     end_user_facing: bool | None = Field(
-        default=None, description="its end users are the public (customers, visitors); false: only your own staff"
+        default=None,
+        description="its end users are the public (customers, visitors); false: only your own staff, which picks "
+        "the internal wording of its AI notice",
     )
     review_date: date | None = Field(default=None, description="when the record is next reviewed")
 
@@ -767,7 +769,7 @@ async def build(session: AsyncSession, server: Settings, dep: Deployment, org_id
         audit_days=settings.audit_retention_days, memory_days=settings.memory_retention_days,
         approval_expiry_days=settings.approval_expiry_days, trace_redact=list(wf.settings.trace_redact),
         trace_export=trace, trace_content=exporter.include_content if trace is not None and exporter else None,
-        ai_notice=ai_notice(share), share_link=bool(share and share.enabled),
+        ai_notice=ai_notice(share, dep), share_link=bool(share and share.enabled),
     )  # fmt: skip
     return SystemRecordOut(
         generated_at=now, organisation=org.name if org else org_id, project=project.name if project else row.project_id,

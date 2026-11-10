@@ -197,8 +197,10 @@ an AI system generates must be marked as such in a machine-readable way (systems
 2 December 2026). What AgentCanvas does by default:
 
 - **Disclosure.** The share-link chat page and the chat widget always show an AI notice under the message box,
-  which builders may reword per link but not remove; the widget's button is named *AI assistant* unless your site
-  names it otherwise ([Share as an app or a chat widget](publish.md#share-as-an-app-or-a-chat-widget)).
+  which builders may reword per link but not remove (a deployment whose
+  [AI-system record](publish.md#ai-system-record) says it serves only your own staff gets wording for colleagues);
+  the widget's button is named *AI assistant* unless your site names it otherwise
+  ([Share as an app or a chat widget](publish.md#share-as-an-app-or-a-chat-widget)).
 - **Marking.** Every answer a deployment gives through its API, MCP, A2A or share link has the header
   `X-AI-Generated: true`, and API results carry `generated_by` with the models that answered
   ([Call a deployment](publish.md#call-a-deployment)).

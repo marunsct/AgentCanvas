@@ -384,3 +384,27 @@ async def test_the_chat_page_always_tells_visitors_they_are_chatting_with_an_ai(
         assert r.status_code == 422, removed
     assert (await api_client.get(f"/v1/deployments/{dep}/share")).json()["ai_notice"] == own.strip()
     assert (await share_on(api_client, dep, ai_notice=DEFAULT_AI_NOTICE))["ai_notice"] == DEFAULT_AI_NOTICE
+
+
+async def test_a_deployment_for_staff_only_gets_the_internal_notice_unless_reworded(app, api_client):
+    """E-13: the AI-system record's end-user-facing answer picks the notice's default wording; a notice still shows."""
+    from agentcanvas.db.models import DeploymentShare
+    from agentcanvas.services.share import INTERNAL_AI_NOTICE
+
+    _, dep, _ = await publish(api_client)
+    share = await share_on(api_client, dep)
+    record = f"/v1/deployments/{dep}/system-record"
+    assert (await api_client.put(record, json={"end_user_facing": False})).status_code == 200
+    assert (await api_client.get(f"/v1/deployments/{dep}/share")).json()["ai_notice"] == INTERNAL_AI_NOTICE
+    assert (await api_client.get(f"/v1/share/{share['token']}")).json()["ai_notice"] == INTERNAL_AI_NOTICE
+    assert (await api_client.get(record)).json()["data_handling"]["ai_notice"] == INTERNAL_AI_NOTICE
+
+    # saving the default wording keeps it following the default; the public one is then a wording of its own
+    assert (await share_on(api_client, dep, ai_notice=INTERNAL_AI_NOTICE))["ai_notice"] == INTERNAL_AI_NOTICE
+    async with app.state.db.sessionmaker() as s:
+        assert (await s.get(DeploymentShare, dep)).ai_notice == ""
+    assert (await share_on(api_client, dep, ai_notice=DEFAULT_AI_NOTICE))["ai_notice"] == DEFAULT_AI_NOTICE
+    assert (await api_client.put(record, json={"end_user_facing": True})).status_code == 200
+    assert (await api_client.get(f"/v1/share/{share['token']}")).json()["ai_notice"] == DEFAULT_AI_NOTICE
+    assert (await api_client.put(record, json={})).status_code == 200  # not stated: the public wording
+    assert (await api_client.get(f"/v1/share/{share['token']}")).json()["ai_notice"] == DEFAULT_AI_NOTICE

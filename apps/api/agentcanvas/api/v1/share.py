@@ -61,6 +61,7 @@ from agentcanvas.services.share import (
     ai_notice,
     answer_text,
     attach_shape,
+    default_ai_notice,
     frame_ancestors,
     input_shape,
     question_of,
@@ -109,7 +110,7 @@ async def _share_out(session: AsyncSession, share: DeploymentShare | None, dep: 
         path=f"/s/{share.token}" if share.token else None,
         title=share.title or wf.name, greeting=share.greeting, suggestions=list(share.suggestions or []),
         input_field=share.input_field, input=input_shape(wf, share.input_field), inputs=text_inputs(wf),
-        frame_origins=list(share.frame_origins or []), ai_notice=ai_notice(share), updated_at=share.updated_at,
+        frame_origins=list(share.frame_origins or []), ai_notice=ai_notice(share, dep), updated_at=share.updated_at,
     )  # fmt: skip
 
 
@@ -147,7 +148,7 @@ async def update_share(
         wf = await _pinned(session, dep)
         if body.input_field not in text_inputs(wf):
             raise InvalidInput(f"'{body.input_field}' is not a text input of the published version")
-    share = await ShareService(session).update(dep_id, body, user.id)
+    share = await ShareService(session).update(dep_id, body, user.id, default_ai_notice(dep))
     return await _share_out(session, share, dep)
 
 
@@ -214,11 +215,11 @@ async def _open(request: Request, session: AsyncSession, token: str, count: bool
 @public_router.get("/share/{token}", response_model=ShareInfo)
 async def share_info(token: str, request: Request, session: AsyncSession = Depends(get_session)) -> ShareInfo:
     """What a chat page shows before the first message. 404 when the link is off or the deployment unpublished."""
-    share, _, wf = await _open(request, session, token, count=False)
+    share, dep, wf = await _open(request, session, token, count=False)
     return ShareInfo(
         title=share.title or wf.name, greeting=share.greeting, suggestions=list(share.suggestions or []),
         input=input_shape(wf, share.input_field), attachments=attach_shape(wf),
-        frame_origins=list(share.frame_origins or []), ai_notice=ai_notice(share),
+        frame_origins=list(share.frame_origins or []), ai_notice=ai_notice(share, dep),
     )  # fmt: skip
 
 

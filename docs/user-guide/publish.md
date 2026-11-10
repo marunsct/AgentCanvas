@@ -83,7 +83,7 @@ Each deployment keeps an **AI-system record**: the page an auditor, a risk owner
 | Owner | The member who answers for it |
 | Risk class | `minimal`, `limited` or `high`, with a rationale (required with a class): *high* is for decisions about people's access to work, credit, education, essential services or safety |
 | Data categories | The kinds of data it handles, e.g. personal data, health data, financial data |
-| End-user facing | Whether its end users are the public (customers, visitors) or only your own staff |
+| End-user facing | Whether its end users are the public (customers, visitors) or only your own staff; for staff only, the share link's AI notice defaults to wording for colleagues (it is still shown) |
 | Review date | When the record is next reviewed |
 
 Everything else is read from what the server keeps, at the moment you open the record, so it never falls out of
@@ -257,9 +257,10 @@ Once a workflow is published, people who are not developers can use it from a li
 2. Give the page a **Title**, a **Greeting** (the first thing visitors read) and up to six **Suggested questions**
    (one per line; visitors click one to start). Press **Save**.
    The **AI notice** under the messages tells visitors they are chatting with an AI: by default *You are chatting
-   with an AI assistant. Answers can be wrong.* It is always shown, on the page and in the chat widget. You can reword
-   it (up to 200 characters, for example in your visitors' language) but not remove it; the audit log keeps each
-   wording you save.
+   with an AI assistant. Answers can be wrong.*, or, when the deployment's [AI-system record](#ai-system-record) says
+   its end users are only your own staff, *You are using an AI assistant. Answers can be wrong: check them before you
+   rely on them.* It is always shown, on the page and in the chat widget. You can reword it (up to 200 characters,
+   for example in your visitors' language) but not remove it; the audit log keeps each wording you save.
 3. **Copy link** and send it to people, or **Open the page** to try it yourself. The page works on phones and
    follows the visitor's light or dark setting. Each message, the greeting and the message box take the direction
    of their own text, so Arabic or Hebrew reads right to left; the page's own buttons and notes are in English.
