@@ -245,6 +245,24 @@ async def test_an_item_nobody_decides_in_its_steps_time_is_escalated_and_told(ap
     assert r.status_code == 202, r.text  # the run continues
 
 
+async def test_an_escalation_made_by_a_background_job_reaches_the_audit_outbox(app, triage_api, monkeypatch):  # noqa: F811
+    """No request writes it, so it is forwarded only because `approval_escalated` is a security action."""
+    from agentcanvas.db.models import AuditLog, AuditOutbox
+    from agentcanvas.services import audit_sink
+    from agentcanvas.services.notifier import escalate
+
+    monkeypatch.setattr(audit_sink, "_forwarding", audit_sink.Forwarding(("webhook",)))
+    api, wf = triage_api, triage_api.wf_id
+    await edit_node(api, wf, "n_ag", approvers={"roles": ["admin"], "escalate_to": "builder"})
+    item = await _waiting(api, wf, "th_escalate_forwarded")
+    async with app.state.db.sessionmaker() as s:
+        assert await escalate(s, [(item["id"], "builder", "nobody decided")], datetime.now(UTC), False) == 1
+        await s.commit()
+        entry = (await s.scalars(select(AuditLog).where(AuditLog.action == "approval_escalated"))).one()
+        [queued] = (await s.scalars(select(AuditOutbox).where(AuditOutbox.audit_id == entry.id))).all()
+    assert (queued.destination, queued.org_id) == ("webhook", "org_default")
+
+
 async def test_at_the_expiry_a_step_that_escalates_is_handed_on_instead_of_cancelled(app, triage_api):  # noqa: F811
     api, wf = triage_api, triage_api.wf_id
     await edit_node(api, wf, "n_ag", approvers={"roles": ["admin"], "escalate_to": "builder"})

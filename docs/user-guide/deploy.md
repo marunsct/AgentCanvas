@@ -361,7 +361,8 @@ neither sees no rows.
 AgentCanvas keeps every change in its own audit log (**Settings › Audit log**). Security-relevant ones also leave the
 server, in every sign-in mode: publishing and unpublishing, deployment keys, callback secrets and share links,
 triggers (webhooks and schedules) created or switched on, secrets, OAuth app credentials and connected accounts,
-sandbox settings, approvals (and conversation state edited by hand), where approval notifications go, the
+sandbox settings, approvals (and conversation state edited by hand), approvals escalated because nobody decided
+them in time (`approval_escalated`), where approval notifications go, the
 organisation's **Stop all runs**, members, invitations accepted, organisation settings and policies, spending caps,
 release gates, trace export, project workspaces, API and SCIM tokens, deleted projects and workflows, erased
 memories, git connections and pushes, app connector servers that changed tools a deployment pinned

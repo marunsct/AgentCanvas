@@ -57,6 +57,7 @@ SECURITY_ACTIONS = frozenset({
     "put_client", "delete_client", "callback", "delete_connection",  # OAuth app credentials and connected accounts
     "put_sandbox",  # what the project's code may reach (network, limits)
     "decide", "resume_thread", "api_resume", "share_resume",  # approvals of paused runs (inbox, canvas, API, share)
+    "approval_escalated",  # nobody decided an approval in time: its step handed it to another role
     "edit_state",  # a conversation's state changed by hand, past what was approved
     "stop_all_runs",  # the organisation's kill switch
     "set_member", "remove_member", "accept_invitation",  # members and roles (dev and oidc modes)
