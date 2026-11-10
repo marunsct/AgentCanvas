@@ -190,6 +190,9 @@ AGENTCANVAS_SANDBOX_MCP=true   # needs AGENTCANVAS_SCRIPT_EXECUTION=remote (the 
   it the least recently used idle one is stopped, or the run fails with "8 app connector sandboxes are in use".
 - The image needs Python 3 (which starts the program) and the program itself. Programs are not downloaded at run
   time unless the egress list allows the registry (`registry.npmjs.org`, `pypi.org`, `files.pythonhosted.org`).
+- The hosted edition allows only the gallery's connectors marked to run in the sandbox (E046), and checks it again
+  before every run. With `AGENTCANVAS_EDITION=hosted` and `SANDBOX_MCP` off, no local connector runs at all: the
+  hosted edition never starts one on the API server.
 
 ## Sign-in
 

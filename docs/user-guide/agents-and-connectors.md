@@ -235,8 +235,11 @@ never runs on the AgentCanvas server:
   another server, or after the program stopped, starts a fresh one.
 - Browse tools starts the program once to list its tools, then stops it.
 
-The hosted edition runs local connectors only this way. To let an agent click or type in a browser only with a
-person's say-so, put an approval on its submit-like tools (`browser_click`, `browser_type`,
+The hosted edition runs local connectors only this way, and only the gallery's connectors that run in the sandbox
+(the block list says **also in the sandbox**): those the sandbox's browser image comes with, such as **Browser
+(Playwright)**. A connector you set up by hand, or a gallery one whose command, flags or package version you
+changed, is refused there (**E046**); arguments after the package (`--headless`, a viewport size) are yours to
+change. To let an agent click or type in a browser only with a person's say-so, put an approval on its submit-like tools (`browser_click`, `browser_type`,
 `browser_file_upload`) under **Tools that need approval** on the agent.
 
 ### Published tools are pinned

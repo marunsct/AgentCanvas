@@ -12,6 +12,7 @@ from agentcanvas.api.deps import get_settings_dep
 from agentcanvas.api.v1.runs import runner
 from agentcanvas.errors import Forbidden, InvalidInput, UpstreamError
 from agentcanvas.ir.models import Workflow
+from agentcanvas.registry import sandboxable_connector
 from agentcanvas.runtime.identity import CURRENT, RunIdentity
 from agentcanvas.runtime.runner import Runner
 from agentcanvas.services.oauth import ConnectionRequired
@@ -59,6 +60,10 @@ async def list_tools(
     settings = await request.app.state.org_settings.for_project(settings, project_id)  # the organisation's own
     if local and not settings.allow_local_mcp:  # same condition as validator E042
         raise Forbidden("local (stdio) MCP servers are disabled; an admin must enable allow_local_mcp")
+    if local and settings.edition == "hosted" and not (settings.sandbox_mcp and sandboxable_connector(cfg)):  # E046
+        raise Forbidden(
+            "the hosted edition runs only the gallery's local connectors that run in the sandbox, and only there"
+        )
     try:
         # the project's own resources (its secrets fill `$secret` headers); the org guard checked project_id
         factory = getattr(request.app.state, "resources_factory", None)

@@ -105,7 +105,8 @@ class McpConnector(BaseModel):
     docs: str = ""
     source: str = ""
     verified: str = ""
-    local: bool = False  # starts a process on the server (stdio): local edition, enabled by an admin
+    local: bool = False  # starts a program (stdio): on the server, or in the sandbox; enabled by an admin
+    sandboxable: bool = False  # the sandbox's browser image comes with its program: the hosted edition allows it
 
 
 @router.get("/mcp-connectors", response_model=list[McpConnector])

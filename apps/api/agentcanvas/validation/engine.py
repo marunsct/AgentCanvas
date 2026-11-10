@@ -45,6 +45,7 @@ class ValidationContext:
     allow_local_mcp: bool = False
     isolated: bool = False  # workspace code stays out of the server process (`Settings.isolates_workspace_code`)
     publishing: bool = False  # checked for publishing (some notes in the editor are errors then)
+    sandbox_mcp: bool = False  # local (stdio) app connectors run in the sandbox (`Settings.sandbox_mcp`)
     _cache: dict = field(default_factory=dict)
 
     def manifest(self, element: Node | Resource) -> NodeManifest | None:
@@ -120,13 +121,16 @@ def validate(
     policies: list[Policy] | None = None,
     environment: str | None = None,
     publishing: bool = False,
+    sandbox_mcp: bool = False,
 ) -> list[Diagnostic]:
     """Every rule's diagnostics, plus the organisation's `policies` (FR-X-19) as they apply to `environment`
     (None: the editor; see `check_policies`). `publishing`: the checks before a version is published."""
     from agentcanvas.validation import rules  # noqa: F401  (registers the rules)
     from agentcanvas.validation.policies import check_policies
 
-    ctx = ValidationContext(wf, registry or default_registry(), edition, allow_local_mcp, isolated, publishing)
+    ctx = ValidationContext(
+        wf, registry or default_registry(), edition, allow_local_mcp, isolated, publishing, sandbox_mcp
+    )
     out: list[Diagnostic] = []
     for fn in RULES:
         try:

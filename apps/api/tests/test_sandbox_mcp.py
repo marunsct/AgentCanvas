@@ -391,3 +391,54 @@ async def test_the_server_runs_connectors_in_the_sandbox_and_stops_them_with_the
     off = create_app(settings)
     async with off.router.lifespan_context(off):  # off by default: nothing changes
         assert off.state.projects.resources("prj_default").mcp_sandbox is None
+
+
+# ------------------------------------------------------------------------- the hosted edition (E046) ----
+PLAYWRIGHT = {"transport": "stdio", "command": "npx", "args": ["-y", "@playwright/mcp@0.0.83", "--headless"]}
+
+
+def agent_with(config: dict):
+    model = ("model", "model.chat", {"model": "fake:scripted"})
+    return workflow(
+        channels=[MESSAGES], resources=[model, ("c", "mcp.server", config)], nodes=[("agent", "core.agent", {})],
+        flow=[("START", "agent"), ("agent", "END")], wiring=[("model", "agent", "model"), ("c", "agent", "tools")],
+    )  # fmt: skip
+
+
+def codes(config: dict, **kw) -> set[str]:
+    from agentcanvas.validation.engine import validate
+
+    return {d.code for d in validate(agent_with(config), allow_local_mcp=True, **kw) if d.severity == "error"}
+
+
+def test_the_hosted_edition_runs_only_the_sandboxs_own_connectors_and_only_there():
+    custom = {"transport": "stdio", "command": "npx", "args": ["-y", "some-server@1.0.0"]}
+    assert "E046" in codes(PLAYWRIGHT, edition="hosted")  # not in the sandbox: refused
+    assert "E046" not in codes(PLAYWRIGHT, edition="hosted", sandbox_mcp=True)
+    assert "E046" in codes(custom, edition="hosted", sandbox_mcp=True)
+    assert "E046" not in codes(custom, sandbox_mcp=True) and "E046" not in codes(custom)  # one company's own server
+    assert "E046" not in codes({"url": "https://mcp.example.com/mcp"}, edition="hosted")
+
+
+async def test_the_run_gate_refuses_what_the_hosted_edition_does_not_run():
+    from agentcanvas.errors import WorkflowHasErrors
+    from agentcanvas.services.run_gate import RunGate
+
+    custom = {"transport": "stdio", "command": "npx", "args": ["-y", "some-server@1.0.0"]}
+    wf = agent_with(custom)
+    hosted = Settings(edition="hosted", allow_local_mcp=True, sandbox_mcp=True, script_execution="remote")
+    with pytest.raises(WorkflowHasErrors, match="E046"):
+        await RunGate(hosted)(wf)
+    await RunGate(hosted.model_copy(update={"edition": "dev"}))(wf)  # one company's own server runs it
+
+
+async def test_browsing_a_connector_the_hosted_edition_does_not_run_is_refused(app, api_client):
+    app.state.settings.edition = "hosted"
+    app.state.settings.allow_local_mcp = True
+    try:
+        body = {"name": "c", "config": PLAYWRIGHT}
+        r = await api_client.post("/v1/mcp/inspect?project_id=prj_default", json=body)
+        assert r.status_code == 403 and "sandbox" in r.text  # this server does not run connectors in the sandbox
+    finally:
+        app.state.settings.edition = "dev"
+        app.state.settings.allow_local_mcp = False

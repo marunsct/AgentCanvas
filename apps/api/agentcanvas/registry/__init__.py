@@ -259,3 +259,31 @@ def load_gallery() -> dict[str, Any]:
     """The curated MCP connector gallery (S15): `{"version": 1, "connectors": [...]}`."""
     path = HERE / "mcp_gallery.json"
     return json.loads(path.read_text()) if path.exists() else {"version": 1, "connectors": []}
+
+
+@cache
+def _gallery() -> dict[str, Any]:
+    return load_gallery()
+
+
+def _launch(args: list[Any]) -> int:
+    """How many of a gallery command's leading arguments name what it runs (its flags and the package)."""
+    for i, a in enumerate(args):
+        if not str(a).startswith("-"):
+            return i + 1
+    return len(args)
+
+
+def sandboxable_connector(config: dict[str, Any]) -> dict[str, Any] | None:
+    """The gallery entry marked to run in the sandbox that a local (stdio) connector's settings start, or None:
+    the same command with the same flags and package (exact version) first; the arguments after are the
+    builder's (`--headless`, a viewport)."""
+    command, args = config.get("command"), list(config.get("args") or [])
+    for c in _gallery()["connectors"]:
+        gallery = c["config"]
+        if not c.get("sandboxable") or gallery.get("transport") != "stdio" or gallery.get("command") != command:
+            continue
+        lead = list(gallery.get("args") or [])[: _launch(list(gallery.get("args") or []))]
+        if args[: len(lead)] == lead:
+            return c
+    return None

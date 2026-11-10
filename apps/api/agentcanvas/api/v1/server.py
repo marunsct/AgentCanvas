@@ -75,7 +75,7 @@ async def server_settings(request: Request) -> list[ServerSetting]:
         (
             "Workspace code",
             "Local MCP servers",
-            "allowed" if s.allow_local_mcp else "not allowed",
+            ("allowed, in the sandbox" if s.sandbox_mcp else "allowed") if s.allow_local_mcp else "not allowed",
             "AGENTCANVAS_ALLOW_LOCAL_MCP",
         ),
         (

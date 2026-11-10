@@ -140,6 +140,10 @@
       "what": "Publishing pins an app connector’s tools as you reviewed them, so a server that changes later cannot reach the published agent. This connector’s tools were never listed, so there is nothing to pin.",
       "fix": "Select the connector, click Browse tools and check its tools (untick the ones the agent should not have), then publish."
     },
+    "E046": {
+      "what": "This app connector starts a program. The hosted service runs such programs only in its sandbox, and only the gallery's connectors marked as running there.",
+      "fix": "Add the connector again from App connectors (one marked “runs in the sandbox”) and change only the arguments after its package, or use a connector with a URL."
+    },
     "E050": {
       "what": "A password or API key is typed straight into a setting, where others could see it.",
       "fix": "Store it as a project secret (Workspace \u2192 Secrets) and pick it from the list instead."

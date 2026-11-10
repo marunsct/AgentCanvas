@@ -143,7 +143,7 @@ class WorkflowService:
         settings = self._org.get(project_id or "", self.settings)
         found = validate(
             wf, registry, edition=settings.edition, allow_local_mcp=settings.allow_local_mcp,
-            isolated=settings.isolates_workspace_code,
+            isolated=settings.isolates_workspace_code, sandbox_mcp=settings.sandbox_mcp,
             policies=await self.policies(project_id) if project_id else None, environment=environment,
             publishing=environment is not None,
         )  # fmt: skip

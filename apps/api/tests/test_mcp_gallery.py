@@ -50,3 +50,37 @@ def test_sign_in_only_connectors_are_set_up_to_sign_in():
             assert "cannot do yet" not in c["setup"], c["id"]
         else:
             assert "oauth" not in c["config"], c["id"]
+
+
+def test_connectors_marked_for_the_sandbox_are_pinned_local_programs():
+    from agentcanvas.registry import sandboxable_connector
+
+    marked = [c for c in load_gallery()["connectors"] if c.get("sandboxable")]
+    assert {"playwright"} <= {c["id"] for c in marked}
+    for c in marked:
+        assert c["config"]["transport"] == "stdio" and c["source"].startswith("npm:"), c["id"]
+        assert sandboxable_connector(c["config"]) is c, c["id"]
+
+
+def test_a_connector_runs_in_the_sandbox_only_as_the_gallery_starts_it():
+    """The command, its flags and the package (exact version) must be the gallery's; arguments after are free."""
+    from agentcanvas.registry import sandboxable_connector
+
+    base = {"transport": "stdio", "command": "npx", "args": ["-y", "@playwright/mcp@0.0.83", "--headless"]}
+    assert sandboxable_connector(base)["id"] == "playwright"
+    more = {**base, "args": ["-y", "@playwright/mcp@0.0.83", "--viewport-size", "1280x720"]}
+    assert sandboxable_connector(more)["id"] == "playwright"
+    for args in (
+        ["-y", "@playwright/mcp@0.0.84"],
+        ["-y", "-p", "evil", "@playwright/mcp@0.0.83"],
+        ["@playwright/mcp@0.0.83"],
+    ):
+        assert sandboxable_connector({**base, "args": args}) is None, args
+    assert sandboxable_connector({**base, "command": "node"}) is None
+    slack = next(c for c in load_gallery()["connectors"] if c["id"] == "slack")
+    assert sandboxable_connector(slack["config"]) is None  # in the gallery, but not in the sandbox image
+
+
+async def test_the_gallery_says_which_connectors_run_in_the_sandbox(api_client):
+    by_id = {c["id"]: c for c in (await api_client.get("/v1/mcp-connectors")).json()}
+    assert by_id["playwright"]["sandboxable"] is True and by_id["slack"]["sandboxable"] is False
