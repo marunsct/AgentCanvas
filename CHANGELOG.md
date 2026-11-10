@@ -831,6 +831,11 @@ review of 2026-10-29 ([HARDENING.md](docs/developer/hardening.md)); no version h
   1.9.1 and dnspython 2.9.0.
 
 ### Added
+- AgentCanvas has a licence: the Business Source License 1.1. Development, testing and evaluation are free for
+  everyone. Production use is free for individuals, organisations under 250 people and US$50M revenue, and
+  non-profit or educational non-commercial work. Anyone else, and anyone offering AgentCanvas itself as a hosted
+  service, needs a commercial licence. Each version becomes Apache-2.0 four years after its release. Every export
+  includes `LICENSE-AgentCanvas.txt`. See the Licensing page; contributors sign off under `.github/CONTRIBUTING.md`.
 - A deployment with OAuth sign-in on also takes people's access tokens on its AG-UI endpoint and its deployment API
   (runs, results, resume, files, feedback, export and erase of their own data), each person reaching only their own runs
   and conversations.

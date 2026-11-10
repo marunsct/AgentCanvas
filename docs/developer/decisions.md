@@ -191,10 +191,24 @@ the process: instead of each waiting run locking the organisation's row every se
 and organisation takes the free slots, and a run waits at most `AGENTCANVAS_MAX_QUEUE_WAIT_S` (1 h); this replaces
 the row-lock design described in the entry below.
 
-### No licence was chosen
-The repository has no LICENSE, so customers have no written right to run AgentCanvas or ship exported code. That is
-a commercial decision for you; the user guide now says the terms are not set yet instead of promising rights
-(`docs/user-guide/faq.md`, `security.md`). *Reverse:* add a LICENSE and replace those two passages.
+### The licence: Business Source License 1.1, free for developers and small organisations
+Asked by the owner on 2026-11-11 ("free for developers to use but enterprise needs a license"). AgentCanvas is under
+the BSL 1.1 (`LICENSE`): the official MariaDB text verbatim, with these Parameters. Everyone may develop, test,
+evaluate and learn. Production use is free for individuals, organisations under 250 people, US$50M revenue and US$50M
+funding raised (counted with affiliates), and non-profits and education for non-commercial work. A Hosted Service
+(offering AgentCanvas itself to others) is excluded. Each version becomes Apache-2.0 four years after it is first
+published. Exports carry the runtime modules and code templates, which stay under the licence
+(`LICENSE-AgentCanvas.txt` is added to every export). Your Content (workflows, prompts, data) is excluded from the
+licensed work. Three reviewers checked the draft: covenant compliance, loopholes, and clarity against peers
+(HashiCorp, CockroachDB, PolyForm, Sentry FSL, n8n). Their fixes are in: no clause restricts the base grant, use for
+a client counts as the client's use, "production use", "Affiliate" and "Hosted Service" are defined, and there is a
+90-day grace period. Chosen over PolyForm Small Business (it gives large companies no free non-production use) and
+over Elastic 2.0 or FSL (they do not make large companies pay). `.github/CONTRIBUTING.md` asks for a DCO sign-off and
+a licence grant to the licensor, so commercial licences stay possible with outside contributions. The earlier
+exports' NOTICE said "Apache-2.0" for the vendored node library; it now points to the licence. *Reverse or adjust:*
+the Parameters in `LICENSE` and its copy `apps/api/agentcanvas/licensing/LICENSE` (a test keeps them identical);
+the thresholds, the funding test and the Change Date are business choices, and a lawyer should review before you
+sell licences. To keep exports free of the licence, put the runtime modules under Apache-2.0 instead.
 
 ### Judgment calls inside the fixes
 Each was written in its commit as a `Decision:` line; collected here with how to reverse it.
