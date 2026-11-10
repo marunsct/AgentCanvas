@@ -725,7 +725,9 @@ class NotifierJob:
             if not actions:  # one message, everyone in Bcc
                 await asyncio.to_thread(self.mailer, self.settings, [e for e, _ in to], n.subject, n.text)
                 return
-            for email, user_id in to:  # each person their own links (a team address gets the channel's)
+            # each person their own links (a team address gets the channel's); a failure part way sends them all
+            # again on the retry, which is harmless: an item is decided once
+            for email, user_id in to:
                 text = n.body(self.links(n, user_id))
                 await asyncio.to_thread(self.mailer, self.settings, [email], n.subject, text)
         elif channel == "slack":
@@ -764,7 +766,8 @@ class NotifierJob:
         created_by, project_id = thread.one_or_none() or (None, None)
         started_by = item.requested_by or created_by
         ids = await deciders_of(s, org_id, policy, item.assignee_role, started_by, project_id)
-        people = dict((await s.execute(select(AppUser.email, AppUser.id).where(AppUser.id.in_(ids)))).tuples().all())
+        found = await s.execute(select(AppUser.email, AppUser.id).where(AppUser.id.in_(ids)))
+        people: dict[str | None, str] = {email: uid for email, uid in found.all()}
         emails = sorted(e for e in people if e)
         if len(emails) > MAX_RECIPIENTS:
             log.warning("notifier.too_many_recipients", interrupt_id=interrupt_id, recipients=len(emails))
