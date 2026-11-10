@@ -82,3 +82,15 @@ describe("widget.js postMessage API (G-15)", () => {
     expect(page.heard.filter((e) => e.type === "reply")).toEqual([]);
   });
 });
+
+// last: every widget a test installs keeps listening to the window, so one left open would answer later commands
+describe("widget.js label (EU AI Act Art. 50)", () => {
+  it("names the button an AI assistant unless the site names it otherwise", async () => {
+    const button = document.querySelector("[data-agentcanvas-widget] button") as HTMLButtonElement;
+    expect(button.getAttribute("aria-label")).toBe("Open AI assistant");
+    expect(button.title).toBe("AI assistant");
+    toWidget({ agentcanvas: 1, type: "open" });
+    expect(frame()!.title).toBe("AI assistant");
+    await tick();
+  });
+});

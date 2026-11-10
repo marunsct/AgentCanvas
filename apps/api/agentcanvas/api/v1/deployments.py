@@ -7,34 +7,53 @@ version — editing the draft never changes what callers get.
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime
+from dataclasses import asdict
+from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, File, Header, Request, Response, UploadFile
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field, StringConstraints
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.audit import note, payload_hash
 from agentcanvas.api.deps import CurrentUser, current_user, get_session
+from agentcanvas.api.urls import api_url
 from agentcanvas.api.v1.files import FileOut, file_out, file_service, read_upload
 from agentcanvas.api.v1.gates import gate_for
 from agentcanvas.api.v1.gitsync import GitSyncOut, sync_after_version
-from agentcanvas.api.v1.runs import _context, _respond
+from agentcanvas.api.v1.org import ErasedEndUserOut, end_user_ref
+from agentcanvas.api.v1.runs import SSE_HEADERS, _context, _sse, stop_run
+from agentcanvas.api.v1.tools import refresh_pins
 from agentcanvas.api.v1.versions import workspace_commit
 from agentcanvas.api.v1.workflows import service
-from agentcanvas.db.models import Deployment, Organization, Project, Run, RunScore, Thread, WorkflowVersion
+from agentcanvas.db.models import (
+    Deployment,
+    DeploymentKey,
+    Organization,
+    Project,
+    Run,
+    RunCallback,
+    RunScore,
+    Thread,
+    WorkflowVersion,
+)
 from agentcanvas.errors import Conflict, Forbidden, InvalidInput, NotFound
 from agentcanvas.ids import new_id
+from agentcanvas.ir.commands import UpdateResource
 from agentcanvas.ir.contract import breaking_changes, contract
 from agentcanvas.ir.models import Workflow
 from agentcanvas.runtime import nesting
 from agentcanvas.runtime.runner import RunHandle
 from agentcanvas.runtime.types import ResumeSpec
-from agentcanvas.services import annotation, gates
+from agentcanvas.services import annotation, approvers, callbacks, gates, networks
+from agentcanvas.services.data_subjects import end_user_label
 from agentcanvas.services.deployments import Check, DeploymentService
+from agentcanvas.services.disclosure import AI_HEADER, GeneratedBy, marked
 from agentcanvas.services.projects import PROJECT_OF
 from agentcanvas.services.redeploy import thread_version
+from agentcanvas.services.run_results import ResultRepo, RunResult, from_handle
 from agentcanvas.services.testcases import TestCaseService
 from agentcanvas.services.versions import VersionService
 from agentcanvas.services.workflows import WorkflowService
@@ -62,6 +81,11 @@ class DeploymentOut(BaseModel):
     active: bool
     created_at: datetime
     endpoint: str
+    tool_drift: dict[str, Any] | None = Field(
+        None,
+        description="app connector -> the tools its runs leave out because the server changed them since publishing "
+        "(added, changed, outcome); cleared when the workflow is published again",
+    )
 
 
 class PublishOut(BaseModel):
@@ -75,14 +99,52 @@ class PublishOut(BaseModel):
     )
 
 
+class DeploymentKeyOut(BaseModel):
+    id: str
+    name: str
+    prefix: str = Field(description="the key's first characters, to tell it from the others")
+    created_by: str | None = Field(description="who made it (none: the key the deployment had before E-8)")
+    created_at: datetime
+    expires_at: datetime | None = Field(description="none: never expires")
+    last_used_at: datetime | None = Field(description="the last call made with it, to the minute")
+    revoked_at: datetime | None
+    active: bool = Field(description="works now: neither revoked nor expired")
+
+
+class KeyIn(BaseModel):
+    name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
+    expires_in_days: int | None = Field(None, ge=1, le=3650, description="null: never expires")
+
+
+class KeyCreated(DeploymentKeyOut):
+    api_key: str = Field(description="the key itself: shown this once")
+
+
+class RotateIn(BaseModel):
+    overlap_hours: int = Field(
+        0, ge=0, le=720, description="how long the old keys keep working, so callers can move over (0: they stop now)"
+    )
+
+
 class KeyOut(BaseModel):
-    api_key: str
+    api_key: str = Field(description="the new key: shown this once")
+    key: DeploymentKeyOut | None = Field(None, description="the new key's details")
 
 
-def _dep(d: Deployment, v: WorkflowVersion) -> DeploymentOut:
+def _dep(d: Deployment, v: WorkflowVersion, key_prefix: str | None) -> DeploymentOut:
     return DeploymentOut(
-        id=d.id, environment=d.environment, version_id=v.id, semver=v.semver, key_prefix=d.key_prefix,
+        id=d.id, environment=d.environment, version_id=v.id, semver=v.semver, key_prefix=key_prefix,
         active=d.active, created_at=d.created_at, endpoint=f"/v1/deployments/{d.id}/runs/wait",
+        tool_drift=d.tool_drift,
+    )  # fmt: skip
+
+
+def _key(k: DeploymentKey) -> DeploymentKeyOut:
+    now = datetime.now(UTC)
+    return DeploymentKeyOut(
+        id=k.id, name=k.name, prefix=k.prefix, created_by=k.created_by, created_at=k.created_at,
+        expires_at=k.expires_at, last_used_at=k.last_used_at, revoked_at=k.revoked_at,
+        active=k.revoked_at is None and (k.expires_at is None or k.expires_at > now),
     )  # fmt: skip
 
 
@@ -98,7 +160,13 @@ async def publish(
     """Pre-publish checklist (validation, policies, secrets, test cases), then pin the draft as a version behind a
     key."""
     view = await svc.get(wf_id)
-    wf, project_id = view.workflow, view.row.project_id
+    project_id = view.row.project_id
+    # connectors browsed before tool fingerprints were recorded get them now, so the version pins its tools (E-4)
+    if refreshed := await refresh_pins(request, view.workflow, project_id):
+        fill = [UpdateResource(id=rid, patch={"config": {"discovered": tools}}) for rid, tools in refreshed.items()]
+        view, _ = await svc.apply_commands(wf_id, list(fill), view.row.version)
+        note(request, pinned_tools_of=sorted(r.name for r in view.workflow.resources if r.id in refreshed))
+    wf = view.workflow
     org = await session.get(Organization, user.org_id)
     if org is not None and org.environments and body.environment not in org.environments:
         raise InvalidInput(
@@ -151,8 +219,9 @@ async def publish(
         wf_id, message=body.message or f"published to {body.environment}", workspace_commit=commit,
         created_by=user.id, reuse_unchanged=True,
     )  # fmt: skip
-    dep, key = await deps.publish(view.row, body.environment, version)
-    out = PublishOut(deployment=_dep(dep, version), api_key=key, checklist=checks)
+    dep, key = await deps.publish(view.row, body.environment, version, created_by=user.id)
+    prefix = (await deps.newest_prefixes([dep.id])).get(dep.id)
+    out = PublishOut(deployment=_dep(dep, version, prefix), api_key=key, checklist=checks)
     out.git = await sync_after_version(request, session, wf_id, version, "publish")  # G-14: never fails the publish
     return out
 
@@ -189,13 +258,72 @@ async def _contract_check(session: AsyncSession, wf_id: str, environment: str, w
 
 @router.get("/workflows/{wf_id}/deployments", response_model=list[DeploymentOut])
 async def list_deployments(wf_id: str, session: AsyncSession = Depends(get_session)) -> list[DeploymentOut]:
-    return [_dep(d, v) for d, v in await DeploymentService(session).list(wf_id)]
+    svc = DeploymentService(session)
+    found = await svc.list(wf_id)
+    prefixes = await svc.newest_prefixes([d.id for d, _ in found])
+    return [_dep(d, v, prefixes.get(d.id)) for d, v in found]
+
+
+@router.get("/deployments/{dep_id}/keys", response_model=list[DeploymentKeyOut])
+async def list_deployment_keys(dep_id: str, session: AsyncSession = Depends(get_session)) -> list[DeploymentKeyOut]:
+    """The deployment's API keys, newest first, with revoked and expired ones (builders)."""
+    svc = DeploymentService(session)
+    await svc.require(dep_id)
+    return [_key(k) for k in await svc.keys(dep_id)]
+
+
+@router.post("/deployments/{dep_id}/keys", response_model=KeyCreated, status_code=201)
+async def create_deployment_key(
+    dep_id: str,
+    body: KeyIn,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    user: CurrentUser = Depends(current_user),
+) -> KeyCreated:
+    """Another key for the deployment, next to the ones that work already (shown once). To replace a key without
+    downtime: make a new one, move the callers to it, then revoke the old one."""
+    row, value = await DeploymentService(session).add_key(dep_id, body.name, user.id, body.expires_in_days)
+    note(request, key=row.id, prefix=row.prefix, name=row.name, expires_at=row.expires_at)
+    return KeyCreated(**_key(row).model_dump(), api_key=value)
+
+
+@router.delete("/deployments/{dep_id}/keys/{key_id}", status_code=204)
+async def revoke_deployment_key(
+    dep_id: str, key_id: str, request: Request, session: AsyncSession = Depends(get_session)
+) -> Response:
+    """Revoke a key: calls with it are refused at once, on every server."""
+    row = await DeploymentService(session).revoke_key(dep_id, key_id)
+    note(request, key=row.id, prefix=row.prefix, name=row.name)
+    return Response(status_code=204)
 
 
 @router.post("/deployments/{dep_id}/rotate-key", response_model=KeyOut)
-async def rotate_key(dep_id: str, session: AsyncSession = Depends(get_session)) -> KeyOut:
-    """A new key; the old one stops working immediately."""
-    return KeyOut(api_key=await DeploymentService(session).rotate(dep_id))
+async def rotate_key(
+    dep_id: str,
+    request: Request,
+    body: RotateIn | None = None,
+    session: AsyncSession = Depends(get_session),
+    user: CurrentUser = Depends(current_user),
+) -> KeyOut:
+    """A new key; the deployment's other keys stop working at once, or after `overlap_hours`."""
+    overlap = body.overlap_hours if body else 0
+    row, value = await DeploymentService(session).rotate(dep_id, user.id, overlap)
+    note(request, key=row.id, prefix=row.prefix, overlap_hours=overlap)
+    return KeyOut(api_key=value, key=_key(row))
+
+
+class CallbackSecretOut(BaseModel):
+    callback_secret: str = Field(description="shown once: the receiver checks each callback's signature with it")
+
+
+@router.post("/deployments/{dep_id}/callback-secret", response_model=CallbackSecretOut)
+async def rotate_callback_secret(
+    dep_id: str, request: Request, session: AsyncSession = Depends(get_session)
+) -> CallbackSecretOut:
+    """Create the secret that signs this deployment's run callbacks, or replace it (the old one stops signing at
+    once, also for callbacks still waiting to be delivered). Runs can ask for a callback once it exists."""
+    dep = await DeploymentService(session).require(dep_id)
+    return CallbackSecretOut(callback_secret=await callbacks.set_secret(session, request.app.state.keyring, dep))
 
 
 @router.delete("/deployments/{dep_id}", status_code=204)
@@ -205,6 +333,11 @@ async def unpublish(dep_id: str, session: AsyncSession = Depends(get_session)) -
 
 
 # ------------------------------------------------------------------------------------------ public API ----
+CALLBACK_HELP = (
+    "an https address sent the run's result (a signed POST) once it ends; needs the deployment's callback secret"
+)
+
+
 class ApiRunIn(BaseModel):
     input: dict[str, Any] = Field(default_factory=dict)
     thread_id: str | None = Field(None, description="continue a conversation this deployment started")
@@ -215,11 +348,13 @@ class ApiRunIn(BaseModel):
     metadata: dict[str, Annotated[str, StringConstraints(max_length=200)]] = Field(
         default_factory=dict, max_length=20, description="labels for this run; online evaluators can filter on them"
     )
+    callback_url: str | None = Field(default=None, max_length=2000, description=CALLBACK_HELP)
 
 
 class ApiResumeIn(BaseModel):
     value: Any = None
     interrupt_id: str | None = None
+    callback_url: str | None = Field(default=None, max_length=2000, description=CALLBACK_HELP)
 
 
 class ApiResult(BaseModel):
@@ -229,13 +364,18 @@ class ApiResult(BaseModel):
     output: dict[str, Any] | None = None
     interrupts: list[dict[str, Any]] = Field(default_factory=list)
     error: str | None = None
+    generated_by: GeneratedBy = Field(
+        default_factory=GeneratedBy, description="marks the output as AI-generated (AI Act Art. 50)"
+    )
 
 
 async def _caller(
     request: Request, session: AsyncSession, dep_id: str, authorization: str | None
 ) -> tuple[Deployment, Workflow]:
     """The key's deployment and workflow, after counting the request against the deployment's and the project's
-    rate limits (429 when over)."""
+    rate limits (429 when over). The organisation's IP allow-list comes first, so a caller outside it cannot even
+    learn whether a key is valid."""
+    await networks.check_deployment(request, session, dep_id, "deployment key")
     dep, wf = await DeploymentService(session).authenticate(dep_id, authorization)
     await count_call(request, session, dep, wf)
     return dep, wf
@@ -270,7 +410,7 @@ async def _api_context(session: AsyncSession, dep: Deployment, wf: Workflow, bod
 
     row = await session.get(WorkflowRow, dep.workflow_id)
     project = await session.get(Project, row.project_id) if row else None
-    end_user = f"api:{dep.id}:{body.user_id}" if body.user_id else f"api:{dep.id}"
+    end_user = end_user_label(dep.id, body.user_id) if body.user_id else f"api:{dep.id}"
     user = CurrentUser(id=end_user, org_id=project.org_id if project else "", role="api")
     return _context(wf, body.context, user)
 
@@ -288,14 +428,32 @@ async def _start(
     against the rate limits) in this request."""
     dep, wf = caller or await _caller(request, session, dep_id, auth)
     version_id = dep.version_id
+    callback = await _callback_url(request, session, dep, body.callback_url)
     if body.thread_id:
         await own_thread(session, dep, body.thread_id)
         wf, version_id = await _continue_on(session, dep, wf, body.thread_id)
-    return await request.app.state.runner.start(
+    h = await request.app.state.runner.start(
         wf, thread_id=body.thread_id, input=body.input, context=await _api_context(session, dep, wf, body),
         deployment_id=dep.id, version_id=version_id, labels={**body.metadata, **(labels or {})},
         caller_run_id=nesting.caller(request.headers.get(nesting.HEADER)),
+        end_user=end_user_label(dep.id, body.user_id) if body.user_id else None,
     )  # fmt: skip
+    await _add_callback(session, dep, h, callback)
+    return h
+
+
+async def _callback_url(request: Request, session: AsyncSession, dep: Deployment, url: str | None) -> str | None:
+    """The run's callback address, checked before the run starts (422 when it may not be used)."""
+    if url is None:
+        return None
+    await callbacks.require_secret(session, dep)
+    return await callbacks.check_url(url, request.app.state.settings.edition == "hosted")
+
+
+async def _add_callback(session: AsyncSession, dep: Deployment, h: RunHandle, url: str | None) -> None:
+    if url is not None:
+        session.add(RunCallback(run_id=h.run_id, deployment_id=dep.id, url=url))
+        await session.commit()
 
 
 async def own_thread(session: AsyncSession, dep: Deployment, thread_id: str) -> Thread:
@@ -321,17 +479,11 @@ async def _result(h: RunHandle) -> ApiResult:
         await asyncio.wait_for(h.done.wait(), WAIT_TIMEOUT_S)
     except TimeoutError:
         return ApiResult(run_id=h.run_id, thread_id=h.thread_id, status="running")
-    res = ApiResult(run_id=h.run_id, thread_id=h.thread_id, status="error")
-    for ev in h.events:
-        if ev["type"] == "RUN_FINISHED":
-            res.status, res.output = ev.get("status") or "success", ev.get("output")
-            res.interrupts = ev.get("interrupts") or []
-        elif ev["type"] == "RUN_ERROR":
-            # "redeploy": the server restarted mid-run; another instance continues the conversation (FR-X-10)
-            code = ev.get("code")
-            res.status = {"cancelled": "cancelled", "redeploy": "interrupted"}.get(code, "error")  # type: ignore[assignment]
-            res.error = ev.get("message")
-    return res
+    return api_result(from_handle(h))
+
+
+def api_result(res: RunResult) -> ApiResult:
+    return ApiResult(**asdict(res))
 
 
 @public_router.post("/deployments/{dep_id}/runs/wait", response_model=ApiResult)
@@ -339,11 +491,14 @@ async def api_run_wait(
     dep_id: str,
     body: ApiRunIn,
     request: Request,
+    response: Response,
     authorization: str | None = Header(None),
     session: AsyncSession = Depends(get_session),
 ) -> ApiResult:
-    """Run the published version and return its final state (or its pending interrupts)."""
+    """Run the published version and return its final state (or its pending interrupts). After 5 minutes it answers
+    `status: running`; the result is then read with `GET .../runs/{run_id}`."""
     h = await _start(request, session, dep_id, body, authorization)
+    response.headers.update(AI_HEADER)
     await session.close()  # no connection held while the run works
     return await _result(h)
 
@@ -395,9 +550,13 @@ async def api_run_stream(
     authorization: str | None = Header(None),
     session: AsyncSession = Depends(get_session),
 ) -> Response:
-    """Run the published version, streaming canonical events (SSE)."""
+    """Run the published version, streaming canonical events (SSE); RUN_FINISHED carries `generated_by`."""
     h = await _start(request, session, dep_id, body, authorization)
-    return _respond(request.app.state.runner, h, True)
+    return StreamingResponse(
+        _sse(marked(request.app.state.runner.subscribe(h.run_id))),
+        media_type="text/event-stream",
+        headers={**SSE_HEADERS, "x-run-id": h.run_id, "x-thread-id": h.thread_id, **AI_HEADER},
+    )
 
 
 class FeedbackIn(BaseModel):
@@ -414,6 +573,57 @@ async def _key_holder(
     """The deployment whose key the caller holds; a dependency, so a request without a key is refused (401) before
     its body is read."""
     return (await _caller(request, session, dep_id, authorization))[0]
+
+
+@public_router.post("/deployments/{dep_id}/runs", response_model=ApiResult, status_code=202)
+async def api_run_start(
+    dep_id: str,
+    body: ApiRunIn,
+    request: Request,
+    response: Response,
+    authorization: str | None = Header(None),
+    session: AsyncSession = Depends(get_session),
+) -> ApiResult:
+    """Start a run of the published version and answer at once (202, `status: running`): read its result later with
+    `GET .../runs/{run_id}` (its address is in `Location`), from any server."""
+    h = await _start(request, session, dep_id, body, authorization)
+    response.headers["Location"] = api_url(request, "api_run_get", dep_id=dep_id, run_id=h.run_id)
+    return ApiResult(run_id=h.run_id, thread_id=h.thread_id, status="running")
+
+
+@public_router.get("/deployments/{dep_id}/runs/{run_id}", response_model=ApiResult, name="api_run_get")
+async def api_run_get(
+    run_id: str,
+    request: Request,
+    dep: Deployment = Depends(_key_holder),
+    session: AsyncSession = Depends(get_session),
+) -> ApiResult:
+    """A run of this deployment: `running` while it works (or waits for a run slot), then its output, the pauses it
+    waits for, or its error. Any server answers; a run another deployment made is not found."""
+    found = await ResultRepo(session, request.app.state.runner).of(run_id, dep.id)
+    if found is None:
+        raise NotFound(f"run '{run_id}' not found")
+    return api_result(found)
+
+
+class CancelOut(BaseModel):
+    cancelled: bool = Field(description="the run was stopped, or will be")
+    pending: bool = Field(description="it runs on another server, which stops it within a few seconds")
+
+
+@public_router.post("/deployments/{dep_id}/runs/{run_id}/cancel", response_model=CancelOut, status_code=202)
+async def api_run_cancel(
+    run_id: str,
+    request: Request,
+    dep: Deployment = Depends(_key_holder),
+    session: AsyncSession = Depends(get_session),
+) -> CancelOut:
+    """Stop a run of this deployment, wherever it runs. A run that already ended answers `cancelled: false`."""
+    found = await ResultRepo(session, request.app.state.runner).of(run_id, dep.id)
+    if found is None:
+        raise NotFound(f"run '{run_id}' not found")
+    # a run a restart stopped continues as another run: that one is stopped
+    return CancelOut(**await stop_run(session, request.app.state.runner, found.run_id))
 
 
 @public_router.post("/deployments/{dep_id}/runs/{run_id}/feedback", status_code=204)
@@ -452,23 +662,71 @@ async def api_feedback(
     return Response(status_code=204)
 
 
+class ApiEndUserIn(BaseModel):
+    user_id: str = Field(min_length=1, max_length=500, description="the `user_id` you sent with their runs")
+
+
+@public_router.post("/deployments/{dep_id}/end-users/erase", response_model=ErasedEndUserOut)
+async def api_erase_end_user(
+    body: ApiEndUserIn,
+    request: Request,
+    dep: Deployment = Depends(_key_holder),
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, int]:
+    """Erase one of your end users (GDPR Art. 17), by the `user_id` you sent with their runs: their conversations on
+    this deployment (with feedback), long-term memories and the files their runs used. Answers the counts; an
+    end user with nothing left answers zeros."""
+    from agentcanvas.db.repositories import ScopeRepo
+    from agentcanvas.services.data_subjects import erase_end_user
+
+    org_id = await ScopeRepo(session).org_of("deployment", dep.id) or ""
+    counts = await erase_end_user(session, request.app.state.runner, org_id, body.user_id, dep.id)
+    note(request, target=end_user_ref(body.user_id), **counts)
+    return counts
+
+
+@public_router.post("/deployments/{dep_id}/end-users/export")
+async def api_export_end_user(
+    body: ApiEndUserIn,
+    request: Request,
+    dep: Deployment = Depends(_key_holder),
+    session: AsyncSession = Depends(get_session),
+) -> JSONResponse:
+    """One of your end users' data as JSON (GDPR Art. 15 and 20), by the `user_id` you sent with their runs: their
+    conversations on this deployment with each run's input, answer and steps, long-term memories and the files their
+    runs used (names and sizes)."""
+    from agentcanvas.api.v1.org import download
+    from agentcanvas.db.repositories import ScopeRepo
+    from agentcanvas.services.data_subjects import export_end_user
+
+    org_id = await ScopeRepo(session).org_of("deployment", dep.id) or ""
+    data = await export_end_user(session, request.app.state.runner, org_id, body.user_id, dep.id)
+    note(request, target=end_user_ref(body.user_id), conversations=len(data["conversations"]))
+    return download(data, "agentcanvas-end-user.json")
+
+
 @public_router.post("/deployments/{dep_id}/threads/{thread_id}/resume", response_model=ApiResult)
 async def api_resume(
     dep_id: str,
     thread_id: str,
     body: ApiResumeIn,
     request: Request,
+    response: Response,
     authorization: str | None = Header(None),
     session: AsyncSession = Depends(get_session),
 ) -> ApiResult:
     """Answer a pending interrupt (approval, input) of a conversation this deployment started."""
     dep, wf = await _caller(request, session, dep_id, authorization)
+    response.headers.update(AI_HEADER)
     await own_thread(session, dep, thread_id)
     note(request, interrupt_id=body.interrupt_id, payload_sha256=payload_hash(body.value))
+    await approvers.check_pending(session, thread_id, body.interrupt_id, approvers.CALLER)
+    callback = await _callback_url(request, session, dep, body.callback_url)
     wf, version_id = await _continue_on(session, dep, wf, thread_id)
     h = await request.app.state.runner.start(
         wf, thread_id=thread_id, resume=ResumeSpec(body.value, body.interrupt_id),
         deployment_id=dep.id, version_id=version_id, caller_run_id=nesting.caller(request.headers.get(nesting.HEADER)),
     )  # fmt: skip
+    await _add_callback(session, dep, h, callback)
     await session.close()
     return await _result(h)

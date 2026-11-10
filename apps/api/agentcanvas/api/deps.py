@@ -6,19 +6,22 @@ import re
 import unicodedata
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
+from typing import Any
 from urllib.parse import quote
 
 from fastapi import Depends, Header, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.db import rls
+from agentcanvas.db.models import Organization
 from agentcanvas.db.repositories import DEV_ORG, DEV_USER, ScopeRepo, UserRepo
 from agentcanvas.db.session import Database
 from agentcanvas.errors import Conflict, Forbidden, InvalidInput, NotFound, PreconditionRequired, Unauthorized
 from agentcanvas.log import get_logger
 from agentcanvas.security.auth import Authenticator
-from agentcanvas.services import matura, sso_groups, tokens
+from agentcanvas.services import matura, mfa, networks, offboarding, sso_groups, tokens
 from agentcanvas.settings import Settings
 
 log = get_logger(__name__)
@@ -50,6 +53,8 @@ class CurrentUser:
     email: str = ""
     memberships: dict[str, str] = field(default_factory=dict)  # org id -> role
     token_id: str | None = None  # signed in with a personal API token (G-13), not the identity provider
+    # the identity provider's token claims (acr, amr: how the person signed in); None for API tokens and dev mode
+    claims: dict[str, Any] | None = field(default=None, repr=False)
 
 
 def _authenticator(request: Request) -> Authenticator:
@@ -72,13 +77,46 @@ async def current_user(
     org: str | None = Header(None, alias="X-Org-Id", description="organisation to act in (default: last used)"),
     session: AsyncSession = Depends(get_session),
 ) -> CurrentUser:
-    """The signed-in user and the organisation this request acts in.
+    """The signed-in user and the organisation this request acts in, from an address the organisation's IP
+    allow-list admits (403 otherwise, `services/networks.py`).
 
     `auth_mode = dev` (local work, tests): the seeded development admin. `oidc`: the bearer token's
     subject, provisioned on first sign-in; 401 without a valid token, 403 without a membership. `matura`: the
     token's organisation (`tid`) and the role its permissions give (`services/matura.py`). In every mode, a personal
     API token (`act_…`, `services/tokens.py`) acts as its owner in its own organisation.
+
+    An organisation being deleted refuses everyone (E-7), but for what its admins may still do then
+    (`WHILE_DELETING`).
     """
+    user = await _signed_in(request, credentials, org, session)
+    own = await session.scalar(select(Organization.settings).where(Organization.id == user.org_id))
+    networks.check(request, user.org_id, own, "API token" if user.token_id else "sign-in")
+    if user.claims is not None:  # the organisation may require multi-factor sign-in (services/mfa.py)
+        mfa.check_org(request.app.state.settings, own, user.claims)
+    state = await offboarding.closed(session, user.org_id)
+    if state is not None:
+        route = getattr(request.scope.get("route"), "path", request.url.path).removeprefix("/v1")
+        if state.deleted_at is not None or user.role != "admin" or (request.method, route) not in WHILE_DELETING:
+            raise offboarding.refusal(state)
+    return user
+
+
+# what an admin of an organisation being deleted may still do: see who they are, read, take back or carry out the
+# deletion's grace period (exporting the organisation's data)
+WHILE_DELETING = {
+    ("GET", "/me"),
+    ("GET", "/org/deletion"),
+    ("DELETE", "/org/deletion"),
+    ("POST", "/org/export"),
+    ("GET", "/org/export"),
+    ("GET", "/org/export/{export_id}"),
+    ("POST", "/org/export/{export_id}/link"),
+}
+
+
+async def _signed_in(
+    request: Request, credentials: HTTPAuthorizationCredentials | None, org: str | None, session: AsyncSession
+) -> CurrentUser:
     settings: Settings = request.app.state.settings
     if credentials is not None and tokens.is_personal(credentials.credentials):
         caller = await tokens.TokenService(session).authenticate(credentials.credentials)
@@ -95,21 +133,23 @@ async def current_user(
     if credentials is None or not credentials.credentials:
         raise Unauthorized("sign in: send Authorization: Bearer <token>")
     identity = await _authenticator(request).verify(credentials.credentials)
+    mfa.check_server(settings, identity.claims)  # before anyone is provisioned from a token that lacks it
     if settings.auth_mode == "matura":  # the token names the organisation and the permissions (TS9a)
         uid, org_id, role, email, memberships = await matura.sign_in(
             session, identity.claims, org, matura.portal_base(settings)
         )
         await rls.scope(session, org_id)  # Postgres: this request's queries see only this organisation's rows
-        return CurrentUser(id=uid, org_id=org_id, role=role, email=email, memberships=memberships)
+        return CurrentUser(
+            id=uid, org_id=org_id, role=role, email=email, memberships=memberships, claims=identity.claims
+        )
     repo = UserRepo(session)
     # only a verified email is stored: invitations and the admin bootstrap match people by it
     email = identity.email if identity.email_verified else ""
     user, first = await repo.provision(identity.subject, email, identity.name, identity.email_verified)
     uid, user_email = user.id, user.email  # read before anything below commits or rolls back
     await sso_groups.apply(  # the provider's groups decide roles (G-13)
-        session, uid, identity.claims, add_members=settings.sso_groups_add_members,
-        sink=getattr(request.app.state, "audit_sink", None),
-    )  # fmt: skip
+        session, uid, identity.claims, add_members=settings.sso_groups_add_members
+    )
     memberships = await repo.memberships(uid)
     # bootstrap happens once, at the first sign-in with a verified email (a first try without one, e.g. Entra ID
     # before AGENTCANVAS_OIDC_TRUST_EMAIL, must not lose it): removing a bootstrap admin later sticks
@@ -135,13 +175,18 @@ async def current_user(
                 "if it never sends email_verified (Entra ID)"
             )
         raise Forbidden("you are not a member of any organisation; ask an admin to invite you")
-    default = next(iter(memberships))  # the organisation used last
+    # the organisation used last, passing over one being deleted when there is another
+    closed = await offboarding.closed_among(session, list(memberships)) if len(memberships) > 1 else set()
+    default = next((o for o in memberships if o not in closed), next(iter(memberships)))
     org_id = org or default
     if org_id not in memberships:
         raise Forbidden(f"you are not a member of organisation '{org_id}'")
     if org_id != default:
         await repo.used(uid, org_id)  # choosing another organisation makes it the default
-    return CurrentUser(id=uid, org_id=org_id, role=memberships[org_id], email=user_email, memberships=memberships)
+    return CurrentUser(
+        id=uid, org_id=org_id, role=memberships[org_id], email=user_email, memberships=memberships,
+        claims=identity.claims,
+    )  # fmt: skip
 
 
 # path/query parameters that name a resource, and its kind (M7-T2)
@@ -213,20 +258,29 @@ ROLE_EXCEPTIONS = {
     ("PUT", "/projects/{project_id}/trace-export"): "admin",  # run inputs and outputs leave the server
     ("DELETE", "/projects/{project_id}/trace-export"): "admin",
     ("GET", "/deployments/{dep_id}/share"): "builder",  # the link is a capability: builders hand it out (S23)
+    ("GET", "/deployments/{dep_id}/keys"): "builder",  # who holds which key, and when each was last used
     ("POST", "/workflows/{wf_id}/presence"): "viewer",  # anyone who has the editor open is shown as being here (G-4)
     ("DELETE", "/workflows/{wf_id}/presence/{session_id}"): "viewer",
     ("POST", "/knowledge/{kb_id}/search"): "viewer",
+    ("DELETE", "/org"): "admin",  # deleting the organisation (E-7)
     ("PATCH", "/projects/{project_id}"): "admin",  # a project's name and existence are the organisation's
     ("DELETE", "/projects/{project_id}"): "admin",  # a read: what a Search knowledge block would find (S24)
     ("PUT", "/projects/{project_id}/workspace"): "admin",  # which Matura workspace a project lives in
+    ("PUT", "/projects/{project_id}/spending-caps"): "admin",  # spending caps are the administrator's control
 }
 
 
 def required_role(method: str, path: str) -> str:
     """The weakest role allowed `method` on the route template `path` (with or without the /v1 prefix)."""
     path = path.removeprefix("/v1")
-    # the log, spending, everyone's tokens and the SCIM token: admins only
-    if path.startswith(("/org/audit", "/org/spending", "/org/tokens", "/org/scim", "/server/")):
+    # the log, spending, everyone's tokens, the SCIM token, where notifications go, the organisation's deletion and
+    # its export: admins only
+    if path.startswith((
+        "/org/audit", "/org/spending", "/org/tokens", "/org/scim", "/org/notifications", "/org/deletion",
+        "/org/export", "/server/",
+    )):  # fmt: skip
+        return "admin"
+    if path.startswith("/org/") and path.endswith("/export"):  # someone else's data (E-7)
         return "admin"
     if path.startswith("/org/"):
         return "viewer" if method == "GET" else "admin"

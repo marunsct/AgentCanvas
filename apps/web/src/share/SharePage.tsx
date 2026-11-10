@@ -2,7 +2,7 @@
  * iframe (?embed=1). No sign-in; the visitor's conversations are theirs only (see share.ts). */
 import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import {
-  answerQuestion, closeConversation, isEmbed, loadConversation, loadShare, rate, sendMessage, ShareError, tokenFromPath,
+  answerQuestion, closeConversation, DEFAULT_AI_NOTICE, isEmbed, loadConversation, loadShare, rate, sendMessage, ShareError, tokenFromPath,
   uploadShareFile, type SavedConversation, type ShareEvent, type ShareInfo, type ShareQuestion,
 } from "./share";
 import { originAllowed, parseCommand, postToParent } from "./embedApi";
@@ -272,7 +272,8 @@ export function SharePage() {
                   onChange={(e) => setDraft(e.target.value)} onKeyDown={onKey} />
         <button type="submit" className="primary" disabled={busy || (!draft.trim() && files.length === 0)}>{busy ? "…" : "Send"}</button>
       </form>
-      {!embed && <p className="share-foot">Answers are written by an AI assistant and can be wrong.</p>}
+      {/* always, in the widget too: visitors must know they are chatting with an AI (EU AI Act Art. 50(1)) */}
+      <p className="share-foot" data-testid="share-ai-notice">{info.ai_notice?.trim() || DEFAULT_AI_NOTICE}</p>
     </main>
   );
 }

@@ -32,27 +32,37 @@ enterprise controls a buyer's security review asks for come first (E), then the 
 
 ### E. Enterprise controls (before F-8 onward)
 
-| Id | Item | Why | Size |
-|---|---|---|---|
-| E-1 | **KMS clients in the API image** (boto3, google-cloud-kms) and a clear error when one is missing | The deploy guide tells operators to keep the master key in AWS or GCP KMS; the shipped image cannot load either, so the API does not start | S |
-| E-2 | **Durable results for deployment callers:** fetch a run's status and output later, cancel it, a completion webhook; A2A `GetTask` answered from the database on any replica | A run longer than the 300 s wait, or one waiting in the run queue, is lost to an external caller; `GetTask` only knows runs held in the replica's memory | M |
-| E-3 | **Audit to a SIEM, reliably, and tamper-evident:** an outbox with retries and a dead-letter count; the app role cannot UPDATE or DELETE audit rows; a hash chain | ASVS 16.4.2/16.4.3, EnterpriseReady; today the CloudEvent sink is best effort (one try) | M |
-| E-4 | **Pin MCP tool definitions at publish:** a manifest of each tool's name and description hash; deployment runs drop or flag tools that changed | OWASP Agentic ASI04 and MCP Top 10 MCP03 (rug pull, tool poisoning) | M |
-| E-5 | **EU AI Act Art. 50:** an AI disclosure on embedded chat and the widget, machine-readable `generated_by` on API results; `/.well-known/security.txt` | Art. 50(1) applies since 2026-08-02; the 50(2) marking grace period ends 2026-12-02 | S |
-| E-6 | **Approval routing:** who may approve (role, group, people), notifications to approvers (email, Slack, a webhook), escalation on expiry | Human approval is the product's enterprise selling point; nobody is told a decision waits (own-run approval policy and expiry: done 2026-11-10) | M |
-| E-7 | **Offboarding and data-subject rights:** export and delete an organisation (with a grace period), erase a member, erase a deployment's end user, export a person's data | GDPR Art. 15/17/20/28(3)(g), SOC 2 C1.2/P4.3; was the erasure half of F-12 | L |
-| E-8 | **Credential policy:** several named, expiring deployment keys (rotation without downtime, last used), IP allow-lists, required MFA (`acr`/`amr`) | SOC 2 CC6.1/CC6.6 questionnaires (API token lifetime cap: done 2026-11-10) | M |
-| E-9 | **Spending caps per organisation and project** that also bind draft runs, experiments and the Copilot | OWASP LLM10 (unbounded consumption); budgets are per workflow only | M |
-| E-10 | **Access per project:** project members (people and SCIM groups) with a role each; custom permission sets after | Every member sees every project; enterprises split teams by project. Was the custom-roles half of F-12 | M/L |
-| E-11 | **OAuth 2.1 for the deployment MCP and A2A endpoints** (RFC 9728 protected-resource metadata; Enterprise-Managed Authorization, ID-JAG) | Claude, ChatGPT, VS Code and Microsoft 365 connect to enterprise servers this way | M |
-| E-12 | **AWS Bedrock and Google Vertex AI providers** | Regulated customers must call models through their own cloud account and region | M |
-| E-13 | **An AI-system record per deployment** (purpose, owner, risk class, models, evaluation evidence, approvals), exportable | ISO 42001 Annex A, NIST AI 600-1 and the AI Act's inventory duties | M |
+Built 2026-11-10 on `claude/hardening-8` (first versions, tested on SQLite and Postgres and documented): E-1 KMS
+clients in the image; E-2 durable results for deployment callers (start without waiting, read later, cancel, signed
+completion callbacks, A2A `GetTask` and cancel on any replica); E-3 audit forwarding through an outbox (retries, dead
+letters, Splunk HEC, everything or security only) and a per-organisation hash chain the app role cannot rewrite; E-4
+MCP tool pinning at publish; E-5 the AI notice on shared chat and the widget, `generated_by` and `X-AI-Generated`,
+`security.txt`; E-6 who may decide an approval, notifications (e-mail, Slack, signed webhook) and escalation; E-7
+organisation export and deletion with a grace period, erasing a member or an end user, a person's data export; E-8
+several expiring deployment keys, IP allow-lists, required MFA; E-9 organisation and project spending caps. What is
+left of them:
+
+| Id | Left | Size |
+|---|---|---|
+| E-1 | Azure Key Vault and HashiCorp Vault master keys | S |
+| E-2 | A2A push notifications and `SubscribeToTask`; callback delivery shown in the Runs view; cancelling a paused task (A2A refuses it, MCP leaves the pause waiting) | S |
+| E-3 | A keyed hash (HMAC) column beside the plain chain; syslog/OTLP destinations | S |
+| E-4 | Pins enforced in exported code; a per-environment default of "fail" for changed tools; `tool_drift` in the web Deployments panel | S |
+| E-5 | `generated_by` inside MCP and A2A response bodies (the header is sent); an audited organisation switch for the notice, if counsel wants one | S |
+| E-6 | Approve and Deny inside Slack and e-mail (F-9); a reminder before expiry; deciders from SSO-claim-only groups; who may decide shown in the Run tab | M |
+| E-7 | Matura's tenant-deleted event wired to the purge; legal hold; crypto-shredding (spec 18's claim is still untrue); exports of very large organisations to object storage | M |
+| E-8 | Drop the old `deployment.api_key_hash` and `key_prefix` columns (kept for rolling upgrades); a lifetime cap for deployment keys; `auth_time` freshness for admin writes and an idle-session timeout | S |
+| E-9 | Project admins setting their own project's caps (after E-10); stopping a Copilot turn or a judge mid-way at a cap | S |
+| E-10 | **Access per project:** project members (people and SCIM groups) with a role each; custom permission sets after | M/L |
+| E-11 | **OAuth 2.1 for the deployment MCP and A2A endpoints** (RFC 9728 protected-resource metadata; Enterprise-Managed Authorization, ID-JAG) | M |
+| E-12 | **AWS Bedrock and Google Vertex AI providers** | M |
+| E-13 | **An AI-system record per deployment** (purpose, owner, risk class, models, evaluation evidence, approvals), exportable | M |
 
 ### F. Product (re-scoped)
 
 | Id | Item | Why | Size |
 |---|---|---|---|
-| F-1 | **MCP 2026-07-28 for paused and long runs:** a pause answered through Multi Round-Trip Requests (form elicitation, `requestState` bound to the caller), and long or queued runs through the Tasks extension (`tasks/get`, `tasks/update`, `tasks/cancel`), after E-2 | Tasks became a Final extension and server-initiated elicitation was replaced by MRTR in 2026-07-28; URL-mode elicitation lost `elicitationId` | M |
+| F-1 | ~~**MCP 2026-07-28 for paused and long runs**~~ done 2026-11-10: a pause asks the person through form elicitation (MRTR, a signed single-use `requestState` bound to the key used), long or queued runs become Tasks (`tasks/get`, `tasks/update`, `tasks/cancel`) on any replica. Left: `notifications/tasks`, URL-mode elicitation for reviewer-only pauses | Tasks became a Final extension and MRTR replaced server-initiated elicitation in 2026-07-28 | M |
 | F-3b | **LangGraph strict resume:** resume by interrupt id everywhere (Inbox, API, MCP, A2A, share) | The pins of F-3 are done (decisions.md 2026-11-09); two parallel interrupts must be answerable separately | S |
 | F-8 | **AG-UI 1.0 endpoint for deployments,** as a translator on the official `ag-ui-protocol` 1.0 package; also gives FR-X-03 (tools run in the user's browser) | AG-UI 1.0 is stable since 2026-09-17 (run outcome on RUN_FINISHED, resume entries, REASONING events) | M |
 | F-9 | **Where people work:** actionable approvals in Slack and email first (with E-6); Teams through A2A and Microsoft Agent 365 (Bot Framework is end-of-life) once E-11 lands; a Slack conversational app last | Re-scoped from "publish to Slack, Teams or email", which was three products | M |
@@ -87,7 +97,7 @@ Done: F-2 (2026-11-09), F-4, F-5, F-6, F-7 (2026-11-09; F-5's queue redesigned 2
 ## 4. Carried over
 
 - **Cross-organisation sweep coverage:** the crawl reaches 64 of 76 id routes. A hand-written test in the same file covers nine of the rest (run search, run trace, agent code, bridge exports, uploads, MCP); the SCIM routes (their own bearer token, tested in `test_scim.py`), annotation items (need a flagged run) and the share conversation (the link's token is the capability) are not in the sweep. The test's output (`pytest -s`) lists what the crawl missed.
-- **Web:** the project is still chosen in `queries.ts` (about 58 uses of `PROJECT_ID`), not in a store; about 16 hand-written response types remain (Policies, Setup, CodeHelp differ from the generated ones in which fields are optional); the React Compiler lint rules (`set-state-in-effect`, `refs`, `immutability`) are off in `.oxlintrc.json` because about 25 effects set state by design.
+- **Web:** the project is still chosen in `queries.ts` (about 58 uses of `PROJECT_ID`), not in a store; about 16 hand-written response types remain, plus four narrow ones the enterprise controls added before the types were regenerated (`SpendingCaps.tsx`, `OrgSecurity.tsx`, `DeploymentKeys.tsx`, `ShareSection.tsx`) (Policies, Setup, CodeHelp differ from the generated ones in which fields are optional); the React Compiler lint rules (`set-state-in-effect`, `refs`, `immutability`) are off in `.oxlintrc.json` because about 25 effects set state by design.
 - **Web, wrong-shaped answers:** a page that gets JSON of another shape than it expects (version skew) ends in the crash notice with a Reload hint, not a per-screen message; validating every response against the generated schema would fix that and costs a runtime schema library in the bundle.
 - **Database:** the RLS migration takes locks on 35 tables in one transaction (it gives up after 60 s; run it in a quiet moment on a large installation). Verified 2026-10-20: a point query through the four-level policy chain takes about 1 ms at 120,000 runs; re-measure with `EXPLAIN (ANALYZE)` as the application role if a tenant's list pages get slow. Large installations should also check the new `run.events` column (up to 2,000 compact events per run) and the pgvector HNSW indexes against their retention.
 - **Code:** duplicated engine, worker and packager code (about 1,000–1,300 lines); `Resources` is still LangChain's object for every adapter.
@@ -112,7 +122,7 @@ Dated items from the check of 2026-11-08; recheck them at the dates shown.
 - **2026-12-01:** Gemini 2.5 Pro and Flash are routed to other models (in the catalog). **2026-12-11:** GPT-5, GPT-5 mini, nano, pro, o3 and o3-pro shut down (GPT-5 mini is in the catalog with its date).
 - **2027-01-06:** OpenAI self-serve fine-tuning stops taking new jobs (the fine-tuning export's docs say so). **2027-01-14:** GPT-4o, 4o-mini, 4.1 and 4.1-mini shut down: imported flows naming them will fail.
 - **openai-agents next major ("native v1", pre-releases v0.24.0-alpha.6/7 on GitHub only, 2026-11-03/08)** makes the root `agents` package a new runtime and moves today's API to `agents.classic` (`openai-agents[classic]`). Keep `openai-agents==0.24.0` exact (pyagentspec's extra has no upper bound). When it reaches PyPI: switch our imports to `agents.classic` in the runtime, packager, code generator, designs and smoke check; a native port needs a Responses-API endpoint on the model bridge and a new approval pause/resume. The importer already reads both styles.
-- **MCP:** releases move to every six months (next in late March 2027); sampling, roots, logging and Dynamic Client Registration stay for compatibility until 2027-07-28. Tasks is a Final extension and MRTR replaced server-initiated elicitation in 2026-07-28 (F-1). **A2A** spec 1.0.1; `a2a-sdk` 1.3.0 (2026-10-27) is stricter on clients. **EU AI Act** Art. 50(2) marking grace period ends 2026-12-02 (E-5); **CRA** reporting of actively exploited vulnerabilities applies since 2026-09-11 (`.github/SECURITY.md`).
+- **MCP:** releases move to every six months (next in late March 2027); sampling, roots, logging and Dynamic Client Registration stay for compatibility until 2027-07-28. Tasks is a Final extension and MRTR replaced server-initiated elicitation in 2026-07-28 (both served since F-1). **A2A** spec 1.0.1; `a2a-sdk` 1.3.0 (2026-10-27) is stricter on clients. **EU AI Act** Art. 50(2) marking grace period ends 2026-12-02 (served since E-5); **CRA** reporting of actively exploited vulnerabilities applies since 2026-09-11 (`.github/SECURITY.md`).
 - **LiteLLM 1.106+** breaks Google ADK tool calls ("No module named 'mcp'"); the pin stays at 1.105.7 (try `litellm[mcp]` with the next bump).
 - **Framework pins** move weekly; `tests/test_framework_pins.py` lists every place a pin is written.
 

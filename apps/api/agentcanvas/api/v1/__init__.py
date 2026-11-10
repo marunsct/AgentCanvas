@@ -31,6 +31,7 @@ from agentcanvas.api.v1 import (
     matura,
     memory,
     model_choices,
+    notifications,
     online,
     org,
     playground,
@@ -55,6 +56,8 @@ signed_in = APIRouter(dependencies=[Depends(current_user), Depends(role_policy),
 signed_in.include_router(auth.router)
 signed_in.include_router(catalog.router)
 signed_in.include_router(org.router)
+signed_in.include_router(notifications.router)
+signed_in.include_router(org.org_router)
 signed_in.include_router(connections.router)
 signed_in.include_router(tokens.router)
 signed_in.include_router(projects.router)
@@ -98,4 +101,5 @@ router.include_router(deployments.public_router)
 router.include_router(protocols.router)  # MCP and A2A, deployment keys
 router.include_router(triggers.public_router)
 router.include_router(share.public_router)  # share links (S23): the token is the capability
+router.include_router(org.exports_router)  # an organisation export's download link (E-7): the token is the capability
 router.include_router(matura.public_router)  # Matura's webhooks (TS9a): HMAC

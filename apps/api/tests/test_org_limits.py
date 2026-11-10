@@ -127,8 +127,10 @@ async def test_an_organisation_switches_local_mcp_off_where_the_server_allows_it
 async def test_an_organisation_keeps_its_audit_log_longer_and_deletes_memories_sooner(app, api_client):
     job, now = app.state.retention, datetime.now(UTC)
     async with app.state.db.sessionmaker() as s:
-        s.add(AuditLog(org_id="org_default", action="old", target="-", created_at=now - timedelta(days=500)))
+        # written in time order, as the log is: retention deletes the start of each organisation's hash chain
         s.add(AuditLog(org_id="org_default", action="older", target="-", created_at=now - timedelta(days=900)))
+        await s.flush()
+        s.add(AuditLog(org_id="org_default", action="old", target="-", created_at=now - timedelta(days=500)))
         await s.commit()
     await put(api_client, audit_retention_days=800)  # the server's 400 is the least
     await job.tick(now)

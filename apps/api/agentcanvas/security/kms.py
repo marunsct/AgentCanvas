@@ -7,8 +7,10 @@ Each organisation has a random **data key**; project secrets and webhook signing
 |---|---|
 | empty (dev) | derived from `AGENTCANVAS_SECRET_KEY` |
 | `file:/run/secrets/master.key` | a local key file (any 32+ random characters) |
-| `aws:arn:aws:kms:…:key/…` | AWS KMS (`pip install boto3`; credentials from the environment) |
-| `gcp:projects/…/cryptoKeys/…` | Google Cloud KMS (`pip install google-cloud-kms`) |
+| `aws:arn:aws:kms:…:key/…` | AWS KMS (extra `kms-aws`: boto3; credentials from the environment) |
+| `gcp:projects/…/cryptoKeys/…` | Google Cloud KMS (extra `kms-gcp`: google-cloud-kms) |
+
+The API image installs both extras; a source install adds the one it uses (`uv sync --extra kms-aws`).
 
 **Rotation without downtime:** deploy with the new key in `AGENTCANVAS_KMS_KEY` and the old one in
 `AGENTCANVAS_KMS_PREVIOUS_KEYS` (instances unwrap with either), run `python -m agentcanvas.security.kms rewrap`,
@@ -63,10 +65,19 @@ class LocalKey:
         return self._f.decrypt(blob)
 
 
+def _client_missing(setting: str, spec: str, extra: str, package: str, error: ImportError) -> RuntimeError:
+    """The server cannot start without its master key: say which setting needs which package."""
+    kind = spec.partition(":")[0]
+    return RuntimeError(
+        f"{setting} names a {kind}: master key, but the {package} package is not installed ({error}). "
+        f"Use the AgentCanvas API image (it includes it), or install the '{extra}' extra: uv sync --extra {extra}"
+    )
+
+
 class AwsKmsKey:
     def __init__(self, arn: str, client: Any = None):
         if client is None:
-            import boto3  # type: ignore[import-not-found]  # optional: only deployments on AWS install it
+            import boto3  # type: ignore[import-not-found]  # the kms-aws extra
 
             client = boto3.client("kms")
         self.id, self.arn, self._kms = "aws:" + arn, arn, client
@@ -81,7 +92,7 @@ class AwsKmsKey:
 class GcpKmsKey:
     def __init__(self, name: str, client: Any = None):
         if client is None:
-            from google.cloud import kms  # type: ignore[import-not-found]  # optional: only on Google Cloud
+            from google.cloud import kms  # type: ignore[import-not-found]  # the kms-gcp extra
 
             client = kms.KeyManagementServiceClient()
         self.id, self.name, self._kms = "gcp:" + name, name, client
@@ -93,18 +104,24 @@ class GcpKmsKey:
         return self._kms.decrypt(request={"name": self.name, "ciphertext": blob}).plaintext
 
 
-def master_key(spec: str, secret_key: str) -> MasterKey:
-    """`AGENTCANVAS_KMS_KEY` (or an entry of `AGENTCANVAS_KMS_PREVIOUS_KEYS`) -> the master key."""
+def master_key(spec: str, secret_key: str, setting: str = "AGENTCANVAS_KMS_KEY") -> MasterKey:
+    """`AGENTCANVAS_KMS_KEY` (or an entry of `AGENTCANVAS_KMS_PREVIOUS_KEYS`, named by `setting`) -> the master key."""
     if not spec:
         return LocalKey(secret_key.ljust(32, "\0"))  # development default; short dev keys are padded
     kind, _, ref = spec.partition(":")
     if kind == "file":
         return LocalKey(Path(ref).read_text().strip())
     if kind == "aws":
-        return AwsKmsKey(ref)
+        try:
+            return AwsKmsKey(ref)
+        except ImportError as e:
+            raise _client_missing(setting, spec, "kms-aws", "boto3", e) from e
     if kind == "gcp":
-        return GcpKmsKey(ref)
-    raise ValueError(f"AGENTCANVAS_KMS_KEY must start with file:, aws: or gcp: (got '{kind}:…')")
+        try:
+            return GcpKmsKey(ref)
+        except ImportError as e:
+            raise _client_missing(setting, spec, "kms-gcp", "google-cloud-kms", e) from e
+    raise ValueError(f"{setting} must start with file:, aws: or gcp: (got '{kind}:…')")
 
 
 class Keyring:
@@ -120,7 +137,8 @@ class Keyring:
 
     @classmethod
     def from_settings(cls, settings: Any) -> Keyring:
-        previous = [master_key(spec, settings.secret_key) for spec in settings.kms_previous_keys]
+        older = "AGENTCANVAS_KMS_PREVIOUS_KEYS"
+        previous = [master_key(spec, settings.secret_key, older) for spec in settings.kms_previous_keys]
         return cls(master_key(settings.kms_key, settings.secret_key), previous, settings.secret_key)
 
     async def _unwrap(self, row: OrgDataKey) -> bytes:

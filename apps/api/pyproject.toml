@@ -52,6 +52,12 @@ dependencies = [
   "pillow>=11",
 ]
 
+[project.optional-dependencies]
+# cloud KMS clients for AGENTCANVAS_KMS_KEY=aws:/gcp: (the API image installs both; a source install adds
+# the one it needs: uv sync --extra kms-aws)
+kms-aws = ["boto3>=1.35"]
+kms-gcp = ["google-cloud-kms>=3.2"]
+
 [dependency-groups]
 dev = [
     "pytest>=8",

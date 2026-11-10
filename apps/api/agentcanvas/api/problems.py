@@ -39,7 +39,10 @@ def unexpected_error(request_id: str | None) -> JSONResponse:
 def install_problem_handlers(app: FastAPI) -> None:
     @app.exception_handler(DomainError)
     async def _domain(_: Request, exc: DomainError) -> JSONResponse:
-        resp = problem(exc.status, exc.title, exc.detail, exc.type_, **exc.extra)
+        extra = {k: v for k, v in exc.extra.items() if k != "challenge"}
+        resp = problem(exc.status, exc.title, exc.detail, exc.type_, **extra)
+        if (challenge := exc.extra.get("challenge")) is not None:  # what a 401 asks for (WWW-Authenticate)
+            resp.headers["WWW-Authenticate"] = challenge
         if (retry := exc.extra.get("retry_after")) is not None:
             resp.headers["Retry-After"] = str(retry)
         return resp

@@ -6,8 +6,10 @@ server later tightens every organisation too):
 - `allow_local_mcp`: an organisation may switch local (stdio) MCP servers off, never on when the server forbids them;
 - `approve_own_runs`: likewise, an organisation may forbid approving a run you started, never allow it when the
   server forbids it;
-- the four rate limits, the concurrent-run limit and the longest API token lifetime: an organisation may lower them,
-  never raise them above the server's (when the server's is 0, unlimited, any limit is lower);
+- the four rate limits, the concurrent-run limit, the longest API token lifetime and the two spending caps: an
+  organisation may lower them, never raise them above the server's (when the server's is 0, unlimited, any limit is
+  lower);
+- `cost_warn_percent`: where a spending cap's alert is raised, any share the organisation likes;
 - `audit_retention_days`: an organisation may keep its audit log longer than the server does (0, forever, included),
   never shorter: the log is how the operator and the organisation answer for changes;
 - `memory_retention_days`: any number of days (0, forever, included): deleting sooner is the privacy-friendly way.
@@ -35,10 +37,14 @@ RATE_LIMITS = (
     "rate_limit_per_share_client",
 )
 # the organisation's may be lower than the server's, not higher
-CEILINGS = (*RATE_LIMITS, "max_concurrent_runs", "max_token_days")
+SPENDING_CAPS = ("max_cost_usd_day", "max_cost_usd_month")
+CEILINGS = (*RATE_LIMITS, "max_concurrent_runs", "max_token_days", *SPENDING_CAPS)
 RETENTIONS = ("audit_retention_days", "memory_retention_days")
 SWITCHES = ("allow_local_mcp", "approve_own_runs")  # the organisation may switch them off, never on
-FIELDS = (*SWITCHES, *CEILINGS, *RETENTIONS)
+CHOICES = ("cost_warn_percent",)  # any value: the server's is only the default
+FIELDS = (*SWITCHES, *CEILINGS, *RETENTIONS, *CHOICES)
+UNITS = {"max_concurrent_runs": " runs at once", "max_token_days": " days", "max_cost_usd_day": " USD a day",
+         "max_cost_usd_month": " USD a month"}  # fmt: skip
 
 
 class OrgLimits(BaseModel):
@@ -64,6 +70,15 @@ class OrgLimits(BaseModel):
     )
     audit_retention_days: int | None = Field(None, ge=0, le=3650, description="not below the server's; 0 = forever")
     memory_retention_days: int | None = Field(None, ge=0, le=3650, description="0 = forever")
+    max_cost_usd_day: float | None = Field(
+        None, gt=0, le=100_000_000, description="USD a UTC day for the whole organisation; past it runs stop"
+    )
+    max_cost_usd_month: float | None = Field(
+        None, gt=0, le=100_000_000, description="USD a calendar month (UTC) for the whole organisation"
+    )
+    cost_warn_percent: int | None = Field(
+        None, ge=1, le=100, description="the share of a spending cap at which a cost alert is raised"
+    )
 
 
 def stored(org_settings: dict[str, Any] | None) -> dict[str, Any]:
@@ -89,6 +104,9 @@ def effective(server: Settings, org_settings: dict[str, Any] | None) -> dict[str
             out["audit_retention_days"] = 0 if days == 0 else max(days, floor)
     if "memory_retention_days" in own:
         out["memory_retention_days"] = own["memory_retention_days"]
+    for key in CHOICES:
+        if key in own:
+            out[key] = own[key]
     return out
 
 
@@ -107,9 +125,9 @@ def check(server: Settings, changes: dict[str, Any]) -> None:
     for key in CEILINGS:
         value, ceiling = changes.get(key), getattr(server, key)
         if value is not None and ceiling > 0 and value > ceiling:
-            unit = {"max_concurrent_runs": " runs at once", "max_token_days": " days"}.get(key, " a minute")
+            unit = UNITS.get(key, " a minute")
             raise InvalidInput(
-                f"the server limits this to {ceiling}{unit} (AGENTCANVAS_{key.upper()}): lower it, not higher"
+                f"the server limits this to {ceiling:g}{unit} (AGENTCANVAS_{key.upper()}): lower it, not higher"
             )
     days = changes.get("audit_retention_days")
     floor = server.audit_retention_days

@@ -551,6 +551,7 @@ p a, small a, .small a, li > a:not([class]), td a:not([class]), td a[title] { te
 .action textarea { font-size: 12px; }
 .inbox-list { display: flex; flex-direction: column; gap: 12px; }
 .inbox-item { border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 14px 16px; background: var(--panel); box-shadow: var(--shadow-sm); }
+.inbox-item.linked { box-shadow: 0 0 0 2px var(--accent), 0 0 0 6px var(--accent-ring), var(--shadow-sm); }
 .palette-overlay {
   position: fixed; inset: 0; background: var(--overlay); z-index: 50; display: flex; justify-content: center; align-items: flex-start;
   padding-top: 12vh; backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); animation: fade .15s ease-out;
@@ -936,6 +937,7 @@ label.button:has(+ input:focus-visible) { outline: 2px solid var(--accent); outl
 .share-page.embed .share-header { padding: 10px 0 8px; }
 .share-page.embed .share-header h1 { font-size: 16px; }
 .share-page.embed .share-msg { max-width: 92%; padding: 8px 12px; }
+.share-page.embed .share-foot { margin: -4px 0 6px; font-size: 11px; }
 .share-box textarea { min-height: 60px; }
 .share-box .row { flex-wrap: wrap; }
 .share-box label { display: block; margin: 8px 0 3px; font-weight: 600; }

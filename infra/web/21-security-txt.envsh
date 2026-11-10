@@ -1,0 +1,17 @@
+#!/bin/sh
+# /.well-known/security.txt (RFC 9116) names where to report a vulnerability. SECURITY_CONTACT (an https:, mailto: or
+# tel: URI) and SECURITY_POLICY (an https: URL) point it at your own security team; by default they are AgentCanvas's
+# private advisory form and security policy. Both are pasted into the nginx template, so anything but a plain URI stops
+# the start rather than changing the configuration.
+export SECURITY_CONTACT="${SECURITY_CONTACT:-https://github.com/marunsct/AgentCanvas/security/advisories/new}"
+export SECURITY_POLICY="${SECURITY_POLICY:-https://github.com/marunsct/AgentCanvas/blob/main/.github/SECURITY.md}"
+case $SECURITY_CONTACT in
+  *[!A-Za-z0-9._~:/?#@!\&+,=%-]*) echo "SECURITY_CONTACT: '$SECURITY_CONTACT' is not a plain URI" >&2; exit 1 ;;
+  https://?*|mailto:?*|tel:?*) ;;
+  *) echo "SECURITY_CONTACT: '$SECURITY_CONTACT' must start with https://, mailto: or tel:" >&2; exit 1 ;;
+esac
+case $SECURITY_POLICY in
+  *[!A-Za-z0-9._~:/?#@!\&+,=%-]*) echo "SECURITY_POLICY: '$SECURITY_POLICY' is not a plain URI" >&2; exit 1 ;;
+  https://?*) ;;
+  *) echo "SECURITY_POLICY: '$SECURITY_POLICY' must start with https://" >&2; exit 1 ;;
+esac

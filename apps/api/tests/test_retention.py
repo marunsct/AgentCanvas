@@ -72,12 +72,12 @@ async def test_audit_rows_and_memories_expire(app, api_client):
 
     job = app.state.retention
     assert (job.audit_days, job.memory_days) == (400, 0)  # the defaults
-    await make_greeter(api_client)  # audited
-    async with app.state.db.sessionmaker() as s:
+    async with app.state.db.sessionmaker() as s:  # first: the log is written in time order
         s.add(
             AuditLog(org_id="org_default", action="old", target="-", created_at=datetime.now(UTC) - timedelta(days=401))
         )
         await s.commit()
+    await make_greeter(api_client)  # audited
     await job.tick(datetime.now(UTC))
     actions = [e["action"] for e in (await api_client.get("/v1/org/audit")).json()]
     assert "old" not in actions and "create_workflow" in actions

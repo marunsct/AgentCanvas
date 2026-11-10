@@ -81,6 +81,13 @@ class Organization(Base):
     scim_token_hash: Mapped[str | None] = mapped_column(Text, unique=True)
     scim_token_prefix: Mapped[str | None] = mapped_column(Text)
     scim_token_created_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
+    # deletion (E-7): suspended at once (nothing reaches it any more), deleted by a background job after
+    # `delete_after`; the row then stays as a tombstone (`deleted_at`) holding the deletion's audit entries
+    suspended_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
+    delete_after: Mapped[datetime | None] = mapped_column(UtcDateTime())
+    deletion_requested_by: Mapped[str | None] = mapped_column(Text)
+    purge_lease_until: Mapped[datetime | None] = mapped_column(UtcDateTime())  # the replica deleting it now
+    deleted_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
     created_at: Mapped[datetime] = _now()
 
 
@@ -195,9 +202,36 @@ class Deployment(Base):
     workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"))
     version_id: Mapped[str] = mapped_column(ForeignKey("workflow_version.id", ondelete="CASCADE"))
     environment: Mapped[str] = mapped_column(Text, server_default=text("'prod'"), default="prod")
-    api_key_hash: Mapped[str] = mapped_column(Text)
-    key_prefix: Mapped[str | None] = mapped_column(Text)  # shown in the UI to tell keys apart
+    # the single key of the previous release, copied to `deployment_key` (2026-11); kept, unused, so a server still
+    # on that release accepts the key during an upgrade. A later migration drops both.
+    api_key_hash: Mapped[str | None] = mapped_column(Text)
+    key_prefix: Mapped[str | None] = mapped_column(Text)
     active: Mapped[bool] = mapped_column(Boolean, server_default=text("true"), default=True)
+    created_at: Mapped[datetime] = _now()
+    # signs the completion callbacks of its runs (services/callbacks.py), encrypted with the organisation's data key;
+    # NULL until a builder creates one: until then runs cannot ask for a callback
+    callback_secret: Mapped[str | None] = mapped_column(Text)
+    # app connector name -> the tools its runs left out because the server changed them since publishing (E-4):
+    # {"added", "changed", "outcome", "unpinned", "run_id", "seen_at"}; shown in the editor, cleared on publish
+    tool_drift: Mapped[dict[str, Any] | None] = mapped_column(Json)
+
+
+class DeploymentKey(Base):
+    """One of a deployment's API keys (E-8): `Authorization: Bearer ac_…` runs the deployment. A deployment may have
+    several at once, so a key is replaced without downtime (make the new one, move callers, revoke the old one). Only
+    the SHA-256 of the key is kept; it is shown once."""
+
+    __tablename__ = "deployment_key"
+    __table_args__ = (Index("deployment_key_deployment_idx", "deployment_id"),)
+    id: Mapped[str] = mapped_column(String, primary_key=True)  # dky_<ulid>
+    deployment_id: Mapped[str] = mapped_column(ForeignKey("deployment.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(Text)
+    key_hash: Mapped[str] = mapped_column(Text, unique=True)
+    prefix: Mapped[str] = mapped_column(Text)  # the first characters, shown to tell keys apart
+    created_by: Mapped[str | None] = mapped_column(Text)  # the person who made it (none: from before E-8)
+    expires_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
+    last_used_at: Mapped[datetime | None] = mapped_column(UtcDateTime())  # written at most once a minute
+    revoked_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
     created_at: Mapped[datetime] = _now()
 
 
@@ -216,6 +250,8 @@ class DeploymentShare(Base):
     suggestions: Mapped[list[Any]] = mapped_column(Json, server_default=text("'[]'"), default=list)
     input_field: Mapped[str | None] = mapped_column(Text)  # None: picked from the workflow's inputs
     frame_origins: Mapped[list[Any]] = mapped_column(Json, server_default=text("'[]'"), default=list)  # [] = any site
+    # what the page says to tell visitors they chat with an AI (AI Act Art. 50(1)); '' = the default wording
+    ai_notice: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
     updated_by: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = _now()
     updated_at: Mapped[datetime] = mapped_column(
@@ -273,7 +309,10 @@ class Thread(Base):
         Index("thread_created_idx", "created_at", "id"),  # the Conversations list, newest first
         Index("thread_workflow_created_idx", "workflow_id", "created_at", "id"),
         Index("thread_deployment_idx", "deployment_id"),  # deleting a deployment (SET NULL), the kill switch
-    )
+        # an end user's conversations (E-7: erasure and export requests)
+        Index("thread_end_user_idx", "end_user", postgresql_where=text("end_user IS NOT NULL"),
+              sqlite_where=text("end_user IS NOT NULL")),
+    )  # fmt: skip
     id: Mapped[str] = mapped_column(String, primary_key=True)  # == LangGraph thread_id
     workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"))
     deployment_id: Mapped[str | None] = mapped_column(ForeignKey("deployment.id", ondelete="SET NULL"))
@@ -286,6 +325,8 @@ class Thread(Base):
     )
     # a paused run of a framework without its own checkpoints (runtime/paused.py), as that framework's JSON
     paused_state: Mapped[str | None] = mapped_column(Text)
+    # the deployment API's end user ("api:<deployment>:<user_id>") who started it, when the caller named one
+    end_user: Mapped[str | None] = mapped_column(Text)
 
 
 class Run(Base):
@@ -326,6 +367,10 @@ class Run(Base):
     recording: Mapped[dict[str, Any] | None] = mapped_column(Json)
     # G-10: the run's events, compact (`runtime/trajectory.py`): the trajectory view once they left memory
     events: Mapped[list[Any] | None] = mapped_column(Json)
+    # a deployment run's answer and the pauses it ended with, whole: what its caller reads later, on any server.
+    # Deferred: only the run's result reads them
+    output: Mapped[dict[str, Any] | None] = mapped_column(Json, deferred=True)
+    interrupts: Mapped[list[Any] | None] = mapped_column(Json, deferred=True)
     # FR-X-10: stopped by a server shutdown before it finished; the next instance continues the thread
     handover: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     # someone asked to stop it (Stop, Delete conversation, the F-5 kill switch), maybe on another instance: the one
@@ -355,6 +400,35 @@ class Run(Base):
     ended_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
 
 
+class RunCallback(Base):
+    """A deployment run's completion callback (E-2): the caller's `callback_url`, sent the run's result once it ended,
+    signed with the deployment's callback secret and tried again with growing pauses until it answers 2xx. Every
+    server delivers due ones; a conditional update gives each attempt to exactly one."""
+
+    __tablename__ = "run_callback"
+    __table_args__ = (
+        CheckConstraint("status IN ('pending','delivered','failed')", name="run_callback_status"),
+        # the delivery job reads only callbacks still to send
+        Index(
+            "run_callback_due_idx",
+            "next_at",
+            postgresql_where=text("status = 'pending'"),
+            sqlite_where=text("status = 'pending'"),
+        ),
+        Index("run_callback_deployment_idx", "deployment_id"),  # deleting a deployment (cascade)
+    )
+    run_id: Mapped[str] = mapped_column(ForeignKey("run.id", ondelete="CASCADE"), primary_key=True)
+    deployment_id: Mapped[str] = mapped_column(ForeignKey("deployment.id", ondelete="CASCADE"))
+    url: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, server_default=text("'pending'"), default="pending")
+    attempts: Mapped[int] = mapped_column(SmallInteger, server_default=text("0"), default=0)
+    next_at: Mapped[datetime] = _now()  # not before: the next attempt (or the end of the current one's lease)
+    last_status: Mapped[int | None] = mapped_column(Integer)  # the HTTP status of the last attempt
+    last_error: Mapped[str | None] = mapped_column(Text)
+    delivered_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
+    created_at: Mapped[datetime] = _now()
+
+
 class SpendArchive(Base):
     """What the runs of deleted conversations spent (retention, or deleted by hand), per workflow, UTC hour, deployment
     and person, so day and month budgets and the spending report still count it. Written by `delete_thread_rows`;
@@ -372,6 +446,22 @@ class SpendArchive(Base):
     cost_usd: Mapped[Decimal] = mapped_column(Numeric(14, 6), server_default=text("0"), default=Decimal(0))
     cache_hits: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
     fallbacks: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+
+
+class ModelSpend(Base):
+    """What model calls outside runs spent, per project, UTC hour and kind: the Copilot's answers ("copilot") and AI
+    judges scoring runs, experiments and evaluator tests ("judge"). Spending caps and the spending report count it
+    with the runs; it goes with its project."""
+
+    __tablename__ = "model_spend"
+    __table_args__ = (Index("model_spend_hour_idx", "hour"),)
+    project_id: Mapped[str] = mapped_column(ForeignKey("project.id", ondelete="CASCADE"), primary_key=True)
+    hour: Mapped[datetime] = mapped_column(UtcDateTime(), primary_key=True)
+    kind: Mapped[str] = mapped_column(String, primary_key=True)  # "copilot" | "judge"
+    calls: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    tokens_in: Mapped[int] = mapped_column(BigInteger, server_default=text("0"), default=0)
+    tokens_out: Mapped[int] = mapped_column(BigInteger, server_default=text("0"), default=0)
+    cost_usd: Mapped[Decimal] = mapped_column(Numeric(14, 6), server_default=text("0"), default=Decimal(0))
 
 
 class RunSearch(Base):
@@ -415,6 +505,13 @@ class InterruptTask(Base):
         Index("interrupt_pending_idx", "status", "created_at"),
         Index("interrupt_thread_idx", "thread_id"),  # deleting a conversation or a run (cascade, retention)
         Index("interrupt_run_idx", "run_id"),
+        # what the notifier escalates next (a step's own "escalate after"): only items that have such a time
+        Index(
+            "interrupt_escalate_idx",
+            "escalate_at",
+            postgresql_where=text("escalate_at IS NOT NULL"),
+            sqlite_where=text("escalate_at IS NOT NULL"),
+        ),
     )
     id: Mapped[str] = mapped_column(String, primary_key=True)  # LangGraph interrupt id
     thread_id: Mapped[str] = mapped_column(ForeignKey("thread.id", ondelete="CASCADE"))
@@ -423,6 +520,9 @@ class InterruptTask(Base):
     kind: Mapped[str] = mapped_column(Text)
     payload: Mapped[dict[str, Any]]
     status: Mapped[str] = mapped_column(Text, server_default=text("'pending'"), default="pending")
+    # who may decide (services/approvers.py): the step's `approvers` setting as it was when the run paused, and the
+    # role the item was escalated to when nobody decided in time
+    approvers: Mapped[dict[str, Any] | None] = mapped_column(Json, nullable=True)
     assignee_role: Mapped[str | None] = mapped_column(Text)
     # the person whose run asked (a resumed run keeps the first one): with self-approval off, not the one to decide.
     # A plain id, not a foreign key: it is a record of who asked, kept as it was.
@@ -431,6 +531,54 @@ class InterruptTask(Base):
     decided_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
     created_at: Mapped[datetime] = _now()
     decided_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
+    # which announcement of it the notifier claimed (services/notifier.py): NULL not yet, "waiting" (or "off": its
+    # organisation sends none, "quiet": a draft run its starter watches)
+    noticed: Mapped[str | None] = mapped_column(Text)
+    # escalation (services/notifier.py): when its step's "escalate after" runs out (NULL: at the approval expiry, if
+    # the step escalates at all), and when it was escalated to `assignee_role` (its expiry counts from then)
+    escalate_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
+    escalated_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
+
+
+class ApprovalNotice(Base):
+    """One notification about an Inbox item to send on one channel (an outbox, services/notifier.py): claimed by one
+    server at a time, retried with backoff until it is sent or gives up."""
+
+    __tablename__ = "approval_notice"
+    __table_args__ = (
+        CheckConstraint("status IN ('pending','sent','failed','dropped')", name="approval_notice_status"),
+        Index("approval_notice_due_idx", "status", "next_at"),
+        Index("approval_notice_interrupt_idx", "interrupt_id"),
+        Index("approval_notice_org_idx", "org_id"),  # deleting an organisation
+    )
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    org_id: Mapped[str] = mapped_column(ForeignKey("organization.id", ondelete="CASCADE"))
+    interrupt_id: Mapped[str] = mapped_column(ForeignKey("interrupt_task.id", ondelete="CASCADE"))
+    event: Mapped[str] = mapped_column(Text)  # waiting | escalated
+    channel: Mapped[str] = mapped_column(Text)  # email | slack | webhook
+    status: Mapped[str] = mapped_column(Text, server_default=text("'pending'"), default="pending")
+    attempts: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    next_at: Mapped[datetime] = _now()  # due from then; a claim moves it on by a lease
+    last_error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = _now()
+    sent_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
+
+
+class OrgNotifier(Base):
+    """Where an organisation's approval notifications go (Settings > Organisation > Notifications). The Slack address
+    and the webhook's signing secret are encrypted with the organisation's data key, like project secrets."""
+
+    __tablename__ = "org_notifier"
+    org_id: Mapped[str] = mapped_column(ForeignKey("organization.id", ondelete="CASCADE"), primary_key=True)
+    email: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    email_to: Mapped[list[Any]] = mapped_column(Json, server_default=text("'[]'"), default=list)
+    webhook_url: Mapped[str | None] = mapped_column(Text)
+    slack_url: Mapped[bytes | None] = mapped_column(LargeBinary)  # encrypted: the address holds Slack's token
+    webhook_secret: Mapped[bytes | None] = mapped_column(LargeBinary)  # encrypted: signs what the webhook gets
+    updated_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id", ondelete="SET NULL"))
+    updated_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(), server_default=text("CURRENT_TIMESTAMP"), onupdate=func.now(), nullable=False
+    )
 
 
 class A2AReply(Base):
@@ -775,6 +923,30 @@ class CostAlert(Base):
     created_at: Mapped[datetime] = _now()
 
 
+class SpendCapAlert(Base):
+    """An organisation's or a project's spending reached a share of its day or month cap: raised once per period and
+    share, whichever run or server crossed it first."""
+
+    __tablename__ = "spend_cap_alert"
+    __table_args__ = (
+        UniqueConstraint("org_id", "scope", "period", "period_start", "share", name="spend_cap_alert_once"),
+        Index("spend_cap_alert_org_idx", "org_id", "created_at"),
+    )
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    org_id: Mapped[str] = mapped_column(ForeignKey("organization.id", ondelete="CASCADE"))
+    # "" for the organisation's cap, else the project's id (`project_id`, which goes with its project)
+    scope: Mapped[str] = mapped_column(String)
+    project_id: Mapped[str | None] = mapped_column(ForeignKey("project.id", ondelete="CASCADE"), index=True)
+    run_id: Mapped[str | None] = mapped_column(Text)  # the run whose spending crossed it
+    period: Mapped[str] = mapped_column(Text)  # "day" | "month"
+    period_start: Mapped[str] = mapped_column(String(10))  # UTC "2026-10-10" (day) or "2026-10" (month)
+    share: Mapped[float] = mapped_column(Float)  # of the cap; 1.0 = the cap was reached and runs stop
+    spent_usd: Mapped[float] = mapped_column(Float)
+    limit_usd: Mapped[float] = mapped_column(Float)
+    message: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = _now()
+
+
 class AnnotationQueue(Base):
     """A queue of runs for people to review (S13): fed by rules on production runs or by hand."""
 
@@ -858,7 +1030,7 @@ class Trigger(Base):
 
 class AuditLog(Base):
     __tablename__ = "audit_log"
-    __table_args__ = (Index("audit_org_time_idx", "org_id", "created_at"),)
+    __table_args__ = (Index("audit_org_time_idx", "org_id", "created_at"), Index("audit_org_id_idx", "org_id", "id"))
     id: Mapped[int] = mapped_column(BigId, primary_key=True, autoincrement=True)
     org_id: Mapped[str | None] = mapped_column(ForeignKey("organization.id"))
     actor_id: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
@@ -866,6 +1038,44 @@ class AuditLog(Base):
     target: Mapped[str] = mapped_column(Text)
     detail: Mapped[dict[str, Any]] = mapped_column(Json, server_default=text("'{}'"), default=dict)
     ip: Mapped[str | None] = mapped_column(String(45))
+    created_at: Mapped[datetime] = _now()
+    # the organisation's hash chain (services/audit_chain.py): the previous entry's row_hash, and this entry's
+    prev_hash: Mapped[str | None] = mapped_column(String(64))
+    row_hash: Mapped[str | None] = mapped_column(String(64))
+
+
+class AuditAnchor(Base):
+    """Where retention left an organisation's audit chain: the last entry it deleted, so the oldest remaining one
+    still links to something known (services/audit_chain.py)."""
+
+    __tablename__ = "audit_anchor"
+    __table_args__ = (Index("audit_anchor_org_idx", "org_id", "id"),)
+    id: Mapped[int] = mapped_column(BigId, primary_key=True, autoincrement=True)
+    org_id: Mapped[str] = mapped_column(ForeignKey("organization.id"))
+    through_id: Mapped[int] = mapped_column(BigInteger)  # entries up to this id were deleted
+    last_hash: Mapped[str | None] = mapped_column(String(64))  # the row_hash of the last one deleted
+    rows: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = _now()
+
+
+class AuditOutbox(Base):
+    """An audit entry still to be delivered to one destination (a SIEM webhook, Splunk), written in the same
+    transaction as the entry: delivered rows are deleted, `dead` ones gave up after the last attempt."""
+
+    __tablename__ = "audit_outbox"
+    __table_args__ = (
+        Index("audit_outbox_due_idx", "state", "next_attempt_at"),
+        Index("audit_outbox_audit_idx", "audit_id"),
+        CheckConstraint("state IN ('pending','dead')", name="audit_outbox_state"),
+    )
+    id: Mapped[int] = mapped_column(BigId, primary_key=True, autoincrement=True)
+    audit_id: Mapped[int] = mapped_column(ForeignKey("audit_log.id", ondelete="CASCADE"))
+    org_id: Mapped[str | None] = mapped_column(ForeignKey("organization.id"))
+    destination: Mapped[str] = mapped_column(String(32))
+    state: Mapped[str] = mapped_column(String(16), default="pending", server_default=text("'pending'"))
+    attempts: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    next_attempt_at: Mapped[datetime] = mapped_column(UtcDateTime())
+    last_error: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = _now()
 
 
@@ -1056,3 +1266,40 @@ class OAuthClient(Base):
     # entered by an admin: the MCP servers (canonical addresses) they are for. None: AgentCanvas registered itself
     resources: Mapped[list[Any] | None] = mapped_column(Json, nullable=True)
     created_at: Mapped[datetime] = _now()
+
+
+class OrgExport(Base):
+    """An export of an organisation's data (E-7, GDPR Art. 20 and 28(3)(g)): built by a background job on any
+    replica (`lease_until`), kept as parts of a zip in `org_export_part` until `expires_at`, downloaded once through a
+    short-lived link of which only the SHA-256 is kept."""
+
+    __tablename__ = "org_export"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('queued','building','ready','downloaded','expired','failed')", name="org_export_status"
+        ),
+        Index("org_export_org_idx", "org_id", "created_at"),
+        Index("org_export_status_idx", "status"),
+    )
+    id: Mapped[str] = mapped_column(String, primary_key=True)  # oex_<ulid> (exp_ is an experiment)
+    org_id: Mapped[str] = mapped_column(ForeignKey("organization.id", ondelete="CASCADE"))
+    status: Mapped[str] = mapped_column(Text, server_default=text("'queued'"), default="queued")
+    requested_by: Mapped[str | None] = mapped_column(Text)
+    lease_until: Mapped[datetime | None] = mapped_column(UtcDateTime())
+    started_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
+    finished_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
+    expires_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
+    size: Mapped[int | None] = mapped_column(BigInteger)
+    sha256: Mapped[str | None] = mapped_column(Text)
+    error: Mapped[str | None] = mapped_column(Text)
+    link_hash: Mapped[str | None] = mapped_column(Text, unique=True)
+    link_expires_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
+    downloaded_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
+    created_at: Mapped[datetime] = _now()
+
+
+class OrgExportPart(Base):
+    __tablename__ = "org_export_part"
+    export_id: Mapped[str] = mapped_column(ForeignKey("org_export.id", ondelete="CASCADE"), primary_key=True)
+    seq: Mapped[int] = mapped_column(Integer, primary_key=True)
+    data: Mapped[bytes] = mapped_column(LargeBinary)

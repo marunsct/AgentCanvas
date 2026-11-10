@@ -108,6 +108,24 @@ export function signInAgain(): boolean {
   return true;
 }
 
+/** The API wants a stronger sign-in than the token shows (multi-factor; RFC 9470's insufficient_user_authentication):
+ * sign in again at the identity provider, asking it to authenticate afresh (`prompt=login`) and, when the API names
+ * them, at the level it needs (`acr_values`). Same guard as `signInAgain`: a provider that still does not do it gets
+ * the API's explanation shown instead of a redirect loop. Returns whether it redirected. */
+export function stepUp(acrValues?: string | null): boolean {
+  if (!manager) return false;
+  let last = 0;
+  try { last = Number(sessionStorage.getItem(LAST_REDIRECT) ?? 0); } catch { /* storage blocked */ }
+  if (Date.now() - last < 60_000) return false;
+  try { sessionStorage.setItem(LAST_REDIRECT, String(Date.now())); } catch { /* storage blocked */ }
+  void manager.signinRedirect({
+    state: location.pathname + location.search,
+    prompt: "login",
+    ...(acrValues ? { acr_values: acrValues } : {}),
+  });
+  return true;
+}
+
 /** Sign out at the identity provider; providers without an end-session endpoint just forget the local session. */
 export async function signOut(): Promise<void> {
   if (!manager) return;

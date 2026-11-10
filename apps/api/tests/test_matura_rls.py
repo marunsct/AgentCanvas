@@ -40,6 +40,14 @@ LATER = [
     MIGRATIONS / "20261029_f3b7d1a9c5e8_run_search.py",
     MIGRATIONS / "20261029_a9d3f7b1c5e2_presence.py",
     MIGRATIONS / "20261110_af1afc823a01_spend_archive.py",
+    MIGRATIONS / "20261110_2201e65b5be8_deployment_keys.py",
+    MIGRATIONS / "20261110_c7bf8b0b2ba4_spend_cap_alert.py",
+    MIGRATIONS / "20261110_29547c665705_model_spend.py",
+    MIGRATIONS / "20261111_77fe2c6e6cec_run_callback.py",
+    MIGRATIONS / "20261110_7ad337b9ba7d_approval_notifications.py",
+    MIGRATIONS / "20261111_f80c7d9d9409_org_export.py",
+    MIGRATIONS / "20261110_7d5c15cdde99_audit_outbox.py",
+    MIGRATIONS / "20261110_24a6fd6e48f9_audit_chain.py",
 ]  # tables added after it, each with its own policy
 
 

@@ -8,7 +8,7 @@ from collections.abc import Iterator
 from agentcanvas.ir.models import BUDGET_LIMITS, Node, Resource, unenforced_limits
 from agentcanvas.registry import SAMPLING, provider_installed
 from agentcanvas.sampling import refuses
-from agentcanvas.validation.engine import Diagnostic, ValidationContext, error, rule, warning
+from agentcanvas.validation.engine import Diagnostic, ValidationContext, error, info, rule, warning
 
 
 @rule
@@ -101,6 +101,22 @@ def agent_tools(ctx: ValidationContext) -> Iterator[Diagnostic]:
                     node_id=el.id,
                     path="config.approve_tools",
                 )
+
+
+@rule
+def mcp_pinned(ctx: ValidationContext) -> Iterator[Diagnostic]:
+    """E045: publishing pins an app connector's tools as "Browse tools" listed them (OWASP ASI04); a connector never
+    browsed has nothing to pin. In the editor it is a note: draft runs are not pinned."""
+    for r in ctx.wf.resources:
+        discovered = r.config.get("discovered") if r.type == "mcp.server" else None
+        if r.type != "mcp.server" or (isinstance(discovered, list) and any(isinstance(d, dict) for d in discovered)):
+            continue
+        yield (error if ctx.publishing else info)(
+            "E045",
+            f"'{r.name}': its tools were never browsed, so publishing has no reviewed tools to pin",
+            node_id=r.id,
+            hint="select the connector, click Browse tools and review its tools, then publish",
+        )
 
 
 def mcp_tools(r: Resource) -> list[dict] | None:

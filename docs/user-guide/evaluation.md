@@ -62,7 +62,7 @@ be cancelled and survives a server restart.
 
 The results grid shows mean scores, pass rates, latency, tokens and cost per target, and each example's output
 with its run timeline one click away. The AI judges' own cost (LLM and pairwise judges) is shown apart from the
-runs' cost; a judge model without a catalog price is named instead of being counted as free. **Compare** two experiments to see which examples improved or regressed.
+runs' cost, and counts against the organisation's and project's [spending caps](settings.md#spending-caps); a judge model without a catalog price is named instead of being counted as free. **Compare** two experiments to see which examples improved or regressed.
 
 **Why runs failed:** under each target's numbers, a line such as "4 of 30 runs failed. Most often: exact (3): differs:
 out" opens to the failures grouped: runs that did not finish by their error, and each evaluator by its comment (numbers

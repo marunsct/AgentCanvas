@@ -17,8 +17,10 @@ from sqlalchemy.orm.exc import StaleDataError
 from agentcanvas.db.models import (
     AnnotationItem,
     AnnotationQueue,
+    ApprovalNotice,
     AppUser,
     AuditLog,
+    AuditOutbox,
     Dataset,
     Deployment,
     Evaluator,
@@ -41,6 +43,7 @@ from agentcanvas.db.models import (
 )
 from agentcanvas.errors import Conflict, NotFound
 from agentcanvas.ids import new_id
+from agentcanvas.services import audit_chain, audit_sink
 
 DEV_ORG, DEV_USER, DEV_PROJECT = "org_default", "usr_dev", "prj_default"
 USED_EVERY = timedelta(minutes=1)  # how often choosing an organisation is written down (`UserRepo.used`)
@@ -320,9 +323,28 @@ class AuditRepo:
     def __init__(self, s: AsyncSession):
         self.s = s
 
-    async def add(self, row: AuditLog) -> None:
+    async def add(self, row: AuditLog, *, commit: bool = True) -> None:
+        """Every audit entry is written here, and commits (`commit=False`: the caller's transaction commits it with
+        its own changes, the organisation's chain held until then). It joins its organisation's hash chain
+        (services/audit_chain.py), and one that is forwarded (services/audit_sink.py) is queued for each destination
+        in the same transaction, so a recorded entry always leaves the server too."""
+        forwarding = audit_sink.forwarding()
+        forwarded = forwarding.forwards(row.action)
+        row.created_at = row.created_at or datetime.now(UTC)
+        await audit_chain.link(self.s, row)
         self.s.add(row)
-        await self.s.commit()
+        if forwarded and forwarding.destinations:
+            await self.s.flush()  # the row's id
+            self.s.add_all(
+                AuditOutbox(audit_id=row.id, org_id=row.org_id, destination=name, next_attempt_at=row.created_at)
+                for name in forwarding.destinations
+            )
+        if commit:
+            await self.s.commit()
+        else:
+            await self.s.flush()
+        if forwarded:
+            audit_sink.log_event(audit_sink.AuditEvent.of(row))
 
     async def list(
         self,
@@ -553,6 +575,8 @@ async def delete_thread_rows(session: AsyncSession, thread_id: str) -> None:
     local edition) does not enforce the ON DELETE CASCADE the schema declares. What its runs spent is kept first
     (`archive_spend`): budgets and the spending report still count it."""
     await archive_spend(session, thread_id)
+    asked = select(InterruptTask.id).where(InterruptTask.thread_id == thread_id)
+    await session.execute(delete(ApprovalNotice).where(ApprovalNotice.interrupt_id.in_(asked)))
     await session.execute(delete(InterruptTask).where(InterruptTask.thread_id == thread_id))
     await session.execute(delete(RunSearch).where(RunSearch.thread_id == thread_id))
     await session.execute(delete(Run).where(Run.thread_id == thread_id))

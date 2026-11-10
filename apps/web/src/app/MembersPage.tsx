@@ -3,11 +3,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { maturaMode } from "../api/auth";
-import { apiFetch } from "../api/client";
+import { apiDownload, apiFetch } from "../api/client";
 import { orgPortalUrl, useCan, useMe, type Role } from "../api/session";
 import { QueryStatus } from "../ui/QueryStatus";
 import type { MemberOut as Member } from "../api/generated";
-import { confirmDialog } from "../ui/dialog";
+import { confirmDialog, promptDialog, toast } from "../ui/dialog";
 
 
 const ROLES: { role: Role; what: string }[] = [
@@ -31,10 +31,33 @@ export function MembersPage() {
     mutationFn: (id: string) => apiFetch(`/org/members/${id}`, { method: "DELETE" }),
     onSuccess: done,
   });
+  const erase = useMutation({
+    mutationFn: ({ id, ...body }: { id: string; reason: string; conversations: boolean }) =>
+      apiFetch<{ account_erased: boolean }>(`/org/members/${id}/erase`, { method: "POST", json: body }),
+    onSuccess: (out) => { done(); toast(out.account_erased ? "Erased" : "Erased here; they keep their account in another organisation"); },
+  });
+  const exportData = useMutation({
+    mutationFn: (id: string) => apiDownload(`/org/members/${id}/export`, `agentcanvas-${id}.json`),
+  });
+  const askErase = async (m: Member) => {
+    const reason = await promptDialog({
+      title: `Erase ${m.email}?`,
+      body: "They are removed, their API tokens and sign-ins revoked, and their memories and Copilot chats deleted. Their name and email are removed unless they belong to another organisation. This cannot be undone.",
+      confirm: "Next", danger: true,
+      input: { label: "Reason (the request you are answering, kept in the audit log)", required: true },
+    });
+    if (!reason || !reason.trim()) return;
+    const conversations = await confirmDialog({
+      title: "Also delete the conversations they started?",
+      body: "With the files they attached. Otherwise those stay with the project.",
+      confirm: "Delete them too", cancel: "Keep them", danger: true,
+    });
+    erase.mutate({ id: m.user_id, reason: reason.trim(), conversations });
+  };
   const me = useMe((s) => s.me);
   const admin = useCan("admin") && !maturaMode();
   const portal = orgPortalUrl("members");
-  const error = (set.error ?? remove.error) as Error | null;
+  const error = (set.error ?? remove.error ?? erase.error ?? exportData.error) as Error | null;
   return (
     <section className="settings-card members">
       <h2>Members</h2>
@@ -77,7 +100,11 @@ export function MembersPage() {
               <td>{admin && m.user_id !== me.id && (
                 m.invited
                   ? <button type="button" className="link small" onClick={async () => { if (await confirmDialog({ title: `Cancel the invitation to ${m.email}?`, confirm: "Cancel invitation", cancel: "Keep it", danger: true })) remove.mutate(m.user_id); }}>Cancel invitation</button>
-                  : <button type="button" className="link small" onClick={async () => { if (await confirmDialog({ title: `Remove ${m.email}?`, body: "They lose access to this organisation at once.", confirm: "Remove", danger: true })) remove.mutate(m.user_id); }}>Remove</button>
+                  : <>
+                      <button type="button" className="link small" onClick={async () => { if (await confirmDialog({ title: `Remove ${m.email}?`, body: "They lose access to this organisation at once.", confirm: "Remove", danger: true })) remove.mutate(m.user_id); }}>Remove</button>{" "}
+                      <button type="button" className="link small" disabled={exportData.isPending} onClick={() => exportData.mutate(m.user_id)}>Export data</button>{" "}
+                      <button type="button" className="link small" disabled={erase.isPending} onClick={() => void askErase(m)}>Erase…</button>
+                    </>
               )}</td>
             </tr>
           ))}

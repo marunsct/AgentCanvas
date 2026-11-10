@@ -4,7 +4,9 @@ Read from the runs' own columns (`cost_usd`, tokens, `cache_hits`, `fallbacks`),
 (retention, or by hand) from `spend_archive`, by the hour their runs started, so it counts what the budgets count:
 the cost of models with a catalog price (a model with none adds tokens but no USD). A run belongs to the person who
 started its conversation; conversations started by a deployment, a schedule or an event have no person, and the
-per-deployment list says which deployment (a published workflow's environment) they came through.
+per-deployment list says which deployment (a published workflow's environment) they came through. Model calls
+outside runs (the Copilot's answers, AI judges) are listed apart, by kind, from `model_spend` (by the hour they were
+made): `total` and the other lists count runs only.
 """
 
 from __future__ import annotations
@@ -16,7 +18,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agentcanvas.db.models import AppUser, Deployment, Project, Run, SpendArchive, Thread, WorkflowRow
+from agentcanvas.db.models import AppUser, Deployment, ModelSpend, Project, Run, SpendArchive, Thread, WorkflowRow
 
 
 @dataclass
@@ -90,6 +92,18 @@ async def spending(
         people.setdefault(who, Total()).add(row)
         label = f"{wname} ({env})" if dep else "Not through a deployment (the editor, the Playground)"
         deployments.setdefault(dep, (label, wid if dep else None, Total()))[2].add(row)
+    m = ModelSpend
+    other = (
+        select(m.kind, func.sum(m.calls), func.sum(m.tokens_in), func.sum(m.tokens_out), func.sum(m.cost_usd))
+        .join(Project, Project.id == m.project_id)
+        .where(Project.org_id == org_id, m.hour >= since, m.hour < until)
+        .group_by(m.kind)
+    )
+    outside = [
+        {"kind": kind, "calls": int(calls), "tokens_in": int(tin), "tokens_out": int(tout),
+         "cost_usd": round(float(cost), 6)}
+        for kind, calls, tin, tout, cost in (await session.execute(other)).all()
+    ]  # fmt: skip
     names = {
         u.id: u
         for u in await session.scalars(select(AppUser).where(AppUser.id.in_([p for p in people if p is not None])))
@@ -108,6 +122,7 @@ async def spending(
             [{"id": i, "name": n, "workflow_id": w, **t.out()} for i, (n, w, t) in deployments.items()]
         ),
         "by_person": top([{"id": who, **_person(who, names.get(who or "")), **t.out()} for who, t in people.items()]),
+        "outside_runs": sorted(outside, key=lambda i: i["kind"]),
     }
 
 

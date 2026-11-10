@@ -55,6 +55,87 @@
         "uniqueItems": true,
         "description": "Pause for a human before these tools run (approve / edit / reject)."
       },
+      "approvers": {
+        "type": "object",
+        "title": "Who may approve its tool calls",
+        "description": "Leave empty to let anyone who answers the Inbox decide (and, once published, whoever calls the workflow). Naming roles, groups or people sends the decision to them only.",
+        "additionalProperties": false,
+        "dependentRequired": {
+          "escalate_after_hours": [
+            "escalate_to"
+          ]
+        },
+        "properties": {
+          "roles": {
+            "type": "array",
+            "title": "Roles",
+            "items": {
+              "type": "string",
+              "enum": [
+                "reviewer",
+                "builder",
+                "admin"
+              ]
+            },
+            "uniqueItems": true,
+            "description": "Members with one of these roles."
+          },
+          "groups": {
+            "type": "array",
+            "title": "Groups",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            "uniqueItems": true,
+            "maxItems": 50,
+            "description": "Groups your identity provider keeps over SCIM, by name."
+          },
+          "people": {
+            "type": "array",
+            "title": "People",
+            "items": {
+              "type": "string",
+              "format": "member_email",
+              "pattern": "^[^@\\s]+@[^@\\s]+$",
+              "maxLength": 320
+            },
+            "uniqueItems": true,
+            "maxItems": 100,
+            "description": "Members, by email address."
+          },
+          "caller": {
+            "type": "boolean",
+            "title": "Whoever calls the published workflow may answer too",
+            "default": false,
+            "description": "Its deployment key, an MCP or A2A client, a share link or an event handler."
+          },
+          "not_initiator": {
+            "type": "boolean",
+            "title": "Not the person who started the run",
+            "default": false,
+            "description": "Someone else must decide (four eyes)."
+          },
+          "escalate_to": {
+            "type": "string",
+            "title": "If nobody decides in time, escalate to",
+            "enum": [
+              "reviewer",
+              "builder",
+              "admin"
+            ],
+            "description": "Members with this role may then decide too, and are told. Unset: the run is cancelled when the approval expires."
+          },
+          "escalate_after_hours": {
+            "type": "integer",
+            "title": "Escalate after (hours)",
+            "minimum": 1,
+            "maximum": 8760,
+            "description": "Unset: when the approval would expire (the server's approval expiry)."
+          }
+        }
+      },
       "response_format": {
         "type": "object",
         "title": "Structured output (JSON Schema)",

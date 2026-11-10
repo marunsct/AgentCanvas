@@ -119,6 +119,18 @@ async def test_other_credentials_are_not_scim_tokens(scim):
     assert (await scim.get("/v1/projects", headers=scim.scim)).status_code == 401
 
 
+async def test_the_organisations_ip_allow_list_covers_scim_and_sign_in(app, scim):
+    """E-8: the identity provider's SCIM calls and people signed in through it come from allowed networks only."""
+    r = await scim.put("/v1/org/settings", json={"security": {"allowed_networks": ["127.0.0.1"]}}, headers=ALICE)
+    assert r.status_code == 200, r.text
+    assert (await scim.get(f"{S}/Users", headers=scim.scim)).status_code == 200
+    far = httpx.ASGITransport(app=app, client=("198.51.100.9", 1))
+    async with httpx.AsyncClient(transport=far, base_url="http://test") as c:
+        assert_error(await c.get(f"{S}/Users", headers=scim.scim), 403)
+        r = await c.get("/v1/me", headers=ALICE)
+        assert r.status_code == 403 and r.json()["code"] == "network_not_allowed"
+
+
 async def test_token_is_shown_once_stored_hashed_rotated_and_revoked(app, scim):
     old = scim.scim
     status = (await scim.get("/v1/org/scim", headers=ALICE)).json()

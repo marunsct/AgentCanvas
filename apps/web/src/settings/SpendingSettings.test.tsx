@@ -14,6 +14,7 @@ const REPORT = {
     entry({ id: null, name: "No person (deployments, schedules, events)", email: null })],
   by_deployment: [entry({ id: "dep_1", name: "Triage (prod)", workflow_id: "wf_1", cost_usd: 3 }),
     entry({ id: null, name: "Not through a deployment (the editor, the Playground)", workflow_id: null, cost_usd: 1.25 })],
+  outside_runs: [{ kind: "copilot", calls: 3, tokens_in: 9000, tokens_out: 1200, cost_usd: 0.42 }],
 };
 
 let urls: string[] = [];
@@ -45,6 +46,14 @@ describe("Settings › Spending", () => {
     const deployments = screen.getByTestId("spend-deployments");
     expect(within(deployments).getByText("Triage (prod)")).toBeTruthy();
     expect(within(deployments).getByText(/Not through a deployment/)).toBeTruthy();
+  });
+
+  it("lists the Copilot and AI judges apart from the runs", async () => {
+    show();
+    const outside = await screen.findByTestId("spend-outside");
+    expect(within(outside).getByText("The Copilot")).toBeTruthy();
+    expect(within(outside).getByText("$0.4200")).toBeTruthy();
+    expect(screen.getByTestId("spend-total").textContent).toContain("$4.25"); // runs only
   });
 
   it("asks for the chosen dates, the whole last day included", async () => {

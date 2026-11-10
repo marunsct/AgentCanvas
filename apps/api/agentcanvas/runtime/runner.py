@@ -22,8 +22,18 @@ from sqlalchemy import case, func, select, update
 from sqlalchemy.exc import IntegrityError
 
 from agentcanvas.adapters.spi import FrameworkAdapter, ModelService, ThreadStateAbility, supports
-from agentcanvas.db.models import CostAlert, InterruptTask, Run, RunScore, SpendArchive, Thread, WorkflowRow
-from agentcanvas.db.repositories import ScopeRepo
+from agentcanvas.db.models import (
+    AuditLog,
+    CostAlert,
+    Deployment,
+    InterruptTask,
+    Run,
+    RunScore,
+    SpendArchive,
+    Thread,
+    WorkflowRow,
+)
+from agentcanvas.db.repositories import AuditRepo, ScopeRepo
 from agentcanvas.db.session import Database
 from agentcanvas.errors import Conflict, NotFound, Unavailable
 from agentcanvas.ids import new_id
@@ -37,8 +47,11 @@ from agentcanvas.runtime.identity import CURRENT, RunIdentity
 from agentcanvas.runtime.tracing import trace_ref
 from agentcanvas.runtime.trajectory import compact
 from agentcanvas.runtime.types import REPLAYABLE, ResumeSpec, RunMode, RunSpec
+from agentcanvas.services import offboarding
+from agentcanvas.services.approvers import escalate_at, node_approvers
 from agentcanvas.services.files import DEFAULT_MAX_BYTES, FileService
 from agentcanvas.services.secrets import masker
+from agentcanvas.services.spend_caps import SpendCaps, SpendCapStop, periods
 
 log = get_logger(__name__)
 ResourcesFactory = Callable[[str, Workflow | None], Any]
@@ -86,6 +99,7 @@ class RunHandle:
     stop_reason: str | None = None  # why it was stopped (`Run.stop_reason`); none: the person pressed Stop here
     decided: list[str] = field(default_factory=list)  # Inbox items this run answers (back to pending if it fails)
     requested_by: str | None = None  # whose request it serves: its Inbox items name them (self-approval policy)
+    approvers: dict[str, dict[str, Any]] = field(default_factory=dict)  # step -> who may decide its pause (E-6)
     deployment_id: str | None = None  # a run of a published deployment (online evaluators score these, S13)
     version_id: str | None = None
     labels: dict[str, str] = field(default_factory=dict)  # what the deployment API caller tagged it with
@@ -154,6 +168,16 @@ def _recording(h: RunHandle, status: str) -> dict[str, Any] | None:
         elif ev["type"] == "RUN_FINISHED":
             output = ev.get("output") or {}
     return {"input": h.input, "mocks": mocks, "status": status, "route": route, "output": output}
+
+
+def _result_columns(h: RunHandle, interrupts: list[dict[str, Any]]) -> dict[str, Any]:
+    """A deployment run's answer and pauses, whole, for its caller to read later from any server (E-2). Other runs
+    are read in the app, from their conversation: they keep nothing extra."""
+    if h.deployment_id is None:
+        return {}
+    finished = next((e for e in reversed([*h.events, *h.held]) if e["type"] == "RUN_FINISHED"), None)
+    output = finished.get("output") if finished else None
+    return {"output": _plain(output) if isinstance(output, dict) else None, "interrupts": _plain(interrupts) or None}
 
 
 class BudgetExceeded(Exception):
@@ -283,13 +307,6 @@ class Spent:
     month_cost: float = 0.0
 
 
-def periods(now: datetime | None = None) -> dict[str, tuple[str, datetime]]:
-    """The current budget periods (UTC): name -> (label, start)."""
-    day = (now or datetime.now(UTC)).replace(hour=0, minute=0, second=0, microsecond=0)
-    month = day.replace(day=1)
-    return {"day": (day.strftime("%Y-%m-%d"), day), "month": (month.strftime("%Y-%m"), month)}
-
-
 def period_limits(budget: Budget | None, before: Spent, cost: float) -> list[tuple[str, float, float]]:
     """(period, limit, spent including this run) of each day or month limit the budget sets."""
     if budget is None:
@@ -378,9 +395,13 @@ class Runner:
         self.draining = False  # shutting down: no new runs (FR-X-10)
         # picks the models of blocks that list `cheapest_of` (db session, workflow, project id -> workflow, notes)
         self.router: Callable[[Any, Workflow, str], Awaitable[tuple[Workflow, list[dict[str, Any]]]]] | None = None
+        # (workflow, version, connector) -> the tool drift last audited for runs the deployment's record does not
+        # cover: a draft schedule that runs every minute is audited once per change, not once per run (per server)
+        self._drift_seen: OrderedDict[tuple[str, str, str], dict[str, Any]] = OrderedDict()
         # G-5: files sent inline in a run's input (AGENTCANVAS_MAX_UPLOAD_MB, AGENTCANVAS_MAX_PROJECT_FILES_MB)
         self.max_file_bytes, self.max_project_file_bytes = DEFAULT_MAX_BYTES, 0
         self.admission: Admission | None = None  # the run queue, with a concurrent-run limit (runtime/admission.py)
+        self.caps: SpendCaps | None = None  # the organisations' and projects' spending caps (services/spend_caps.py)
 
     @property
     def models(self) -> ModelService:
@@ -478,6 +499,7 @@ class Runner:
         queue_key: str | None = None,
         handed_over: bool = False,
         caller_run_id: str | None = None,
+        end_user: str | None = None,
     ) -> RunHandle:
         """Start a run. `context=None` reuses the context of the last run on `context_from` (default: this thread).
         A deployment's run takes only files given to that deployment (`visitor_hash`: a share link's visitor, whose
@@ -487,7 +509,8 @@ class Runner:
         when a concurrent-run limit holds it back (default: low for test runs, else normal); `queue_key`: the run a
         hand-over continues, whose place in that queue it keeps; `handed_over`: started by the hand-over;
         `caller_run_id`: the run of the organisation that called this deployment run (it takes no place in the
-        queue while that run holds a slot: runtime/nesting.py)."""
+        queue while that run holds a slot: runtime/nesting.py). `end_user`: the deployment API's end user a new
+        conversation belongs to (kept for erasure and export requests)."""
         if self.draining:
             raise Unavailable("this server is restarting; retry the request", retry_after=5)
         adapter = self.adapter_for(wf)
@@ -510,6 +533,8 @@ class Runner:
                 from agentcanvas.services.projects import PROJECT_OF
 
                 PROJECT_OF[wf.id] = project_id
+            if self.caps is not None and not handed_over:  # a run handed over stops at its first check instead
+                await self.caps.refuse(project_id)  # an organisation or project at a spending cap starts nothing
             for prepare in self.prepare_hooks:
                 await prepare(wf)
             async with self.db.sessionmaker() as s:
@@ -524,6 +549,7 @@ class Runner:
                             status="running",
                             created_by=user_id,
                             title=_title(input),
+                            end_user=end_user,
                         )
                     )
                 elif thread.workflow_id != wf.id:
@@ -542,6 +568,7 @@ class Runner:
                 if context is None:
                     context = await self._last_context(s, context_from or thread_id)
                 org_id = await ScopeRepo(s).org_of("workflow", wf.id)  # None for workflows outside the database
+                await offboarding.refuse_if_closed(s, org_id)  # E-7: whatever starts it (schedules, events, hand-over)
                 if self.router is not None and project_id is not None:
                     try:
                         routed, routing = await self.router(s, wf, project_id)
@@ -606,6 +633,7 @@ class Runner:
             org_id=org_id,
             user_id=user_id,
             service_connection=service_connection or deployment_id is not None,
+            pin_tools=deployment_id is not None or origin == "trigger",
             labels={
                 k: v
                 for k, v in {"origin": origin, "deployment_id": deployment_id, "version_id": version_id}.items()
@@ -625,6 +653,7 @@ class Runner:
         handle.caller_run_id = caller_run_id
         handle.decided = decided  # an error before the answer is applied puts them back in the Inbox (R-4)
         handle.requested_by = requested_by
+        handle.approvers = node_approvers(wf)
         if input is not None and resume is None and checkpoint_id is None and origin != "test":
             handle.input = _plain(input)  # a copy: the engine may turn the caller's message dicts into objects in place
         self.handles[run_id] = handle
@@ -671,6 +700,42 @@ class Runner:
         if resume.interrupt_id and res.rowcount == 0 and await s.get(InterruptTask, resume.interrupt_id):
             raise Conflict(f"inbox item '{resume.interrupt_id}' was already decided")  # a concurrent decision won
         return ids
+
+    async def _tool_drift(self, h: RunHandle, spec: RunSpec, warning: dict[str, Any]) -> None:
+        """An app connector's server changed tools this run's version pinned (E-4): the deployment keeps it for the
+        editor, and the change is audited once (not on every run that meets it). Never fails the run."""
+        resource = str(warning.get("resource") or "")
+        seen = {k: warning[k] for k in ("added", "changed", "outcome", "unpinned") if warning.get(k) is not None}
+        drifted = bool(warning.get("added") or warning.get("changed"))  # an unpinned old version is only shown
+        try:
+            async with self.db.sessionmaker() as s:
+                dep = await s.get(Deployment, h.deployment_id) if h.deployment_id else None
+                if dep is not None and dep.version_id == h.version_id:  # what the deployment serves now
+                    kept = dict(dep.tool_drift or {})
+                    before = {k: v for k, v in (kept.get(resource) or {}).items() if k not in ("run_id", "seen_at")}
+                    new = before != seen
+                    if new:
+                        kept[resource] = {**seen, "run_id": h.run_id, "seen_at": datetime.now(UTC).isoformat()}
+                        dep.tool_drift = kept
+                else:  # a draft schedule, or a conversation still on an older version
+                    key = (h.workflow_id, h.version_id or "", resource)
+                    new = self._drift_seen.get(key) != seen
+                    self._drift_seen[key] = seen
+                    while len(self._drift_seen) > 1000:
+                        self._drift_seen.popitem(last=False)
+                if new and drifted and spec.org_id:
+                    detail = {
+                        "workflow_id": h.workflow_id, "deployment_id": h.deployment_id, "version_id": h.version_id,
+                        "resource": resource, **seen,
+                    }  # fmt: skip
+                    row = AuditLog(
+                        org_id=spec.org_id, actor_id=None, action="mcp_tool_drift", target=f"run_id={h.run_id}",
+                        detail=detail,
+                    )  # fmt: skip
+                    await AuditRepo(s).add(row, commit=False)  # the outbox takes it to the SIEM
+                await s.commit()
+        except Exception:
+            log.exception("run.tool_drift_not_recorded", run_id=h.run_id, resource=resource)
 
     # ---------------------------------------------------------------- pump ----
     async def _emit(self, h: RunHandle, event: dict[str, Any]) -> None:
@@ -750,6 +815,7 @@ class Runner:
             h.admitted.set()
             before = await self._spent(h, budget) if budget else Spent()
             check_budget(budget, h.usage, before)  # a conversation that is already over budget does not start
+            await self._spend_caps(h, saved=True)  # nor one whose organisation reached a cap while it waited
             resources = self.resources(spec.thread_id, spec.workflow)
             hide = masker(list((getattr(resources, "_secrets", None) or {}).values()))
             events = self.adapter_for(spec.workflow).execute(spec, resources)
@@ -762,10 +828,13 @@ class Runner:
                         now = await self._concurrent_spend(h, before) if by_period else before
                         await self._cost_alerts(h, budget, now)
                         check_budget(budget, h.usage, now)
+                        await self._spend_caps(h, saved=by_period)
                         continue
                     ev = raw
                     if ev["type"] == "CUSTOM" and isinstance(ev.get("value"), dict) and "ac_event" in ev["value"]:
                         h.emitted.append(ev["value"])
+                    if ev["type"] == "CUSTOM" and ev.get("name") == "ac.warning" and _is_drift(ev.get("value")):
+                        await self._tool_drift(h, spec, ev["value"])
                     if ev["type"] == "RUN_FINISHED":
                         interrupts = ev.get("interrupts", [])
                         status = "interrupted" if ev["outcome"] == "interrupt" else "success"
@@ -796,6 +865,12 @@ class Runner:
                     "threadId": h.thread_id,
                 },
             )
+        except SpendCapStop as exc:
+            status, error = "error", str(exc)
+            await emit(
+                {"type": "RUN_ERROR", "code": "spending_cap", "message": error, "usage": dict(h.usage),
+                 "runId": h.run_id, "threadId": h.thread_id},
+            )  # fmt: skip
         except QueueTimeout as exc:  # it never began: nothing to stop or save but its outcome
             status, error = "error", str(exc)
             await emit(
@@ -893,6 +968,7 @@ class Runner:
                         recording=_recording(h, status),
                         events=compact([*h.events, *h.held], h.event_times, time.time_ns()),
                         handover=h.drained,
+                        **_result_columns(h, interrupts),
                     )
                 )
                 if res.rowcount == 0:  # type: ignore[attr-defined]
@@ -917,6 +993,10 @@ class Runner:
                     asked = {
                         "run_id": h.run_id, "canvas_node_id": intr.get("canvas_node_id") or "", "kind": intr["kind"],
                         "payload": _as_object(intr["payload"]), "requested_by": h.requested_by,
+                        "approvers": h.approvers.get(intr.get("canvas_node_id") or ""), "assignee_role": None,
+                        "noticed": None,  # announced again when asked again
+                        "escalate_at": escalate_at(h.approvers.get(intr.get("canvas_node_id") or "")),
+                        "escalated_at": None,
                     }  # fmt: skip
                     row = await s.get(InterruptTask, intr["id"])
                     if row is None:
@@ -987,6 +1067,29 @@ class Runner:
             if budget.daily_max_cost_usd or budget.monthly_max_cost_usd:
                 out.day_cost, out.month_cost = await workflow_spend(s, h.workflow_id, exclude_run=h.run_id)
         return out
+
+    async def _spend_caps(self, h: RunHandle, saved: bool) -> None:
+        """Stop the run when its organisation or project reached a spending cap (services/spend_caps.py), and raise
+        the cap's alerts it crossed. The run's spending is saved on its row first (unless `saved`), so the other
+        runs, here and on other servers, count it. If the database does not answer, the run carries on."""
+        if self.caps is None:
+            return
+        try:
+            if await self.caps.config(h.project_id) is None:
+                return
+            if not saved:
+                async with self.db.sessionmaker() as s:
+                    running = (Run.id == h.run_id, Run.status == "running")
+                    await s.execute(update(Run).where(*running).values(cost_usd=h.usage["cost_usd"]))
+                    await s.commit()
+            alerts, over = await self.caps.check(h.project_id, h.run_id, float(h.usage["cost_usd"]))
+        except Exception:
+            log.warning("run.spend_cap_check_failed", run_id=h.run_id, exc_info=True)
+            return
+        for value in alerts:
+            await self._emit(h, {"type": "CUSTOM", "name": "ac.cost_alert", "value": value})
+        if over is not None:
+            raise SpendCapStop(over)
 
     async def _concurrent_spend(self, h: RunHandle, before: Spent) -> Spent:
         """Save what the run has spent so far on its row, and read what the workflow's other runs have spent, on any
@@ -1228,3 +1331,7 @@ def _title(input: dict[str, Any] | None) -> str | None:
 
 def _as_object(payload: Any) -> dict[str, Any]:
     return payload if isinstance(payload, dict) else {"value": payload}
+
+
+def _is_drift(value: Any) -> bool:
+    return isinstance(value, dict) and value.get("kind") == "mcp_tool_drift"

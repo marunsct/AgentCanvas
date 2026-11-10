@@ -112,6 +112,18 @@ async def server_settings(request: Request) -> list[ServerSetting]:
             f"{s.max_queue_wait_s:g} seconds" if s.max_queue_wait_s else "no limit",
             "AGENTCANVAS_MAX_QUEUE_WAIT_S",
         ),
+        (
+            "Limits",
+            "Spending cap per organisation a day (unless it sets a lower one)",
+            f"{s.max_cost_usd_day:g} USD" if s.max_cost_usd_day else "no cap",
+            "AGENTCANVAS_MAX_COST_USD_DAY",
+        ),
+        (
+            "Limits",
+            "Spending cap per organisation a month (unless it sets a lower one)",
+            f"{s.max_cost_usd_month:g} USD" if s.max_cost_usd_month else "no cap",
+            "AGENTCANVAS_MAX_COST_USD_MONTH",
+        ),
         ("Limits", "Steps per run", str(s.recursion_limit), "AGENTCANVAS_RECURSION_LIMIT"),
         ("Limits", "Largest attached file", _mb(s.max_upload_mb), "AGENTCANVAS_MAX_UPLOAD_MB"),
         ("Limits", "Attached files kept per project", _mb(s.max_project_files_mb), "AGENTCANVAS_MAX_PROJECT_FILES_MB"),
@@ -125,5 +137,17 @@ async def server_settings(request: Request) -> list[ServerSetting]:
         ("Retention", "Long-term memories", _days(s.memory_retention_days), "AGENTCANVAS_MEMORY_RETENTION_DAYS"),
         ("Retention", "Undecided approvals", _days(s.approval_expiry_days), "AGENTCANVAS_APPROVAL_EXPIRY_DAYS"),
         ("Observability", "Prometheus metrics", "on" if s.metrics_enabled else "off", "AGENTCANVAS_METRICS_ENABLED"),
+        (
+            "Notifications",
+            "Mail server for approval e-mails",
+            f"{s.smtp_host}:{s.smtp_port} ({s.smtp_security})" if s.smtp_host and s.smtp_from else "none",
+            "AGENTCANVAS_SMTP_HOST",
+        ),
+        (
+            "Notifications",
+            "Webhooks may reach private addresses",
+            "yes" if s.notify_allow_private else "no",
+            "AGENTCANVAS_NOTIFY_ALLOW_PRIVATE",
+        ),
     ]
     return [ServerSetting(group=g, label=label, value=v, env=e) for g, label, v, e in rows]

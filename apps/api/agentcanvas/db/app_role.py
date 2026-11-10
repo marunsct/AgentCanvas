@@ -7,6 +7,9 @@ Row-level security (`db/rls.py`) is skipped by superusers, and the official Post
     APP_DB_USER=agentcanvas_app APP_DB_PASSWORD=... python -m agentcanvas.db.app_role
 
 It is idempotent: an existing role gets its password and attributes reset and its grants renewed.
+
+The role may read and add audit entries but never change or delete them (ASVS V16.4.2): retention deletes old ones
+through `audit_expire`, a function that runs as the owner and can do only that (migration d32911f9085f).
 """
 
 from __future__ import annotations
@@ -38,10 +41,25 @@ def statements(role: str) -> list[str]:
         "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO {role}",
         "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO {role}",
         "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO {role}",
+        # the audit log is append-only for the API, and where retention left its hash chain is the owner's to write
+        "REVOKE UPDATE, DELETE, TRUNCATE ON audit_log FROM {role}",
+        "REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON audit_anchor FROM {role}",
+        "GRANT EXECUTE ON FUNCTION audit_expire(text, timestamptz) TO {role}",
         # every connection starts in all-tenants mode (db/rls.py) even when a pooler such as PgBouncer refuses or
         # drops the startup option that also asks for it; a Matura request narrows its own transactions
         f"ALTER ROLE {{role}} SET {ALL_TENANTS} = 'on'",
     ]
+
+
+# the audit log's statements need its tables and function: a restore creates the role on an empty database first
+AUDIT_READY = (
+    "SELECT to_regclass('public.audit_log') IS NOT NULL AND to_regclass('public.audit_anchor') IS NOT NULL"
+    " AND to_regprocedure('public.audit_expire(text, timestamptz)') IS NOT NULL"
+)
+NOT_MIGRATED = (
+    "app_role: the audit log's tables are not there yet (an empty database): its privileges for '{role}' are set when "
+    "this runs again after the migrations"
+)
 
 
 def ensure(url: str, role: str, password: str) -> None:
@@ -53,7 +71,12 @@ def ensure(url: str, role: str, password: str) -> None:
     url = url.replace("postgresql+psycopg://", "postgresql://")
     with psycopg.connect(url, autocommit=True) as conn:
         exists = conn.execute("SELECT 1 FROM pg_roles WHERE rolname = %s", (role,)).fetchone()
+        audit_ready = bool((conn.execute(AUDIT_READY).fetchone() or (False,))[0])
+        if not audit_ready:
+            print(NOT_MIGRATED.format(role=role), file=sys.stderr)
         for template in statements(role):
+            if "audit_" in template and not audit_ready:
+                continue
             query = template
             if exists and query.startswith("CREATE ROLE"):
                 query = query.replace("CREATE ROLE {role} LOGIN", "ALTER ROLE {role} WITH LOGIN")

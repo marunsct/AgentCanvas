@@ -10,6 +10,87 @@ Merging, deleting branches and anything outward-facing stay with you: work is de
 - No version bump or tag (yours to decide); `CHANGELOG.md` "Unreleased" and `HARDENING.md` are kept current.
 - Prefer checks that grow with the product (driven by the OpenAPI document or the template list) over lists to maintain.
 
+## 2026-11-10 (enterprise controls)
+
+### The enterprise controls came before the remaining product items
+The launch review's research found that what a buyer's security review asks for (SIEM delivery, tamper-evident
+audit, offboarding and data-subject rights, credential policy, spending caps, approval routing, AI Act disclosure,
+MCP tool pinning, durable results for API callers) was missing from the roadmap, so E-1 to E-9 and the re-planned F-1
+were built before F-8 onward. Each first version is complete and tested; what is left of each is listed in
+`hardening.md`.
+
+### Every audit entry has one write path
+The audit outbox and the hash chain only hold if every entry goes through `AuditRepo.add`. Code written at the same
+time (spending-cap alerts, approval escalations, MCP tool drift, an organisation's purge, an export's download) wrote
+entries directly or through the sink the outbox replaced; they were moved onto it, and an entry that must join its
+caller's transaction passes `commit=False`. *Reverse:* none intended; a new direct write breaks the chain (the verify
+endpoint flags it).
+
+### An MCP request state is bound to the key used
+F-1 bound a pause's `requestState` to the deployment's single key, but E-8 gave deployments several keys. The state
+is now bound to the hash of the key the call was made with, so another key of the deployment, or the same key once
+revoked, cannot answer the pause. *Reverse:* `_presented_key` in `api/v1/protocols.py`.
+
+### Judgment calls inside the enterprise controls
+
+- Both clients ship in the default image so the documented setting works everywhere; the KMS build argument leaves them
+  out for slimmer builds. To reverse, default KMS to "" and document the build argument as required for cloud keys.
+- A run that called no model is still marked "ai" (models empty): over-marking an AI system's output is safe, missing a
+  mark is not. To narrow it, mark only when models is non-empty in services/disclosure.py.
+- The notice cannot be switched off, even by an organisation setting: it is the legal minimum for public chat. To allow
+  switching it off, add an audited organisation setting and let ai_notice be empty only when it is on.
+- Deployment.api_key_hash/key_prefix are kept (nullable, unused) for rolling upgrades instead of being dropped now; a
+  later migration drops them. Personal API tokens may still make deployment keys (CI publishes with them), as they could
+  publish before.
+- Webhook triggers are not covered (their senders have no fixed addresses and their signature proves who sent them); the
+  list is read from the database on each request rather than cached, so a change applies on every replica at once.
+- A requirement is met by either list (acr in one, or amr in the other), not both; personal API tokens are exempt from
+  required MFA (they are made from a sign-in that met it), to be revisited if questionnaires ask for more.
+- Project caps are set by organisation admins only, since there are no project roles yet (E-10); a builder role for its
+  own projects can be added with a ROLE_EXCEPTIONS entry once project admins exist.
+- A run in flight carries on when the cap check cannot reach the database (logged as run.spend_cap_check_failed), as
+  workflow budgets do; the start gate fails closed.
+- Judges are counted but never stopped mid-scoring (they score runs, which the caps already stop); to stop them too,
+  call SpendCaps.refuse in scorers' complete.
+- Only deployment runs keep their output on the row (draft runs are read from their conversation); store it for every
+  run by dropping the deployment_id check in runner._result_columns.
+- Callbacks need a callback secret a builder creates (no secret is made at publish, so existing deployments are
+  unchanged); to create one at publish instead, call callbacks.set_secret in DeploymentService.publish and return it in
+  PublishOut.
+- The `answer` tool is hidden from form-capable clients but still accepted when called, so a client that drops the
+  capability keeps working; refuse it for them in _mcp_call to make forms mandatory.
+- Roles match exactly (tick each role you mean) and there is no admin override, so a step limited to a group is not
+  silently decided by an admin; escalation is the way out. The check applies to draft runs too, like the own-run policy.
+  Drop the `approvers.check` calls to reverse.
+- Draft runs a person starts in the editor are not announced unless their step names who decides them (the person is
+  watching the run); remove the `quiet` condition in NotifierJob.announce to announce them too. A step that names nobody
+  e-mails every reviewer, builder and admin (at most 100) unless the organisation lists team addresses.
+- An item escalates once and then gets one more full expiry period before its run is cancelled; an item with its own
+  escalation time does not expire before it escalates. Change `escalate` and the expiry query in retention.py to
+  escalate repeatedly or shorten the second period.
+- Versions published before pinning keep working: tools browsed then (no fingerprints) are pinned by name only, and a
+  block never browsed offers the server's current tools with a warning on every run. Failing such runs instead would
+  break existing deployments on upgrade; to make it strict, return an empty list from `mcp_pins` callers when it is
+  None.
+- E045 is an error only at publish and a note in the editor, so existing drafts keep running; making it an editor error
+  would block draft runs of unbrowsed connectors.
+- The organisation row is kept as a tombstone holding the deletion's audit entries, instead of a platform-level log;
+  drop the row in the purge (and the two kept audit rows) to remove even that.
+- Conversations a member started stay unless the admin asks for them to go, since they are often the project's records
+  too; flip the default of `conversations` to change that.
+- A deployment key may erase its own end users (it already holds their conversations), so customers can automate
+  requests; remove the public route to make it admin-only.
+- The archive lives in the database rather than on a volume, so replicas need no shared disk; move it to object storage
+  if organisations grow past a few GB.
+- The outbox stores one row per entry and destination and rebuilds the event from the audit row at delivery; a
+  destination removed from the settings keeps its rows pending (alerted on) until an operator discards them, rather than
+  having another replica with older settings drop them.
+- The hash is a plain SHA-256 (no server key), so anyone can verify a chain from the rows alone; a full rewrite by
+  someone with database access is caught by the forwarded copies, not by the chain. A keyed hash (HMAC with a server
+  secret) could be added later as a second column.
+- The one-day floor in audit_expire is fixed in the migration (a new migration changes it); it bounds what an attacker
+  holding the API's role can delete, while forwarding to a SIEM keeps the copies.
+
 ## 2026-11-10 (launch review)
 
 ### A third deep review, aimed at launch

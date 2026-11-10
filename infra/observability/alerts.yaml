@@ -80,6 +80,15 @@ groups:
         labels: { severity: ticket }
         annotations:
           summary: "Background job {{ $labels.job }} has not finished a round on any pod for a long time"
+      - alert: AgentCanvasApprovalNotificationsFailing
+        # approval notifications given up after every retry: a mail server, a Slack webhook or an organisation's own
+        # webhook that refuses them; the Inbox still has the items, but nobody is told
+        expr: sum by (channel) (increase(agentcanvas_approval_notifications_total{outcome="failed"}[1h])) > 0
+        for: 5m
+        labels: { severity: ticket }
+        annotations:
+          summary: Approval notifications on {{ $labels.channel }} are failing after every retry
+          runbook: docs/user-guide/operations.md#runbooks
       - alert: AgentCanvasRunQueueSlow
         # runs wait for a slot (AGENTCANVAS_MAX_CONCURRENT_RUNS or an organisation's own limit): too low a limit, a
         # busy project filling it, or runs that hold their slots too long
@@ -90,4 +99,26 @@ groups:
         labels: { severity: ticket }
         annotations:
           summary: Runs wait more than 2 minutes for a slot in the run queue, or give up waiting
+          runbook: docs/user-guide/operations.md#runbooks
+      - alert: AgentCanvasAuditForwardingFailing
+        # a SIEM destination (webhook, Splunk, Matura) refuses or does not answer: entries wait in the outbox and are
+        # retried with a growing delay, and given up on (dead) after AGENTCANVAS_AUDIT_FORWARD_MAX_ATTEMPTS
+        expr: |
+          sum by (destination) (increase(agentcanvas_audit_forward_failed_total[15m])) > 0
+            unless sum by (destination) (increase(agentcanvas_audit_forwarded_total[15m])) > 0
+        for: 15m
+        labels: { severity: ticket }
+        annotations:
+          summary: "Audit entries cannot be delivered to {{ $labels.destination }} (search the logs for audit.forward_failed)"
+          runbook: docs/user-guide/operations.md#runbooks
+      - alert: AgentCanvasAuditUndelivered
+        # entries given up on after the last attempt, or waiting for a destination this server no longer has: the
+        # SIEM misses them until an operator sends them again or discards them (python -m agentcanvas.audit)
+        expr: |
+          max by (destination) (agentcanvas_audit_outbox{state="dead"}) > 0
+            or max by (destination) (agentcanvas_audit_outbox{state="pending"}) > 1000
+        for: 30m
+        labels: { severity: ticket }
+        annotations:
+          summary: "Audit entries for {{ $labels.destination }} were given up on, or pile up undelivered"
           runbook: docs/user-guide/operations.md#runbooks

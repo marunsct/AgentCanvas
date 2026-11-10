@@ -117,6 +117,15 @@
           ]
         }
       },
+      "on_tool_change": {
+        "enum": [
+          "drop",
+          "fail"
+        ],
+        "title": "When a published tool changes",
+        "default": "drop",
+        "description": "Deployments and schedules offer only the tools browsed before publishing, as they were then. drop = a tool the server changed since is left out; fail = the run stops"
+      },
       "tool_filter": {
         "type": "array",
         "title": "Only these tools",
@@ -130,7 +139,7 @@
         "type": "array",
         "title": "Discovered tools",
         "readOnly": true,
-        "description": "Filled by Browse tools; used to check approvals (W002, E033)",
+        "description": "Filled by Browse tools; used to check approvals (W002, E033). Publishing pins these tools: a deployment offers only them, as they were when browsed",
         "items": {
           "type": "object",
           "properties": {
@@ -145,6 +154,9 @@
             },
             "read_only": {
               "type": "boolean"
+            },
+            "hash": {
+              "type": "string"
             }
           }
         }

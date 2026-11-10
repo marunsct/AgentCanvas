@@ -10,6 +10,7 @@ export interface McpTool {
   description?: string;
   destructive?: boolean;
   read_only?: boolean;
+  hash?: string; // what publishing pins: the tool's description, input schema and annotations
 }
 
 /**

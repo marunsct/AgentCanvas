@@ -24,6 +24,7 @@ SMALL = {
     ("release_gate", "dataset_id"),
     ("online_evaluator", "evaluator_id"),
     ("trigger", "deployment_id"),
+    ("org_notifier", "updated_by"),  # one row per organisation
 }
 
 

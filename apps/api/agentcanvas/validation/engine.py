@@ -44,6 +44,7 @@ class ValidationContext:
     edition: Edition = "dev"
     allow_local_mcp: bool = False
     isolated: bool = False  # workspace code stays out of the server process (`Settings.isolates_workspace_code`)
+    publishing: bool = False  # checked for publishing (some notes in the editor are errors then)
     _cache: dict = field(default_factory=dict)
 
     def manifest(self, element: Node | Resource) -> NodeManifest | None:
@@ -106,7 +107,7 @@ def rule(fn: RuleFn) -> RuleFn:
     return fn
 
 
-_ORDER = {"error": 0, "warning": 1, "info": 2}
+SEVERITY_ORDER = _ORDER = {"error": 0, "warning": 1, "info": 2}
 
 
 def validate(
@@ -118,13 +119,14 @@ def validate(
     isolated: bool = False,
     policies: list[Policy] | None = None,
     environment: str | None = None,
+    publishing: bool = False,
 ) -> list[Diagnostic]:
     """Every rule's diagnostics, plus the organisation's `policies` (FR-X-19) as they apply to `environment`
-    (None: the editor; see `check_policies`)."""
+    (None: the editor; see `check_policies`). `publishing`: the checks before a version is published."""
     from agentcanvas.validation import rules  # noqa: F401  (registers the rules)
     from agentcanvas.validation.policies import check_policies
 
-    ctx = ValidationContext(wf, registry or default_registry(), edition, allow_local_mcp, isolated)
+    ctx = ValidationContext(wf, registry or default_registry(), edition, allow_local_mcp, isolated, publishing)
     out: list[Diagnostic] = []
     for fn in RULES:
         try:

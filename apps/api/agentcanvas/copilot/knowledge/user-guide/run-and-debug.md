@@ -30,16 +30,52 @@ and the Run tab shows **Approval needed** with the value under review.
 - Paused runs are durable: you can close the browser or restart the server and resume later. A decision nobody
   gives within 90 days (the operator's `AGENTCANVAS_APPROVAL_EXPIRY_DAYS`) expires: the run is cancelled with
   *the approval expired*, the item leaves the Inbox, and the conversation is then deleted with the others once the
-  organisation's retention has passed.
+  organisation's retention has passed. A step can escalate instead ([Who may decide](#who-may-decide)).
 - The **Inbox** (top bar) lists every pending decision across all workflows you can see, so reviewers don't need
-  to open the editor. Reviewers (and above) can answer.
+  to open the editor. Reviewers (and above) can answer. An admin can have the people who may decide told by e-mail,
+  in a Slack channel or through a webhook, with a link to the item ([Approval notifications](settings.md#approval-notifications)).
 - By default you may approve a run you started yourself. For a four-eyes control (payments, outbound email,
   destructive tools), an admin turns **Approving your own runs** off under **Settings › Organisation › General ›
   Limits and policies** (the operator can turn it off for every organisation with
   `AGENTCANVAS_APPROVE_OWN_RUNS=false`). Then the person who started a run cannot
   approve or answer what it asks, in the Run tab, the Inbox or through the API: another reviewer must. An answer
   continues the request of the person who asked, so the approver of one step may approve the next one too. Runs of
-  a published deployment (API keys, share links) are answered by their callers as before.
+  a published deployment (API keys, share links) are answered by their callers as before, unless the step names who
+  decides it (below).
+
+### Who may decide
+
+Each **Ask for approval** and **Ask a person** step, and each **AI Agent** and **Planning Agent** with tools that need
+approval, has a **Who may decide** section in the Inspector (for agents: *Who may approve its tool calls*). Left
+empty, nothing changes: anyone with the reviewer role or above decides it in the Inbox or the Run tab, and on a
+published workflow so does its caller. Fill it in to send the decision to particular people:
+
+- **Roles**: members with one of the ticked roles (reviewer, builder, admin; tick each one you mean).
+- **Groups**: members of these groups, by name, as your identity provider keeps them over SCIM
+  ([Accounts](accounts.md#provisioning-from-your-directory-scim)); the name is matched ignoring case.
+- **People**: members by email address; the field suggests your organisation's members. A person still needs the
+  reviewer role or above to answer the Inbox.
+- **Whoever calls the published workflow may answer too**: by default a step that names roles, groups or people
+  is decided only by them, in AgentCanvas. The deployment's key (`POST /v1/deployments/{id}/threads/{thread}/resume`),
+  an MCP client's `answer`, an A2A reply, a share-link visitor and an event handler's `act.resume` are refused with
+  *decided by the people its workflow names, in the AgentCanvas Inbox*, and the run keeps waiting there. Tick it to
+  let the caller answer as well. This matters for AI clients: without it, an agent calling your workflow over MCP or
+  A2A cannot approve its own action.
+- **Not the person who started the run**: four eyes for this one step, whatever the organisation's setting. The
+  caller of a published workflow started its run, so this also keeps the caller from answering (the two boxes
+  together are an error, E037).
+- **If nobody decides in time, escalate to** a role, after **Escalate after (hours)** or, left empty, when the
+  approval would expire (the operator's `AGENTCANVAS_APPROVAL_EXPIRY_DAYS`, 90 days). Members with that role may then
+  decide it as well, the Inbox lists it with them (*Decided by: admin role; lee@example.com*), they are notified
+  ([Approval notifications](settings.md#approval-notifications)), and the audit log records `approval_escalated`.
+  The run is not cancelled: the item gets a full expiry period from the escalation, and only then expires. An item
+  escalates once. Without an escalation role the run is cancelled at the expiry, as before.
+
+A step's setting is saved with the pause when the run stops there, so editing the workflow later does not change who
+decides a pause that already waits. In the Inbox each item says who decides it (*Decided by: admin role; group
+Finance*) and, when you cannot, why; its buttons are then off. A helper agent's tool approvals follow the setting of its
+Planning Agent. Steps inside a subgraph keep their own setting. AgentCanvas checks it; code exported from the workflow
+does not (I011).
 
 ## Breakpoints
 

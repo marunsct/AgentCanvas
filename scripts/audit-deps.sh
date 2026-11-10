@@ -15,8 +15,8 @@ IGNORE=(--ignore-vuln PYSEC-2026-311 --ignore-vuln PYSEC-2026-3813 --ignore-vuln
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 failed=()
 
-echo "== API (uv.lock, production dependencies)"
-( cd apps/api && uv export --frozen --no-dev --no-emit-project --no-hashes -q -o "$tmp/api.txt" ) \
+echo "== API (uv.lock, production dependencies and the cloud KMS clients the image installs)"
+( cd apps/api && uv export --frozen --no-dev --all-extras --no-emit-project --no-hashes -q -o "$tmp/api.txt" ) \
   && uvx "$PIP_AUDIT" -r "$tmp/api.txt" --disable-pip --no-deps || failed+=(api)
 for lock in apps/api/framework-locks/*.txt; do
   case $lock in *.overrides.txt) continue ;; esac

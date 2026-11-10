@@ -40,6 +40,20 @@ Admins open **Settings › Members**, enter an email, pick a role and click **In
 first sign-in with that (verified) email. Admins can change roles or remove people. An organisation can never be left without an admin who
 has signed in.
 
+Removing someone keeps their account (name and email) and what they made. To **erase** a person instead (a request
+under GDPR Art. 17), an admin clicks **Erase…** next to them, gives the request as the reason and says whether
+their conversations go too (`POST /v1/org/members/{user_id}/erase`, signed in: an API token cannot): they are removed, their API tokens and app-connector sign-ins go, and so do their
+long-term memories (every memory namespace that carries their user id) and Copilot chats. With
+`"conversations": true` the conversations they started and the files they attached go too; otherwise those stay
+with the project. When they belong to no other organisation their account is pseudonymised: email, name and
+preferences are removed and their next sign-in makes a new account. The audit log keeps their user id, which then
+leads to no one. The answer and the audit entry give the counts. Someone already removed can be erased the same
+way, as long as they belong to no other organisation. You cannot erase yourself; with Matura, people are removed
+in Matura.
+
+Everyone can download their own data as JSON under **Settings › Your data** (`GET /v1/me/export`), and an admin
+can download a member's with **Export data** next to them (`GET /v1/org/members/{user_id}/export`) (see [Your data](security.md#your-data)); both are recorded in the audit log.
+
 To bootstrap a new install, list the first admins' emails in `AGENTCANVAS_BOOTSTRAP_ADMIN_EMAILS`; they become
 admins of the default organisation on first sign-in.
 
@@ -117,11 +131,50 @@ Every change is in the audit log without a person, marked `scim`. Supported: `Us
 `ResourceTypes` and `Schemas` documents; bulk, sorting and ETags are not. In Matura mode members come from Matura and
 SCIM is off.
 
+## Allowed networks
+
+An admin can limit where the organisation can be used from: **Settings › Organisation › Security › Allowed
+networks** takes one address (`203.0.113.7`) or network (`203.0.113.0/24`, IPv6 too) per line, up to 100. With a list,
+every request that acts in the organisation must come from one of them, whatever it carries: a person's sign-in, a
+personal API token, a deployment key (also over MCP and A2A), a share link or the SCIM token. Anything else gets
+`403` with the address it came from (problem type `…/errors/network-not-allowed`). An empty list, the default,
+accepts any address. Webhook triggers are not covered: the services that send them do not have fixed addresses, and
+their signature already proves who sent them.
+
+- The page shows **your address** as the server sees it, and saving a list that leaves it out is refused, so an
+  admin cannot lock themselves out by mistake.
+- A request outside the list is refused before its key or token is checked, so keys cannot be tried from outside.
+- Other organisations on the same server are not affected; a person in several organisations is limited only while
+  acting in the one with the list.
+- The address is the one the audit log records. With a load balancer in front of AgentCanvas, the operator lists it
+  in `TRUSTED_PROXIES`, or every request seems to come from it ([Operations](operations.md)).
+- Locked out anyway (your address changed)? The operator sets `AGENTCANVAS_IGNORE_ORG_NETWORKS=true` and restarts,
+  which switches every organisation's list off (the page says so) until you fix yours; then they unset it.
+- Changes are in the audit log (`put_org_settings`).
+
+## Multi-factor sign-in
+
+An admin can require that the organisation's members sign in with a second factor: **Settings › Organisation ›
+Security › Members must sign in with a second factor**. While they act in the organisation, a sign-in that does not
+count as multi-factor is sent back to the identity provider to sign in again with one; other organisations a person
+belongs to are not affected. What counts is the operator's choice (by default, the provider says `mfa` in the token's
+`amr`; see [Multi-factor sign-in](deploy.md#multi-factor-sign-in)), and the operator can require it for the whole
+server instead.
+
+- To switch it on, sign in with a second factor first: the page refuses (and the box stays off) when your own sign-in
+  does not count, so an admin cannot lock the organisation out. An API token cannot switch it on or off.
+- Personal API tokens are not affected: they never pass through the identity provider, and they are made from a
+  sign-in. Cap their lifetime too (see [API tokens](#api-tokens)) if that matters to you.
+- Changes are in the audit log (`put_org_settings`).
+- Needs sign-in through an identity provider (OpenID Connect or Matura); in local mode there is none.
+
 ## Audit log
 
 **Settings › Audit log** (admins) records every change: who did it, what it touched, when and from where. Approvals record a
 hash of exactly what was approved; publishing past a failed release gate records the reason given. Rows are kept
-for 400 days by default.
+for 400 days by default. The entries are linked by a hash chain, so a changed or deleted entry can be found:
+**Check integrity** on the page (or `GET /v1/org/audit/verify`) recomputes the whole log and lists any entry that
+does not match ([Audit log](security.md#audit-log)).
 
 ## Policies
 
@@ -153,4 +206,5 @@ Names you can use: `node` (`type`, `config`, `effects`, `ungated`, `models`, `to
 
 Admins can **Switch off** a policy without deleting it. Broken policies show in the editor's Problems dock (`E095`; `W095` for environment-only rules), steps inside
 subgraphs included. Draft and debug runs still work, but **publishing** is refused until every applicable policy
-holds.
+holds. Policies check what a workflow is, not what it spends: to limit spending for every run, draft and debug runs
+included, set [spending caps](settings.md#spending-caps) for the organisation or a project.

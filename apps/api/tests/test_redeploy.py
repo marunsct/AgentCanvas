@@ -195,7 +195,7 @@ async def test_the_pinned_version_is_the_latest_run_even_within_one_second(app, 
     async with app.state.db.sessionmaker() as s:
         first = await s.get(Run, res["run_id"])
         assert first is not None and first.workflow_version_id == v1
-        cols = {c.key: getattr(first, c.key) for c in sa_inspect(Run).mapper.column_attrs}
+        cols = {c.key: getattr(first, c.key) for c in sa_inspect(Run).mapper.column_attrs if not c.deferred}
         s.add(Run(**{**cols, "id": new_id("run"), "workflow_version_id": v2}))  # same second, a later id
         await s.commit()
         current = await s.get(WorkflowVersion, v2)

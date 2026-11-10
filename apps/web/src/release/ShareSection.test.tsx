@@ -48,6 +48,24 @@ describe("ShareSection (S23)", () => {
     expect(await screen.findByText(/Only these sites/)).toBeTruthy();
   });
 
+  it("saves a reworded AI notice and never an empty one", async () => {
+    server.share = {
+      deployment_id: "d1", enabled: true, greeting: "", input: { field: "q", chat: false }, input_field: "q", inputs: ["q"],
+      path: "/s/t", suggestions: [], title: "T", token: "t", frame_origins: [],
+      ai_notice: "You are chatting with an AI assistant. Answers can be wrong.",
+    } as unknown as ShareOut;
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={qc}><ShareSection deployment={deployment} /></QueryClientProvider>);
+    const notice = await screen.findByLabelText("AI notice") as HTMLInputElement;
+    expect(notice.value).toBe("You are chatting with an AI assistant. Answers can be wrong.");
+    fireEvent.change(notice, { target: { value: "  " } });
+    expect(screen.getByText(/cannot be empty/)).toBeTruthy();
+    expect((screen.getByText("Save") as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(notice, { target: { value: " Sie chatten mit einer KI. " } });
+    await act(async () => { fireEvent.click(screen.getByText("Save")); });
+    await waitFor(() => expect((server.share as { ai_notice?: string }).ai_notice).toBe("Sie chatten mit einer KI."));
+  });
+
   it("picks the input messages go to, or leaves it to the server", async () => {
     server.share = {
       deployment_id: "d1", enabled: true, greeting: "", input: { field: "question", chat: false }, input_field: null,

@@ -233,3 +233,28 @@ describe("share page, right-to-left text", () => {
     expect(screen.getByLabelText("Your message").getAttribute("dir")).toBe("auto");
   });
 });
+
+describe("share page AI notice (EU AI Act Art. 50)", () => {
+  it("tells visitors they are chatting with an AI on the full page and inside the widget", async () => {
+    for (const embed of [false, true]) {
+      isEmbed.mockReturnValue(embed);
+      render(<SharePage />);
+      expect((await screen.findByTestId("share-ai-notice")).textContent).toBe(
+        "You are chatting with an AI assistant. Answers can be wrong.",
+      ); // the server sent no wording: the default
+      cleanup();
+    }
+  });
+
+  it("shows the link's own wording, and the default when it is blank", async () => {
+    info.ai_notice = "Sie chatten mit einem KI-Assistenten.";
+    isEmbed.mockReturnValue(true);
+    render(<SharePage />);
+    expect((await screen.findByTestId("share-ai-notice")).textContent).toBe("Sie chatten mit einem KI-Assistenten.");
+    cleanup();
+    info.ai_notice = "  ";
+    render(<SharePage />);
+    expect((await screen.findByTestId("share-ai-notice")).textContent).toMatch(/^You are chatting with an AI assistant/);
+    delete info.ai_notice;
+  });
+});

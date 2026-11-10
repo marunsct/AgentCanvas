@@ -15,7 +15,8 @@ secrets:
   #   AGENTCANVAS_SANDBOX_TOKEN    32+ random characters, with sandbox.enabled (the sandbox pods get only this key)
   #   AGENTCANVAS_EGRESS_SECRET    32+ random characters, with sandbox.egress.enabled (the egress pods get only this key)
   # Optional: AGENTCANVAS_KMS_KEY, provider keys (ANTHROPIC_API_KEY, OPENAI_API_KEY, ...), LANGSMITH_API_KEY,
-  # AGENTCANVAS_MATURA_CLIENT_SECRET / _WEBHOOK_SECRET (config.authMode: matura). helm install and upgrade fail when
+  # AGENTCANVAS_MATURA_CLIENT_SECRET / _WEBHOOK_SECRET (config.authMode: matura), AGENTCANVAS_SMTP_PASSWORD (approval
+  # e-mails; AGENTCANVAS_SMTP_HOST, _FROM and _USERNAME go in config.extraEnv). helm install and upgrade fail when
   # the Secret is there but lacks a required key.
   # Row-level security (Matura mode) needs the API to connect as an ordinary role: point DATABASE_URL at that role
   # and add MIGRATE_DATABASE_URL (the owner) plus APP_DB_USER / APP_DB_PASSWORD; the migrate Job creates the role.
@@ -115,6 +116,10 @@ web:
   # client address (rate limits, audit log). Default: every RFC 1918 private range, wherever the cluster puts its pods;
   # narrow it to your controller's pod range if you know it.
   trustedProxies: "10.0.0.0/8 172.16.0.0/12 192.168.0.0/16"
+  # /.well-known/security.txt: where to report a vulnerability in this installation (a URL or mailto:) and your
+  # disclosure policy. Empty: AgentCanvas's private advisory form and security policy on GitHub
+  securityContact: ""
+  securityPolicy: ""
   resources:
     requests: { cpu: 50m, memory: 64Mi }
     limits: { memory: 256Mi }

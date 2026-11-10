@@ -451,6 +451,22 @@
         "title": "AnnotationOut",
         "type": "object"
       },
+      "ApiEndUserIn": {
+        "properties": {
+          "user_id": {
+            "description": "the `user_id` you sent with their runs",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id"
+        ],
+        "title": "ApiEndUserIn",
+        "type": "object"
+      },
       "ApiResult": {
         "properties": {
           "error": {
@@ -463,6 +479,10 @@
               }
             ],
             "title": "Error"
+          },
+          "generated_by": {
+            "$ref": "#/components/schemas/GeneratedBy",
+            "description": "marks the output as AI-generated (AI Act Art. 50)"
           },
           "interrupts": {
             "items": {
@@ -514,6 +534,19 @@
       },
       "ApiResumeIn": {
         "properties": {
+          "callback_url": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "an https address sent the run's result (a signed POST) once it ends; needs the deployment's callback secret",
+            "title": "Callback Url"
+          },
           "interrupt_id": {
             "anyOf": [
               {
@@ -534,6 +567,19 @@
       },
       "ApiRunIn": {
         "properties": {
+          "callback_url": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "an https address sent the run's result (a signed POST) once it ends; needs the deployment's callback secret",
+            "title": "Callback Url"
+          },
           "context": {
             "additionalProperties": true,
             "title": "Context",
@@ -683,6 +729,89 @@
           "ip"
         ],
         "title": "AuditOut",
+        "type": "object"
+      },
+      "AuditVerifyOut": {
+        "properties": {
+          "anchor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChainAnchor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "checked": {
+            "description": "chained entries checked",
+            "title": "Checked",
+            "type": "integer"
+          },
+          "first_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Id"
+          },
+          "head_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the last entry's hash: compare it with the copy forwarded to the SIEM",
+            "title": "Head Hash"
+          },
+          "last_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Id"
+          },
+          "ok": {
+            "description": "every chained entry is as it was written, and none is missing",
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "problems": {
+            "description": "the first 50",
+            "items": {
+              "$ref": "#/components/schemas/ChainProblem"
+            },
+            "title": "Problems",
+            "type": "array"
+          },
+          "unchained": {
+            "description": "older entries, written before the hash chain existed",
+            "title": "Unchained",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ok",
+          "checked",
+          "unchained",
+          "first_id",
+          "last_id",
+          "head_hash",
+          "anchor",
+          "problems"
+        ],
+        "title": "AuditVerifyOut",
         "type": "object"
       },
       "AuthConfig": {
@@ -1191,6 +1320,83 @@
         "title": "CallbackOut",
         "type": "object"
       },
+      "CallbackSecretOut": {
+        "properties": {
+          "callback_secret": {
+            "description": "shown once: the receiver checks each callback's signature with it",
+            "title": "Callback Secret",
+            "type": "string"
+          }
+        },
+        "required": [
+          "callback_secret"
+        ],
+        "title": "CallbackSecretOut",
+        "type": "object"
+      },
+      "CancelOut": {
+        "properties": {
+          "cancelled": {
+            "description": "the run was stopped, or will be",
+            "title": "Cancelled",
+            "type": "boolean"
+          },
+          "pending": {
+            "description": "it runs on another server, which stops it within a few seconds",
+            "title": "Pending",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "cancelled",
+          "pending"
+        ],
+        "title": "CancelOut",
+        "type": "object"
+      },
+      "CapUse": {
+        "properties": {
+          "limit_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the cap that applies; null: none",
+            "title": "Limit Usd"
+          },
+          "period": {
+            "description": "a UTC day or a calendar month (UTC)",
+            "enum": [
+              "day",
+              "month"
+            ],
+            "title": "Period",
+            "type": "string"
+          },
+          "period_start": {
+            "description": "\"2026-11-10\" or \"2026-11\"",
+            "title": "Period Start",
+            "type": "string"
+          },
+          "spent_usd": {
+            "description": "what was spent in the period so far",
+            "title": "Spent Usd",
+            "type": "number"
+          }
+        },
+        "required": [
+          "period",
+          "period_start",
+          "limit_usd",
+          "spent_usd"
+        ],
+        "title": "CapUse",
+        "type": "object"
+      },
       "Capability": {
         "properties": {
           "effect": {
@@ -1348,6 +1554,73 @@
           "problems"
         ],
         "title": "CatalogOut",
+        "type": "object"
+      },
+      "ChainAnchor": {
+        "properties": {
+          "expired_at": {
+            "title": "Expired At",
+            "type": "string"
+          },
+          "last_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the hash of the last entry it deleted: where the chain now starts",
+            "title": "Last Hash"
+          },
+          "rows": {
+            "title": "Rows",
+            "type": "integer"
+          },
+          "through_id": {
+            "description": "retention deleted the entries up to this id",
+            "title": "Through Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "through_id",
+          "last_hash",
+          "rows",
+          "expired_at"
+        ],
+        "title": "ChainAnchor",
+        "type": "object"
+      },
+      "ChainProblem": {
+        "properties": {
+          "id": {
+            "description": "the audit entry",
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "description": "changed: edited after it was written; missing: the entry before it was deleted or replaced; unchained: has no hash although the chain had started",
+            "enum": [
+              "changed",
+              "missing",
+              "unchained"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "message"
+        ],
+        "title": "ChainProblem",
         "type": "object"
       },
       "Channel": {
@@ -3127,6 +3400,173 @@
         "title": "DefaultModel",
         "type": "object"
       },
+      "DeleteOrgIn": {
+        "properties": {
+          "confirm": {
+            "description": "the organisation's name, typed exactly as it is shown",
+            "title": "Confirm",
+            "type": "string"
+          },
+          "reason": {
+            "description": "why, for the audit log",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "confirm",
+          "reason"
+        ],
+        "title": "DeleteOrgIn",
+        "type": "object"
+      },
+      "DeletionOut": {
+        "properties": {
+          "delete_after": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "when it is deleted for good; until then an admin can cancel",
+            "title": "Delete After"
+          },
+          "requested_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the admin who asked for it",
+            "title": "Requested By"
+          },
+          "scheduled": {
+            "description": "true while the organisation waits to be deleted",
+            "title": "Scheduled",
+            "type": "boolean"
+          },
+          "suspended_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "when it was suspended: nobody can use it since",
+            "title": "Suspended At"
+          }
+        },
+        "required": [
+          "scheduled",
+          "suspended_at",
+          "delete_after",
+          "requested_by"
+        ],
+        "title": "DeletionOut",
+        "type": "object"
+      },
+      "DeploymentKeyOut": {
+        "properties": {
+          "active": {
+            "description": "works now: neither revoked nor expired",
+            "title": "Active",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "who made it (none: the key the deployment had before E-8)",
+            "title": "Created By"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "none: never expires",
+            "title": "Expires At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "last_used_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the last call made with it, to the minute",
+            "title": "Last Used At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "prefix": {
+            "description": "the key's first characters, to tell it from the others",
+            "title": "Prefix",
+            "type": "string"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "prefix",
+          "created_by",
+          "created_at",
+          "expires_at",
+          "last_used_at",
+          "revoked_at",
+          "active"
+        ],
+        "title": "DeploymentKeyOut",
+        "type": "object"
+      },
       "DeploymentOut": {
         "properties": {
           "active": {
@@ -3164,6 +3604,19 @@
           "semver": {
             "title": "Semver",
             "type": "string"
+          },
+          "tool_drift": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "app connector -> the tools its runs leave out because the server changed them since publishing (added, changed, outcome); cleared when the workflow is published again",
+            "title": "Tool Drift"
           },
           "version_id": {
             "title": "Version Id",
@@ -3519,6 +3972,34 @@
         "title": "ElementDiff",
         "type": "object"
       },
+      "EmailOut": {
+        "properties": {
+          "available": {
+            "description": "the server has a mail server (AGENTCANVAS_SMTP_HOST and _FROM)",
+            "title": "Available",
+            "type": "boolean"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "to": {
+            "description": "addresses that get the items whose step names nobody; empty: every reviewer",
+            "items": {
+              "type": "string"
+            },
+            "title": "To",
+            "type": "array"
+          }
+        },
+        "required": [
+          "enabled",
+          "to",
+          "available"
+        ],
+        "title": "EmailOut",
+        "type": "object"
+      },
       "Embedding": {
         "properties": {
           "api_key": {
@@ -3570,6 +4051,42 @@
         "title": "EnabledIn",
         "type": "object"
       },
+      "EndUserIn": {
+        "properties": {
+          "deployment_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "only this deployment's end user; null: every deployment",
+            "title": "Deployment Id"
+          },
+          "reason": {
+            "description": "why (the request you are answering), for the audit log",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "user_id": {
+            "description": "the `user_id` the deployment API was sent",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "reason"
+        ],
+        "title": "EndUserIn",
+        "type": "object"
+      },
       "Endpoint": {
         "additionalProperties": false,
         "properties": {
@@ -3593,6 +4110,102 @@
           "node"
         ],
         "title": "Endpoint",
+        "type": "object"
+      },
+      "EraseMemberIn": {
+        "properties": {
+          "conversations": {
+            "default": false,
+            "description": "also delete the conversations they started and the files they attached",
+            "title": "Conversations",
+            "type": "boolean"
+          },
+          "reason": {
+            "description": "why (the request you are answering), for the audit log",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "EraseMemberIn",
+        "type": "object"
+      },
+      "ErasedEndUserOut": {
+        "properties": {
+          "conversations": {
+            "title": "Conversations",
+            "type": "integer"
+          },
+          "files": {
+            "description": "files given to the deployment that their runs used",
+            "title": "Files",
+            "type": "integer"
+          },
+          "memories": {
+            "description": "long-term memories deleted",
+            "title": "Memories",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "conversations",
+          "memories",
+          "files"
+        ],
+        "title": "ErasedEndUserOut",
+        "type": "object"
+      },
+      "ErasedMemberOut": {
+        "properties": {
+          "account_erased": {
+            "description": "their email and name were removed; false when they still belong to another organisation",
+            "title": "Account Erased",
+            "type": "boolean"
+          },
+          "connections": {
+            "description": "app-connector sign-ins removed",
+            "title": "Connections",
+            "type": "integer"
+          },
+          "conversations": {
+            "default": 0,
+            "description": "conversations deleted (with `conversations: true`)",
+            "title": "Conversations",
+            "type": "integer"
+          },
+          "copilot_conversations": {
+            "title": "Copilot Conversations",
+            "type": "integer"
+          },
+          "files": {
+            "default": 0,
+            "description": "files they attached, deleted (with `conversations: true`)",
+            "title": "Files",
+            "type": "integer"
+          },
+          "memories": {
+            "description": "long-term memories deleted (namespaces that carry their user id)",
+            "title": "Memories",
+            "type": "integer"
+          },
+          "tokens": {
+            "description": "API tokens revoked",
+            "title": "Tokens",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "tokens",
+          "connections",
+          "memories",
+          "copilot_conversations",
+          "account_erased"
+        ],
+        "title": "ErasedMemberOut",
         "type": "object"
       },
       "EvaluatorIn": {
@@ -4543,6 +5156,148 @@
         "title": "ExperimentResultOut",
         "type": "object"
       },
+      "ExportLinkOut": {
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "path": {
+            "description": "GET it once, without signing in; behind the web server it is under /api",
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "expires_at"
+        ],
+        "title": "ExportLinkOut",
+        "type": "object"
+      },
+      "ExportOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "downloaded_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Downloaded At"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "when the archive is deleted (downloaded or not)",
+            "title": "Expires At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "requested_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requested By"
+          },
+          "sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "of the zip, to check the download",
+            "title": "Sha256"
+          },
+          "size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "bytes of the zip",
+            "title": "Size"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "building",
+              "ready",
+              "downloaded",
+              "expired",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "requested_by",
+          "created_at",
+          "finished_at",
+          "expires_at",
+          "size",
+          "sha256",
+          "error",
+          "downloaded_at"
+        ],
+        "title": "ExportOut",
+        "type": "object"
+      },
       "ExportPlanOut": {
         "properties": {
           "prerequisites": {
@@ -5344,6 +6099,27 @@
         "title": "GateOut",
         "type": "object"
       },
+      "GeneratedBy": {
+        "properties": {
+          "kind": {
+            "const": "ai",
+            "default": "ai",
+            "description": "the output was generated by an AI system",
+            "title": "Kind",
+            "type": "string"
+          },
+          "models": {
+            "description": "the models that answered in this run, e.g. anthropic:claude-sonnet-4-6",
+            "items": {
+              "type": "string"
+            },
+            "title": "Models",
+            "type": "array"
+          }
+        },
+        "title": "GeneratedBy",
+        "type": "object"
+      },
       "GitHubPushIn": {
         "properties": {
           "branch": {
@@ -6031,6 +6807,18 @@
             ],
             "title": "Decided At"
           },
+          "deciders": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "who may decide it, when its step names them (roles, groups, people); none: any reviewer",
+            "title": "Deciders"
+          },
           "decision": {
             "anyOf": [
               {
@@ -6050,6 +6838,12 @@
           "kind": {
             "title": "Kind",
             "type": "string"
+          },
+          "may_decide": {
+            "default": true,
+            "description": "whether you may decide it (who it names, approving your own runs)",
+            "title": "May Decide",
+            "type": "boolean"
           },
           "node_label": {
             "anyOf": [
@@ -6102,6 +6896,18 @@
           "thread_id": {
             "title": "Thread Id",
             "type": "string"
+          },
+          "why_not": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "why you may not decide it",
+            "title": "Why Not"
           },
           "workflow_id": {
             "anyOf": [
@@ -6350,11 +7156,148 @@
         "title": "ItemsIn",
         "type": "object"
       },
+      "KeyCreated": {
+        "properties": {
+          "active": {
+            "description": "works now: neither revoked nor expired",
+            "title": "Active",
+            "type": "boolean"
+          },
+          "api_key": {
+            "description": "the key itself: shown this once",
+            "title": "Api Key",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "who made it (none: the key the deployment had before E-8)",
+            "title": "Created By"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "none: never expires",
+            "title": "Expires At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "last_used_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the last call made with it, to the minute",
+            "title": "Last Used At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "prefix": {
+            "description": "the key's first characters, to tell it from the others",
+            "title": "Prefix",
+            "type": "string"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "prefix",
+          "created_by",
+          "created_at",
+          "expires_at",
+          "last_used_at",
+          "revoked_at",
+          "active",
+          "api_key"
+        ],
+        "title": "KeyCreated",
+        "type": "object"
+      },
+      "KeyIn": {
+        "properties": {
+          "expires_in_days": {
+            "anyOf": [
+              {
+                "maximum": 3650.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "null: never expires",
+            "title": "Expires In Days"
+          },
+          "name": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "KeyIn",
+        "type": "object"
+      },
       "KeyOut": {
         "properties": {
           "api_key": {
+            "description": "the new key: shown this once",
             "title": "Api Key",
             "type": "string"
+          },
+          "key": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeploymentKeyOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the new key's details"
           }
         },
         "required": [
@@ -6872,6 +7815,18 @@
             "default": false,
             "title": "Destructive",
             "type": "boolean"
+          },
+          "hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "SHA-256 of the tool's description, input schema and annotations: publishing pins it",
+            "title": "Hash"
           },
           "name": {
             "title": "Name",
@@ -7897,6 +8852,184 @@
         "title": "NotOfferedOut",
         "type": "object"
       },
+      "NotificationsIn": {
+        "description": "Only what is sent changes; `null` removes the Slack address or the webhook.",
+        "properties": {
+          "email": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "email_to": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxLength": 320,
+                  "pattern": "^[^@\\s]+@[^@\\s]+$",
+                  "type": "string"
+                },
+                "maxItems": 20,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email To"
+          },
+          "slack_url": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slack Url"
+          },
+          "webhook_secret": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 24,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Webhook Secret"
+          },
+          "webhook_url": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Webhook Url"
+          }
+        },
+        "title": "NotificationsIn",
+        "type": "object"
+      },
+      "NotificationsOut": {
+        "properties": {
+          "email": {
+            "$ref": "#/components/schemas/EmailOut"
+          },
+          "slack": {
+            "description": "a Slack incoming webhook is set (its address is never shown)",
+            "title": "Slack",
+            "type": "boolean"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "webhook_secret_set": {
+            "title": "Webhook Secret Set",
+            "type": "boolean"
+          },
+          "webhook_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Webhook Url"
+          }
+        },
+        "required": [
+          "email",
+          "slack",
+          "webhook_url",
+          "webhook_secret_set"
+        ],
+        "title": "NotificationsOut",
+        "type": "object"
+      },
+      "NotificationsSaved": {
+        "properties": {
+          "email": {
+            "$ref": "#/components/schemas/EmailOut"
+          },
+          "slack": {
+            "description": "a Slack incoming webhook is set (its address is never shown)",
+            "title": "Slack",
+            "type": "boolean"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "webhook_secret": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the webhook's signing secret, shown this once when the server made it",
+            "title": "Webhook Secret"
+          },
+          "webhook_secret_set": {
+            "title": "Webhook Secret Set",
+            "type": "boolean"
+          },
+          "webhook_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Webhook Url"
+          }
+        },
+        "required": [
+          "email",
+          "slack",
+          "webhook_url",
+          "webhook_secret_set"
+        ],
+        "title": "NotificationsSaved",
+        "type": "object"
+      },
       "Observation": {
         "properties": {
           "calls": {
@@ -8255,6 +9388,20 @@
             "description": "not below the server's; 0 = forever",
             "title": "Audit Retention Days"
           },
+          "cost_warn_percent": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the share of a spending cap at which a cost alert is raised",
+            "title": "Cost Warn Percent"
+          },
           "max_concurrent_runs": {
             "anyOf": [
               {
@@ -8268,6 +9415,34 @@
             ],
             "description": "runs in flight at once; past it runs wait in a queue by priority",
             "title": "Max Concurrent Runs"
+          },
+          "max_cost_usd_day": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 100000000.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "USD a UTC day for the whole organisation; past it runs stop",
+            "title": "Max Cost Usd Day"
+          },
+          "max_cost_usd_month": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 100000000.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "USD a calendar month (UTC) for the whole organisation",
+            "title": "Max Cost Usd Month"
           },
           "max_token_days": {
             "anyOf": [
@@ -8366,6 +9541,9 @@
                   "type": "integer"
                 },
                 {
+                  "type": "number"
+                },
+                {
                   "type": "boolean"
                 }
               ]
@@ -8385,6 +9563,9 @@
                   "type": "integer"
                 },
                 {
+                  "type": "number"
+                },
+                {
                   "type": "boolean"
                 }
               ]
@@ -8400,6 +9581,97 @@
           "effective"
         ],
         "title": "OrgLimitsOut",
+        "type": "object"
+      },
+      "OrgSecurity": {
+        "description": "Who may act in the organisation, and from where; a field left out keeps its value.",
+        "properties": {
+          "allowed_networks": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxLength": 50,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 100,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the only networks (CIDR or addresses) requests may come from, for every sign-in, token, deployment key, share link and SCIM; [] or null: any address. Your own address must be on it",
+            "title": "Allowed Networks"
+          },
+          "require_mfa": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "members must sign in with multi-factor authentication; turning it on needs a sign-in that is multi-factor itself",
+            "title": "Require Mfa"
+          }
+        },
+        "title": "OrgSecurity",
+        "type": "object"
+      },
+      "OrgSecurityOut": {
+        "properties": {
+          "allowed_networks": {
+            "description": "[]: requests may come from any address",
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Networks",
+            "type": "array"
+          },
+          "mfa_available": {
+            "description": "people sign in through an identity provider, so MFA can be required",
+            "title": "Mfa Available",
+            "type": "boolean"
+          },
+          "networks_ignored": {
+            "description": "the operator switched every allow-list off (an emergency)",
+            "title": "Networks Ignored",
+            "type": "boolean"
+          },
+          "require_mfa": {
+            "description": "members must sign in with multi-factor authentication",
+            "title": "Require Mfa",
+            "type": "boolean"
+          },
+          "your_address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the address this request came from, as the allow-list sees it",
+            "title": "Your Address"
+          },
+          "your_sign_in_is_mfa": {
+            "description": "this request's sign-in counts as multi-factor on this server",
+            "title": "Your Sign In Is Mfa",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "allowed_networks",
+          "your_address",
+          "networks_ignored",
+          "require_mfa",
+          "mfa_available",
+          "your_sign_in_is_mfa"
+        ],
+        "title": "OrgSecurityOut",
         "type": "object"
       },
       "OrgSettings": {
@@ -8460,6 +9732,17 @@
             ],
             "description": "days a conversation is kept after its last activity; null = the server default, 0 = forever",
             "title": "Retention Days"
+          },
+          "security": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OrgSecurity"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the IP allow-list and required multi-factor sign-in"
           },
           "sso_groups": {
             "anyOf": [
@@ -8540,6 +9823,9 @@
             ],
             "title": "Retention Days"
           },
+          "security": {
+            "$ref": "#/components/schemas/OrgSecurityOut"
+          },
           "sso_groups": {
             "anyOf": [
               {
@@ -8568,7 +9854,8 @@
           "offered_environments",
           "limits",
           "sso_groups",
-          "sso_groups_editable"
+          "sso_groups_editable",
+          "security"
         ],
         "title": "OrgSettingsOut",
         "type": "object"
@@ -8983,6 +10270,41 @@
           "done"
         ],
         "title": "Progress",
+        "type": "object"
+      },
+      "ProjectCaps": {
+        "description": "A project's spending caps in USD; null: none (the organisation's still apply).",
+        "properties": {
+          "max_cost_usd_day": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 100000000.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "USD a UTC day for the project",
+            "title": "Max Cost Usd Day"
+          },
+          "max_cost_usd_month": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 100000000.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "USD a calendar month (UTC) for the project",
+            "title": "Max Cost Usd Month"
+          }
+        },
+        "title": "ProjectCaps",
         "type": "object"
       },
       "ProjectIn": {
@@ -10168,6 +11490,20 @@
         "title": "RetryPolicySpec",
         "type": "object"
       },
+      "RotateIn": {
+        "properties": {
+          "overlap_hours": {
+            "default": 0,
+            "description": "how long the old keys keep working, so callers can move over (0: they stop now)",
+            "maximum": 720.0,
+            "minimum": 0.0,
+            "title": "Overlap Hours",
+            "type": "integer"
+          }
+        },
+        "title": "RotateIn",
+        "type": "object"
+      },
       "Rules": {
         "properties": {
           "failed": {
@@ -10192,6 +11528,78 @@
           }
         },
         "title": "Rules",
+        "type": "object"
+      },
+      "RunCallbackOut": {
+        "properties": {
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "delivered_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivered At"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "last_status": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the HTTP status the receiver answered last",
+            "title": "Last Status"
+          },
+          "next_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "when it is tried next (pending only)",
+            "title": "Next At"
+          },
+          "status": {
+            "description": "pending, delivered or failed (given up after its last attempt)",
+            "title": "Status",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "status",
+          "attempts"
+        ],
+        "title": "RunCallbackOut",
         "type": "object"
       },
       "RunHit": {
@@ -10253,6 +11661,17 @@
       },
       "RunOut": {
         "properties": {
+          "callback": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RunCallbackOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the completion callback a deployment run asked for"
+          },
           "cost_usd": {
             "default": 0.0,
             "title": "Cost Usd",
@@ -10819,6 +12238,56 @@
           "created_at"
         ],
         "title": "ScimStatus",
+        "type": "object"
+      },
+      "ScopeCaps": {
+        "properties": {
+          "day": {
+            "$ref": "#/components/schemas/CapUse"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the project's id; null: the organisation",
+            "title": "Id"
+          },
+          "month": {
+            "$ref": "#/components/schemas/CapUse"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "own": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "description": "the caps this organisation or project set itself",
+            "title": "Own",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "own",
+          "day",
+          "month"
+        ],
+        "title": "ScopeCaps",
         "type": "object"
       },
       "Score": {
@@ -11523,6 +12992,12 @@
       },
       "ShareInfo": {
         "properties": {
+          "ai_notice": {
+            "default": "You are chatting with an AI assistant. Answers can be wrong.",
+            "description": "always shown: tells visitors they are chatting with an AI",
+            "title": "Ai Notice",
+            "type": "string"
+          },
           "attachments": {
             "anyOf": [
               {
@@ -11572,6 +13047,11 @@
       },
       "ShareOut": {
         "properties": {
+          "ai_notice": {
+            "description": "what the chat page says to tell visitors they are chatting with an AI",
+            "title": "Ai Notice",
+            "type": "string"
+          },
           "deployment_id": {
             "title": "Deployment Id",
             "type": "string"
@@ -11673,7 +13153,8 @@
           "input_field",
           "input",
           "inputs",
-          "frame_origins"
+          "frame_origins",
+          "ai_notice"
         ],
         "title": "ShareOut",
         "type": "object"
@@ -11778,6 +13259,19 @@
       },
       "ShareSettingsIn": {
         "properties": {
+          "ai_notice": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "tells visitors they are chatting with an AI (always shown; may be reworded, not removed)",
+            "title": "Ai Notice"
+          },
           "enabled": {
             "anyOf": [
               {
@@ -11944,6 +13438,64 @@
         "title": "Skipped",
         "type": "object"
       },
+      "SpendCapAlertOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "limit_usd": {
+            "title": "Limit Usd",
+            "type": "number"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "period": {
+            "title": "Period",
+            "type": "string"
+          },
+          "period_start": {
+            "title": "Period Start",
+            "type": "string"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "null: the organisation's cap",
+            "title": "Project Id"
+          },
+          "share": {
+            "description": "of the cap; 1: the cap was reached",
+            "title": "Share",
+            "type": "number"
+          },
+          "spent_usd": {
+            "title": "Spent Usd",
+            "type": "number"
+          }
+        },
+        "required": [
+          "project_id",
+          "period",
+          "period_start",
+          "share",
+          "spent_usd",
+          "limit_usd",
+          "message",
+          "created_at"
+        ],
+        "title": "SpendCapAlertOut",
+        "type": "object"
+      },
       "SpendDeployment": {
         "properties": {
           "cache_hits": {
@@ -12037,6 +13589,44 @@
           "alerts"
         ],
         "title": "SpendOut",
+        "type": "object"
+      },
+      "SpendOutsideRuns": {
+        "properties": {
+          "calls": {
+            "title": "Calls",
+            "type": "integer"
+          },
+          "cost_usd": {
+            "title": "Cost Usd",
+            "type": "number"
+          },
+          "kind": {
+            "description": "the Copilot's answers, or AI judges scoring runs",
+            "enum": [
+              "copilot",
+              "judge"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "tokens_in": {
+            "title": "Tokens In",
+            "type": "integer"
+          },
+          "tokens_out": {
+            "title": "Tokens Out",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "calls",
+          "tokens_in",
+          "tokens_out",
+          "cost_usd"
+        ],
+        "title": "SpendOutsideRuns",
         "type": "object"
       },
       "SpendPeriod": {
@@ -12325,6 +13915,50 @@
         "title": "SpendWorkflow",
         "type": "object"
       },
+      "SpendingCapsOut": {
+        "properties": {
+          "alerts": {
+            "description": "the latest alerts, newest first",
+            "items": {
+              "$ref": "#/components/schemas/SpendCapAlertOut"
+            },
+            "title": "Alerts",
+            "type": "array"
+          },
+          "organisation": {
+            "$ref": "#/components/schemas/ScopeCaps"
+          },
+          "projects": {
+            "items": {
+              "$ref": "#/components/schemas/ScopeCaps"
+            },
+            "title": "Projects",
+            "type": "array"
+          },
+          "server": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "description": "the server's caps for every organisation (0: none)",
+            "title": "Server",
+            "type": "object"
+          },
+          "warn_percent": {
+            "description": "the share of a cap, in percent, at which an alert is raised",
+            "title": "Warn Percent",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "warn_percent",
+          "server",
+          "organisation",
+          "projects",
+          "alerts"
+        ],
+        "title": "SpendingCapsOut",
+        "type": "object"
+      },
       "SpendingOut": {
         "properties": {
           "by_deployment": {
@@ -12355,13 +13989,22 @@
             "title": "By Workflow",
             "type": "array"
           },
+          "outside_runs": {
+            "description": "model calls outside runs (the Copilot, AI judges), which the spending caps count too",
+            "items": {
+              "$ref": "#/components/schemas/SpendOutsideRuns"
+            },
+            "title": "Outside Runs",
+            "type": "array"
+          },
           "since": {
             "format": "date-time",
             "title": "Since",
             "type": "string"
           },
           "total": {
-            "$ref": "#/components/schemas/SpendTotal"
+            "$ref": "#/components/schemas/SpendTotal",
+            "description": "runs only: model calls outside runs are in `outside_runs`"
           },
           "until": {
             "format": "date-time",
@@ -12376,7 +14019,8 @@
           "by_project",
           "by_workflow",
           "by_person",
-          "by_deployment"
+          "by_deployment",
+          "outside_runs"
         ],
         "title": "SpendingOut",
         "type": "object"
@@ -13015,6 +14659,36 @@
           "created_at"
         ],
         "title": "TestCaseOut",
+        "type": "object"
+      },
+      "TestResult": {
+        "properties": {
+          "channel": {
+            "title": "Channel",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "channel",
+          "ok",
+          "error"
+        ],
+        "title": "TestResult",
         "type": "object"
       },
       "TestRunIn": {
@@ -18223,6 +19897,238 @@
         ]
       }
     },
+    "/v1/deployments/{dep_id}/callback-secret": {
+      "post": {
+        "description": "Create the secret that signs this deployment's run callbacks, or replace it (the old one stops signing at\nonce, also for callbacks still waiting to be delivered). Runs can ask for a callback once it exists.",
+        "operationId": "rotate_callback_secret_v1_deployments__dep_id__callback_secret_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dep_id",
+            "required": true,
+            "schema": {
+              "title": "Dep Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CallbackSecretOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error (a problem document)"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Rotate Callback Secret",
+        "tags": [
+          "deployments"
+        ]
+      }
+    },
+    "/v1/deployments/{dep_id}/end-users/erase": {
+      "post": {
+        "description": "Erase one of your end users (GDPR Art. 17), by the `user_id` you sent with their runs: their conversations on\nthis deployment (with feedback), long-term memories and the files their runs used. Answers the counts; an\nend user with nothing left answers zeros.",
+        "operationId": "api_erase_end_user_v1_deployments__dep_id__end_users_erase_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dep_id",
+            "required": true,
+            "schema": {
+              "title": "Dep Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiEndUserIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErasedEndUserOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error (a problem document)"
+          }
+        },
+        "summary": "Api Erase End User",
+        "tags": [
+          "deployments"
+        ]
+      }
+    },
+    "/v1/deployments/{dep_id}/end-users/export": {
+      "post": {
+        "description": "One of your end users' data as JSON (GDPR Art. 15 and 20), by the `user_id` you sent with their runs: their\nconversations on this deployment with each run's input, answer and steps, long-term memories and the files their\nruns used (names and sizes).",
+        "operationId": "api_export_end_user_v1_deployments__dep_id__end_users_export_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dep_id",
+            "required": true,
+            "schema": {
+              "title": "Dep Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiEndUserIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error (a problem document)"
+          }
+        },
+        "summary": "Api Export End User",
+        "tags": [
+          "deployments"
+        ]
+      }
+    },
     "/v1/deployments/{dep_id}/files": {
       "post": {
         "description": "Upload a file for the workflow's file input, with the deployment's key (N-4): the answer is the reference to\nput in the run's input, instead of sending the bytes inline as base64. Its media types and the size limit are the\nones of the file input; only a workflow that has one takes files.",
@@ -18297,6 +20203,248 @@
           }
         },
         "summary": "Api Upload",
+        "tags": [
+          "deployments"
+        ]
+      }
+    },
+    "/v1/deployments/{dep_id}/keys": {
+      "get": {
+        "description": "The deployment's API keys, newest first, with revoked and expired ones (builders).",
+        "operationId": "list_deployment_keys_v1_deployments__dep_id__keys_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dep_id",
+            "required": true,
+            "schema": {
+              "title": "Dep Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DeploymentKeyOut"
+                  },
+                  "title": "Response List Deployment Keys V1 Deployments  Dep Id  Keys Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error (a problem document)"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Deployment Keys",
+        "tags": [
+          "deployments"
+        ]
+      },
+      "post": {
+        "description": "Another key for the deployment, next to the ones that work already (shown once). To replace a key without\ndowntime: make a new one, move the callers to it, then revoke the old one.",
+        "operationId": "create_deployment_key_v1_deployments__dep_id__keys_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dep_id",
+            "required": true,
+            "schema": {
+              "title": "Dep Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KeyIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeyCreated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error (a problem document)"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Deployment Key",
+        "tags": [
+          "deployments"
+        ]
+      }
+    },
+    "/v1/deployments/{dep_id}/keys/{key_id}": {
+      "delete": {
+        "description": "Revoke a key: calls with it are refused at once, on every server.",
+        "operationId": "revoke_deployment_key_v1_deployments__dep_id__keys__key_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dep_id",
+            "required": true,
+            "schema": {
+              "title": "Dep Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "key_id",
+            "required": true,
+            "schema": {
+              "title": "Key Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error (a problem document)"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Revoke Deployment Key",
         "tags": [
           "deployments"
         ]
@@ -18634,7 +20782,7 @@
     },
     "/v1/deployments/{dep_id}/rotate-key": {
       "post": {
-        "description": "A new key; the old one stops working immediately.",
+        "description": "A new key; the deployment's other keys stop working at once, or after `overlap_hours`.",
         "operationId": "rotate_key_v1_deployments__dep_id__rotate_key_post",
         "parameters": [
           {
@@ -18665,6 +20813,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/RotateIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {
@@ -18708,9 +20873,88 @@
         ]
       }
     },
+    "/v1/deployments/{dep_id}/runs": {
+      "post": {
+        "description": "Start a run of the published version and answer at once (202, `status: running`): read its result later with\n`GET .../runs/{run_id}` (its address is in `Location`), from any server.",
+        "operationId": "api_run_start_v1_deployments__dep_id__runs_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dep_id",
+            "required": true,
+            "schema": {
+              "title": "Dep Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiRunIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error (a problem document)"
+          }
+        },
+        "summary": "Api Run Start",
+        "tags": [
+          "deployments"
+        ]
+      }
+    },
     "/v1/deployments/{dep_id}/runs/stream": {
       "post": {
-        "description": "Run the published version, streaming canonical events (SSE).",
+        "description": "Run the published version, streaming canonical events (SSE); RUN_FINISHED carries `generated_by`.",
         "operationId": "api_run_stream_v1_deployments__dep_id__runs_stream_post",
         "parameters": [
           {
@@ -18787,7 +21031,7 @@
     },
     "/v1/deployments/{dep_id}/runs/wait": {
       "post": {
-        "description": "Run the published version and return its final state (or its pending interrupts).",
+        "description": "Run the published version and return its final state (or its pending interrupts). After 5 minutes it answers\n`status: running`; the result is then read with `GET .../runs/{run_id}`.",
         "operationId": "api_run_wait_v1_deployments__dep_id__runs_wait_post",
         "parameters": [
           {
@@ -18859,6 +21103,162 @@
           }
         },
         "summary": "Api Run Wait",
+        "tags": [
+          "deployments"
+        ]
+      }
+    },
+    "/v1/deployments/{dep_id}/runs/{run_id}": {
+      "get": {
+        "description": "A run of this deployment: `running` while it works (or waits for a run slot), then its output, the pauses it\nwaits for, or its error. Any server answers; a run another deployment made is not found.",
+        "operationId": "api_run_get_v1_deployments__dep_id__runs__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "dep_id",
+            "required": true,
+            "schema": {
+              "title": "Dep Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error (a problem document)"
+          }
+        },
+        "summary": "Api Run Get",
+        "tags": [
+          "deployments"
+        ]
+      }
+    },
+    "/v1/deployments/{dep_id}/runs/{run_id}/cancel": {
+      "post": {
+        "description": "Stop a run of this deployment, wherever it runs. A run that already ended answers `cancelled: false`.",
+        "operationId": "api_run_cancel_v1_deployments__dep_id__runs__run_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "dep_id",
+            "required": true,
+            "schema": {
+              "title": "Dep Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CancelOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error (a problem document)"
+          }
+        },
+        "summary": "Api Run Cancel",
         "tags": [
           "deployments"
         ]
@@ -19219,7 +21619,7 @@
         ]
       },
       "put": {
-        "description": "Switch the share link on or off and set the chat page's title, greeting, suggested prompts and the input\nmessages go to.",
+        "description": "Switch the share link on or off and set the chat page's title, greeting, suggested prompts, the input\nmessages go to and the wording of its AI notice (which cannot be removed).",
         "operationId": "update_share_v1_deployments__dep_id__share_put",
         "parameters": [
           {
@@ -20091,6 +22491,58 @@
         "summary": "Experiment Results",
         "tags": [
           "experiments"
+        ]
+      }
+    },
+    "/v1/exports/{token}": {
+      "get": {
+        "description": "Download an organisation export through its link, once.",
+        "operationId": "download_org_export_v1_exports__token__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              },
+              "application/zip": {}
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error (a problem document)"
+          }
+        },
+        "summary": "Download Org Export",
+        "tags": [
+          "organisation"
         ]
       }
     },
@@ -22117,6 +24569,71 @@
         ]
       }
     },
+    "/v1/me/export": {
+      "get": {
+        "description": "Your own data as JSON (GDPR Art. 15 and 20): your account and memberships, and in this organisation your API\ntokens (never the secret), app-connector sign-ins, Copilot chats, the conversations you started with each run's\ninput, answer and steps, your decisions, long-term memories, files and audit entries. Audited.",
+        "operationId": "export_me_v1_me_export_get",
+        "parameters": [
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error (a problem document)"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Export Me",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/v1/me/invitations": {
       "get": {
         "description": "Organisations that invited you while you belong to another one; joining needs your acceptance.",
@@ -23368,6 +25885,83 @@
         ]
       }
     },
+    "/v1/org": {
+      "delete": {
+        "description": "Delete the organisation with everything in it (admins, with a real sign-in). It is suspended at once: every\nsign-in, API token, deployment key, share link and run is refused, and the runs in flight stop. After the grace\nperiod (`AGENTCANVAS_ORG_DELETION_GRACE_DAYS`, 7 days by default) a background job deletes its data for good;\nuntil then an admin can take it back (`DELETE /v1/org/deletion`) and export the data.",
+        "operationId": "delete_organization_v1_org_delete",
+        "parameters": [
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteOrgIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error (a problem document)"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Organization",
+        "tags": [
+          "organisation"
+        ]
+      }
+    },
     "/v1/org/audit": {
       "get": {
         "description": "The organisation's audit log, newest first.",
@@ -23556,6 +26150,644 @@
           }
         ],
         "summary": "Audit Log",
+        "tags": [
+          "organisation"
+        ]
+      }
+    },
+    "/v1/org/audit/verify": {
+      "get": {
+        "description": "Check the organisation's audit log against its hash chain (admins): every entry is recomputed, so an entry\nchanged or deleted after it was written shows. It reads the whole log: a long one takes a while.",
+        "operationId": "verify_audit_log_v1_org_audit_verify_get",
+        "parameters": [
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditVerifyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error (a problem document)"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Verify Audit Log",
+        "tags": [
+          "organisation"
+        ]
+      }
+    },
+    "/v1/org/deletion": {
+      "delete": {
+        "description": "Take the deletion back during its grace period: the organisation opens again as it was. Runs the deletion\nstopped stay stopped.",
+        "operationId": "cancel_organization_deletion_v1_org_deletion_delete",
+        "parameters": [
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error (a problem document)"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Cancel Organization Deletion",
+        "tags": [
+          "organisation"
+        ]
+      },
+      "get": {
+        "description": "Whether the organisation is waiting to be deleted, and when that happens (admins).",
+        "operationId": "organization_deletion_v1_org_deletion_get",
+        "parameters": [
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error (a problem document)"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Organization Deletion",
+        "tags": [
+          "organisation"
+        ]
+      }
+    },
+    "/v1/org/end-users/erase": {
+      "post": {
+        "description": "Erase an end user of the organisation's deployments (GDPR Art. 17), by the `user_id` the deployment API was\nsent: their conversations (with checkpoints, feedback and search index), long-term memories and the files their\nruns used. Of one deployment, or of every one. Admins; a deployment's key can do the same for its own end users\n(`POST /v1/deployments/{id}/end-users/erase`).",
+        "operationId": "erase_end_user_v1_org_end_users_erase_post",
+        "parameters": [
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EndUserIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErasedEndUserOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error (a problem document)"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Erase End User",
+        "tags": [
+          "organisation"
+        ]
+      }
+    },
+    "/v1/org/end-users/export": {
+      "post": {
+        "description": "An end user's data as JSON (GDPR Art. 15 and 20), by the `user_id` the deployment API was sent: their\nconversations with each run's input, answer and steps, long-term memories and the files their runs used (names\nand sizes). Admins; audited (the log names them by a hash).",
+        "operationId": "export_end_user_v1_org_end_users_export_post",
+        "parameters": [
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EndUserIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error (a problem document)"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Export End User",
+        "tags": [
+          "organisation"
+        ]
+      }
+    },
+    "/v1/org/export": {
+      "get": {
+        "description": "The organisation's exports, newest first (the last 20).",
+        "operationId": "list_org_exports_v1_org_export_get",
+        "parameters": [
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ExportOut"
+                  },
+                  "title": "Response List Org Exports V1 Org Export Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error (a problem document)"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Org Exports",
+        "tags": [
+          "organisation"
+        ]
+      },
+      "post": {
+        "description": "Export everything the organisation holds (admins, with a real sign-in): a zip of NDJSON files (projects,\nworkflows and versions, deployments without keys, conversations with their runs and events, memories, files,\ndatasets, evaluations, the audit log...), the attached files and the workspaces. A background job builds it;\npoll `GET /v1/org/export/{id}` until it is `ready`, then make a download link. Also during a deletion's grace\nperiod.",
+        "operationId": "create_org_export_v1_org_export_post",
+        "parameters": [
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error (a problem document)"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Org Export",
+        "tags": [
+          "organisation"
+        ]
+      }
+    },
+    "/v1/org/export/{export_id}": {
+      "get": {
+        "operationId": "get_org_export_v1_org_export__export_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "export_id",
+            "required": true,
+            "schema": {
+              "title": "Export Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error (a problem document)"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Org Export",
+        "tags": [
+          "organisation"
+        ]
+      }
+    },
+    "/v1/org/export/{export_id}/link": {
+      "post": {
+        "description": "A link that downloads the built export once, within 15 minutes, without signing in (so a browser or `curl`\ncan fetch it). A new link replaces the one before. After the download the archive is deleted.",
+        "operationId": "create_org_export_link_v1_org_export__export_id__link_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "export_id",
+            "required": true,
+            "schema": {
+              "title": "Export Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportLinkOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error (a problem document)"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Org Export Link",
         "tags": [
           "organisation"
         ]
@@ -23769,6 +27001,379 @@
           }
         ],
         "summary": "Remove Member",
+        "tags": [
+          "organisation"
+        ]
+      }
+    },
+    "/v1/org/members/{user_id}/erase": {
+      "post": {
+        "description": "Erase a member (GDPR Art. 17): remove them, revoke their API tokens and app-connector sign-ins, delete their\nlong-term memories and Copilot chats, and, when asked, the conversations they started. Their account's email and\nname are removed when they belong to no other organisation; audit entries keep their id. Also for someone already\nremoved who belongs nowhere else. Admins, with a real sign-in.",
+        "operationId": "erase_member_v1_org_members__user_id__erase_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EraseMemberIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErasedMemberOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error (a problem document)"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Erase Member",
+        "tags": [
+          "organisation"
+        ]
+      }
+    },
+    "/v1/org/members/{user_id}/export": {
+      "get": {
+        "description": "A member's data in this organisation as JSON (GDPR Art. 15 and 20): their account, membership, API tokens\n(never the secret), app-connector sign-ins, Copilot chats, the conversations they started with each run's input,\nanswer and steps, their decisions, long-term memories, files and audit entries. Admins; audited. Also for\nsomeone already removed who belongs nowhere else.",
+        "operationId": "export_member_v1_org_members__user_id__export_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error (a problem document)"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Export Member",
+        "tags": [
+          "organisation"
+        ]
+      }
+    },
+    "/v1/org/notifications": {
+      "get": {
+        "description": "Where approval notifications go.",
+        "operationId": "get_notifications_v1_org_notifications_get",
+        "parameters": [
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error (a problem document)"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Notifications",
+        "tags": [
+          "organisation"
+        ]
+      },
+      "put": {
+        "description": "Change where approval notifications go. Setting a webhook without a secret makes one, returned this once.",
+        "operationId": "put_notifications_v1_org_notifications_put",
+        "parameters": [
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotificationsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationsSaved"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error (a problem document)"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Put Notifications",
+        "tags": [
+          "organisation"
+        ]
+      }
+    },
+    "/v1/org/notifications/test": {
+      "post": {
+        "description": "Send a sample notification on each channel that is on (e-mail to you), and say how each went.",
+        "operationId": "test_notifications_v1_org_notifications_test_post",
+        "parameters": [
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TestResult"
+                  },
+                  "title": "Response Test Notifications V1 Org Notifications Test Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error (a problem document)"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Test Notifications",
         "tags": [
           "organisation"
         ]
@@ -24594,6 +28199,73 @@
           }
         ],
         "summary": "Org Spending",
+        "tags": [
+          "organisation"
+        ]
+      }
+    },
+    "/v1/org/spending/caps": {
+      "get": {
+        "description": "The organisation's and its projects' spending caps, and what each spent today and this month (UTC): runs of\nevery kind, what conversations deleted since had spent, the Copilot and AI judges.",
+        "operationId": "spending_caps_v1_org_spending_caps_get",
+        "parameters": [
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpendingCapsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error (a problem document)"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Spending Caps",
         "tags": [
           "organisation"
         ]
@@ -27971,6 +31643,92 @@
         "summary": "Test Model",
         "tags": [
           "setup"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/spending-caps": {
+      "put": {
+        "description": "Cap what the project spends a UTC day and a calendar month, in USD (admins). A field left out keeps its value,\nnull removes the cap. Never above the organisation's cap, which binds the project as well; at a cap, the\nproject's new runs are refused (429) and its runs in flight stop.",
+        "operationId": "put_spending_caps_v1_projects__project_id__spending_caps_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectCaps"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectCaps"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error (a problem document)"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Put Spending Caps",
+        "tags": [
+          "projects"
         ]
       }
     },

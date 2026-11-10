@@ -33,6 +33,8 @@ USER 101
 COPY infra/nginx.conf /etc/nginx/templates/default.conf.template
 COPY --chmod=755 infra/web/19-trusted-proxies.envsh /docker-entrypoint.d/19-trusted-proxies.envsh
 COPY --chmod=755 infra/web/20-csp.envsh /docker-entrypoint.d/20-csp.envsh
+# /.well-known/security.txt: SECURITY_CONTACT and SECURITY_POLICY name your own security team (see the script)
+COPY --chmod=755 infra/web/21-security-txt.envsh /docker-entrypoint.d/21-security-txt.envsh
 COPY --from=build /repo/apps/web/dist /usr/share/nginx/html
 ENV API_UPSTREAM=http://api:8000 \
     TRUSTED_PROXIES=127.0.0.1/32

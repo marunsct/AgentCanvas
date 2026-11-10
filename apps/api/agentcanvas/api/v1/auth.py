@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Request, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -128,3 +129,21 @@ async def decline_invitation(
 ) -> Response:
     await UserRepo(session).answer(user.id, org_id, accept=False)
     return Response(status_code=204)
+
+
+@router.get("/me/export")
+async def export_me(
+    request: Request, user: CurrentUser = Depends(current_user), session: AsyncSession = Depends(get_session)
+) -> JSONResponse:
+    """Your own data as JSON (GDPR Art. 15 and 20): your account and memberships, and in this organisation your API
+    tokens (never the secret), app-connector sign-ins, Copilot chats, the conversations you started with each run's
+    input, answer and steps, your decisions, long-term memories, files and audit entries. Audited."""
+    from agentcanvas.api.audit import record_read
+    from agentcanvas.api.v1.org import download
+    from agentcanvas.services import data_subjects
+
+    data = await data_subjects.export_member(
+        session, request.app.state.runner, user.org_id, user.id, every_organisation=True
+    )
+    await record_read(request, "export_member", f"user_id={user.id}")
+    return download(data, "agentcanvas-my-data.json")

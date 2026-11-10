@@ -5,10 +5,11 @@ deployment API, with the same rate limits:
 
 - **MCP** (`POST /v1/deployments/{id}/mcp`, Streamable HTTP, stateless JSON responses): one tool that runs the
   workflow, plus `answer` when it can pause for a person. Claude Desktop, Cursor, ChatGPT and agent frameworks
-  connect to it like to any remote MCP server.
+  connect to it like to any remote MCP server. A 2026-07-28 client that shows forms is asked to answer a pause
+  itself (input_required, api/v1/mcp_input.py); one that takes the Tasks extension gets a task for a long run.
 - **A2A** (`POST /v1/deployments/{id}/a2a`, JSON-RPC; card at `.../a2a/.well-known/agent-card.json`):
   `message/send` runs the workflow (a pause becomes `input-required`, answered by sending to the same task),
-  `tasks/get` reads a task.
+  `tasks/get` reads a task (from any server: services/run_results.py), `tasks/cancel` stops a working one.
 
 Runs started here are ordinary deployment runs: they show in Runs, count for online evaluators and keep their
 conversation (`thread_id` / A2A `contextId`).
@@ -16,9 +17,12 @@ conversation (`thread_id` / A2A `contextId`).
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import hashlib
 import json
 import re
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -28,16 +32,39 @@ from pydantic import ValidationError
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from agentcanvas.api.audit import note, payload_hash
 from agentcanvas.api.deps import get_session, get_settings_dep
 from agentcanvas.api.urls import api_base, api_url
-from agentcanvas.api.v1.deployments import ApiResult, ApiRunIn, _caller, _continue_on, _result, _start, own_thread
+from agentcanvas.api.v1 import mcp_input
+from agentcanvas.api.v1.deployments import (
+    ApiResult,
+    ApiRunIn,
+    _caller,
+    _continue_on,
+    _result,
+    _start,
+    api_result,
+    own_thread,
+)
+from agentcanvas.api.v1.runs import stop_run
 from agentcanvas.db.models import Deployment, InterruptTask, Run, Thread, WorkflowVersion
-from agentcanvas.db.repositories import LIGHT_RUN
-from agentcanvas.errors import Conflict, DomainError, InvalidInput, NotFound, TooManyRequests, Unauthorized
+from agentcanvas.errors import (
+    Conflict,
+    DomainError,
+    Forbidden,
+    InvalidInput,
+    NotFound,
+    TooManyRequests,
+    Unauthorized,
+)
 from agentcanvas.ir.contract import Contract, contract
 from agentcanvas.ir.models import Workflow
 from agentcanvas.runtime import nesting
+from agentcanvas.runtime.runner import RunHandle
 from agentcanvas.runtime.types import ResumeSpec
+from agentcanvas.services import approvers
+from agentcanvas.services.disclosure import AI_HEADER
+from agentcanvas.services.run_results import ResultRepo
 from agentcanvas.settings import Settings
 
 router = APIRouter(tags=["agent protocols"])
@@ -63,6 +90,12 @@ V1_STATES = {
     "completed": "TASK_STATE_COMPLETED", "input-required": "TASK_STATE_INPUT_REQUIRED", "working": "TASK_STATE_WORKING",
     "canceled": "TASK_STATE_CANCELED", "failed": "TASK_STATE_FAILED",
 }  # fmt: skip
+CANCEL_WAIT_S = 5.0  # how long CancelTask waits for a run stopped on this server to save its outcome
+PAUSES_ANSWERED = " It can pause for a person: then call `answer`."
+PAUSES_ASKED = " It can pause for a person: your client then asks you, and the run goes on with your answer."
+TASK_AFTER_S = 30.0  # a client that takes tasks gets one for a run still working after this long (or queued)
+POLL_MS = 3000  # how often a task's client is asked to poll
+MISSING_CAPABILITY = -32021
 TEXT_FIELDS = ("message", "question", "query", "input", "text", "request", "prompt", "ticket")
 
 
@@ -99,7 +132,13 @@ def tool_name(wf: Workflow) -> str:
     return slug or "run_workflow"
 
 
-def _describe_pause(interrupts: list[dict[str, Any]]) -> str:
+def _people_decide(interrupt: dict[str, Any], wf: Workflow | None) -> bool:
+    """The pause's step names who decides it and does not let the caller answer (E-6): it waits in the Inbox."""
+    stored = approvers.node_approvers(wf).get(interrupt.get("canvas_node_id") or "") if wf is not None else None
+    return approvers.caller_refusal(approvers.Approvers.of(stored)) is not None
+
+
+def _describe_pause(interrupts: list[dict[str, Any]], wf: Workflow | None = None) -> str:
     lines = []
     for i in interrupts:
         payload = i.get("payload")
@@ -111,8 +150,16 @@ def _describe_pause(interrupts: list[dict[str, Any]]) -> str:
         kind = {"approval": "an approval", "tool_approval": "approval of a tool call", "input": "an answer"}.get(
             i.get("kind") or "", "an answer"
         )
-        lines.append(f"- it needs {kind}" + (f": {what}" if what else "") + f" (interrupt_id {i.get('id')})")
+        theirs = " (decided by the people its workflow names, in AgentCanvas)" if _people_decide(i, wf) else ""
+        lines.append(f"- it needs {kind}" + (f": {what}" if what else "") + f" (interrupt_id {i.get('id')}){theirs}")
     return "\n".join(lines)
+
+
+def _next_step(interrupts: list[dict[str, Any]], wf: Workflow | None, answer: str) -> str:
+    """What the caller can do about a pause: answer it, or wait for the people who decide it."""
+    if interrupts and all(_people_decide(i, wf) for i in interrupts):
+        return "It waits for a person to decide it in AgentCanvas; you cannot answer it."
+    return answer
 
 
 def answer_value(interrupt: dict[str, Any] | None, approve: bool | None, text: str | None, value: Any) -> Any:
@@ -166,7 +213,22 @@ async def _resume(
     iid: str | None,
     labels: dict[str, str] | None = None,
 ) -> ApiResult:
+    return await _result(await _resume_run(request, session, dep, wf, thread_id, value, iid, labels))
+
+
+async def _resume_run(
+    request: Request,
+    session: AsyncSession,
+    dep: Deployment,
+    wf: Workflow,
+    thread_id: str,
+    value: Any,
+    iid: str | None,
+    labels: dict[str, str] | None = None,
+) -> RunHandle:
+    """Answer a pause of the deployment's conversation: the run that goes on (no connection held while it works)."""
     await own_thread(session, dep, thread_id)
+    await approvers.check_pending(session, thread_id, iid, approvers.CALLER)
     wf, version_id = await _continue_on(session, dep, wf, thread_id)
     h = await request.app.state.runner.start(
         wf,
@@ -178,11 +240,22 @@ async def _resume(
         caller_run_id=nesting.caller(request.headers.get(nesting.HEADER)),
     )
     await session.close()
-    return await _result(h)
+    return h
 
 
 # ---------------------------------------------------------------------------------------------- MCP ----
-def _mcp_tools(wf: Workflow, c: Contract) -> list[dict[str, Any]]:
+@dataclass(frozen=True)
+class Caller:
+    """What a 2026-07-28 client declared on the request (F-1)."""
+
+    ask: bool = False  # it takes form elicitation: a pause asks the person through the client (input_required)
+    tasks: bool = False  # it takes the Tasks extension: a long or queued run answers with a task to poll
+
+
+LEGACY = Caller()
+
+
+def _mcp_tools(wf: Workflow, c: Contract, caller: Caller = LEGACY) -> list[dict[str, Any]]:
     props: dict[str, Any] = {k: dict(v) for k, v in c.input.items()}
     if c.context:
         props["context"] = {"type": "object", "properties": c.context, "description": "run context fields"}
@@ -194,12 +267,12 @@ def _mcp_tools(wf: Workflow, c: Contract) -> list[dict[str, Any]]:
             "title": wf.name,
             "description": (wf.description or f"Runs the {wf.name} workflow.")
             + (f" Returns: {', '.join(c.output)}." if c.output else "")
-            + (" It can pause for a person: then call `answer`." if c.pauses else ""),
+            + ((PAUSES_ASKED if caller.ask else PAUSES_ANSWERED) if c.pauses else ""),
             "inputSchema": {"type": "object", "properties": props, "required": required},
             "annotations": {"title": wf.name, "readOnlyHint": False, "openWorldHint": True},
         }
     ]
-    if c.pauses:
+    if c.pauses and not caller.ask:  # a client that shows forms asks the person; the calling model does not answer
         tools.append(
             {
                 "name": "answer",
@@ -223,14 +296,16 @@ def _mcp_tools(wf: Workflow, c: Contract) -> list[dict[str, Any]]:
     return tools
 
 
-def _tool_result(res: ApiResult) -> dict[str, Any]:
+def _tool_result(res: ApiResult, result_url: str | None = None, wf: Workflow | None = None) -> dict[str, Any]:
     data = res.model_dump(exclude_none=True)
     if res.status == "interrupted":
-        text = f"The run paused (thread_id {res.thread_id}):\n{_describe_pause(res.interrupts)}\nCall `answer`."
+        then = _next_step(res.interrupts, wf, "Call `answer`.")
+        text = f"The run paused (thread_id {res.thread_id}):\n{_describe_pause(res.interrupts, wf)}\n{then}"
     elif res.status == "success":
         text = json.dumps(res.output, ensure_ascii=False, indent=1)
     elif res.status == "running":
-        text = f"Still running after the wait limit (run {res.run_id}); see Runs in AgentCanvas."
+        text = (f"Still running after the wait limit (run {res.run_id}). Its result: GET {result_url or 'the run'} "
+                "with the deployment key.")  # fmt: skip
     else:
         text = f"The run ended with status {res.status}: {res.error or 'no details'}"
     return {
@@ -240,14 +315,28 @@ def _tool_result(res: ApiResult) -> dict[str, Any]:
     }
 
 
+def _result_url(request: Request, dep: Deployment, res: ApiResult) -> str:
+    return api_url(request, "api_run_get", dep_id=dep.id, run_id=res.run_id)
+
+
 async def _mcp_call(
-    request: Request, session: AsyncSession, dep: Deployment, wf: Workflow, params: dict[str, Any], auth: str | None
+    request: Request,
+    session: AsyncSession,
+    dep: Deployment,
+    wf: Workflow,
+    params: dict[str, Any],
+    auth: str | None,
+    caller: Caller = LEGACY,
 ) -> dict[str, Any]:
     name, args = params.get("name"), params.get("arguments") or {}
     if not isinstance(args, dict):
         raise RpcError(-32602, "arguments must be an object")
     c = contract(wf)
     try:
+        if params.get("requestState") is not None or params.get("inputResponses") is not None:
+            if not caller.ask or name not in (tool_name(wf), "answer"):
+                raise RpcError(-32602, "requestState and inputResponses answer a pause this server asked about")
+            return await _answer_asked(request, session, dep, wf, str(name), args, params, caller)
         if name == tool_name(wf):
             fields = {k: v for k, v in args.items() if k not in ("thread_id", "context")}
             try:
@@ -258,15 +347,134 @@ async def _mcp_call(
                 raise RpcError(-32602, f"invalid arguments: {exc.errors()[0]['msg']}") from None
             h = await _start(request, session, dep.id, body, auth, caller=(dep, wf))
             await session.close()
-            return _tool_result(await _result(h))
+            return await _answer_call(request, dep, wf, h, str(name), args, caller)
         if name == "answer" and c.pauses:
             thread_id, iid = str(args.get("thread_id") or ""), args.get("interrupt_id")
             pending = await _pending(request, session, thread_id, iid)
             value = answer_value(pending, args.get("approve"), args.get("text"), args.get("value"))
-            return _tool_result(await _resume(request, session, dep, wf, thread_id, value, iid))
-    except (InvalidInput, NotFound, Conflict) as exc:  # the caller's mistake: tell the model, it can correct it
+            h = await _resume_run(request, session, dep, wf, thread_id, value, iid)
+            return await _answer_call(request, dep, wf, h, str(name), args, caller)
+    except (InvalidInput, NotFound, Conflict, Forbidden) as exc:  # tell the model: it can correct it, or must wait
         return {"content": [{"type": "text", "text": exc.detail}], "isError": True}
     raise RpcError(-32602, f"unknown tool '{name}'")
+
+
+async def _answer_call(
+    request: Request, dep: Deployment, wf: Workflow, h: RunHandle, tool: str, args: dict[str, Any], caller: Caller
+) -> dict[str, Any]:
+    """A started run's answer to the tool call: a task to poll for a client that takes them, once the run waits in
+    the run queue or outlasts `TASK_AFTER_S`; otherwise the run's result (after up to the 5-minute wait)."""
+    if caller.tasks and not await _settles(h):
+        now = datetime.now(UTC).isoformat()
+        message = "waiting for a run slot" if h.waiting else "running"
+        return {"resultType": "task", "taskId": h.run_id, "status": "working", "statusMessage": message,
+                "createdAt": now, "lastUpdatedAt": now, "ttlMs": None, "pollIntervalMs": POLL_MS}  # fmt: skip
+    return _call_result(request, dep, wf, await _result(h), tool, args, caller)
+
+
+async def _settles(h: RunHandle) -> bool:
+    """Whether the run ends within `TASK_AFTER_S` without waiting in the run queue."""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + TASK_AFTER_S
+    while not h.done.is_set():
+        left = deadline - loop.time()
+        if h.waiting or left <= 0:
+            return False
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(h.done.wait(), min(left, 0.25))
+    return True
+
+
+def _call_result(
+    request: Request, dep: Deployment, wf: Workflow, res: ApiResult, tool: str, args: dict[str, Any], caller: Caller
+) -> dict[str, Any]:
+    """A tool call's answer: a pause asks the person through a client that shows forms, else the run's result."""
+    # a pause its workflow's named people decide (E-6) is not asked of the caller: it waits in the Inbox
+    askable = [i for i in res.interrupts if not _people_decide(i, wf)] if res.status == "interrupted" else []
+    if caller.ask and askable:
+        return _input_required(request, dep, wf, res.thread_id, askable[0], tool, args)
+    return _tool_result(res, _result_url(request, dep, res), wf)
+
+
+def _presented_key(request: Request) -> str:
+    """The hash of the deployment key this call was made with: a request state is bound to that key, so another of
+    the deployment's keys (E-8), or this one once revoked, cannot answer the pause it asks about."""
+    from agentcanvas.services.deployments import hash_key
+
+    raw = request.headers.get("authorization") or ""
+    return hash_key(raw.split(" ", 1)[1].strip() if raw.lower().startswith("bearer ") else raw)
+
+
+def _input_required(
+    request: Request,
+    dep: Deployment,
+    wf: Workflow,
+    thread_id: str,
+    interrupt: dict[str, Any],
+    tool: str,
+    args: dict[str, Any],
+) -> dict[str, Any]:
+    """MRTR: one form for the pause (the next one, if several wait: each answer asks the next), and the signed state
+    the client echoes when it retries the call with the person's answer."""
+    state = mcp_input.issue(
+        request.app.state.settings.secret_key, deployment_id=dep.id,
+        key=mcp_input.key_fingerprint(_presented_key(request)),
+        thread_id=thread_id, interrupt_id=str(interrupt["id"]), tool=tool, arguments=args,
+    )  # fmt: skip
+    return {
+        "resultType": "input_required",
+        "inputRequests": {str(interrupt["id"]): mcp_input.form(interrupt, wf.name)},
+        "requestState": state,
+    }
+
+
+async def _answer_asked(
+    request: Request,
+    session: AsyncSession,
+    dep: Deployment,
+    wf: Workflow,
+    tool: str,
+    args: dict[str, Any],
+    params: dict[str, Any],
+    caller: Caller,
+) -> dict[str, Any]:
+    """The retry of a call that paused: verify the state it echoes, then resume the run with the person's answer.
+    The pause must still be open (answered once); an answer that does not fit asks again."""
+    try:
+        state = mcp_input.verify(
+            request.app.state.settings.secret_key, params.get("requestState"), deployment_id=dep.id,
+            key=mcp_input.key_fingerprint(_presented_key(request)), tool=tool, arguments=args,
+        )  # fmt: skip
+    except mcp_input.InvalidState as exc:
+        raise RpcError(-32602, f"{exc}; call the tool again without it") from None
+    q = select(InterruptTask).where(InterruptTask.id == state.interrupt_id, InterruptTask.thread_id == state.thread_id)
+    row = await session.scalar(q.where(InterruptTask.status == "pending"))
+    if row is None:  # answered already (this retry repeated, or someone answered in the app): where the run is now
+        latest = await session.scalar(
+            select(Run.id).where(Run.thread_id == state.thread_id).order_by(Run.started_at.desc(), Run.id.desc())
+        )
+        found = await ResultRepo(session, request.app.state.runner).of(latest or "", dep.id)
+        if found is None:
+            raise RpcError(-32602, "the paused run is gone (its conversation was deleted)")
+        return _call_result(request, dep, wf, api_result(found), tool, args, caller)
+    interrupt = {"id": row.id, "kind": row.kind, "payload": row.payload}
+    responses = params.get("inputResponses")
+    response = responses.get(row.id) if isinstance(responses, dict) else None
+    outcome, value = mcp_input.answer(interrupt, response, lambda ok, why: answer_value(interrupt, ok, why, None))
+    if outcome == "ask_again":
+        return _input_required(request, dep, wf, state.thread_id, interrupt, tool, args)
+    if outcome in ("declined", "dismissed"):
+        what = "declined to answer" if outcome == "declined" else "closed the question without answering"
+        paused = ApiResult(run_id=row.run_id, thread_id=state.thread_id, status="interrupted", interrupts=[interrupt])
+        return {
+            "content": [{"type": "text", "text": f"The person {what}. The run still waits (thread_id "
+                         f"{state.thread_id}); it can also be answered in AgentCanvas's Inbox."}],
+            "structuredContent": paused.model_dump(exclude_none=True),
+            "isError": True,
+        }  # fmt: skip
+    note(request, interrupt_id=row.id, payload_sha256=payload_hash(value))
+    h = await _resume_run(request, session, dep, wf, state.thread_id, value, row.id)
+    return await _answer_call(request, dep, wf, h, tool, args, caller)
 
 
 def _mcp_transport_refusal(request: Request, settings: Settings) -> JSONResponse | None:
@@ -313,6 +521,8 @@ def _modern_refusal(request: Request, msg: dict[str, Any], version: str) -> JSON
     expected = {"mcp-protocol-version": version, "mcp-method": msg["method"]}
     if msg["method"] in ("tools/call", "prompts/get", "resources/read"):
         expected["mcp-name"] = str(params.get("name") if msg["method"] != "resources/read" else params.get("uri"))
+    elif msg["method"] in ("tasks/get", "tasks/update", "tasks/cancel"):  # the Tasks extension routes on the task
+        expected["mcp-name"] = str(params.get("taskId"))
     for header, value in expected.items():
         sent = request.headers.get(header)
         if (_header_value(sent) if header == "mcp-name" else sent) != value:
@@ -372,6 +582,14 @@ def server_card(request: Request, dep_id: str, wf: Workflow, semver: str) -> dic
     }  # fmt: skip
 
 
+RUN_METHODS = {"tools/call", "SendMessage", "message/send"}  # MCP and A2A methods that answer with a run's output
+
+
+def _marking(method: str) -> dict[str, str] | None:
+    """`X-AI-Generated: true` on an answer that carries what the deployment generated (AI Act Art. 50(2))."""
+    return AI_HEADER if method in RUN_METHODS else None
+
+
 @router.get("/deployments/{dep_id}/mcp/server-card")
 async def mcp_server_card(dep_id: str, request: Request, session: AsyncSession = Depends(get_session)) -> Response:
     """The deployment's MCP Server Card, at the place the MCP Server Card extension reserves for it
@@ -426,7 +644,7 @@ async def mcp_endpoint(
             raise RpcError(-32601, f"method '{method}' is not supported")
     except RpcError as e:
         return JSONResponse(_rpc_error(id_, e.code, e.message, e.data))
-    return JSONResponse({"jsonrpc": "2.0", "id": id_, "result": result})
+    return JSONResponse({"jsonrpc": "2.0", "id": id_, "result": result}, headers=_marking(method))
 
 
 async def _mcp_modern(
@@ -441,14 +659,17 @@ async def _mcp_modern(
     try:
         if method == "server/discover":
             result: dict[str, Any] = {
-                "supportedVersions": list(MCP_VERSIONS), "capabilities": {"tools": {"listChanged": False}},
+                "supportedVersions": list(MCP_VERSIONS),
+                "capabilities": {"tools": {"listChanged": False}, "extensions": {mcp_input.TASKS: {}}},
                 "instructions": wf.description or f"Tools of the {wf.name} workflow, published with AgentCanvas.",
                 **cached,
             }  # fmt: skip
         elif method == "tools/list":
-            result = {"tools": _mcp_tools(wf, contract(wf)), **cached}
+            result = {"tools": _mcp_tools(wf, contract(wf), _modern_caller(params)), **cached}
         elif method == "tools/call":
-            result = await _mcp_call(request, session, dep, wf, params, auth)
+            result = await _mcp_call(request, session, dep, wf, params, auth, _modern_caller(params))
+        elif method in ("tasks/get", "tasks/update", "tasks/cancel"):
+            result = await _mcp_task(request, session, dep, wf, method, params, _modern_caller(params))
         elif method in ("resources/list", "prompts/list", "resources/templates/list"):
             result = {method.split("/")[0] if method != "resources/templates/list" else "resourceTemplates": [],
                       **cached}  # fmt: skip
@@ -457,7 +678,84 @@ async def _mcp_modern(
     except RpcError as e:
         return JSONResponse(_rpc_error(id_, e.code, e.message, e.data))
     result = {"resultType": "complete", **result, "_meta": {META_SERVER: server}}
-    return JSONResponse({"jsonrpc": "2.0", "id": id_, "result": result})
+    return JSONResponse({"jsonrpc": "2.0", "id": id_, "result": result}, headers=_marking(method))
+
+
+async def _still_open(session: AsyncSession, interrupts: list[dict[str, Any]]) -> bool:
+    ids = [str(i.get("id")) for i in interrupts]
+    q = select(InterruptTask.id).where(InterruptTask.id.in_(ids), InterruptTask.status == "pending")
+    return bool(ids) and await session.scalar(q.limit(1)) is not None
+
+
+def _modern_caller(params: dict[str, Any]) -> Caller:
+    return Caller(ask=mcp_input.elicits(params), tasks=mcp_input.tasks(params))
+
+
+async def _mcp_task(
+    request: Request,
+    session: AsyncSession,
+    dep: Deployment,
+    wf: Workflow,
+    method: str,
+    params: dict[str, Any],
+    caller: Caller,
+) -> dict[str, Any]:
+    """The Tasks extension (`io.modelcontextprotocol/tasks`): a task is the run its tool call started (task id =
+    run id) and the runs that answered its pauses (labelled with it). Only the deployment's own runs are tasks: any
+    other id is the same "not found", so a task id is never a credential on its own."""
+    if not caller.tasks:
+        raise RpcError(MISSING_CAPABILITY, "Missing required client capability",
+                       {"requiredCapabilities": {"extensions": {mcp_input.TASKS: {}}}})  # fmt: skip
+    task_id = params.get("taskId")
+    q = select(Run.id, Run.thread_id, Run.started_at).join(Thread, Thread.id == Run.thread_id)
+    task = (await session.execute(q.where(Run.id == str(task_id), Thread.deployment_id == dep.id))).first()
+    if not isinstance(task_id, str) or task is None:
+        raise RpcError(-32602, "Failed to retrieve task: Task not found")
+    of_task = or_(Run.id == task_id, Run.labels["mcp_task"].as_string() == task_id)
+    latest = (
+        await session.execute(
+            select(Run.id, Run.started_at, Run.ended_at, Run.queued)
+            .where(Run.thread_id == task.thread_id, of_task)
+            .order_by(Run.started_at.desc(), Run.id.desc())
+            .limit(1)
+        )
+    ).one()
+    results = ResultRepo(session, request.app.state.runner)
+    found = await results.of(latest.id, dep.id)
+    if found is not None and found.status == "interrupted" and not await _still_open(session, found.interrupts):
+        # answered outside the task (the app's Inbox): the conversation's newest run says where it is now
+        newest = select(Run.id).where(Run.thread_id == task.thread_id).order_by(Run.started_at.desc(), Run.id.desc())
+        found = await results.of(await session.scalar(newest.limit(1)) or latest.id, dep.id)
+    res = api_result(found) if found else ApiResult(run_id=latest.id, thread_id=task.thread_id, status="error")
+    if method == "tasks/cancel":  # an acknowledgement: a run that works stops, wherever it runs
+        if res.status == "running":
+            await stop_run(session, request.app.state.runner, res.run_id)
+        return {}
+    asked = res.interrupts[0] if res.status == "interrupted" and res.interrupts and caller.ask else None
+    key = f"{res.run_id}:{asked['id']}" if asked else None  # unique over the task: each pause is a new run's
+    if method == "tasks/update":
+        responses = params.get("inputResponses")
+        if asked is not None and isinstance(responses, dict) and key in responses:
+            outcome, value = mcp_input.answer(asked, responses[key], lambda ok, why: answer_value(asked, ok, why, None))
+            if outcome == "resume":
+                note(request, interrupt_id=asked["id"], payload_sha256=payload_hash(value))
+                with contextlib.suppress(Conflict):  # answered meanwhile (the app's Inbox, another update)
+                    await _resume_run(request, session, dep, wf, res.thread_id, value, str(asked["id"]),
+                                      labels={"mcp_task": task_id})  # fmt: skip
+        return {}
+    changed = latest.ended_at or latest.started_at
+    out: dict[str, Any] = {"taskId": task_id, "createdAt": task.started_at.isoformat(),
+                           "lastUpdatedAt": changed.isoformat(), "ttlMs": None, "pollIntervalMs": POLL_MS}  # fmt: skip
+    if res.status == "running":
+        return {**out, "status": "working", "statusMessage": "waiting for a run slot" if latest.queued else "running"}
+    if asked is not None:
+        return {**out, "status": "input_required", "statusMessage": "waiting for a person",
+                "inputRequests": {key: mcp_input.form(asked, wf.name)}}  # fmt: skip
+    if res.status == "cancelled":
+        return {**out, "status": "cancelled", "statusMessage": res.error or "cancelled"}
+    # done (a failed run is a tool result with isError, not a protocol failure); a pause the client cannot show a
+    # form for completes with the result the tool call itself gives (it says to call `answer`)
+    return {**out, "status": "completed", "result": _tool_result(res, _result_url(request, dep, res), wf)}
 
 
 @router.get("/deployments/{dep_id}/mcp")
@@ -571,13 +869,15 @@ def _input_from(message: dict[str, Any], c: Contract) -> dict[str, Any]:
     return fields
 
 
-def _task(res: ApiResult, task_id: str) -> dict[str, Any]:
+def _task(res: ApiResult, task_id: str, wf: Workflow | None = None) -> dict[str, Any]:
     state = {"success": "completed", "interrupted": "input-required", "running": "working",
              "cancelled": "canceled"}.get(res.status, "failed")  # fmt: skip
     status: dict[str, Any] = {"state": state, "timestamp": datetime.now(UTC).isoformat()}
     if res.status == "interrupted":
         status["message"] = _agent_message(
-            task_id, res.thread_id, f"Paused:\n{_describe_pause(res.interrupts)}\nReply to this task to continue.",
+            task_id, res.thread_id,
+            f"Paused:\n{_describe_pause(res.interrupts, wf)}\n"
+            + _next_step(res.interrupts, wf, "Reply to this task to continue."),
             {"interrupts": res.interrupts},
         )  # fmt: skip
     elif state == "failed":
@@ -650,7 +950,7 @@ async def _a2a_send(
             approve = text.strip().lower() in YES
         value = answer_value(pending, approve, text, data.get("value"))
         res = await _resume(request, session, dep, wf, thread.id, value, None, labels={"a2a_task": task_id})
-        return _task(res, task_id)
+        return _task(res, task_id, wf)
     fields = _input_from(message, contract(wf))
     context_id = message.get("contextId")
     try:
@@ -662,25 +962,41 @@ async def _a2a_send(
         raise RpcError(TASK_NOT_FOUND, f"context '{context_id}' not found") from None
     await session.close()
     res = await _result(h)
-    return _task(res, res.run_id)
+    return _task(res, res.run_id, wf)
 
 
 async def _a2a_get(request: Request, session: AsyncSession, dep: Deployment, params: dict[str, Any]) -> dict[str, Any]:
     """A task's state: the run that started it, or the latest run that answered it (labelled with the task)."""
     task_id = str(params.get("id") or "")
+    return _task(await _task_result(request, session, dep, task_id), task_id)
+
+
+async def _task_result(request: Request, session: AsyncSession, dep: Deployment, task_id: str) -> ApiResult:
     thread = await _task_thread(session, dep, task_id)
     # the newest run that is the task or answered it, found in SQL: a long conversation has many runs
     task_run = or_(Run.id == task_id, Run.labels["a2a_task"].as_string() == task_id)
-    q = select(Run).options(*LIGHT_RUN).where(Run.thread_id == thread.id, task_run)
+    q = select(Run.id).where(Run.thread_id == thread.id, task_run)
     latest = await session.scalar(q.order_by(Run.started_at.desc(), Run.id.desc()).limit(1))
-    handle = request.app.state.runner.handles.get(latest.id) if latest else None
-    if handle is not None and handle.done.is_set():
-        res = await _result(handle)
-    else:
-        status = latest.status if latest else "error"
-        res = ApiResult(run_id=latest.id if latest else task_id, thread_id=thread.id, status=status,  # type: ignore[arg-type]
-                        error=latest.error if latest else None)  # fmt: skip
-    return _task(res, task_id)
+    # from this server's memory or the run's row: the same answer on every replica (E-2)
+    found = await ResultRepo(session, request.app.state.runner).of(latest or task_id, dep.id)
+    return api_result(found) if found else ApiResult(run_id=task_id, thread_id=thread.id, status="error")
+
+
+async def _a2a_cancel(
+    request: Request, session: AsyncSession, dep: Deployment, params: dict[str, Any]
+) -> dict[str, Any]:
+    """Stop a working task, wherever its run runs; one that ended, or waits for an answer, cannot be cancelled."""
+    task_id = str(params.get("id") or "")
+    res = await _task_result(request, session, dep, task_id)
+    if res.status != "running":
+        state = "waits for an answer" if res.status == "interrupted" else "has ended"
+        raise RpcError(TASK_NOT_CANCELABLE, f"task '{task_id}' {state}: only a working task can be cancelled")
+    runner = request.app.state.runner
+    stopped = await stop_run(session, runner, res.run_id)
+    if stopped["cancelled"] and not stopped["pending"] and (h := runner.handles.get(res.run_id)) is not None:
+        with contextlib.suppress(TimeoutError):  # it stops at once here; saving its outcome takes a moment
+            await asyncio.wait_for(h.done.wait(), CANCEL_WAIT_S)
+    return _task(await _task_result(request, session, dep, task_id), task_id)
 
 
 async def _a2a_v1(
@@ -698,8 +1014,7 @@ async def _a2a_v1(
     if method == "GetTask":
         return _v1_task(await _a2a_get(request, session, dep, params))
     if method == "CancelTask":
-        await _task_thread(session, dep, str(params.get("id") or ""))  # an unknown task is TaskNotFound
-        raise RpcError(TASK_NOT_CANCELABLE, "tasks cannot be cancelled through A2A; a paused task simply waits")
+        return _v1_task(await _a2a_cancel(request, session, dep, params))
     raise RpcError(UNSUPPORTED_OPERATION, f"{method} is not supported by this agent (see its card's capabilities)")
 
 
@@ -730,7 +1045,7 @@ async def a2a_endpoint(
         elif method == "tasks/get":
             result = await _a2a_get(request, session, dep, params)
         elif method == "tasks/cancel":
-            raise RpcError(-32002, "tasks cannot be cancelled through A2A; a paused task simply waits")
+            result = await _a2a_cancel(request, session, dep, params)
         elif method in ("message/stream", "tasks/resubscribe"):
             raise RpcError(-32004, "streaming is not supported (the agent card says so); use message/send")
         else:
@@ -741,4 +1056,4 @@ async def a2a_endpoint(
         raise  # HTTP 429 / 401, so clients back off or fix their key
     except DomainError as e:
         return JSONResponse(_rpc_error(id_, -32602, e.detail))
-    return JSONResponse({"jsonrpc": "2.0", "id": id_, "result": result})
+    return JSONResponse({"jsonrpc": "2.0", "id": id_, "result": result}, headers=_marking(method))

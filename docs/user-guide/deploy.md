@@ -43,6 +43,12 @@ for example `--build-arg FRAMEWORKS="crewai google_adk" --build-arg WITH_MASTRA=
 missing can still be designed and exported, but its runs stop with *… is not installed on this server*, and the
 workflow's **Framework** setting marks it *not set up*. The ids are in [Choosing a framework](frameworks.md).
 
+**Cloud KMS clients.** The API image includes the AWS KMS (`boto3`) and Google Cloud KMS (`google-cloud-kms`) clients,
+so a master key in `AGENTCANVAS_KMS_KEY=aws:…` or `gcp:…` works with every image. A server that keeps its master key
+in a file can leave them out (about 60 MB) with `--build-arg KMS=""`, or keep one with `--build-arg KMS=aws`. A server
+whose master key needs a client it does not have stops at startup with a message naming the setting and what to
+install. Installed from source, add the one you use: `uv sync --extra kms-aws` or `uv sync --extra kms-gcp`.
+
 **Database connections.** Each API replica opens up to `AGENTCANVAS_DB_POOL_SIZE` + `AGENTCANVAS_DB_MAX_OVERFLOW` +
 `AGENTCANVAS_PERSISTENCE_POOL_SIZE` connections (10 + 20 + 20 = 50 by default). Postgres's `max_connections` must be
 at least `API_REPLICAS × 50 + 10` (the 10 for migrations, `psql` and backups). The compose file starts Postgres with
@@ -116,7 +122,7 @@ Every setting, with its default, is listed in [Server settings](server-settings.
 | `AGENTCANVAS_ENV` | `prod` (default in compose prod and Helm), `staging` or `dev` |
 | `AGENTCANVAS_EDITION` (Helm: `config.edition`) | `dev` (the default): one company's own server. Builders may let a step reach its private network (**Allow private network** on a web API tool or a remote agent, app connectors at internal addresses), from the API's own network; never a link-local or cloud metadata address. `hosted`: a server shared by organisations that do not trust each other. Every outbound connection (models, tools, remote agents, app connectors, knowledge, trace export) goes to public addresses only, whatever a step allows: the editor flags steps that run code in the server process (E041) or allow private networks (E043). Set `hosted` for any server whose organisations must be kept from your internal network. |
 | `LANGGRAPH_AES_KEY` | 16, 24 or 32 characters (32 for AES-256: `openssl rand -hex 16`): encrypts conversation checkpoints at rest |
-| `AGENTCANVAS_KMS_KEY` | Master key for project secrets: `file:<path>`, `aws:<key ARN>` or `gcp:<key name>` |
+| `AGENTCANVAS_KMS_KEY` | Master key for project secrets: `file:<path>`, `aws:<key ARN>` or `gcp:<key name>`. The API needs `kms:Encrypt` and `kms:Decrypt` on an AWS key (credentials from the environment: an instance or pod role), or the Cloud KMS CryptoKey Encrypter/Decrypter role on a Google key (Application Default Credentials, such as Workload Identity) |
 | `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`, `MISTRAL_API_KEY`, `GROQ_API_KEY`, `DEEPSEEK_API_KEY`, `XAI_API_KEY`, `AZURE_OPENAI_API_KEY` | Model provider keys for the whole server; a project secret of the same name takes precedence ([Models and API keys](models.md)) |
 | `AGENTCANVAS_LOCAL_MODELS_HOST` | Host that local model servers (Ollama, LM Studio, vLLM, llama.cpp) are reached on when their address isn't set, e.g. `host.docker.internal` or a GPU machine's name |
 | `AGENTCANVAS_MODEL_PRICES` | Prices for models whose list price the catalog does not carry (it prices the Claude and OpenAI models), so costs, cost budgets and alerts count them: JSON, USD per million tokens, e.g. `{"openai:gpt-5.5": [5, 30]}`, or `[in, out, cache read, cache write]` to price prompt caching too (without them, cached input is charged as ordinary input). A model not in the catalog or a malformed value stops the server from starting |
@@ -127,11 +133,14 @@ Every setting, with its default, is listed in [Server settings](server-settings.
 | `AGENTCANVAS_EGRESS_PROXY`, `AGENTCANVAS_EGRESS_SECRET` | The egress proxy the sandbox reaches the hosts of a project's `sandbox.json` through (`egress:3128` in the compose files, the `-egress` Service in the chart), and the secret (32+ random characters) it checks each call's list with. You provide the secret; with `docker` and no proxy set, the API starts an `agentcanvas-egress` container itself. `AGENTCANVAS_EGRESS_PROXY_RESOLVE=true` (set by the chart) hands the sandbox the proxy's address instead of its name, so the sandbox pods need no DNS |
 | `AGENTCANVAS_CORS_ORIGINS` | The web app's origin, as a JSON list |
 | `AGENTCANVAS_AUDIT_SINK_URL`, `AGENTCANVAS_AUDIT_SINK_SECRET` | Optional: where security events are also POSTed as signed CloudEvents, and the secret that signs them ([Security events](#security-events-and-audit-forwarding)) |
+| `AGENTCANVAS_AUDIT_SPLUNK_HEC_URL`, `AGENTCANVAS_AUDIT_SPLUNK_HEC_TOKEN` | Optional: Splunk's HTTP Event Collector, which also receives security events, and its token ([Security events](#security-events-and-audit-forwarding)) |
+| `AGENTCANVAS_AUDIT_FORWARD_ALL` | `true` forwards every audit entry, not only security events (default `false`) |
 | `AGENTCANVAS_PUBLIC_URL` | Where people reach the web app, e.g. `https://canvas.example.com`. Signing in to app connectors ([App connectors](agents-and-connectors.md#sign-in-per-person)) returns the browser to `<this>/oauth/callback`, and servers that support Client ID Metadata Documents fetch ours from `<this>/api/v1/oauth/client-metadata.json` (it must be https and public for that). Unset: the first CORS origin, which is right for the development server only |
 | `AGENTCANVAS_RETENTION_DAYS` | Delete conversations idle this long (default 90; 0 keeps them). Files people attached to runs go when no conversation has used them for as long |
 | `AGENTCANVAS_MAX_UPLOAD_MB`, `AGENTCANVAS_MAX_PROJECT_FILES_MB` | The largest file a person may attach to a run (default 10, at most 20: the web server accepts 20 MB bodies) and the most attached files a project keeps (default 1024; 0 = no limit) |
 | `AGENTCANVAS_RATE_LIMIT_PER_DEPLOYMENT` / `_PER_WEBHOOK` / `_PER_PROJECT` / `_PER_SHARE_CLIENT` | Public API requests per minute (120 / 120 / 600 / 30 per share-link visitor address). An organisation's admin may set lower ones for the organisation ([Settings](settings.md#what-an-organisation-may-override)) |
-| `TRUSTED_PROXIES` (web) | The address ranges (space-separated) of a load balancer or ingress in front of the web container, e.g. `10.0.0.0/8`. Only a client address it forwards is believed, for rate limits and the audit log. Default `127.0.0.1/32` (nothing in front). In Helm: `web.trustedProxies`, by default every RFC 1918 range (`10.0.0.0/8 172.16.0.0/12 192.168.0.0/16`); narrow it to your ingress controller's pod range. |
+| `TRUSTED_PROXIES` (web) | The address ranges (space-separated) of a load balancer or ingress in front of the web container, e.g. `10.0.0.0/8`. Only a client address it forwards is believed, for rate limits, the audit log and organisations' allowed networks. Default `127.0.0.1/32` (nothing in front). In Helm: `web.trustedProxies`, by default every RFC 1918 range (`10.0.0.0/8 172.16.0.0/12 192.168.0.0/16`); narrow it to your ingress controller's pod range. |
+| `SECURITY_CONTACT`, `SECURITY_POLICY` (web) | What `/.well-known/security.txt` (RFC 9116) names as the place to report a vulnerability (an `https:`, `mailto:` or `tel:` address) and the disclosure policy (an `https:` page). Default: AgentCanvas's private advisory form and security policy on GitHub; set your own security team's. Anything but a plain address stops the web container from starting. In Helm: `web.securityContact`, `web.securityPolicy`. |
 
 ## Sign-in
 
@@ -168,6 +177,33 @@ groups claim in Okta or Entra ID). The API reads the claim from that token only.
 For provisioning over SCIM point the provider at `https://<your app>/api/scim/v2` with the token an admin makes under
 [Provisioning](accounts.md#provisioning-from-your-directory-scim). The web container's proxy forwards `/api/scim/v2` like
 any other API path and tells the API its `/api` prefix (`X-Forwarded-Prefix`) so the addresses it returns are right.
+
+### Multi-factor sign-in
+
+AgentCanvas reads how a person signed in from the access token: `acr` (the authentication level, named by the
+provider) and `amr` (the methods used, such as `pwd`, `mfa`, `otp`, `hwk`).
+
+| Setting | Effect |
+|---|---|
+| `AGENTCANVAS_OIDC_REQUIRED_ACR`, `AGENTCANVAS_OIDC_REQUIRED_AMR` | Every sign-in on the server must show an `acr` from the first list or an `amr` from the second, e.g. `AGENTCANVAS_OIDC_REQUIRED_AMR='["mfa"]'`. Empty (default): no requirement |
+| `AGENTCANVAS_OIDC_MFA_ACR`, `AGENTCANVAS_OIDC_MFA_AMR` | What counts as multi-factor for an organisation that requires it ([Multi-factor sign-in](accounts.md#multi-factor-sign-in)). Default: `amr` contains `mfa` |
+
+A token that does not show it gets `401` with problem type `…/errors/mfa-required` and
+`WWW-Authenticate: Bearer error="insufficient_user_authentication"` (RFC 9470), naming the `acr_values` to ask for.
+The web app then signs in again at the provider with `prompt=login` and those `acr_values`; if the provider still
+does not ask for a second factor, the page shows the error instead of signing in again in a loop. It is the
+provider that decides to ask for one:
+
+| Provider | What to set |
+|---|---|
+| Keycloak | Step-up authentication: an authentication flow with conditions by level of authentication, and the mapping of `acr` values to levels in the client (for example `gold` to level 2). List that value in `AGENTCANVAS_OIDC_MFA_ACR` (or `_REQUIRED_ACR`) and leave the `amr` lists empty, unless you add Keycloak's `amr` mapper. |
+| Entra ID | A Conditional Access policy that requires MFA for the app; Entra ID then puts `mfa` in `amr`. |
+| Okta | An app sign-on policy (or authentication policy) that requires a second factor; Okta puts `mfa` in `amr`. |
+| Auth0 | Multi-factor authentication, with an Action that asks for it for this API; Auth0 puts `mfa` in `amr`. |
+
+Personal API tokens and deployment keys do not pass through the provider and are not affected. Sessions renew
+silently at the provider: how long one may stay idle or last at most is set there (the refresh token's idle and
+maximum lifetimes).
 
 ### Sign-in through Matura
 
@@ -230,6 +266,11 @@ neither sees no rows.
   `MIGRATE_DATABASE_URL` (the owner), `APP_DB_USER` and `APP_DB_PASSWORD`. Elsewhere, run migrations as the owner
   (`make migrate` with the owner's `DATABASE_URL`) and set `AGENTCANVAS_AUTO_MIGRATE=false` on the API. With it off, the
   API refuses to start on a database the migrations have not reached and says which command to run.
+- That role may read and add audit-log entries but not change or delete them: `app_role` revokes UPDATE and DELETE
+  on `audit_log`, so a SQL injection or a compromised API server cannot rewrite history. Retention deletes entries
+  past the audit retention through the function `audit_expire`, which runs as the owner, deletes only the oldest
+  entries of an organisation's hash chain, records where the chain now starts, and refuses entries less than a day
+  old. An API that connects as the owner (no `APP_DB_USER`), and SQLite, keep the hash chain but not this guarantee.
 - The API asks for `agentcanvas.all_tenants=on` as a connection startup option, and `app_role` also makes it the
   role's own default when it runs as a superuser (on a managed Postgres, whose owner is not one, it prints a notice
   instead). PgBouncer refuses or drops startup options, so behind it the role needs that default (a superuser runs
@@ -243,22 +284,41 @@ neither sees no rows.
 
 ### Security events and audit forwarding
 
-AgentCanvas keeps every change in its own audit log (**Settings › Audit log**). Security-relevant ones (publishing and
-unpublishing, deployment keys, secrets, approvals, members, organisation settings and policies, release gates, trace
-export, project workspaces, API and SCIM tokens, and every change SCIM or the sign-in token's groups make to members
-and roles) also leave the server, in every sign-in mode:
+AgentCanvas keeps every change in its own audit log (**Settings › Audit log**). Security-relevant ones also leave the
+server, in every sign-in mode: publishing and unpublishing, deployment keys, callback secrets and share links,
+triggers (webhooks and schedules) created or switched on, secrets, OAuth app credentials and connected accounts,
+sandbox settings, approvals (and conversation state edited by hand), where approval notifications go, the
+organisation's **Stop all runs**, members, invitations accepted, organisation settings and policies, spending caps,
+release gates, trace export, project workspaces, API and SCIM tokens, deleted projects and workflows, erased
+memories, git connections and pushes, app connector servers that changed tools a deployment pinned
+(`mcp_tool_drift`), and every change SCIM or the sign-in token's groups make to members and roles:
 
 - **Always**, as a JSON log line `audit.event` (logger `agentcanvas.audit`, level info) with `org_id`, `actor_id`,
   `action`, `target`, `detail`, `ip` and `at`. Ship the API's logs to your SIEM and filter on it.
 - **With `AGENTCANVAS_AUDIT_SINK_URL`** (and `AGENTCANVAS_AUDIT_SINK_SECRET`, which the server refuses to start
   without), each entry is POSTed there as a CloudEvent (`agentcanvas.audit.<action>`, `tenantid` = the
-  organisation) signed in the `AgentCanvas-Signature` header: `t=<unix time>,v1=<hex HMAC-SHA256 of "<t>.<body>">`
-  with the secret. Check the signature and refuse a `t` older than five minutes.
+  organisation, `id` = `audit-<the entry's id>`) signed in the `AgentCanvas-Signature` header:
+  `t=<unix time>,v1=<hex HMAC-SHA256 of "<t>.<body>">` with the secret. Check the signature and refuse a `t` older
+  than five minutes.
+- **With `AGENTCANVAS_AUDIT_SPLUNK_HEC_URL`** (the collector's full URL, such as
+  `https://splunk.example.com:8088/services/collector/event`) and `AGENTCANVAS_AUDIT_SPLUNK_HEC_TOKEN`, each entry
+  goes to Splunk's HTTP Event Collector as one event (`sourcetype` `agentcanvas:audit`, `source` `agentcanvas`, the
+  entry's time); the token's default index receives it. Staging and production refuse an `http://` URL, which would
+  send the token in clear.
 - **In Matura mode with `AGENTCANVAS_MATURA_AUDIT_URL`**, the same CloudEvents go to Matura, signed like its webhooks
   (`Matura-Signature`, with the webhook secret). Matura has no audit ingest API yet: this is for later.
 
-Deliveries happen once, in the background and best effort: a failed one is logged (`audit.forward_failed`) and the
-entry stays in the audit log.
+Set `AGENTCANVAS_AUDIT_FORWARD_ALL=true` to forward every audit entry (every change anyone makes), not only the
+security-relevant ones.
+
+Delivery is reliable. Each forwarded entry is queued for every destination in the database (the audit outbox), in the
+same transaction that records it, and every API server delivers the queue: a row is claimed by one server at a time,
+so several replicas share the work without sending an entry twice. A failed delivery is retried after 5 s, doubling
+up to an hour, `AGENTCANVAS_AUDIT_FORWARD_MAX_ATTEMPTS` times (24 by default, about 15 hours); then the entry is kept
+as undelivered (dead) for an operator to send again. A server restart or a receiver outage loses nothing. A receiver
+may rarely see an entry twice (a server stopped between sending it and recording that it was sent): drop copies by
+the event's `id`. The metrics, alerts and commands for this are in the
+[Operations reference](operations.md#runbooks).
 
 Refused requests are logged too: a 401 (an unknown, revoked or expired API token, SCIM token or deployment key, a
 missing or invalid sign-in) as a warning `auth.refused`, a 403 (a role or organisation refusal) as `auth.forbidden`,

@@ -49,14 +49,16 @@ from agentcanvas.runtime.paused import DatabasePaused, DatabaseReplies, MemoryPa
 from agentcanvas.runtime.runner import Runner
 from agentcanvas.security.auth import check_auth_settings
 from agentcanvas.security.kms import Keyring
-from agentcanvas.services import oauth, routing
+from agentcanvas.services import audit_sink, oauth, routing
 from agentcanvas.services import projects as projects_module
-from agentcanvas.services.audit_sink import sink_for
+from agentcanvas.services.callbacks import CallbackJob
 from agentcanvas.services.events import EventService
 from agentcanvas.services.experiments import ExperimentJob
 from agentcanvas.services.files import FileStore
 from agentcanvas.services.knowledge import CrawlJob, Searcher, knowledge_embedder
 from agentcanvas.services.matura import MaturaFeed
+from agentcanvas.services.notifier import NotifierJob
+from agentcanvas.services.offboarding import OffboardingJob
 from agentcanvas.services.online import OnlineScorer
 from agentcanvas.services.org_settings import OrgSettingsCache
 from agentcanvas.services.presence import PresenceHub
@@ -67,6 +69,7 @@ from agentcanvas.services.retention import RetentionJob
 from agentcanvas.services.run_gate import RunGate
 from agentcanvas.services.run_search import RunSearchService
 from agentcanvas.services.secrets import SecretCache, encoded_forms
+from agentcanvas.services.spend_caps import SpendCaps
 from agentcanvas.services.trace_export import Exporter, TraceExportHook
 from agentcanvas.services.triggers import CronScheduler
 from agentcanvas.settings import Settings, get_settings
@@ -171,6 +174,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             log.warning("sandbox.not_isolated", mode=settings.script_execution, hint=hint)
         if hint := kms_hint(settings):
             log.warning("kms.derived_from_secret_key", hint=hint)
+        if settings.ignore_org_networks:
+            log.warning(
+                "networks.ignored", hint="organisations' IP allow-lists are off: unset AGENTCANVAS_IGNORE_ORG_NETWORKS"
+            )
         if settings.script_execution == "subprocess":
             _not_dumpable()  # sandbox children run as this user: keep them from reading this process's memory
         observability.trace_engine(db.engine)
@@ -233,6 +240,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 models=app.state.models,
             )
             app.state.runner = runner
+            # runs report app connector tools changed since publishing (E-4) like any security-relevant entry
             runner.router = lambda session, wf, project_id: routing.route_run(app, session, wf, project_id)
             runner.max_file_bytes = int(settings.max_upload_mb * 1024 * 1024)
             runner.max_project_file_bytes = int(settings.max_project_files_mb * 1024 * 1024)
@@ -248,6 +256,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             runner.admission = Admission(
                 db, concurrent_limit, stale_after_s=settings.orphan_after_s, max_wait_s=settings.max_queue_wait_s
             )
+            # what an organisation or project may spend a day and a month: new runs are refused and runs stop at a cap
+            app.state.spend_caps = runner.caps = SpendCaps(db, settings, ttl=0 if settings.env == "test" else 5.0)
+            app.state.spend_caps.alert_hooks.append(observability.spend_cap_alert)
             runner.prepare_hooks.append(
                 RunGate(
                     settings,
@@ -280,16 +291,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 db, app.state.projects, Exporter(public_only=settings.edition == "hosted")
             )
             runner.finish_hooks.append(app.state.trace_export.on_run_finished)
+            # E-2: deployment runs' completion callbacks, delivered by every server
+            app.state.callbacks = CallbackJob(db, runner, app.state.keyring, public_only=settings.edition == "hosted")
+            runner.finish_hooks.append(app.state.callbacks.on_run_finished)
             app.state.cron = CronScheduler(db, runner, app.state.keyring, catchup_s=settings.cron_catchup_s)
             app.state.ratelimit = RateLimiter(db)
             app.state.retention = RetentionJob(
                 db, runner, settings.retention_days, settings.retention_interval_s,
                 audit_days=settings.audit_retention_days, memory_days=settings.memory_retention_days, server=settings,
             )  # fmt: skip
+            app.state.offboarding = OffboardingJob(
+                db, runner, app.state.projects, settings.workspaces_dir, settings.offboarding_interval_s,
+                export_keep_hours=settings.org_export_keep_hours,
+            )  # fmt: skip
 
             async def handover_target(s, thread_id, version_id):
                 return await runs_module.handover_target(s, settings, thread_id, version_id)
 
+            app.state.notifier = NotifierJob(db, app.state.keyring, settings)
             app.state.handover = HandoverJob(
                 db, runner, handover_target, settings.handover_interval_s, settings.orphan_after_s
             )
@@ -298,8 +317,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 app.state.experiments.start()
                 app.state.cron.start()
                 app.state.retention.start()
+                app.state.notifier.start()
+                app.state.offboarding.start()
                 app.state.crawl.start()
                 app.state.handover.start()
+                app.state.callbacks.start()
                 app.state.online.start()
                 app.state.secrets.start()
             app.state.matura_feed = None
@@ -307,7 +329,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 app.state.matura_feed = MaturaFeed(db, settings)
                 if settings.env != "test":
                     app.state.matura_feed.start()
-            app.state.audit_sink = sink_for(settings)  # TS26: security-relevant entries also leave the app
+            # security-relevant entries (or all) also leave the server, through the outbox (services/audit_sink.py)
+            destinations = audit_sink.destinations_for(settings)
+            audit_sink.install(audit_sink.Forwarding(tuple(d.name for d in destinations), settings.audit_forward_all))
+            app.state.audit_forward = audit_sink.AuditForwarder(
+                db, destinations, max_attempts=settings.audit_forward_max_attempts,
+                interval_s=settings.audit_forward_interval_s,
+            )  # fmt: skip
+            if settings.env != "test" and destinations:
+                app.state.audit_forward.start()
             if settings.env in ("staging", "prod") and not os.getenv("LANGGRAPH_AES_KEY"):
                 log.warning("checkpoints.unencrypted", hint="set LANGGRAPH_AES_KEY (16, 24 or 32 characters)")
             log.info(
@@ -321,14 +351,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 await app.state.experiments.stop()  # before the drain: its runs are handed over with the rest
                 await app.state.cron.stop()
                 await app.state.retention.stop()
+                await app.state.notifier.stop()
+                await app.state.offboarding.stop()
                 await app.state.crawl.stop()
                 await app.state.secrets.stop()
+                await app.state.audit_forward.stop()  # what it has not sent stays in the outbox for the others
                 if app.state.matura_feed is not None:
                     await app.state.matura_feed.stop()
                 await runner.drain(settings.drain_grace_s)  # FR-X-10: other instances continue what is left
                 # after the drain: its ticks keep the heartbeat of runs finishing in the grace period (a draining
                 # server neither sweeps nor claims), so no other server takes them for orphaned and runs them twice
                 await app.state.handover.stop()
+                await app.state.callbacks.stop()  # after the drain: the runs that ended in it are called back
 
             app.state.wind_down = WindDown(wind_down)
             try:
@@ -343,8 +377,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 await runner.shutdown()
                 await asyncio.to_thread(app.state.trace_export.exporter.shutdown)  # flushes queued traces
                 await app.state.projects.aclose()
-                if hasattr(app.state.audit_sink, "aclose"):  # tests may put a recorder in its place
-                    await app.state.audit_sink.aclose()
+                await app.state.audit_forward.aclose()
+                audit_sink.install(audit_sink.Forwarding())
                 await db.dispose()
                 paused_runs.install(MemoryPaused())  # this database is gone
                 interop.install_replies(interop.MemoryReplies())

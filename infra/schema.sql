@@ -15,6 +15,45 @@
 CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public;
 
 --
+-- Name: audit_expire(text, timestamp with time zone); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.audit_expire(p_org text, p_cutoff timestamp with time zone) RETURNS integer
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'pg_temp'
+    AS $$
+DECLARE
+    v_kept bigint;
+    v_last bigint;
+    v_hash text;
+    v_rows integer;
+BEGIN
+    IF p_cutoff IS NULL OR p_cutoff > now() - interval '23 hours' THEN
+        RAISE EXCEPTION 'audit_expire: audit entries younger than a day are kept (cutoff %)', p_cutoff;
+    END IF;
+    IF p_org IS NULL THEN  -- entries of no organisation have no chain
+        DELETE FROM public.audit_log WHERE org_id IS NULL AND created_at < p_cutoff;
+        GET DIAGNOSTICS v_rows = ROW_COUNT;
+        RETURN v_rows;
+    END IF;
+    SELECT id INTO v_kept FROM public.audit_log
+        WHERE org_id = p_org AND created_at >= p_cutoff ORDER BY id LIMIT 1;
+    SELECT id, row_hash INTO v_last, v_hash FROM public.audit_log
+        WHERE org_id = p_org AND created_at < p_cutoff AND (v_kept IS NULL OR id < v_kept)
+        ORDER BY id DESC LIMIT 1;
+    IF v_last IS NULL THEN
+        RETURN 0;
+    END IF;
+    DELETE FROM public.audit_log WHERE org_id = p_org AND id <= v_last;
+    GET DIAGNOSTICS v_rows = ROW_COUNT;
+    IF v_rows > 0 THEN  -- another server may have deleted them a moment ago
+        INSERT INTO public.audit_anchor (org_id, through_id, last_hash, rows) VALUES (p_org, v_last, v_hash, v_rows);
+    END IF;
+    RETURN v_rows;
+END
+$$;
+
+--
 -- Name: a2a_reply; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -113,6 +152,59 @@ CREATE TABLE public.app_user (
 );
 
 --
+-- Name: approval_notice; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.approval_notice (
+    id character varying NOT NULL,
+    org_id character varying NOT NULL,
+    interrupt_id character varying NOT NULL,
+    event text NOT NULL,
+    channel text NOT NULL,
+    status text DEFAULT 'pending'::text NOT NULL,
+    attempts integer DEFAULT 0 NOT NULL,
+    next_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    last_error text,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    sent_at timestamp with time zone,
+    CONSTRAINT approval_notice_status CHECK ((status = ANY (ARRAY['pending'::text, 'sent'::text, 'failed'::text, 'dropped'::text])))
+);
+
+ALTER TABLE ONLY public.approval_notice FORCE ROW LEVEL SECURITY;
+
+--
+-- Name: audit_anchor; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.audit_anchor (
+    id bigint NOT NULL,
+    org_id character varying NOT NULL,
+    through_id bigint NOT NULL,
+    last_hash character varying(64),
+    rows integer NOT NULL,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+ALTER TABLE ONLY public.audit_anchor FORCE ROW LEVEL SECURITY;
+
+--
+-- Name: audit_anchor_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.audit_anchor_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+--
+-- Name: audit_anchor_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.audit_anchor_id_seq OWNED BY public.audit_anchor.id;
+
+--
 -- Name: audit_log; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -124,7 +216,9 @@ CREATE TABLE public.audit_log (
     target text NOT NULL,
     detail jsonb DEFAULT '{}'::jsonb NOT NULL,
     ip character varying(45),
-    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    prev_hash character varying(64),
+    row_hash character varying(64)
 );
 
 ALTER TABLE ONLY public.audit_log FORCE ROW LEVEL SECURITY;
@@ -145,6 +239,42 @@ CREATE SEQUENCE public.audit_log_id_seq
 --
 
 ALTER SEQUENCE public.audit_log_id_seq OWNED BY public.audit_log.id;
+
+--
+-- Name: audit_outbox; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.audit_outbox (
+    id bigint NOT NULL,
+    audit_id bigint NOT NULL,
+    org_id character varying,
+    destination character varying(32) NOT NULL,
+    state character varying(16) DEFAULT 'pending'::character varying NOT NULL,
+    attempts integer DEFAULT 0 NOT NULL,
+    next_attempt_at timestamp with time zone NOT NULL,
+    last_error text,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT audit_outbox_state CHECK (((state)::text = ANY ((ARRAY['pending'::character varying, 'dead'::character varying])::text[])))
+);
+
+ALTER TABLE ONLY public.audit_outbox FORCE ROW LEVEL SECURITY;
+
+--
+-- Name: audit_outbox_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.audit_outbox_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+--
+-- Name: audit_outbox_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.audit_outbox_id_seq OWNED BY public.audit_outbox.id;
 
 --
 -- Name: connection; Type: TABLE; Schema: public; Owner: -
@@ -244,13 +374,34 @@ CREATE TABLE public.deployment (
     workflow_id character varying NOT NULL,
     version_id character varying NOT NULL,
     environment text DEFAULT 'prod'::text NOT NULL,
-    api_key_hash text NOT NULL,
+    api_key_hash text,
     active boolean DEFAULT true NOT NULL,
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    key_prefix text
+    key_prefix text,
+    callback_secret text,
+    tool_drift jsonb
 );
 
 ALTER TABLE ONLY public.deployment FORCE ROW LEVEL SECURITY;
+
+--
+-- Name: deployment_key; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.deployment_key (
+    id character varying NOT NULL,
+    deployment_id character varying NOT NULL,
+    name text NOT NULL,
+    key_hash text NOT NULL,
+    prefix text NOT NULL,
+    created_by text,
+    expires_at timestamp with time zone,
+    last_used_at timestamp with time zone,
+    revoked_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+ALTER TABLE ONLY public.deployment_key FORCE ROW LEVEL SECURITY;
 
 --
 -- Name: deployment_share; Type: TABLE; Schema: public; Owner: -
@@ -267,7 +418,8 @@ CREATE TABLE public.deployment_share (
     updated_by text,
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    frame_origins jsonb DEFAULT '[]'::jsonb NOT NULL
+    frame_origins jsonb DEFAULT '[]'::jsonb NOT NULL,
+    ai_notice text DEFAULT ''::text NOT NULL
 );
 
 ALTER TABLE ONLY public.deployment_share FORCE ROW LEVEL SECURITY;
@@ -440,6 +592,10 @@ CREATE TABLE public.interrupt_task (
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     decided_at timestamp with time zone,
     requested_by text,
+    approvers jsonb,
+    noticed text,
+    escalate_at timestamp with time zone,
+    escalated_at timestamp with time zone,
     CONSTRAINT interrupt_kind CHECK ((kind = ANY (ARRAY['tool_approval'::text, 'approval'::text, 'input'::text]))),
     CONSTRAINT interrupt_status CHECK ((status = ANY (ARRAY['pending'::text, 'decided'::text, 'expired'::text])))
 );
@@ -655,6 +811,22 @@ CREATE TABLE public.membership (
 );
 
 --
+-- Name: model_spend; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.model_spend (
+    project_id character varying NOT NULL,
+    hour timestamp with time zone NOT NULL,
+    kind character varying NOT NULL,
+    calls integer DEFAULT 0 NOT NULL,
+    tokens_in bigint DEFAULT 0 NOT NULL,
+    tokens_out bigint DEFAULT 0 NOT NULL,
+    cost_usd numeric(14,6) DEFAULT 0 NOT NULL
+);
+
+ALTER TABLE ONLY public.model_spend FORCE ROW LEVEL SECURITY;
+
+--
 -- Name: oauth_client; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -755,6 +927,60 @@ CREATE TABLE public.org_data_key (
 ALTER TABLE ONLY public.org_data_key FORCE ROW LEVEL SECURITY;
 
 --
+-- Name: org_export; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.org_export (
+    id character varying NOT NULL,
+    org_id character varying NOT NULL,
+    status text DEFAULT 'queued'::text NOT NULL,
+    requested_by text,
+    lease_until timestamp with time zone,
+    started_at timestamp with time zone,
+    finished_at timestamp with time zone,
+    expires_at timestamp with time zone,
+    size bigint,
+    sha256 text,
+    error text,
+    link_hash text,
+    link_expires_at timestamp with time zone,
+    downloaded_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT org_export_status CHECK ((status = ANY (ARRAY['queued'::text, 'building'::text, 'ready'::text, 'downloaded'::text, 'expired'::text, 'failed'::text])))
+);
+
+ALTER TABLE ONLY public.org_export FORCE ROW LEVEL SECURITY;
+
+--
+-- Name: org_export_part; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.org_export_part (
+    export_id character varying NOT NULL,
+    seq integer NOT NULL,
+    data bytea NOT NULL
+);
+
+ALTER TABLE ONLY public.org_export_part FORCE ROW LEVEL SECURITY;
+
+--
+-- Name: org_notifier; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.org_notifier (
+    org_id character varying NOT NULL,
+    email boolean DEFAULT false NOT NULL,
+    email_to jsonb DEFAULT '[]'::jsonb NOT NULL,
+    webhook_url text,
+    slack_url bytea,
+    webhook_secret bytea,
+    updated_by character varying,
+    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+ALTER TABLE ONLY public.org_notifier FORCE ROW LEVEL SECURITY;
+
+--
 -- Name: org_policy; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -791,7 +1017,12 @@ CREATE TABLE public.organization (
     sso_groups jsonb,
     scim_token_hash text,
     scim_token_prefix text,
-    scim_token_created_at timestamp with time zone
+    scim_token_created_at timestamp with time zone,
+    suspended_at timestamp with time zone,
+    delete_after timestamp with time zone,
+    deletion_requested_by text,
+    purge_lease_until timestamp with time zone,
+    deleted_at timestamp with time zone
 );
 
 --
@@ -910,11 +1141,33 @@ CREATE TABLE public.run (
     queue_key text,
     event_depth smallint DEFAULT 0 NOT NULL,
     handover_attempts smallint DEFAULT 0 NOT NULL,
+    output jsonb,
+    interrupts jsonb,
     CONSTRAINT run_mode CHECK ((mode = ANY (ARRAY['normal'::text, 'debug'::text]))),
     CONSTRAINT run_status CHECK ((status = ANY (ARRAY['running'::text, 'success'::text, 'interrupted'::text, 'error'::text, 'cancelled'::text])))
 );
 
 ALTER TABLE ONLY public.run FORCE ROW LEVEL SECURITY;
+
+--
+-- Name: run_callback; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.run_callback (
+    run_id character varying NOT NULL,
+    deployment_id character varying NOT NULL,
+    url text NOT NULL,
+    status text DEFAULT 'pending'::text NOT NULL,
+    attempts smallint DEFAULT 0 NOT NULL,
+    next_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    last_status integer,
+    last_error text,
+    delivered_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT run_callback_status CHECK ((status = ANY (ARRAY['pending'::text, 'delivered'::text, 'failed'::text])))
+);
+
+ALTER TABLE ONLY public.run_callback FORCE ROW LEVEL SECURITY;
 
 --
 -- Name: run_score; Type: TABLE; Schema: public; Owner: -
@@ -1034,6 +1287,27 @@ CREATE TABLE public.spend_archive (
 ALTER TABLE ONLY public.spend_archive FORCE ROW LEVEL SECURITY;
 
 --
+-- Name: spend_cap_alert; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.spend_cap_alert (
+    id character varying NOT NULL,
+    org_id character varying NOT NULL,
+    scope character varying NOT NULL,
+    project_id character varying,
+    run_id text,
+    period text NOT NULL,
+    period_start character varying(10) NOT NULL,
+    share double precision NOT NULL,
+    spent_usd double precision NOT NULL,
+    limit_usd double precision NOT NULL,
+    message text NOT NULL,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+ALTER TABLE ONLY public.spend_cap_alert FORCE ROW LEVEL SECURITY;
+
+--
 -- Name: stored_file; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1089,6 +1363,7 @@ CREATE TABLE public.thread (
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     paused_state text,
+    end_user text,
     CONSTRAINT thread_status CHECK ((status = ANY (ARRAY['idle'::text, 'running'::text, 'interrupted'::text, 'error'::text])))
 );
 
@@ -1155,10 +1430,22 @@ CREATE TABLE public.workflow_version (
 ALTER TABLE ONLY public.workflow_version FORCE ROW LEVEL SECURITY;
 
 --
+-- Name: audit_anchor id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_anchor ALTER COLUMN id SET DEFAULT nextval('public.audit_anchor_id_seq'::regclass);
+
+--
 -- Name: audit_log id; Type: DEFAULT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.audit_log ALTER COLUMN id SET DEFAULT nextval('public.audit_log_id_seq'::regclass);
+
+--
+-- Name: audit_outbox id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_outbox ALTER COLUMN id SET DEFAULT nextval('public.audit_outbox_id_seq'::regclass);
 
 --
 -- Name: a2a_reply a2a_reply_pkey; Type: CONSTRAINT; Schema: public; Owner: -
@@ -1238,11 +1525,32 @@ ALTER TABLE ONLY public.app_user
     ADD CONSTRAINT app_user_pkey PRIMARY KEY (id);
 
 --
+-- Name: approval_notice approval_notice_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.approval_notice
+    ADD CONSTRAINT approval_notice_pkey PRIMARY KEY (id);
+
+--
+-- Name: audit_anchor audit_anchor_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_anchor
+    ADD CONSTRAINT audit_anchor_pkey PRIMARY KEY (id);
+
+--
 -- Name: audit_log audit_log_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.audit_log
     ADD CONSTRAINT audit_log_pkey PRIMARY KEY (id);
+
+--
+-- Name: audit_outbox audit_outbox_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_outbox
+    ADD CONSTRAINT audit_outbox_pkey PRIMARY KEY (id);
 
 --
 -- Name: connection connection_pkey; Type: CONSTRAINT; Schema: public; Owner: -
@@ -1299,6 +1607,20 @@ ALTER TABLE ONLY public.dataset_version
 
 ALTER TABLE ONLY public.dataset_version
     ADD CONSTRAINT dataset_version_pkey PRIMARY KEY (id);
+
+--
+-- Name: deployment_key deployment_key_key_hash_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.deployment_key
+    ADD CONSTRAINT deployment_key_key_hash_key UNIQUE (key_hash);
+
+--
+-- Name: deployment_key deployment_key_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.deployment_key
+    ADD CONSTRAINT deployment_key_pkey PRIMARY KEY (id);
 
 --
 -- Name: deployment deployment_once; Type: CONSTRAINT; Schema: public; Owner: -
@@ -1518,6 +1840,13 @@ ALTER TABLE ONLY public.membership
     ADD CONSTRAINT membership_pkey PRIMARY KEY (org_id, user_id);
 
 --
+-- Name: model_spend model_spend_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.model_spend
+    ADD CONSTRAINT model_spend_pkey PRIMARY KEY (project_id, hour, kind);
+
+--
 -- Name: oauth_client oauth_client_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1565,6 +1894,34 @@ ALTER TABLE ONLY public.online_evaluator
 
 ALTER TABLE ONLY public.org_data_key
     ADD CONSTRAINT org_data_key_pkey PRIMARY KEY (org_id);
+
+--
+-- Name: org_export org_export_link_hash_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.org_export
+    ADD CONSTRAINT org_export_link_hash_key UNIQUE (link_hash);
+
+--
+-- Name: org_export_part org_export_part_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.org_export_part
+    ADD CONSTRAINT org_export_part_pkey PRIMARY KEY (export_id, seq);
+
+--
+-- Name: org_export org_export_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.org_export
+    ADD CONSTRAINT org_export_pkey PRIMARY KEY (id);
+
+--
+-- Name: org_notifier org_notifier_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.org_notifier
+    ADD CONSTRAINT org_notifier_pkey PRIMARY KEY (org_id);
 
 --
 -- Name: org_policy org_policy_org_id_name_key; Type: CONSTRAINT; Schema: public; Owner: -
@@ -1651,6 +2008,13 @@ ALTER TABLE ONLY public.release_gate
     ADD CONSTRAINT release_gate_pkey PRIMARY KEY (id);
 
 --
+-- Name: run_callback run_callback_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.run_callback
+    ADD CONSTRAINT run_callback_pkey PRIMARY KEY (run_id);
+
+--
 -- Name: run run_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1728,6 +2092,20 @@ ALTER TABLE ONLY public.spend_archive
     ADD CONSTRAINT spend_archive_pkey PRIMARY KEY (workflow_id, hour, deployment_id, person);
 
 --
+-- Name: spend_cap_alert spend_cap_alert_once; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.spend_cap_alert
+    ADD CONSTRAINT spend_cap_alert_once UNIQUE (org_id, scope, period, period_start, share);
+
+--
+-- Name: spend_cap_alert spend_cap_alert_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.spend_cap_alert
+    ADD CONSTRAINT spend_cap_alert_pkey PRIMARY KEY (id);
+
+--
 -- Name: stored_file stored_file_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1795,10 +2173,52 @@ CREATE INDEX annotation_item_run_idx ON public.annotation_item USING btree (run_
 CREATE INDEX answer_cache_expires_idx ON public.answer_cache USING btree (project_id, expires_at);
 
 --
+-- Name: approval_notice_due_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX approval_notice_due_idx ON public.approval_notice USING btree (status, next_at);
+
+--
+-- Name: approval_notice_interrupt_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX approval_notice_interrupt_idx ON public.approval_notice USING btree (interrupt_id);
+
+--
+-- Name: approval_notice_org_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX approval_notice_org_idx ON public.approval_notice USING btree (org_id);
+
+--
+-- Name: audit_anchor_org_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX audit_anchor_org_idx ON public.audit_anchor USING btree (org_id, id);
+
+--
+-- Name: audit_org_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX audit_org_id_idx ON public.audit_log USING btree (org_id, id);
+
+--
 -- Name: audit_org_time_idx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX audit_org_time_idx ON public.audit_log USING btree (org_id, created_at);
+
+--
+-- Name: audit_outbox_audit_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX audit_outbox_audit_idx ON public.audit_outbox USING btree (audit_id);
+
+--
+-- Name: audit_outbox_due_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX audit_outbox_due_idx ON public.audit_outbox USING btree (state, next_attempt_at);
 
 --
 -- Name: copilot_conversation_by_person; Type: INDEX; Schema: public; Owner: -
@@ -1817,6 +2237,12 @@ CREATE UNIQUE INDEX copilot_conversation_open_once ON public.copilot_conversatio
 --
 
 CREATE INDEX cost_alert_workflow_idx ON public.cost_alert USING btree (workflow_id, created_at);
+
+--
+-- Name: deployment_key_deployment_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX deployment_key_deployment_idx ON public.deployment_key USING btree (deployment_id);
 
 --
 -- Name: deployment_version_idx; Type: INDEX; Schema: public; Owner: -
@@ -1847,6 +2273,12 @@ CREATE INDEX event_log_project_idx ON public.event_log USING btree (project_id, 
 --
 
 CREATE INDEX experiment_status_idx ON public.experiment USING btree (status, heartbeat_at);
+
+--
+-- Name: interrupt_escalate_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX interrupt_escalate_idx ON public.interrupt_task USING btree (escalate_at) WHERE (escalate_at IS NOT NULL);
 
 --
 -- Name: interrupt_pending_idx; Type: INDEX; Schema: public; Owner: -
@@ -1993,6 +2425,12 @@ CREATE INDEX ix_scim_group_org_id ON public.scim_group USING btree (org_id);
 CREATE INDEX ix_share_thread_deployment_id ON public.share_thread USING btree (deployment_id);
 
 --
+-- Name: ix_spend_cap_alert_project_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_spend_cap_alert_project_id ON public.spend_cap_alert USING btree (project_id);
+
+--
 -- Name: ix_test_case_workflow_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2059,6 +2497,24 @@ CREATE INDEX knowledge_chunk_tsv ON public.knowledge_chunk USING gin (tsv);
 CREATE INDEX matura_role_grant_subject ON public.matura_role_grant USING btree (tenant_id, subject_id) WHERE (status = 'active'::text);
 
 --
+-- Name: model_spend_hour_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX model_spend_hour_idx ON public.model_spend USING btree (hour);
+
+--
+-- Name: org_export_org_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX org_export_org_idx ON public.org_export USING btree (org_id, created_at);
+
+--
+-- Name: org_export_status_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX org_export_status_idx ON public.org_export USING btree (status);
+
+--
 -- Name: personal_token_owner_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2075,6 +2531,18 @@ CREATE INDEX presence_seen_idx ON public.presence USING btree (workflow_id, seen
 --
 
 CREATE INDEX project_workspace_idx ON public.project USING btree (org_id, workspace_id);
+
+--
+-- Name: run_callback_deployment_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX run_callback_deployment_idx ON public.run_callback USING btree (deployment_id);
+
+--
+-- Name: run_callback_due_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX run_callback_due_idx ON public.run_callback USING btree (next_at) WHERE (status = 'pending'::text);
 
 --
 -- Name: run_live_idx; Type: INDEX; Schema: public; Owner: -
@@ -2119,6 +2587,12 @@ CREATE INDEX run_version_idx ON public.run USING btree (workflow_version_id);
 CREATE INDEX spend_archive_hour_idx ON public.spend_archive USING btree (hour);
 
 --
+-- Name: spend_cap_alert_org_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX spend_cap_alert_org_idx ON public.spend_cap_alert USING btree (org_id, created_at);
+
+--
 -- Name: stored_file_deployment_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2141,6 +2615,12 @@ CREATE INDEX thread_created_idx ON public.thread USING btree (created_at, id);
 --
 
 CREATE INDEX thread_deployment_idx ON public.thread USING btree (deployment_id);
+
+--
+-- Name: thread_end_user_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX thread_end_user_idx ON public.thread USING btree (end_user) WHERE (end_user IS NOT NULL);
 
 --
 -- Name: thread_updated_idx; Type: INDEX; Schema: public; Owner: -
@@ -2216,6 +2696,27 @@ ALTER TABLE ONLY public.answer_cache
     ADD CONSTRAINT answer_cache_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.project(id) ON DELETE CASCADE;
 
 --
+-- Name: approval_notice approval_notice_interrupt_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.approval_notice
+    ADD CONSTRAINT approval_notice_interrupt_id_fkey FOREIGN KEY (interrupt_id) REFERENCES public.interrupt_task(id) ON DELETE CASCADE;
+
+--
+-- Name: approval_notice approval_notice_org_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.approval_notice
+    ADD CONSTRAINT approval_notice_org_id_fkey FOREIGN KEY (org_id) REFERENCES public.organization(id) ON DELETE CASCADE;
+
+--
+-- Name: audit_anchor audit_anchor_org_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_anchor
+    ADD CONSTRAINT audit_anchor_org_id_fkey FOREIGN KEY (org_id) REFERENCES public.organization(id);
+
+--
 -- Name: audit_log audit_log_actor_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2228,6 +2729,20 @@ ALTER TABLE ONLY public.audit_log
 
 ALTER TABLE ONLY public.audit_log
     ADD CONSTRAINT audit_log_org_id_fkey FOREIGN KEY (org_id) REFERENCES public.organization(id);
+
+--
+-- Name: audit_outbox audit_outbox_audit_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_outbox
+    ADD CONSTRAINT audit_outbox_audit_id_fkey FOREIGN KEY (audit_id) REFERENCES public.audit_log(id) ON DELETE CASCADE;
+
+--
+-- Name: audit_outbox audit_outbox_org_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_outbox
+    ADD CONSTRAINT audit_outbox_org_id_fkey FOREIGN KEY (org_id) REFERENCES public.organization(id);
 
 --
 -- Name: connection connection_project_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -2277,6 +2792,13 @@ ALTER TABLE ONLY public.dataset_version
 
 ALTER TABLE ONLY public.dataset
     ADD CONSTRAINT dataset_workflow_id_fkey FOREIGN KEY (workflow_id) REFERENCES public.workflow(id) ON DELETE CASCADE;
+
+--
+-- Name: deployment_key deployment_key_deployment_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.deployment_key
+    ADD CONSTRAINT deployment_key_deployment_id_fkey FOREIGN KEY (deployment_id) REFERENCES public.deployment(id) ON DELETE CASCADE;
 
 --
 -- Name: deployment_share deployment_share_deployment_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -2496,6 +3018,13 @@ ALTER TABLE ONLY public.membership
     ADD CONSTRAINT membership_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.app_user(id) ON DELETE CASCADE;
 
 --
+-- Name: model_spend model_spend_project_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.model_spend
+    ADD CONSTRAINT model_spend_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.project(id) ON DELETE CASCADE;
+
+--
 -- Name: oauth_client oauth_client_org_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2543,6 +3072,34 @@ ALTER TABLE ONLY public.online_evaluator
 
 ALTER TABLE ONLY public.org_data_key
     ADD CONSTRAINT org_data_key_org_id_fkey FOREIGN KEY (org_id) REFERENCES public.organization(id) ON DELETE CASCADE;
+
+--
+-- Name: org_export org_export_org_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.org_export
+    ADD CONSTRAINT org_export_org_id_fkey FOREIGN KEY (org_id) REFERENCES public.organization(id) ON DELETE CASCADE;
+
+--
+-- Name: org_export_part org_export_part_export_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.org_export_part
+    ADD CONSTRAINT org_export_part_export_id_fkey FOREIGN KEY (export_id) REFERENCES public.org_export(id) ON DELETE CASCADE;
+
+--
+-- Name: org_notifier org_notifier_org_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.org_notifier
+    ADD CONSTRAINT org_notifier_org_id_fkey FOREIGN KEY (org_id) REFERENCES public.organization(id) ON DELETE CASCADE;
+
+--
+-- Name: org_notifier org_notifier_updated_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.org_notifier
+    ADD CONSTRAINT org_notifier_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES public.app_user(id) ON DELETE SET NULL;
 
 --
 -- Name: org_policy org_policy_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -2606,6 +3163,20 @@ ALTER TABLE ONLY public.release_gate
 
 ALTER TABLE ONLY public.release_gate
     ADD CONSTRAINT release_gate_workflow_id_fkey FOREIGN KEY (workflow_id) REFERENCES public.workflow(id) ON DELETE CASCADE;
+
+--
+-- Name: run_callback run_callback_deployment_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.run_callback
+    ADD CONSTRAINT run_callback_deployment_id_fkey FOREIGN KEY (deployment_id) REFERENCES public.deployment(id) ON DELETE CASCADE;
+
+--
+-- Name: run_callback run_callback_run_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.run_callback
+    ADD CONSTRAINT run_callback_run_id_fkey FOREIGN KEY (run_id) REFERENCES public.run(id) ON DELETE CASCADE;
 
 --
 -- Name: run_score run_score_deployment_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -2718,6 +3289,20 @@ ALTER TABLE ONLY public.share_thread
 
 ALTER TABLE ONLY public.spend_archive
     ADD CONSTRAINT spend_archive_workflow_id_fkey FOREIGN KEY (workflow_id) REFERENCES public.workflow(id) ON DELETE CASCADE;
+
+--
+-- Name: spend_cap_alert spend_cap_alert_org_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.spend_cap_alert
+    ADD CONSTRAINT spend_cap_alert_org_id_fkey FOREIGN KEY (org_id) REFERENCES public.organization(id) ON DELETE CASCADE;
+
+--
+-- Name: spend_cap_alert spend_cap_alert_project_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.spend_cap_alert
+    ADD CONSTRAINT spend_cap_alert_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.project(id) ON DELETE CASCADE;
 
 --
 -- Name: stored_file stored_file_deployment_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -2857,10 +3442,28 @@ CREATE POLICY agentcanvas_tenant ON public.answer_cache USING (((current_setting
   WHERE ((p.id)::text = (answer_cache.project_id)::text)))));
 
 --
+-- Name: approval_notice agentcanvas_tenant; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY agentcanvas_tenant ON public.approval_notice USING (((current_setting('agentcanvas.all_tenants'::text, true) = 'on'::text) OR ((org_id)::text = current_setting('matura.tenant_id'::text, true))));
+
+--
+-- Name: audit_anchor agentcanvas_tenant; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY agentcanvas_tenant ON public.audit_anchor USING (((current_setting('agentcanvas.all_tenants'::text, true) = 'on'::text) OR ((org_id)::text = current_setting('matura.tenant_id'::text, true))));
+
+--
 -- Name: audit_log agentcanvas_tenant; Type: POLICY; Schema: public; Owner: -
 --
 
 CREATE POLICY agentcanvas_tenant ON public.audit_log USING (((current_setting('agentcanvas.all_tenants'::text, true) = 'on'::text) OR ((org_id)::text = current_setting('matura.tenant_id'::text, true))));
+
+--
+-- Name: audit_outbox agentcanvas_tenant; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY agentcanvas_tenant ON public.audit_outbox USING (((current_setting('agentcanvas.all_tenants'::text, true) = 'on'::text) OR ((org_id)::text = current_setting('matura.tenant_id'::text, true))));
 
 --
 -- Name: connection agentcanvas_tenant; Type: POLICY; Schema: public; Owner: -
@@ -2909,6 +3512,14 @@ CREATE POLICY agentcanvas_tenant ON public.dataset_version USING (((current_sett
 CREATE POLICY agentcanvas_tenant ON public.deployment USING (((current_setting('agentcanvas.all_tenants'::text, true) = 'on'::text) OR (EXISTS ( SELECT 1
    FROM public.workflow p
   WHERE ((p.id)::text = (deployment.workflow_id)::text)))));
+
+--
+-- Name: deployment_key agentcanvas_tenant; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY agentcanvas_tenant ON public.deployment_key USING (((current_setting('agentcanvas.all_tenants'::text, true) = 'on'::text) OR (EXISTS ( SELECT 1
+   FROM public.deployment p
+  WHERE ((p.id)::text = (deployment_key.deployment_id)::text)))));
 
 --
 -- Name: deployment_share agentcanvas_tenant; Type: POLICY; Schema: public; Owner: -
@@ -3007,6 +3618,14 @@ CREATE POLICY agentcanvas_tenant ON public.knowledge_document USING (((current_s
   WHERE ((p.id)::text = (knowledge_document.kb_id)::text)))));
 
 --
+-- Name: model_spend agentcanvas_tenant; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY agentcanvas_tenant ON public.model_spend USING (((current_setting('agentcanvas.all_tenants'::text, true) = 'on'::text) OR (EXISTS ( SELECT 1
+   FROM public.project p
+  WHERE ((p.id)::text = (model_spend.project_id)::text)))));
+
+--
 -- Name: oauth_client agentcanvas_tenant; Type: POLICY; Schema: public; Owner: -
 --
 
@@ -3037,6 +3656,26 @@ CREATE POLICY agentcanvas_tenant ON public.online_evaluator USING (((current_set
 --
 
 CREATE POLICY agentcanvas_tenant ON public.org_data_key USING (((current_setting('agentcanvas.all_tenants'::text, true) = 'on'::text) OR ((org_id)::text = current_setting('matura.tenant_id'::text, true))));
+
+--
+-- Name: org_export agentcanvas_tenant; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY agentcanvas_tenant ON public.org_export USING (((current_setting('agentcanvas.all_tenants'::text, true) = 'on'::text) OR ((org_id)::text = current_setting('matura.tenant_id'::text, true))));
+
+--
+-- Name: org_export_part agentcanvas_tenant; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY agentcanvas_tenant ON public.org_export_part USING (((current_setting('agentcanvas.all_tenants'::text, true) = 'on'::text) OR (EXISTS ( SELECT 1
+   FROM public.org_export p
+  WHERE ((p.id)::text = (org_export_part.export_id)::text)))));
+
+--
+-- Name: org_notifier agentcanvas_tenant; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY agentcanvas_tenant ON public.org_notifier USING (((current_setting('agentcanvas.all_tenants'::text, true) = 'on'::text) OR ((org_id)::text = current_setting('matura.tenant_id'::text, true))));
 
 --
 -- Name: org_policy agentcanvas_tenant; Type: POLICY; Schema: public; Owner: -
@@ -3079,6 +3718,14 @@ CREATE POLICY agentcanvas_tenant ON public.release_gate USING (((current_setting
 CREATE POLICY agentcanvas_tenant ON public.run USING (((current_setting('agentcanvas.all_tenants'::text, true) = 'on'::text) OR (EXISTS ( SELECT 1
    FROM public.thread p
   WHERE ((p.id)::text = (run.thread_id)::text)))));
+
+--
+-- Name: run_callback agentcanvas_tenant; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY agentcanvas_tenant ON public.run_callback USING (((current_setting('agentcanvas.all_tenants'::text, true) = 'on'::text) OR (EXISTS ( SELECT 1
+   FROM public.run p
+  WHERE ((p.id)::text = (run_callback.run_id)::text)))));
 
 --
 -- Name: run_score agentcanvas_tenant; Type: POLICY; Schema: public; Owner: -
@@ -3133,6 +3780,12 @@ CREATE POLICY agentcanvas_tenant ON public.share_thread USING (((current_setting
 CREATE POLICY agentcanvas_tenant ON public.spend_archive USING (((current_setting('agentcanvas.all_tenants'::text, true) = 'on'::text) OR (EXISTS ( SELECT 1
    FROM public.workflow p
   WHERE ((p.id)::text = (spend_archive.workflow_id)::text)))));
+
+--
+-- Name: spend_cap_alert agentcanvas_tenant; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY agentcanvas_tenant ON public.spend_cap_alert USING (((current_setting('agentcanvas.all_tenants'::text, true) = 'on'::text) OR ((org_id)::text = current_setting('matura.tenant_id'::text, true))));
 
 --
 -- Name: stored_file agentcanvas_tenant; Type: POLICY; Schema: public; Owner: -
@@ -3207,10 +3860,28 @@ ALTER TABLE public.annotation_queue ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.answer_cache ENABLE ROW LEVEL SECURITY;
 
 --
+-- Name: approval_notice; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.approval_notice ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: audit_anchor; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.audit_anchor ENABLE ROW LEVEL SECURITY;
+
+--
 -- Name: audit_log; Type: ROW SECURITY; Schema: public; Owner: -
 --
 
 ALTER TABLE public.audit_log ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: audit_outbox; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.audit_outbox ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: connection; Type: ROW SECURITY; Schema: public; Owner: -
@@ -3247,6 +3918,12 @@ ALTER TABLE public.dataset_version ENABLE ROW LEVEL SECURITY;
 --
 
 ALTER TABLE public.deployment ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: deployment_key; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.deployment_key ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: deployment_share; Type: ROW SECURITY; Schema: public; Owner: -
@@ -3321,6 +3998,12 @@ ALTER TABLE public.knowledge_chunk ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.knowledge_document ENABLE ROW LEVEL SECURITY;
 
 --
+-- Name: model_spend; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.model_spend ENABLE ROW LEVEL SECURITY;
+
+--
 -- Name: oauth_client; Type: ROW SECURITY; Schema: public; Owner: -
 --
 
@@ -3349,6 +4032,24 @@ ALTER TABLE public.online_evaluator ENABLE ROW LEVEL SECURITY;
 --
 
 ALTER TABLE public.org_data_key ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: org_export; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.org_export ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: org_export_part; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.org_export_part ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: org_notifier; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.org_notifier ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: org_policy; Type: ROW SECURITY; Schema: public; Owner: -
@@ -3385,6 +4086,12 @@ ALTER TABLE public.release_gate ENABLE ROW LEVEL SECURITY;
 --
 
 ALTER TABLE public.run ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: run_callback; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.run_callback ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: run_score; Type: ROW SECURITY; Schema: public; Owner: -
@@ -3427,6 +4134,12 @@ ALTER TABLE public.share_thread ENABLE ROW LEVEL SECURITY;
 --
 
 ALTER TABLE public.spend_archive ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: spend_cap_alert; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.spend_cap_alert ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: stored_file; Type: ROW SECURITY; Schema: public; Owner: -

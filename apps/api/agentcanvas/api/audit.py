@@ -18,14 +18,13 @@ from starlette.responses import Response
 from agentcanvas.db.models import AuditLog
 from agentcanvas.db.repositories import AuditRepo, ScopeRepo
 from agentcanvas.log import get_logger
-from agentcanvas.services.audit_sink import SECURITY_ACTIONS, AuditEvent
 
 log = get_logger(__name__)
 READS = {"GET", "HEAD", "OPTIONS"}
 # public run calls (volume), checks that change nothing, and canvas positions (cosmetic)
 SKIPPED = {
-    "api_run_wait", "api_run_stream", "webhook", "check_expression", "validate_workflow", "inspect_mcp", "dry_run",
-    "set_layout", "share_run_stream",
+    "api_run_wait", "api_run_stream", "api_run_start", "webhook", "check_expression", "validate_workflow",
+    "inspect_mcp", "dry_run", "set_layout", "share_run_stream",
 }  # fmt: skip
 # path parameters, most specific first: the first one present is the row's target
 TARGETS = ("interrupt_id", "run_id", "thread_id", "trigger_id", "dep_id", "ex_id", "ds_id", "evaluator_id", "exp_id",
@@ -120,10 +119,22 @@ async def record(request: Request, response: Response) -> None:
         detail=detail,
         ip=request.client.host if request.client else None,  # the caller behind proxies with uvicorn --proxy-headers
     )
-    try:
+    try:  # forwarded entries also leave the server (services/audit_sink.py)
         async with request.app.state.db.sessionmaker() as s:
             await AuditRepo(s).add(row)
     except Exception:
         log.exception("audit.write_failed", action=name, target=target)
-    if name in SECURITY_ACTIONS and (sink := getattr(request.app.state, "audit_sink", None)) is not None:
-        await sink.emit(AuditEvent(org_id, row.actor_id, name, target, detail, row.ip))
+
+
+async def record_read(request: Request, action: str, target: str, **detail: Any) -> None:
+    """Record a read that is security-relevant, which `record` leaves out (reads are not changes): an export of a
+    person's data (E-7). Written before the data is sent, so a failure to record refuses the export."""
+    user = request.state.user
+    row = AuditLog(
+        org_id=user.org_id, actor_id=user.id, action=action, target=target,
+        detail={"method": request.method, "path": request.url.path, **detail,
+                **({"caller": f"personal token {user.token_id}"} if user.token_id else {})},
+        ip=request.client.host if request.client else None,
+    )  # fmt: skip
+    async with request.app.state.db.sessionmaker() as s:
+        await AuditRepo(s).add(row)

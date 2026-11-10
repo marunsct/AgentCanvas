@@ -1,5 +1,5 @@
-/** Publish (M6-T4): pre-publish checklist, the API key (shown once), deployments with rotate / unpublish, and their
- * share links (S23). */
+/** Publish (M6-T4): pre-publish checklist, the API key (shown once), deployments with their keys (E-8), rotate /
+ * unpublish, the secret that signs their run callbacks (shown once), and their share links (S23). */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { ApiError, apiFetch } from "../api/client";
@@ -7,6 +7,7 @@ import type { Check, DeploymentOut, OrgSettingsOut, PublishOut } from "../api/ge
 import { can } from "../api/session";
 import { useEditor } from "../editor/store";
 import { ConnectSection } from "./ConnectSection";
+import { DeploymentKeys } from "./DeploymentKeys";
 import { ShareSection } from "./ShareSection";
 import { confirmDialog, promptDialog } from "../ui/dialog";
 
@@ -14,6 +15,7 @@ export function PublishSection({ wfId }: { wfId: string }) {
   const qc = useQueryClient();
   const [checks, setChecks] = useState<Check[] | null>(null);
   const [key, setKey] = useState<{ deployment: string; key: string } | null>(null);
+  const [callbackSecret, setCallbackSecret] = useState<{ deployment: string; secret: string } | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const org = useQuery({ queryKey: ["org-settings"], queryFn: () => apiFetch<OrgSettingsOut>("/org/settings") });
   const offered = org.data?.offered_environments ?? ["prod"];
@@ -38,14 +40,40 @@ export function PublishSection({ wfId }: { wfId: string }) {
     onError: (e) => { setChecks(e instanceof ApiError ? (e.problem.checklist as Check[] | undefined) ?? null : null); refresh(); },
   });
   const rotate = async (d: DeploymentOut) => {
-    if (!(await confirmDialog({ title: "Issue a new key?", body: "The current key stops working immediately.", confirm: "Issue a new key", danger: true }))) return;
+    const hours = await promptDialog({
+      title: "Issue a new key?",
+      body: "The deployment's other keys stop working after the number of hours you enter: 0 stops them now, more gives callers time to move to the new key.",
+      confirm: "Issue a new key", danger: true,
+      input: { label: "Hours the current keys keep working", value: "0", required: true },
+    });
+    if (hours === null) return;
+    const overlap = Number(hours.trim());
+    if (!Number.isInteger(overlap) || overlap < 0 || overlap > 720) {
+      setActionError("Enter a whole number of hours from 0 to 720.");
+      return;
+    }
     setActionError(null);
     try {
-      const out = await apiFetch<{ api_key: string }>(`/deployments/${d.id}/rotate-key`, { method: "POST" });
+      const out = await apiFetch<{ api_key: string }>(`/deployments/${d.id}/rotate-key`, { method: "POST", json: { overlap_hours: overlap } });
       setKey({ deployment: d.id, key: out.api_key });
       refresh();
+      void qc.invalidateQueries({ queryKey: ["deployment-keys", d.id] });
     } catch (e) {
       setActionError(`Could not rotate the key: ${(e as Error).message}`);
+    }
+  };
+  const newCallbackSecret = async (d: DeploymentOut) => {
+    if (!(await confirmDialog({
+      title: "Create a callback secret?",
+      body: "It signs the callbacks this deployment's runs send when they end. A secret made before stops signing them immediately.",
+      confirm: "Create secret",
+    }))) return;
+    setActionError(null);
+    try {
+      const out = await apiFetch<{ callback_secret: string }>(`/deployments/${d.id}/callback-secret`, { method: "POST" });
+      setCallbackSecret({ deployment: d.id, secret: out.callback_secret });
+    } catch (e) {
+      setActionError(`Could not create the callback secret: ${(e as Error).message}`);
     }
   };
   const unpublish = async (d: DeploymentOut) => {
@@ -54,6 +82,7 @@ export function PublishSection({ wfId }: { wfId: string }) {
     try {
       await apiFetch(`/deployments/${d.id}`, { method: "DELETE" });
       setKey((k) => (k?.deployment === d.id ? null : k));
+      setCallbackSecret((c) => (c?.deployment === d.id ? null : c));
       refresh();
     } catch (e) {
       setActionError(`Could not unpublish: ${(e as Error).message}`);
@@ -95,6 +124,13 @@ export function PublishSection({ wfId }: { wfId: string }) {
   -d '{"input": {}}'`}</pre>
         </div>
       )}
+      {callbackSecret && (
+        <div className="key-box" data-testid="callback-secret">
+          <p className="small"><b>Callback secret</b> (shown once — copy it now). Check each callback&apos;s
+            X-AgentCanvas-Signature with it; runs ask for a callback with <code>&quot;callback_url&quot;</code>.</p>
+          <code className="mono">{callbackSecret.secret}</code>
+        </div>
+      )}
       <ul className="version-list">
         {(deps.data ?? []).map((d) => (
           <li key={d.id} data-testid={`deployment-${d.environment}`}>
@@ -103,8 +139,10 @@ export function PublishSection({ wfId }: { wfId: string }) {
               <code className="small">{d.key_prefix}…</code>
               <span className="spacer" />
               {d.active && can("builder") && <button type="button" className="small" onClick={() => void rotate(d)}>Rotate key</button>}
+              {d.active && can("builder") && <button type="button" className="small" onClick={() => void newCallbackSecret(d)}>Callback secret</button>}
               {d.active && can("builder") && <button type="button" className="small danger" onClick={() => void unpublish(d)}>Unpublish</button>}
             </div>
+            {d.active && can("builder") && <DeploymentKeys deployment={d} onNewKey={(k) => setKey({ deployment: d.id, key: k })} />}
             {d.active && <ConnectSection deployment={d} apiKey={key?.deployment === d.id ? key.key : undefined} />}
             {d.active && can("builder") && <ShareSection deployment={d} />}
           </li>
