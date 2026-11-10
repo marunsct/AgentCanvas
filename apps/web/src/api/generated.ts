@@ -8516,7 +8516,7 @@ export interface OrgSecurityOut {
   allowed_networks: AllowedNetworks1;
   mfa_available: MfaAvailable;
   networks_ignored: NetworksIgnored;
-  private_projects?: PrivateProjects1;
+  private_projects: PrivateProjects1;
   require_mfa: RequireMfa1;
   your_address: YourAddress;
   your_sign_in_is_mfa: YourSignInIsMfa;

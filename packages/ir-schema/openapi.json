@@ -11155,7 +11155,6 @@
             "type": "boolean"
           },
           "private_projects": {
-            "default": false,
             "description": "projects are seen only by organisation admins and their members",
             "title": "Private Projects",
             "type": "boolean"
@@ -11189,7 +11188,8 @@
           "networks_ignored",
           "require_mfa",
           "mfa_available",
-          "your_sign_in_is_mfa"
+          "your_sign_in_is_mfa",
+          "private_projects"
         ],
         "title": "OrgSecurityOut",
         "type": "object"

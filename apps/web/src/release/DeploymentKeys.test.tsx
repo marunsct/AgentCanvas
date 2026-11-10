@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DeploymentOut } from "../api/generated";
-import type { DeploymentKeyOut } from "./DeploymentKeys";
+import type { DeploymentKeyOut } from "../api/generated";
 
 const calls: { path: string; method?: string; json?: unknown }[] = [];
 let keys: DeploymentKeyOut[] = [];

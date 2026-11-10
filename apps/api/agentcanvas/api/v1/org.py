@@ -612,7 +612,7 @@ class OrgSecurityOut(BaseModel):
     require_mfa: bool = Field(description="members must sign in with multi-factor authentication")
     mfa_available: bool = Field(description="people sign in through an identity provider, so MFA can be required")
     your_sign_in_is_mfa: bool = Field(description="this request's sign-in counts as multi-factor on this server")
-    private_projects: bool = Field(False, description="projects are seen only by organisation admins and their members")
+    private_projects: bool = Field(description="projects are seen only by organisation admins and their members")
 
 
 class OrgLimitsOut(BaseModel):

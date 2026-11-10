@@ -11,18 +11,6 @@ import { useCanOrg } from "../api/session";
 import { toast } from "../ui/dialog";
 import { QueryStatus } from "../ui/QueryStatus";
 
-// narrow local type until the generated API types are regenerated (OrgSettingsOut.security)
-export interface OrgSecurityOut {
-  allowed_networks: string[];
-  your_address: string | null;
-  networks_ignored: boolean;
-  require_mfa: boolean;
-  mfa_available: boolean;
-  your_sign_in_is_mfa: boolean;
-  private_projects?: boolean;
-}
-type WithSecurity = OrgSettingsOut & { security?: OrgSecurityOut };
-
 /** The lines of the text box as list entries: trimmed, blank lines dropped. */
 export function networkLines(text: string): string[] {
   return text.split(/[\n,]/).map((l) => l.trim()).filter(Boolean);
@@ -31,22 +19,22 @@ export function networkLines(text: string): string[] {
 export function OrgSecurity() {
   const qc = useQueryClient();
   const admin = useCanOrg("admin");
-  const q = useQuery({ queryKey: ["org-settings"], queryFn: () => apiFetch<WithSecurity>("/org/settings") });
+  const q = useQuery({ queryKey: ["org-settings"], queryFn: () => apiFetch<OrgSettingsOut>("/org/settings") });
   const sec = q.data?.security;
   const [text, setText] = useState("");
   const [requireMfa, setRequireMfa] = useState(false);
   const [privateProjects, setPrivateProjects] = useState(false);
   useEffect(() => {
-    if (sec) { setText(sec.allowed_networks.join("\n")); setRequireMfa(sec.require_mfa); setPrivateProjects(sec.private_projects === true); }
+    if (sec) { setText(sec.allowed_networks.join("\n")); setRequireMfa(sec.require_mfa); setPrivateProjects(sec.private_projects); }
   }, [sec]);
   const save = useMutation({
-    mutationFn: () => apiFetch<WithSecurity>("/org/settings", {
+    mutationFn: () => apiFetch<OrgSettingsOut>("/org/settings", {
       method: "PUT",
       // only what changed: switching MFA needs a real sign-in, and saving the list must not depend on that
       json: { security: {
         allowed_networks: networkLines(text),
         ...(requireMfa !== sec?.require_mfa ? { require_mfa: requireMfa } : {}),
-        ...(privateProjects !== (sec?.private_projects === true) ? { private_projects: privateProjects } : {}),
+        ...(privateProjects !== sec?.private_projects ? { private_projects: privateProjects } : {}),
       } },
     }),
     onSuccess: (out) => { qc.setQueryData(["org-settings"], out); toast("Saved the security settings"); },
