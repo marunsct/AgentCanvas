@@ -12,6 +12,7 @@ import shutil
 import sys
 from pathlib import Path
 
+import mcp_types
 import pytest
 import uvicorn
 from fastmcp import Client
@@ -79,7 +80,9 @@ def tiny(runner: SandboxRunner, env: dict | None = None):
 
 async def text(client: Client, tool: str, args: dict | None = None) -> str:
     result = await client.call_tool(tool, args or {})
-    return result.content[0].text
+    first = result.content[0]
+    assert isinstance(first, mcp_types.TextContent)
+    return first.text
 
 
 def _alive(pid: int) -> bool:
