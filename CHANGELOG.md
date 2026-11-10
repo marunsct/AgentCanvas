@@ -190,6 +190,7 @@ review of 2026-10-29 ([HARDENING.md](docs/developer/hardening.md)); no version h
   and metadata addresses are never reached, and a list naming one is refused (HARDENING S-1).
 
 ### Fixed
+- A deployment run's result read later from any server, and its completion callback, carry `generated_by` too.
 - A master key in AWS KMS or Google Cloud KMS (AGENTCANVAS_KMS_KEY=aws:… or gcp:…) works with the API image, and a
   server without the client says which package to install instead of crashing.
 - A2A GetTask returns a finished task's output and a paused task's open questions from any API server, not only the one
