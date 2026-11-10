@@ -141,6 +141,29 @@ class Project(Base):
     created_at: Mapped[datetime] = _now()
 
 
+class ProjectMember(Base):
+    """Who works in a project, with what role (E-10): one person (`user_id`) or one SCIM group (`group_id`, its
+    members). With the organisation's projects private, only organisation admins and these see the project; otherwise
+    a binding can only give someone more than their organisation role there (services/project_access.py)."""
+
+    __tablename__ = "project_member"
+    __table_args__ = (
+        CheckConstraint("role IN ('admin','builder','reviewer','viewer')", name="project_member_role"),
+        CheckConstraint("(user_id IS NULL) <> (group_id IS NULL)", name="project_member_principal"),
+        UniqueConstraint("project_id", "user_id", name="project_member_user"),
+        UniqueConstraint("project_id", "group_id", name="project_member_group"),
+        Index("project_member_user_idx", "user_id"),
+        Index("project_member_group_idx", "group_id"),
+    )
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("project.id", ondelete="CASCADE"))
+    user_id: Mapped[str | None] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"))
+    group_id: Mapped[str | None] = mapped_column(ForeignKey("scim_group.id", ondelete="CASCADE"))
+    role: Mapped[str] = mapped_column(Text)
+    created_by: Mapped[str | None] = mapped_column(Text)  # who added it (a user id)
+    created_at: Mapped[datetime] = _now()
+
+
 class WorkflowRow(Base):
     __tablename__ = "workflow"
     id: Mapped[str] = mapped_column(String, primary_key=True)

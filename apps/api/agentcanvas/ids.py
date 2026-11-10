@@ -53,6 +53,7 @@ PREFIXES = {
     "oex",  # an organisation export (E-7)
     "rdg",  # a weekly run digest (F-11)
     "dgn",  # a weekly run digest to send on one channel (F-11)
+    "pmb",  # a person or group bound to a project (E-10)
 }
 
 

@@ -21,7 +21,7 @@ from agentcanvas.db.repositories import AuditRepo, MemberRepo, PolicyRepo
 from agentcanvas.errors import Conflict, InvalidInput, NotFound
 from agentcanvas.expr import ExpressionError
 from agentcanvas.log import get_logger
-from agentcanvas.services import matura, mfa, networks, offboarding, org_settings, scim, tokens
+from agentcanvas.services import matura, mfa, networks, offboarding, org_settings, project_access, scim, tokens
 from agentcanvas.services.org_settings import OrgLimits
 from agentcanvas.services.spend_caps import periods, project_caps, spent_by_project
 from agentcanvas.services.spending import spending
@@ -599,6 +599,10 @@ class OrgSecurity(BaseModel):
         None, description="members must sign in with multi-factor authentication; turning it on needs a sign-in "
         "that is multi-factor itself",
     )  # fmt: skip
+    private_projects: bool | None = Field(
+        None, description="each project is seen only by organisation admins and its own members (people and SCIM "
+        "groups added in its settings); false: every member sees every project",
+    )  # fmt: skip
 
 
 class OrgSecurityOut(BaseModel):
@@ -608,6 +612,7 @@ class OrgSecurityOut(BaseModel):
     require_mfa: bool = Field(description="members must sign in with multi-factor authentication")
     mfa_available: bool = Field(description="people sign in through an identity provider, so MFA can be required")
     your_sign_in_is_mfa: bool = Field(description="this request's sign-in counts as multi-factor on this server")
+    private_projects: bool = Field(False, description="projects are seen only by organisation admins and their members")
 
 
 class OrgLimitsOut(BaseModel):
@@ -657,6 +662,7 @@ async def _settings_out(session: AsyncSession, request: Request, user: CurrentUs
             else None, networks_ignored=server.ignore_org_networks, require_mfa=mfa.org_requires(org.settings),
             mfa_available=server.auth_mode != "dev",
             your_sign_in_is_mfa=user.claims is not None and mfa.is_mfa(server, user.claims),
+            private_projects=project_access.private(org.settings),
         ),
     )  # fmt: skip
 
@@ -728,6 +734,14 @@ async def put_org_settings(
             refuse_token(user, "stop requiring multi-factor sign-in")
         rest = {k: v for k, v in (org.settings or {}).items() if k != mfa.KEY}
         org.settings = {**rest, mfa.KEY: True} if on else rest or None
+    if body.security is not None and "private_projects" in body.security.model_fields_set:
+        on = bool(body.security.private_projects)
+        if on and request.app.state.settings.auth_mode == "matura":
+            raise Conflict("in Matura mode, who sees what comes from Matura's workspaces and roles")
+        if not on and project_access.private(org.settings):
+            refuse_token(user, "open every project to every member")
+        rest = {k: v for k, v in (org.settings or {}).items() if k != project_access.KEY}
+        org.settings = {**rest, project_access.KEY: True} if on else rest or None
     if "sso_groups" in body.model_fields_set:
         if request.app.state.settings.auth_mode != "oidc":
             raise Conflict("groups map to roles only when people sign in with OpenID Connect (AUTH_MODE=oidc)")

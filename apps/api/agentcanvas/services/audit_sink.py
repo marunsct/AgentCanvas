@@ -60,6 +60,7 @@ SECURITY_ACTIONS = frozenset({
     "edit_state",  # a conversation's state changed by hand, past what was approved
     "stop_all_runs",  # the organisation's kill switch
     "set_member", "remove_member", "accept_invitation",  # members and roles (dev and oidc modes)
+    "put_project_member", "delete_project_member",  # who works in a project, with what role
     "put_org_settings", "create_policy", "replace_policy", "delete_policy",  # organisation settings and policies
     "put_notifications",  # where approval notifications (and what they say) go
     "delete_project", "delete_workflow", "erase",  # deletions that cannot be undone (memory erasure)

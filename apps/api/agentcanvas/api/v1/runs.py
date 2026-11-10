@@ -11,6 +11,7 @@ import asyncio
 import json
 import time
 from collections.abc import AsyncIterator
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any, Literal, cast
 
@@ -23,7 +24,7 @@ from sqlalchemy.orm import defer
 
 from agentcanvas.adapters.spi import ThreadStateAbility, require, supports
 from agentcanvas.api.audit import note, payload_hash
-from agentcanvas.api.deps import RANK, CurrentUser, current_user, get_session, get_settings_dep
+from agentcanvas.api.deps import RANK, CurrentUser, current_user, get_session, get_settings_dep, project_access
 from agentcanvas.db.models import (
     Deployment,
     InterruptTask,
@@ -504,6 +505,7 @@ def _utc(t: datetime) -> datetime:
 
 @router.get("/threads", response_model=ThreadPage)
 async def list_threads(
+    request: Request,
     workflow_id: str | None = None,
     project_id: str | None = Query(None, description="only this project's conversations"),
     status: str | None = None,
@@ -514,12 +516,14 @@ async def list_threads(
     session: AsyncSession = Depends(get_session),
     user: CurrentUser = Depends(current_user),
 ) -> ThreadPage:
-    """Conversations (threads) newest first, each with its workflow's name and a summary of its runs."""
+    """Conversations (threads) newest first, each with its workflow's name and a summary of its runs: of the projects
+    the caller sees."""
+    seen = (await project_access(request, session, user)).project_filter()
     q = (
         select(Thread, WorkflowRow.name)
         .join(WorkflowRow, WorkflowRow.id == Thread.workflow_id)
         .join(Project, Project.id == WorkflowRow.project_id)
-        .where(Project.org_id == user.org_id)
+        .where(Project.org_id == user.org_id, seen)
     )
     if workflow_id:
         q = q.where(Thread.workflow_id == workflow_id)
@@ -538,7 +542,7 @@ async def list_threads(
             select(Thread.id)
             .join(WorkflowRow, WorkflowRow.id == Thread.workflow_id)
             .join(Project, Project.id == WorkflowRow.project_id)
-            .where(Thread.id == cursor, Project.org_id == user.org_id)
+            .where(Thread.id == cursor, Project.org_id == user.org_id, seen)
         )
         if known is None:
             raise InvalidInput(f"unknown cursor '{cursor}'")
@@ -918,6 +922,7 @@ def _intr(
 
 @router.get("/inbox", response_model=list[InterruptOut], tags=["inbox"])
 async def inbox(
+    request: Request,
     status: Literal["pending", "decided", "expired"] = "pending",
     workflow_id: str | None = None,
     limit: int = Query(100, ge=1, le=500),
@@ -925,12 +930,15 @@ async def inbox(
     settings: Settings = Depends(get_settings_dep),
     user: CurrentUser = Depends(current_user),
 ) -> list[InterruptOut]:
+    """What waits for a person (or was decided), of the projects the caller sees, with whether they may decide each:
+    by their role in its project."""
+    access = await project_access(request, session, user)
     q = (
         select(InterruptTask, Thread.workflow_id, WorkflowRow.name, Project, Thread.created_by)
         .join(Thread, Thread.id == InterruptTask.thread_id)
         .join(WorkflowRow, WorkflowRow.id == Thread.workflow_id)
         .join(Project, Project.id == WorkflowRow.project_id)
-        .where(InterruptTask.status == status, Project.org_id == user.org_id)
+        .where(InterruptTask.status == status, Project.org_id == user.org_id, access.project_filter())
     )
     if workflow_id:
         q = q.where(Thread.workflow_id == workflow_id)
@@ -944,18 +952,20 @@ async def inbox(
     me = await approvers.member(session, _decider(user)) if rows and status == "pending" else None
     own_ok = (await org_settings.of_org(session, settings, user.org_id)).approve_own_runs if me else True
 
-    def refused(x: InterruptTask, started_by: str | None) -> str | None:
+    def refused(x: InterruptTask, project_id: str, started_by: str | None) -> str | None:
         if x.kind == "timer":  # waiting, but not for a person
             return WAITS_ON_ITS_OWN
         if me is None:
             return None
-        if RANK.get(user.role, -1) < RANK["reviewer"]:
+        role = access.role_in(project_id) or "viewer"
+        if RANK.get(role, -1) < RANK["reviewer"]:
             return "your role cannot decide"
         if not own_ok and (x.requested_by or started_by) == user.id:
             return "your organisation does not let you approve or answer a run you started"
-        return approvers.refusal(approvers.Approvers.of(x.approvers), x.assignee_role, me, x.requested_by or started_by)
+        policy = approvers.Approvers.of(x.approvers)
+        return approvers.refusal(policy, x.assignee_role, replace(me, role=role), x.requested_by or started_by)
 
-    return [_intr(x, wid, name, irs.get(wid), project, refused(x, by)) for x, wid, name, project, by in rows]
+    return [_intr(x, wid, name, irs.get(wid), p, refused(x, p.id, by)) for x, wid, name, p, by in rows]
 
 
 async def _not_your_own(

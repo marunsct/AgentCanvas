@@ -22,6 +22,7 @@ from agentcanvas.errors import Conflict, Forbidden, InvalidInput, NotFound, Prec
 from agentcanvas.log import get_logger
 from agentcanvas.security.auth import Authenticator
 from agentcanvas.services import matura, mfa, networks, offboarding, sso_groups, tokens
+from agentcanvas.services import project_access as project_access_
 from agentcanvas.settings import Settings
 
 log = get_logger(__name__)
@@ -47,6 +48,8 @@ async def release_sessions(request: Request) -> None:
 
 @dataclass
 class CurrentUser:
+    # the role this request acts with: in the organisation, then (once `org_scope` saw the project a request names)
+    # in that project (services/project_access.py); `org_role` stays the organisation's
     id: str
     org_id: str
     role: str
@@ -55,6 +58,13 @@ class CurrentUser:
     token_id: str | None = None  # signed in with a personal API token (G-13), not the identity provider
     # the identity provider's token claims (acr, amr: how the person signed in); None for API tokens and dev mode
     claims: dict[str, Any] | None = field(default=None, repr=False)
+    org_role: str = ""  # the role in the organisation (an API token's lowers it)
+    member_role: str = ""  # the membership's own role, before an API token lowers it
+    token_role: str | None = None  # an API token's own role: the most it may do in any project
+
+    def __post_init__(self) -> None:
+        self.org_role = self.org_role or self.role
+        self.member_role = self.member_role or self.memberships.get(self.org_id) or self.role
 
 
 def _authenticator(request: Request) -> Authenticator:
@@ -127,6 +137,7 @@ async def _signed_in(
         return CurrentUser(
             id=caller.user_id, org_id=caller.org_id, role=caller.role, email=caller.email,
             memberships={caller.org_id: caller.role}, token_id=caller.token_id,
+            member_role=caller.member_role or caller.role, token_role=caller.token_role or None,
         )  # fmt: skip
     if settings.auth_mode == "dev":
         return CurrentUser(id=DEV_USER, org_id=DEV_ORG, role="admin", memberships={DEV_ORG: "admin"})
@@ -209,20 +220,42 @@ SCOPED_PARAMS = {
 }
 
 
+async def project_access(request: Request, session: AsyncSession, user: CurrentUser) -> project_access_.Access:
+    """The caller's access to the organisation's projects, looked up once per request."""
+    found = getattr(request.state, "project_access", None)
+    if found is None:
+        found = request.state.project_access = await project_access_.load(
+            session, user.org_id, user.id, user.member_role, user.token_role
+        )
+    return found
+
+
 async def org_scope(
     request: Request, user: CurrentUser = Depends(current_user), session: AsyncSession = Depends(get_session)
 ) -> None:
-    """Every resource a request names must belong to the caller's organisation.
+    """Every resource a request names must belong to the caller's organisation, and to a project they may see.
 
-    Another organisation's resource answers 404, exactly like a missing one, so ids cannot be probed.
-    Runs on every signed-in route; list endpoints without an id filter by `user.org_id` themselves.
+    Another organisation's resource, or a private project's the caller is not a member of (E-10), answers 404,
+    exactly like a missing one, so ids cannot be probed. The caller's role becomes their role in that project
+    (`user.role`; the organisation's stays in `user.org_role`). Runs on every signed-in route, before `role_policy`;
+    list endpoints without an id filter by `user.org_id` and the projects the caller sees themselves.
     """
     named = {**request.query_params, **request.path_params}
     repo = ScopeRepo(session)
+    roles: list[str] = []
     for param, kind in SCOPED_PARAMS.items():
         rid = named.get(param)
-        if rid and await repo.org_of(kind, rid) != user.org_id:
+        if not rid:
+            continue
+        owner = await repo.owner(kind, rid)
+        if owner is None or owner[0] != user.org_id:
             raise NotFound(f"{kind} '{rid}' not found")
+        role = (await project_access(request, session, user)).role_in(owner[1])
+        if role is None:
+            raise NotFound(f"{kind} '{rid}' not found")
+        roles.append(role)
+    if roles:
+        user.role = project_access_.lowest(roles)
 
 
 # Roles (M7-T3), weakest first. viewer: read only. reviewer: read and answer inbox items. builder: build, run,
@@ -267,7 +300,9 @@ ROLE_EXCEPTIONS = {
     ("PATCH", "/projects/{project_id}"): "admin",  # a project's name and existence are the organisation's
     ("DELETE", "/projects/{project_id}"): "admin",  # a read: what a Search knowledge block would find (S24)
     ("PUT", "/projects/{project_id}/workspace"): "admin",  # which Matura workspace a project lives in
-    ("PUT", "/projects/{project_id}/spending-caps"): "admin",  # spending caps are the administrator's control
+    ("PUT", "/projects/{project_id}/spending-caps"): "admin",  # spending caps are the (project) admin's control
+    ("PUT", "/projects/{project_id}/members"): "admin",  # who works in a project: its admins (E-10)
+    ("DELETE", "/projects/{project_id}/members/{member_id}"): "admin",
 }
 
 
@@ -290,13 +325,35 @@ def required_role(method: str, path: str) -> str:
     return "viewer" if method in ("GET", "HEAD", "OPTIONS") else "builder"
 
 
-async def role_policy(request: Request, user: CurrentUser = Depends(current_user)) -> None:
-    """Every signed-in route needs the role its method and path call for (403 otherwise)."""
+# requests where the organisation role counts, not the role in the project they name: a project's name, existence and
+# workspace are the organisation's, and so is where its traces (run inputs and outputs) may be sent
+ORG_ROLE_ROUTES = {
+    ("PATCH", "/projects/{project_id}"),
+    ("DELETE", "/projects/{project_id}"),
+    ("PUT", "/projects/{project_id}/workspace"),
+    ("PUT", "/projects/{project_id}/trace-export"),
+    ("DELETE", "/projects/{project_id}/trace-export"),
+}
+
+
+async def role_policy(
+    request: Request, user: CurrentUser = Depends(current_user), _scope: None = Depends(org_scope)
+) -> None:
+    """Every signed-in route needs the role its method and path call for (403 otherwise): the caller's role in the
+    project the request names (after `org_scope`), else in the organisation."""
     request.state.user = user  # the audit log's actor (M7-T4)
     route = request.scope.get("route")
-    needed = required_role(request.method, getattr(route, "path", request.url.path))
-    if RANK.get(user.role, -1) < RANK[needed]:
-        raise Forbidden(f"your role '{user.role}' cannot do this; it needs '{needed}' or above")
+    path = getattr(route, "path", request.url.path).removeprefix("/v1")
+    needed = required_role(request.method, path)
+    org_level = (
+        path in ("/org", "/me")
+        or path.startswith(("/org/", "/server/", "/me/"))
+        or (request.method, path) in ORG_ROLE_ROUTES
+    )
+    role = user.org_role if org_level else user.role
+    if RANK.get(role, -1) < RANK[needed]:
+        where = "" if role == user.org_role else " in this project"
+        raise Forbidden(f"your role '{role}'{where} cannot do this; it needs '{needed}' or above")
 
 
 def refuse_token(user: CurrentUser, what: str) -> None:

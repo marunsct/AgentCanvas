@@ -45,8 +45,10 @@ class TokenCaller:
     token_id: str
     user_id: str
     org_id: str
-    role: str
+    role: str  # the lower of the token's and the person's role in the organisation
     email: str
+    member_role: str = ""  # the person's role in the organisation
+    token_role: str = ""  # the most the token may do, in any project too
 
 
 class TokenService:
@@ -106,7 +108,7 @@ class TokenService:
             raise Unauthorized("the person this API token belongs to is no longer an active member of its organisation")
         user = await self.s.get(AppUser, row.user_id)
         role = min(row.role, member.role, key=RANK.__getitem__)
-        caller = TokenCaller(row.id, row.user_id, row.org_id, role, user.email if user else "")
+        caller = TokenCaller(row.id, row.user_id, row.org_id, role, user.email if user else "", member.role, row.role)
         if row.last_used_at is None or row.last_used_at <= now - USED_EVERY:
             await self.s.execute(update(PersonalToken).where(PersonalToken.id == row.id).values(last_used_at=now))
             await self.s.commit()

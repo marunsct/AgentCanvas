@@ -34,8 +34,10 @@ from agentcanvas.db.models import (
     OrgPolicy,
     PersonalToken,
     Project,
+    ProjectMember,
     Run,
     RunSearch,
+    ScimGroup,
     SpendArchive,
     Thread,
     Trigger,
@@ -111,6 +113,13 @@ class UserRepo:
                 if m.org_id not in mine:  # someone who already belongs somewhere accepts it first
                     self.s.add(Membership(org_id=m.org_id, user_id=user.id, role=m.role, accepted=not mine))
                 await self.s.delete(m)
+            # and the projects the invitation was added to (bindings the user has already win)
+            theirs = select(ProjectMember.project_id).where(ProjectMember.user_id == user.id)
+            await self.s.execute(
+                update(ProjectMember)
+                .where(ProjectMember.user_id == pending.id, ProjectMember.project_id.not_in(theirs))
+                .values(user_id=user.id)
+            )
             await self.s.flush()
             await self.s.delete(pending)
             await self.s.commit()
@@ -160,6 +169,7 @@ class UserRepo:
             m.accepted, m.last_used_at = True, datetime.now(UTC)  # land in the organisation just joined
         else:
             await self.s.delete(m)
+            await drop_project_bindings(self.s, org_id, user_id)
         await self.s.commit()
 
     async def bootstrap_admin(self, user_id: str, org_id: str) -> dict[str, str]:
@@ -290,6 +300,7 @@ class MemberRepo:
         await self.s.execute(
             delete(OAuthConnection).where(OAuthConnection.org_id == org_id, OAuthConnection.owner == user_id)
         )
+        await drop_project_bindings(self.s, org_id, user_id)
         await self._keep_an_admin(org_id)
         await self.s.commit()
 
@@ -315,6 +326,70 @@ class MemberRepo:
         if not await self.s.scalar(q):
             await self.s.rollback()
             raise Conflict("an organisation needs at least one admin who has signed in; make someone else admin first")
+
+
+async def drop_project_bindings(session: AsyncSession, org_id: str, user_id: str) -> None:
+    """Someone leaving an organisation leaves its projects too: rejoining later must not bring back their access."""
+    projects = select(Project.id).where(Project.org_id == org_id)
+    await session.execute(
+        delete(ProjectMember).where(ProjectMember.user_id == user_id, ProjectMember.project_id.in_(projects))
+    )
+
+
+class ProjectMemberRepo:
+    """Who works in a project, and with what role (E-10; services/project_access.py says what that gives)."""
+
+    def __init__(self, s: AsyncSession):
+        self.s = s
+
+    async def list(self, project_id: str) -> list[tuple[ProjectMember, AppUser | None, ScimGroup | None]]:
+        q = (
+            select(ProjectMember, AppUser, ScimGroup)
+            .outerjoin(AppUser, AppUser.id == ProjectMember.user_id)
+            .outerjoin(ScimGroup, ScimGroup.id == ProjectMember.group_id)
+            .where(ProjectMember.project_id == project_id)
+            .order_by(ScimGroup.display_name.nulls_first(), AppUser.email, ProjectMember.id)
+        )
+        return [(b, u, g) for b, u, g in (await self.s.execute(q)).all()]
+
+    async def bind(
+        self, project_id: str, role: str, *, user_id: str | None = None, group_id: str | None = None, by: str | None
+    ) -> tuple[ProjectMember, str | None]:
+        """Give one person or one group this role in the project (the binding, and the role it had before)."""
+        assert (user_id is None) != (group_id is None)
+        q = select(ProjectMember).where(ProjectMember.project_id == project_id)
+        q = q.where(ProjectMember.user_id == user_id if user_id else ProjectMember.group_id == group_id)
+        row = await self.s.scalar(q.with_for_update())
+        before = row.role if row is not None else None
+        if row is None:
+            row = ProjectMember(
+                id=new_id("pmb"), project_id=project_id, user_id=user_id, group_id=group_id, role=role, created_by=by
+            )
+            self.s.add(row)
+        row.role = role
+        try:
+            await self.s.commit()
+        except IntegrityError:  # the same binding made at the same moment: theirs stands, with this role
+            await self.s.rollback()
+            row = await self.s.scalar(q)
+            if row is None:
+                raise
+            before, row.role = row.role, role
+            await self.s.commit()
+        await self.s.refresh(row)
+        return row, before
+
+    async def require(self, project_id: str, member_id: str) -> ProjectMember:
+        row = await self.s.get(ProjectMember, member_id)
+        if row is None or row.project_id != project_id:
+            raise NotFound(f"project member '{member_id}' not found")
+        return row
+
+    async def remove(self, project_id: str, member_id: str) -> ProjectMember:
+        row = await self.require(project_id, member_id)
+        await self.s.delete(row)
+        await self.s.commit()
+        return row
 
 
 class AuditRepo:
@@ -388,10 +463,16 @@ class ScopeRepo:
     async def org_of(self, kind: str, rid: str) -> str | None:
         """The owning organisation of `kind` ('project', 'workflow', 'thread', 'run', 'deployment', 'trigger',
         'interrupt') with id `rid`, or None when it does not exist."""
-        via_workflow = select(Project.org_id).join(WorkflowRow, WorkflowRow.project_id == Project.id)
+        owner = await self.owner(kind, rid)
+        return owner[0] if owner else None
+
+    async def owner(self, kind: str, rid: str) -> tuple[str, str] | None:
+        """The organisation and the project `kind` with id `rid` belongs to, or None when it does not exist."""
+        both = select(Project.org_id, Project.id)
+        via_workflow = both.join(WorkflowRow, WorkflowRow.project_id == Project.id)
         via_thread = via_workflow.join(Thread, Thread.workflow_id == WorkflowRow.id)
         q = {
-            "project": select(Project.org_id).where(Project.id == rid),
+            "project": both.where(Project.id == rid),
             "workflow": via_workflow.where(WorkflowRow.id == rid),
             "thread": via_thread.where(Thread.id == rid),
             "run": via_thread.join(Run, Run.thread_id == Thread.id).where(Run.id == rid),
@@ -415,14 +496,15 @@ class ScopeRepo:
             "annotation_item": via_workflow.join(AnnotationQueue, AnnotationQueue.workflow_id == WorkflowRow.id)
             .join(AnnotationItem, AnnotationItem.queue_id == AnnotationQueue.id)
             .where(AnnotationItem.id == rid),
-            "knowledge_base": select(Project.org_id)
-            .join(KnowledgeBase, KnowledgeBase.project_id == Project.id)
-            .where(KnowledgeBase.id == rid),
+            "knowledge_base": both.join(KnowledgeBase, KnowledgeBase.project_id == Project.id).where(
+                KnowledgeBase.id == rid
+            ),
             "interrupt": via_thread.join(InterruptTask, InterruptTask.thread_id == Thread.id).where(
                 InterruptTask.id == rid
             ),
         }[kind]
-        return await self.s.scalar(q)
+        found = (await self.s.execute(q)).first()
+        return (found[0], found[1]) if found else None
 
     async def member_ids(self, org_id: str) -> set[str]:
         return set((await self.s.scalars(select(Membership.user_id).where(Membership.org_id == org_id))).all())

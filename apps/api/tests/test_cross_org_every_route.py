@@ -18,9 +18,9 @@ from typing import Any
 
 from test_annotation import RUBRIC
 from test_experiments import setup
-from test_org_scope import act_as_b, org_b  # noqa: F401 - fixture
+from test_org_scope import act_as_b, act_as_outsider, org_b, private_with_outsider  # noqa: F401 - fixture
 
-from agentcanvas.api.deps import current_user
+from agentcanvas.api.deps import SCOPED_PARAMS, current_user
 from agentcanvas.ir.models import Workflow
 
 PROJECT = "prj_default"
@@ -189,6 +189,36 @@ async def test_organisation_b_is_refused_everything_of_organisation_a(app, api_c
         f"cross-org: {len(found)}/{len(gets)} id routes reached, {calls} calls refused; "
         f"uncovered: {sorted(gets - set(found))}"
     )
+
+
+async def test_a_member_of_another_project_is_refused_everything_of_a_private_project(app, api_client):
+    """E-10, the same sweep inside one organisation: with projects private, a builder of the organisation who is an
+    admin of another project gets 403 or 404 on every route naming something of the default project, and never sees
+    it. Routes that name only organisation-wide things (policies, tokens, exports) are not a project's and stay out."""
+    own = await _seed(app, api_client)
+    found = await _crawl(api_client, app, own)
+    spec = app.openapi()
+    scoped = {p: u for p, u in found.items() if set(re.findall(r"\{(\w+)\}", p)) & set(SCOPED_PARAMS)}
+    assert len(scoped) >= 45, f"the crawl reached only {len(scoped)} project routes"
+    secrets = {"a-secret-value", "x = 1"}
+    await private_with_outsider(app)
+    act_as_outsider(app)
+    leaks: list[str] = []
+    calls = 0
+    try:
+        for path, url in sorted(scoped.items()):
+            for method in ("get", "put", "patch", "post", "delete"):
+                if method not in spec["paths"][path]:
+                    continue
+                r = await api_client.request(method.upper(), url, json={} if method != "get" else None)
+                calls += 1
+                if r.status_code not in (403, 404, 405) or any(s in r.text for s in secrets):
+                    leaks.append(f"{method.upper()} {url} -> {r.status_code} {r.text[:100]}")
+    finally:
+        app.dependency_overrides.pop(current_user, None)
+    assert calls >= 40
+    assert not leaks, f"a member of another project got through on {len(leaks)} calls:\n" + "\n".join(leaks[:30])
+    assert (await api_client.get(f"/v1/workflows/{own['wf']}")).status_code == 200
 
 
 async def test_organisation_b_is_refused_the_routes_the_crawl_cannot_reach(app, api_client, org_b):  # noqa: F811

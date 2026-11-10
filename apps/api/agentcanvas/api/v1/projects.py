@@ -6,17 +6,26 @@ import asyncio
 import shutil
 from datetime import datetime
 from pathlib import Path
+from typing import Literal, Self
 
 from fastapi import APIRouter, Depends, Query, Request, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.audit import note
-from agentcanvas.api.deps import CurrentUser, current_user, get_session, get_settings_dep
-from agentcanvas.db.models import Organization, Project, WorkflowRow
-from agentcanvas.db.repositories import ProjectRepo
+from agentcanvas.api.deps import (
+    CurrentUser,
+    current_user,
+    get_session,
+    get_settings_dep,
+    members_here,
+    project_access,
+    refuse_token,
+)
+from agentcanvas.db.models import AppUser, Membership, Organization, Project, ScimGroup, WorkflowRow
+from agentcanvas.db.repositories import ProjectMemberRepo, ProjectRepo
 from agentcanvas.errors import Conflict, InvalidInput
 from agentcanvas.registry import default_registry
 from agentcanvas.services import matura, model_defaults, org_settings, spend_caps
@@ -24,6 +33,7 @@ from agentcanvas.services.spend_caps import ProjectCaps
 from agentcanvas.settings import Settings
 
 router = APIRouter(tags=["projects"])
+Role = Literal["admin", "builder", "reviewer", "viewer"]
 
 
 class ProjectOut(BaseModel):
@@ -31,6 +41,7 @@ class ProjectOut(BaseModel):
     name: str
     created_at: datetime
     workspace_id: str | None = None  # the Matura workspace it belongs to (Matura mode); None = none
+    role: Role | None = Field(None, description="your role in this project")
 
 
 class WorkspaceOut(BaseModel):
@@ -39,8 +50,8 @@ class WorkspaceOut(BaseModel):
     is_default: bool
 
 
-def _out(p: Project) -> ProjectOut:
-    return ProjectOut(id=p.id, name=p.name, created_at=p.created_at, workspace_id=p.workspace_id)
+def _out(p: Project, role: str | None = None) -> ProjectOut:
+    return ProjectOut(id=p.id, name=p.name, created_at=p.created_at, workspace_id=p.workspace_id, role=role)  # type: ignore[arg-type]
 
 
 async def _checked(session: AsyncSession, settings: Settings, user: CurrentUser, workspace_id: str | None) -> None:
@@ -66,12 +77,15 @@ async def list_workspaces(
 
 @router.get("/projects", response_model=list[ProjectOut])
 async def list_projects(
+    request: Request,
     workspace_id: str | None = Query(None, description="only the projects in this Matura workspace"),
     session: AsyncSession = Depends(get_session),
     user: CurrentUser = Depends(current_user),
 ) -> list[ProjectOut]:
+    """The projects you see (all of the organisation's, unless its projects are private), with your role in each."""
+    access = await project_access(request, session, user)
     rows = await ProjectRepo(session).list(user.org_id, workspace_id)
-    return [_out(p) for p in rows]
+    return [_out(p, role) for p in rows if (role := access.role_in(p.id)) is not None]
 
 
 class ProjectIn(BaseModel):
@@ -82,14 +96,21 @@ class ProjectIn(BaseModel):
 @router.post("/projects", response_model=ProjectOut, status_code=201)
 async def create_project(
     body: ProjectIn,
+    request: Request,
     session: AsyncSession = Depends(get_session),
     user: CurrentUser = Depends(current_user),
     settings: Settings = Depends(get_settings_dep),
 ) -> ProjectOut:
     """A new project in the caller's organisation (409 when the name is taken there), optionally in one of its
-    Matura workspaces (422 when that is not an active workspace of the organisation)."""
+    Matura workspaces (422 when that is not an active workspace of the organisation). With the organisation's projects
+    private, whoever creates one becomes its admin (else they could not see it)."""
     await _checked(session, settings, user, body.workspace_id)
-    return _out(await ProjectRepo(session).create(user.org_id, body.name.strip(), body.workspace_id))
+    p = await ProjectRepo(session).create(user.org_id, body.name.strip(), body.workspace_id)
+    access = await project_access(request, session, user)
+    if access.private and user.member_role != "admin":
+        await ProjectMemberRepo(session).bind(p.id, "admin", user_id=user.id, by=user.id)
+        access.bound[p.id] = "admin"
+    return _out(p, access.role_in(p.id))
 
 
 class ProjectWorkspaceIn(BaseModel):
@@ -109,7 +130,7 @@ async def set_project_workspace(
     p = await ProjectRepo(session).require(project_id)
     p.workspace_id = body.workspace_id
     await session.commit()
-    return _out(p)
+    return _out(p, user.role)
 
 
 class ProjectRenameIn(BaseModel):
@@ -121,6 +142,7 @@ async def rename_project(
     project_id: str,
     body: ProjectRenameIn,
     session: AsyncSession = Depends(get_session),
+    user: CurrentUser = Depends(current_user),
 ) -> ProjectOut:
     """Rename a project (409 when another project of the organisation has the name)."""
     p = await ProjectRepo(session).require(project_id)
@@ -132,7 +154,7 @@ async def rename_project(
     except IntegrityError:
         await session.rollback()
         raise Conflict(f"a project named '{body.name.strip()}' already exists") from None
-    return _out(p)
+    return _out(p, user.role)
 
 
 @router.delete("/projects/{project_id}", status_code=204)
@@ -165,6 +187,101 @@ async def delete_project(
         await projects.forget(project_id)
     # a workspace can hold thousands of files: deleted in a worker thread, not on the event loop
     await asyncio.to_thread(shutil.rmtree, Path(settings.workspaces_dir) / project_id, ignore_errors=True)
+    return Response(status_code=204)
+
+
+# ------------------------------------------------------------------ members (Settings > Members) ----
+class ProjectMemberIn(BaseModel):
+    """One person (by the email they are a member of the organisation with) or one SCIM group (by its name)."""
+
+    email: str | None = Field(None, pattern=r"^[^@\s]+@[^@\s]+$", max_length=320)
+    group: str | None = Field(None, min_length=1, max_length=200, description="a SCIM group's display name")
+    role: Role
+
+    @model_validator(mode="after")
+    def _one(self) -> Self:
+        if (self.email is None) == (self.group is None):
+            raise ValueError("name one person (email) or one group, not both")
+        return self
+
+
+class ProjectMemberOut(BaseModel):
+    id: str
+    kind: Literal["user", "group"]
+    user_id: str | None = None
+    email: str | None = None
+    display_name: str | None = None
+    group_id: str | None = None
+    group: str | None = Field(None, description="the SCIM group's display name")
+    role: Role
+    created_at: datetime
+
+
+def _member(b, u: AppUser | None, g: ScimGroup | None) -> ProjectMemberOut:
+    return ProjectMemberOut(
+        id=b.id, kind="user" if b.user_id else "group", user_id=b.user_id, email=u.email if u else None,
+        display_name=u.display_name if u else None, group_id=b.group_id, group=g.display_name if g else None,
+        role=b.role, created_at=b.created_at,
+    )  # fmt: skip
+
+
+@router.get("/projects/{project_id}/members", response_model=list[ProjectMemberOut])
+async def list_project_members(project_id: str, session: AsyncSession = Depends(get_session)) -> list[ProjectMemberOut]:
+    """The people and SCIM groups bound to the project, with their role there. Organisation admins are admins of every
+    project without being listed."""
+    return [_member(b, u, g) for b, u, g in await ProjectMemberRepo(session).list(project_id)]
+
+
+@router.put("/projects/{project_id}/members", response_model=ProjectMemberOut, dependencies=[Depends(members_here)])
+async def put_project_member(
+    project_id: str,
+    body: ProjectMemberIn,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    user: CurrentUser = Depends(current_user),
+) -> ProjectMemberOut:
+    """Add a member of the organisation, or one of its SCIM groups, to the project with a role, or change that role
+    (project admins and organisation admins). The role may be above their organisation role: it applies here only."""
+    refuse_token(user, "change who works in a project")
+    project = await ProjectRepo(session).require(project_id)
+    repo = ProjectMemberRepo(session)
+    if body.email is not None:
+        email = body.email.strip().lower()
+        found = await session.scalar(
+            select(AppUser)
+            .join(Membership, Membership.user_id == AppUser.id)
+            .where(Membership.org_id == project.org_id, func.lower(AppUser.email) == email)
+        )
+        if found is None:
+            raise InvalidInput(f"{email} is not a member of the organisation: invite them in Settings > Members first")
+        row, before = await repo.bind(project_id, body.role, user_id=found.id, by=user.id)
+        target = f"user_id={found.id}"
+        u, g = found, None
+    else:
+        name = (body.group or "").strip()
+        groups = await session.scalars(select(ScimGroup).where(ScimGroup.org_id == project.org_id))
+        g = next((x for x in groups if x.display_name.casefold() == name.casefold()), None)
+        if g is None:
+            raise InvalidInput(f"the identity provider has not provisioned a group named '{name}' over SCIM")
+        row, before = await repo.bind(project_id, body.role, group_id=g.id, by=user.id)
+        target, u = f"group_id={g.id}", None
+    note(request, member=target, role=body.role, before=before)
+    return _member(row, u, g)
+
+
+@router.delete("/projects/{project_id}/members/{member_id}", status_code=204, dependencies=[Depends(members_here)])
+async def delete_project_member(
+    project_id: str,
+    member_id: str,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    user: CurrentUser = Depends(current_user),
+) -> Response:
+    """Take a person or group out of the project. With the organisation's projects private, they no longer see it
+    (unless another binding, or being an organisation admin, still lets them)."""
+    refuse_token(user, "change who works in a project")
+    row = await ProjectMemberRepo(session).remove(project_id, member_id)
+    note(request, member=f"user_id={row.user_id}" if row.user_id else f"group_id={row.group_id}", role=row.role)
     return Response(status_code=204)
 
 
