@@ -118,7 +118,8 @@ published workflow so does its caller. Fill it in to send the decision to partic
 
 A step's setting is saved with the pause when the run stops there, so editing the workflow later does not change who
 decides a pause that already waits. In the Inbox each item says who decides it (*Decided by: admin role; group
-Finance*) and, when you cannot, why; its buttons are then off. A helper agent's tool approvals follow the setting of its
+Finance*) and, when you cannot, why; its buttons are then off. The editor's Run tab says the same under a test run's
+pause. A helper agent's tool approvals follow the setting of its
 Planning Agent. Steps inside a subgraph keep their own setting. AgentCanvas checks it; code exported from the workflow
 does not (I011).
 

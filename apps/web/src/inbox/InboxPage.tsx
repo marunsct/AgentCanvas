@@ -5,6 +5,7 @@ import { apiFetch } from "../api/client";
 import { type InboxItem, PROJECT_ID, useInbox, useWithdrawn } from "../api/queries";
 import { can } from "../api/session";
 import { DecisionCard } from "./DecisionCard";
+import { WhoDecides } from "./WhoDecides";
 import { QueryStatus } from "../ui/QueryStatus";
 import { PageHeader } from "../ui/PageHeader";
 import { toast } from "../ui/dialog";
@@ -108,10 +109,7 @@ export function InboxPage() {
                 {item.workflow_id && <> · <Link to={`/workflows/${item.workflow_id}?thread=${item.thread_id}`}>see the run</Link></>}
               </small>
             </header>
-            {item.deciders && <p className="small muted" data-testid="inbox-deciders">Decided by: {item.deciders}</p>}
-            {item.may_decide === false && item.why_not && item.kind !== "timer" && (
-              <p className="small muted" data-testid="inbox-why-not">You cannot decide this one: {item.why_not}.</p>
-            )}
+            <WhoDecides item={item} />
             <DecisionCard intr={item}
               busy={busy.has(item.id) || (item.kind !== "timer"
                 && (item.may_decide === false || (item.may_decide == null && !can("reviewer"))))}
