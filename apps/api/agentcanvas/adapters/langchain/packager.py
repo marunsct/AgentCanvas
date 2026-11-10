@@ -35,7 +35,7 @@ from importlib import metadata
 from pathlib import Path
 from typing import Any
 
-from agentcanvas import designs
+from agentcanvas import designs, licensing
 from agentcanvas.adapters.langchain import deploykit
 from agentcanvas.adapters.langchain.codegen import one_line
 from agentcanvas.adapters.langchain.interop import FRAMEWORKS
@@ -653,7 +653,10 @@ def package(
         f"src/{pkg}/graph.py": source,
         f"src/{pkg}/server.py": SERVER.format(pkg=pkg, secrets=json.dumps(secrets)),
         f"src/{pkg}/__main__.py": MAIN.format(pkg=pkg),
-        "src/agentcanvas/NOTICE.md": "The AgentCanvas node library (Apache-2.0), vendored so the project runs alone.\n",
+        "src/agentcanvas/NOTICE.md": (
+            "The AgentCanvas node library, vendored so the project runs alone. It is licensed under the Business "
+            "Source License 1.1: see LICENSE-AgentCanvas.txt at the project's root.\n"
+        ),
         "tests/test_smoke.py": SMOKE.format(
             pkg=pkg,
             models=json.dumps(sorted({n for n, _ in _models(wf)})),
@@ -699,6 +702,7 @@ def package(
             files[f"src/{rel}"] = (workspace / rel).read_bytes()
         if found.entry_points:
             files["tests/test_workspace_code.py"] = WORKSPACE_IMPORTS.format(paths=json.dumps(found.entry_points))
+    files = licensing.with_license(files)  # it carries AgentCanvas code: the License goes with each copy
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         for rel, content in sorted(files.items()):

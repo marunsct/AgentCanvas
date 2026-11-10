@@ -14,7 +14,7 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
-from agentcanvas import designs
+from agentcanvas import designs, licensing
 from agentcanvas.adapters.langchain.packager import (
     _dist,
     _exportable_cases,
@@ -396,6 +396,7 @@ def package(
         files[f"src/agentcanvas/{rel}"] = (API_ROOT / rel).read_bytes()
     for rel in found.files if found else []:
         files[f"src/{rel}"] = (workspace / rel).read_bytes()  # pyright: ignore[reportOptionalOperand]
+    files = licensing.with_license(files)  # it carries AgentCanvas code: the License goes with each copy
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         for rel, content in sorted(files.items()):
