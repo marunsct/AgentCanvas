@@ -17,9 +17,15 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: `uv run uvicorn agentcanvas.dev.fake_server:app --port ${apiPort}`,
+      // a database and workspaces of its own, emptied before each run: what one run leaves (a journey that failed
+      // half-way in Simple mode) must not fail the next, and `make dev-fake`'s own data is left alone
+      command: `rm -rf .e2e && mkdir .e2e && uv run uvicorn agentcanvas.dev.fake_server:app --port ${apiPort}`,
       cwd: "../api",
-      env: { AGENTCANVAS_ADAPTERS: "langchain,echo,openai_agents,crewai,google_adk,pydantic_ai,agno,microsoft_agent_framework,strands,llamaindex,mastra" }, // S20-S36
+      env: {
+        AGENTCANVAS_ADAPTERS: "langchain,echo,openai_agents,crewai,google_adk,pydantic_ai,agno,microsoft_agent_framework,strands,llamaindex,mastra", // S20-S36
+        DATABASE_URL: "sqlite+aiosqlite:///./.e2e/agentcanvas.db",
+        AGENTCANVAS_WORKSPACES_DIR: "./.e2e/workspaces",
+      },
       url: `http://localhost:${apiPort}/healthz`,
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
