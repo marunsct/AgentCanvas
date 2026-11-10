@@ -3,13 +3,15 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import type { WidgetProps } from "@rjsf/utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import approval from "../../../api/agentcanvas/registry/nodes/core.approval.json";
+// the node manifests as the web image has them (packages/ir-schema; apps/api/agentcanvas is not in its build)
+import nodeTypes from "../../../../packages/ir-schema/node-types.json";
 
 vi.mock("../api/client", () => ({
   ApiError: class extends Error {},
   apiFetch: vi.fn(async () => [{ email: "lee@example.com" }, { email: "ops@example.com" }]),
 }));
 
+const approval = nodeTypes.find((t) => t.type === "core.approval")!;
 const { MemberEmailWidget } = await import("./widgets");
 const { uiSchemaFromFormats } = await import("./schema");
 
