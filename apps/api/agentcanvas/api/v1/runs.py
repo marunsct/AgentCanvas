@@ -36,6 +36,7 @@ from agentcanvas.db.models import (
     WorkflowVersion,
 )
 from agentcanvas.db.repositories import LIGHT_RUN, delete_thread_rows
+from agentcanvas.db.retry import retrying
 from agentcanvas.errors import Conflict, Forbidden, InvalidInput, NotFound, UpstreamError, WorkflowHasErrors
 from agentcanvas.ir.models import Workflow
 from agentcanvas.observability import counted_stream
@@ -855,9 +856,15 @@ async def delete_thread(
     await _thread(session, thread_id)
     if r.handles.get(r.active_by_thread.get(thread_id, "")) is None:  # running elsewhere, or not at all
         await _stop_elsewhere(session, thread_id, settings.handover_interval_s + STOP_MARGIN_S)
-    await r.forget_threads([thread_id])  # a run here is stopped first: it writes its last checkpoint as it stops
-    await delete_thread_rows(session, thread_id)
-    await session.commit()
+    # a run here is stopped first (it writes its last checkpoint as it stops) and one that just ended finishes its
+    # hooks; what still writes under the rows (another server's run search, the notifier) can deadlock the delete
+    await r.forget_threads([thread_id])
+
+    async def rows() -> None:
+        await delete_thread_rows(session, thread_id)
+        await session.commit()
+
+    await retrying(session, rows, what="conversation delete")
     return Response(status_code=204)
 
 

@@ -430,12 +430,17 @@ class Runner:
 
     async def forget_threads(self, thread_ids: list[str], wait_s: float = 10.0) -> None:
         """Delete conversations' saved state, stopping first the runs this instance has on them: a run writes its
-        last checkpoint as it stops, which must not land after the delete."""
+        last checkpoint as it stops, which must not land after the delete. A run that has just ended is let finish
+        its hooks too (they write under the conversation's rows after its last event reached the client), within
+        the same `wait_s`."""
         stopping = []
         for thread_id in thread_ids:
             h = self.handles.get(self.active_by_thread.get(thread_id, ""))
             if h is not None and await self.cancel(h.run_id):
                 stopping.append(h.done.wait())
+        wanted = set(thread_ids)
+        ending = [h for h in self.handles.values() if h.thread_id in wanted and h.finishing and not h.done.is_set()]
+        stopping += [h.done.wait() for h in ending]
         if stopping:
             try:
                 await asyncio.wait_for(asyncio.gather(*stopping), timeout=wait_s)
