@@ -168,3 +168,9 @@ seccompProfile: { type: RuntimeDefault }
 allowPrivilegeEscalation: false
 capabilities: { drop: [ALL] }
 {{- end -}}
+
+{{/* The API pods' service account: api.serviceAccount.name, else <fullname>-api when the chart creates it, else none. */}}
+{{- define "agentcanvas.apiServiceAccount" -}}
+{{- $sa := .Values.api.serviceAccount | default dict -}}
+{{- if $sa.name -}}{{ $sa.name }}{{- else if $sa.create -}}{{ include "agentcanvas.fullname" . }}-api{{- end -}}
+{{- end -}}

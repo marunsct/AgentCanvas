@@ -78,6 +78,15 @@ api:
   # needs to write elsewhere
   readOnlyRootFilesystem: true
   podAnnotations: {}
+  # the API pods' Kubernetes service account, for a cloud identity without keys (AWS Bedrock and Vertex AI models, a
+  # KMS master key): create one with the annotation of AWS IRSA
+  # (eks.amazonaws.com/role-arn: arn:aws:iam::<account>:role/<role>) or GKE Workload Identity
+  # (iam.gke.io/gcp-service-account: <name>@<project>.iam.gserviceaccount.com); for EKS Pod Identity, associate the
+  # role with its name. Or name an existing one (create: false). Neither: the namespace's default service account
+  serviceAccount:
+    create: false
+    name: ""          # default with create: <release>-agentcanvas-api
+    annotations: {}
   nodeSelector: {}
   tolerations: []
   affinity: {}

@@ -114,6 +114,17 @@ lists everything else. The chart refuses to render without the image repositorie
 issuer and audience, and `helm install` / `helm upgrade` fail when the Secret lacks a required key. Migrations run as
 a Helm hook Job before the API starts.
 
+**A cloud identity instead of keys.** AWS Bedrock and Google Vertex AI models (and a KMS master key) can use the API
+pods' own cloud identity, so no access key is stored anywhere. Set `api.serviceAccount.create: true` and give the
+service account the annotation of your cloud: `eks.amazonaws.com/role-arn: arn:aws:iam::<account>:role/<role>` for
+AWS IRSA, or `iam.gke.io/gcp-service-account: <name>@<project>.iam.gserviceaccount.com` for GKE Workload Identity
+(and bind the Google service account to it). For EKS Pod Identity, associate the role with the service account's
+name (`<release>-agentcanvas-api`, or yours in `api.serviceAccount.name`). To use a service account you manage,
+set only `api.serviceAccount.name`. The pods still mount no Kubernetes API token. Set the default region beside it
+(`AWS_REGION`, `GOOGLE_CLOUD_LOCATION` and `GOOGLE_CLOUD_PROJECT` in the Secret) if model blocks do not name one.
+Every project on the server can use this identity: grant it only the models you want offered. See [Models in your
+own cloud account](models.md#models-in-your-own-cloud-account).
+
 Kubernetes puts no limit on the processes a pod starts unless the kubelet's `podPidsLimit` is set (the compose files
 set `pids_limit` on the sandbox containers). Each sandbox call's code may start about 256 processes or threads, so a
 fork loop stops there; still set `podPidsLimit` (e.g. 1024) on the nodes the sandbox pods run on
