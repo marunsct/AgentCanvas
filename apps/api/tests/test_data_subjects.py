@@ -16,6 +16,7 @@ from agentcanvas.db.models import (
     Membership,
     OAuthConnection,
     PersonalToken,
+    ProjectMember,
     Run,
     StoredFile,
     Thread,
@@ -49,6 +50,7 @@ async def ana_with_data(app, api_client) -> dict[str, str]:
         s.add(StoredFile(id="fil_ana", project_id="prj_default", name="cv.txt", media_type="text/plain", size=2,
                          sha256="x", data=b"hi", created_by=ANA))  # fmt: skip
         s.add(AuditLog(org_id=ORG, actor_id=ANA, action="create_workflow", target="-"))
+        s.add(ProjectMember(id="pmb_ana", project_id="prj_default", user_id=ANA, role="builder"))
         await s.commit()
     return {"wf": wf_id, "hers": hers.thread_id, "mine": mine.thread_id}
 
@@ -71,7 +73,7 @@ async def test_erasing_a_member_removes_what_they_left_and_pseudonymises_them(ap
         assert ana.oidc_subject == f"erased:{ANA}"  # her next sign-in makes a new account
         assert await s.get(Membership, (ORG, ANA)) is None
         assert await s.get(Thread, made["hers"]) is None and await s.get(Thread, made["mine"]) is not None
-        for table in (CopilotConversation, PersonalToken, OAuthConnection, StoredFile):
+        for table in (CopilotConversation, PersonalToken, OAuthConnection, StoredFile, ProjectMember):
             assert not await s.scalar(select(func.count()).select_from(table))
         # the audit log keeps her id, which now leads to no name or email
         assert await s.scalar(select(AuditLog.id).where(AuditLog.actor_id == ANA, AuditLog.action == "create_workflow"))
@@ -238,6 +240,7 @@ async def test_an_admin_exports_a_members_data_and_the_log_says_so(app, api_clie
     data = r.json()
     assert data["person"]["email"] == "ana@example.com"
     assert [m["org_id"] for m in data["memberships"]] == [ORG]  # not where else she belongs
+    assert [(b["project_id"], b["role"]) for b in data["project_memberships"]] == [("prj_default", "builder")]
     assert [t["id"] for t in data["api_tokens"]] == ["tok_ana"] and "token_hash" not in data["api_tokens"][0]
     assert [c["id"] for c in data["conversations"]] == [made["hers"]]
     run = data["conversations"][0]["runs"][0]

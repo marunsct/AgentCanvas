@@ -34,6 +34,7 @@ from agentcanvas.db.models import (
     PersonalToken,
     Presence,
     Project,
+    ProjectMember,
     Run,
     ScimGroup,
     ScimGroupMember,
@@ -356,6 +357,14 @@ async def export_member(
             select(StoredFile).where(StoredFile.created_by == user_id, StoredFile.project_id.in_(org_projects(org_id)))
         )
     ).all()
+    projects = (
+        await session.execute(
+            select(ProjectMember, Project.name)
+            .join(Project, Project.id == ProjectMember.project_id)
+            .where(ProjectMember.user_id == user_id, Project.org_id == org_id)
+            .order_by(Project.name)
+        )
+    ).all()
     audit = (
         await session.scalars(
             select(AuditLog).where(AuditLog.org_id == org_id, AuditLog.actor_id == user_id).order_by(AuditLog.id)
@@ -368,6 +377,9 @@ async def export_member(
                    "preferences": person.preferences, "created_at": _at(person.created_at)},
         "memberships": [{"org_id": m.org_id, "role": m.role, "accepted": m.accepted, "deactivated": m.suspended,
                          "last_used_at": _at(m.last_used_at)} for m in (await session.scalars(memberships)).all()],
+        # the projects they were added to by name (what a SCIM group gives them is the group's)
+        "project_memberships": [{"project_id": b.project_id, "project": name, "role": b.role,
+                                 "created_at": _at(b.created_at)} for b, name in projects],
         "api_tokens": [{"id": t.id, "name": t.name, "prefix": t.prefix, "role": t.role, "created_at": _at(t.created_at),
                         "expires_at": _at(t.expires_at), "last_used_at": _at(t.last_used_at),
                         "revoked_at": _at(t.revoked_at)} for t in tokens],

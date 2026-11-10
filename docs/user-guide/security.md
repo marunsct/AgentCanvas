@@ -163,7 +163,7 @@ counts, never the content; exports are recorded too, though reads otherwise are 
 
 | Request | How |
 |---|---|
-| A person's own data (Art. 15 and 20) | `GET /v1/me/export`, for anyone signed in: their account and memberships, and in the organisation they act in their API tokens (never the secret), app-connector sign-ins, Copilot chats, the conversations they started with each run's input, answer and steps, their approval decisions, long-term memories, files and audit entries, as one JSON file |
+| A person's own data (Art. 15 and 20) | `GET /v1/me/export`, for anyone signed in: their account and memberships, and in the organisation they act in the projects they were added to, their API tokens (never the secret), app-connector sign-ins, Copilot chats, the conversations they started with each run's input, answer and steps, their approval decisions, long-term memories, files and audit entries, as one JSON file |
 | A member's data, for an admin answering a request | `GET /v1/org/members/{user_id}/export`: the same, limited to this organisation (other memberships are not shown) |
 | A deployment end user's data | `POST /v1/org/end-users/export` (admins; body `user_id`, optional `deployment_id`, `reason`) or `POST /v1/deployments/{id}/end-users/export` with the deployment's key: their conversations, long-term memories and the names and sizes of the files their runs used |
 | Erase a member (Art. 17) | `POST /v1/org/members/{user_id}/erase`: removes them with their tokens, sign-ins, memories and Copilot chats (and, if asked, the conversations they started), and pseudonymises their account when they belong to no other organisation ([Members](accounts.md#members)) |
