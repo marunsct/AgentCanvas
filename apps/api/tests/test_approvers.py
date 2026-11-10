@@ -237,3 +237,17 @@ def test_the_validator_explains_the_setting():
     agent = {"id": "n_ag", "type": "core.agent", "name": "agent", "config": agent_cfg}
     found = {(d.code, d.node_id) for d in validate(_wf("v", [ask, agent], ["out", "ok"]), default_registry())}
     assert {("E037", "n_a"), ("I011", "n_a"), ("W027", "n_ag"), ("I011", "n_ag")} <= found
+
+
+def test_a_setting_that_names_nobody_raises_nothing():
+    """The inspector saves the setting's empty form (no roles, groups or people, both boxes unticked) once it has
+    been opened: that names nobody, as no setting does, so an agent without tool approvals gets no W027."""
+    from agentcanvas.registry import default_registry
+    from agentcanvas.validation.engine import validate
+
+    blank = {"roles": [], "groups": [], "people": [], "caller": False, "not_initiator": False}
+    agent = {"id": "n_ag", "type": "core.agent", "name": "agent", "config": {"system_prompt": "", "approvers": blank}}
+    ask = {"id": "n_a", "type": "core.approval", "name": "sign", "config": {"show": "out", "output": "ok",
+           "approvers": blank}}  # fmt: skip
+    found = {(d.code, d.node_id) for d in validate(_wf("v", [ask, agent], ["out", "ok"]), default_registry())}
+    assert not {c for c, _ in found} & {"W027", "I011", "E037"}, found

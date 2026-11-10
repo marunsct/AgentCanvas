@@ -97,13 +97,20 @@ def side_effects_before_interrupt(ctx: ValidationContext) -> Iterator[Diagnostic
             )
 
 
+def _sets_anything(policy: dict) -> bool:
+    from agentcanvas.services.approvers import Approvers
+
+    a = Approvers.of(policy)
+    return a.named or a.caller or a.not_initiator or bool(a.escalate_to)
+
+
 @rule
 def approvers(ctx: ValidationContext) -> Iterator[Diagnostic]:
     """Who may decide a pause (E-6): a setting that contradicts itself (E037), names who approves tool calls of an
     agent where no tool needs approval (W027), or that an export of the workflow does not check (I011)."""
     for n in ctx.wf.nodes:
         policy = n.config.get("approvers")
-        if not isinstance(policy, dict) or not policy:
+        if not isinstance(policy, dict) or not _sets_anything(policy):  # the inspector saves an empty form too
             continue
         if policy.get("caller") and policy.get("not_initiator"):
             yield error(
