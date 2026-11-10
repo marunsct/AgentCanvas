@@ -134,7 +134,8 @@ test("a conversation can switch its model, and New chat goes back to the project
   await panel.getByTestId("copilot-model").click();
   await expect(page.getByTestId("copilot-model-setup")).toHaveAttribute("href", "/settings/models");
   await expect(page.getByRole("menuitemradio", { name: /fake/i })).toHaveCount(0); // the test-only model is not offered
-  await page.getByRole("menuitemradio", { name: /^Claude Opus 5\.5/ }).click();
+  // the Anthropic entry, not the same model's AWS Bedrock or Google Vertex AI listings
+  await page.getByRole("menuitemradio", { name: "Claude Opus 5.5 Anthropic", exact: true }).click();
   await expect(panel.getByTestId("copilot-model")).toContainText("Claude Opus 5.5 · this chat");
   await page.getByLabel("Message the Copilot").fill("What can you do?");
   await page.getByRole("button", { name: "Send" }).click();
