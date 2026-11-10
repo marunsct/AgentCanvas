@@ -387,7 +387,11 @@ async def resume(deployment: str, thread_id: str, body: ResumeIn) -> Result:
         raise HTTPException(409 if snap.values else 404, f"thread '{thread_id}' has no pending question")
     if body.interrupt_id and body.interrupt_id not in {i.id for i in pending}:
         raise HTTPException(409, f"interrupt '{body.interrupt_id}' was already answered")
-    value = {body.interrupt_id: body.value} if body.interrupt_id else body.value
+    if not body.interrupt_id and len(pending) > 1:  # parallel pauses: a guess could approve the wrong step
+        ids = ", ".join(sorted(i.id for i in pending))
+        raise HTTPException(409, f"this conversation waits for {len(pending)} answers; name the one you answer "
+                            f"with interrupt_id ({ids})")  # fmt: skip
+    value = {body.interrupt_id or pending[0].id: body.value}  # always by id: the answer reaches that pause only
     context = await service.last_context(thread_id)  # the run that paused had it; the resume needs it too
     return await _result(service.execute(thread_id, Command(resume=value), context))
 

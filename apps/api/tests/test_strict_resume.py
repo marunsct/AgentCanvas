@@ -292,3 +292,25 @@ async def test_an_event_handler_resumes_the_pause_it_names(app, api_client):
     await finished(app, res["handlers"][0]["runs"])
     assert await waiting(api_client, "th_event") == {"n_a"}
     assert (await api_client.get("/v1/threads/th_event")).json()["values"]["ok_b"] is True
+
+
+async def test_an_exported_service_answers_parallel_pauses_by_id(api_client, tmp_path):
+    """The exported app's own tests answer each pause by its id, and see an unnamed answer refused."""
+    import io
+    import os
+    import subprocess
+    import sys
+    import zipfile
+
+    wf = await make(api_client, parallel())
+    resp = await api_client.get(f"/v1/workflows/{wf}/export.zip")
+    assert resp.status_code == 200, resp.text
+    zipfile.ZipFile(io.BytesIO(resp.content)).extractall(tmp_path / "export")
+    root = tmp_path / "export" / "two-signers"
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("AGENTCANVAS_", "PYTEST"))}
+    proc = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "tests/test_service.py"],
+        cwd=root, env={**env, "PYTHONPATH": str(root / "src")}, capture_output=True, text=True, timeout=240,
+        check=False,
+    )  # fmt: skip
+    assert proc.returncode == 0 and "skipped" not in proc.stdout, proc.stdout[-3000:] + proc.stderr[-2000:]
