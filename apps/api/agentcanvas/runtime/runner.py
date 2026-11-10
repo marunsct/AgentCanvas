@@ -692,6 +692,12 @@ class Runner:
         )
         ids: list[str] = []
         for asked, value in pairs:
+            if (
+                asked
+                and await s.get(InterruptTask, asked) is None
+                and await self._client_tool_call(s, thread_id, asked)
+            ):
+                continue  # a tool call the caller's application answers (AG-UI): no Inbox item to decide
             task = await answered(s, thread_id, asked)  # unknown, decided or expired: refused with the reason
             if task is None:  # a breakpoint: nothing waits in the Inbox
                 continue
@@ -706,6 +712,14 @@ class Runner:
         if resume.by_id or not ids:
             return ids, resume
         return ids, replace(resume, interrupt_id=ids[0])
+
+    @staticmethod
+    async def _client_tool_call(s: Any, thread_id: str, interrupt_id: str) -> bool:
+        """Whether the conversation's last run paused for this tool call of the caller's application (AG-UI)."""
+        paused = (Run.thread_id == thread_id, Run.status == "interrupted")  # not the run being started to answer it
+        q = select(Run.interrupts).where(*paused).order_by(Run.started_at.desc(), Run.id.desc())
+        asked = await s.scalar(q.limit(1)) or []
+        return any(isinstance(i, dict) and i.get("id") == interrupt_id and i.get("kind") == CLIENT_TOOL for i in asked)
 
     async def _tool_drift(self, h: RunHandle, spec: RunSpec, warning: dict[str, Any]) -> None:
         """An app connector's server changed tools this run's version pinned (E-4): the deployment keeps it for the
