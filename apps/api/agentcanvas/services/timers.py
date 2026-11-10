@@ -14,7 +14,9 @@ key, if they have one, equals the event data's `key`; their runs continue with t
 person whose run paused while they are still a member of its organisation, else as nobody (a deployment's runs use
 its service connection anyway).
 
-A wait that cannot continue ends with `end_waits`: its items are marked `cancelled` and the run is cancelled.
+Stop, the kill switch and a wait that cannot continue end a waiting run (`end_waits`): its items are marked
+`cancelled` and the run is cancelled.
+Retention counts an unanswered item's expiry from its due time, not from when it paused.
 """
 
 from __future__ import annotations
@@ -110,6 +112,16 @@ def _by_thread(rows: Any) -> dict[str, set[str]]:
     for r in rows:
         out.setdefault(r.thread_id, set()).add(r.run_id)
     return out
+
+
+async def waiting_items(s: AsyncSession, run_ids: list[str]) -> list[str]:
+    """The Wait steps these runs wait at."""
+    if not run_ids:
+        return []
+    q = select(InterruptTask.id).where(
+        InterruptTask.run_id.in_(run_ids), InterruptTask.status == "pending", InterruptTask.kind == "timer"
+    )
+    return list((await s.scalars(q)).all())
 
 
 class TimerJob:

@@ -43,7 +43,7 @@ from agentcanvas.runtime.runner import CANCELLED_BY_USER, RunHandle, Runner
 from agentcanvas.runtime.tracing import web_url
 from agentcanvas.runtime.trajectory import compact
 from agentcanvas.runtime.types import ResumeSpec, ThreadState, is_tool_recording
-from agentcanvas.services import approvers, org_settings
+from agentcanvas.services import approvers, org_settings, timers
 from agentcanvas.services.explain import explain
 from agentcanvas.services.redeploy import thread_version
 from agentcanvas.services.run_search import RunSearchResult, RunSearchService
@@ -430,7 +430,7 @@ async def cancel_run(
 ) -> dict[str, Any]:
     """Stop a run. One running on this instance stops now. Requests are spread over the replicas, so the run may be
     running on another one: it is marked in the database and that instance stops it at its next heartbeat
-    (`pending`, within `AGENTCANVAS_HANDOVER_INTERVAL_S`)."""
+    (`pending`, within `AGENTCANVAS_HANDOVER_INTERVAL_S`). A run paused at a Wait step is cancelled at once."""
     return await stop_run(session, r, run_id)
 
 
@@ -459,6 +459,9 @@ async def stop_run(session: AsyncSession, r: Runner, run_id: str) -> dict[str, A
     if cancelled:
         thread_id = await session.scalar(select(Run.thread_id).where(Run.id == run_id))
         await session.execute(update(Thread).where(Thread.id == thread_id).values(status="idle"))
+    else:  # paused at a Wait step (F-10): its wait ends here, so no timer or event continues it
+        waits = await timers.waiting_items(session, [run_id])
+        cancelled = bool(await timers.end_waits(session, waits, CANCELLED_BY_USER))
     await session.commit()
     return {"cancelled": cancelled, "pending": False}
 

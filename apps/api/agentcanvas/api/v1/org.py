@@ -332,7 +332,9 @@ class StopRunsIn(BaseModel):
 
 class StopRunsOut(BaseModel):
     stopping: list[str] = Field(description="runs in flight: each stops within one heartbeat (10 s) on its server")
-    cancelled: list[str] = Field(description="runs that were waiting for another server to continue them")
+    cancelled: list[str] = Field(
+        description="runs that ran nowhere: waiting for another server to continue them, or paused at a Wait step"
+    )
 
 
 @router.post("/runs/stop", response_model=StopRunsOut)
@@ -350,8 +352,9 @@ async def stop_all_runs(
                            workflow_id=body.workflow_id)  # fmt: skip
     scope = f"deployment_id={body.deployment_id}" if body.deployment_id else (
         f"wf_id={body.workflow_id}" if body.workflow_id else f"org_id={user.org_id}")  # fmt: skip
-    note(request, target=scope, reason=body.reason, stopping=len(done.running), cancelled=len(done.handed_over))
-    return StopRunsOut(stopping=done.running, cancelled=done.handed_over)
+    cancelled = [*done.handed_over, *done.waiting]
+    note(request, target=scope, reason=body.reason, stopping=len(done.running), cancelled=len(cancelled))
+    return StopRunsOut(stopping=done.running, cancelled=cancelled)
 
 
 class DeleteOrgIn(BaseModel):
@@ -430,7 +433,7 @@ async def delete_organization(
     done = await stop_runs(session, request.app.state.runner, user.org_id)
     when = org.delete_after.isoformat() if org.delete_after else None
     note(request, target=f"org_id={user.org_id}", reason=body.reason, delete_after=when, stopping=len(done.running),
-         cancelled=len(done.handed_over))  # fmt: skip
+         cancelled=len(done.handed_over) + len(done.waiting))  # fmt: skip
     return out
 
 

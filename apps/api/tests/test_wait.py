@@ -351,3 +351,46 @@ async def test_an_event_a_run_emits_ends_a_wait_in_a_project_without_handlers(ap
             await asyncio.wait_for(h.task, 10)
     run = await finished(app, "th_wait")
     assert run.status == "success" and run.origin == "event" and run.output["woke"]["event"]["data"] == {"key": "INV-7"}
+
+
+# ------------------------------------------------------------------------- Stop, kill switch, retention ---
+async def test_stop_cancels_a_waiting_run_and_nothing_wakes_it_later(app, api_client):
+    _, item = await paused(app, api_client, {"duration": "1h"})
+    r = await api_client.post(f"/v1/runs/{item.run_id}/cancel")
+    assert r.status_code == 202 and r.json() == {"cancelled": True, "pending": False}
+    run = await finished(app, "th_wait")
+    assert run.status == "cancelled" and run.error
+    async with app.state.db.sessionmaker() as s:
+        assert (await s.get(InterruptTask, item.id)).status == "cancelled"  # type: ignore[union-attr]
+        assert (await s.get(Thread, "th_wait")).status == "idle"  # type: ignore[union-attr]
+    assert await job(app).tick(item.due_at + timedelta(hours=1)) == []  # type: ignore[operator]
+    late = await api_client.post("/v1/threads/th_wait/resume", json={"value": "go"})
+    assert late.status_code == 409 and "cancelled" in late.json()["detail"]
+
+
+async def test_the_kill_switch_cancels_waiting_runs_of_its_scope(app, api_client):
+    wf, item = await paused(app, api_client, {"duration": "1h"})
+    other = await make(api_client, wait_ir({"duration": "1h"}))
+    r = await api_client.post(f"/v1/workflows/{other}/runs/stream", json={"thread_id": "th_other"})
+    assert events(r.text)[-1]["status"] == "interrupted"
+    r = await api_client.post("/v1/org/runs/stop", json={"reason": "stop everything", "workflow_id": wf})
+    assert r.status_code == 200 and r.json() == {"stopping": [], "cancelled": [item.run_id]}
+    async with app.state.db.sessionmaker() as s:
+        statuses = dict((await s.execute(select(InterruptTask.thread_id, InterruptTask.status))).all())
+    assert statuses == {"th_wait": "cancelled", "th_other": "pending"}  # only the workflow it named
+    [entry] = (await api_client.get("/v1/org/audit", params={"action": "stop_all_runs"})).json()
+    assert entry["detail"]["cancelled"] == 1
+
+
+async def test_retention_keeps_a_wait_until_it_is_due_and_expires_one_that_never_continued(app, api_client):
+    _, item = await paused(app, api_client, {"mode": "until", "until": "2027-06-01T00:00Z"})
+    async with app.state.db.sessionmaker() as s:  # paused long ago: an approval this old would have expired
+        old = datetime.now(UTC) - timedelta(days=200)
+        await s.execute(update(InterruptTask).where(InterruptTask.id == item.id).values(created_at=old))
+        await s.commit()
+    retention = app.state.retention
+    assert await retention.expire_approvals(datetime.now(UTC)) == 0
+    assert await retention.expire_approvals(datetime(2027, 8, 1, tzinfo=UTC)) == 0  # due + less than 90 days
+    assert await retention.expire_approvals(datetime(2027, 9, 1, tzinfo=UTC)) == 1  # the timer job never managed it
+    run = await finished(app, "th_wait")
+    assert run.status == "cancelled" and "Wait step was due" in (run.error or "")

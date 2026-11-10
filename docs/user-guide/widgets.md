@@ -62,7 +62,7 @@ not receive file fields yet.
 ### Wait
 
 A **Wait** step is the safe way to say "follow up in three days if nobody replied": the wait is on the canvas, checked
-before the run, instead of an agent scheduling work for itself.
+before the run and covered by retention and the kill switch, instead of an agent scheduling work for itself.
 
 - **For a while**: how long, from when the run gets there: a number of seconds, amounts with units (`3d`, `2h 30m`,
   `90 minutes`, `1 week`) or an ISO 8601 duration without years or months (`PT2H30M`, `P3D`). Up to a year.

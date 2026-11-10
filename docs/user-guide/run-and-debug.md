@@ -120,6 +120,11 @@ member of the organisation).
 - **Test runs do not wait.** Saved test cases, experiments, Copilot test runs and dry runs pass through Wait steps at
   once (an event wait counts as timed out), with `skipped: true` in what the step saves. To try the event path, pin
   the Wait step's output.
+- **Stop.** A builder's **Stop** on the run (`POST /v1/runs/{run_id}/cancel`, or a deployment's cancel) ends the wait
+  and cancels the run, and the organisation's [kill switch](settings.md) cancels the waiting runs in its scope too;
+  nothing wakes them later.
+- **Retention.** A waiting conversation is kept until its wait is due, however far away that is (at most a year); the
+  approval expiry (90 days) counts from the due time, so a run the server never managed to continue is cancelled then.
 - If the run cannot continue when due (the workflow draft has errors, the organisation is at a spending cap), it is
   tried again every few minutes; if its workflow or deployment is gone, the run is cancelled with the reason.
 - **Exports** run the same step, but the exported service has no timer job: your scheduler resumes the conversation
