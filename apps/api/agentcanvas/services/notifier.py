@@ -16,6 +16,10 @@ A message names the workflow, the project, the step, who may decide and when the
 Inbox; never what the run asks (it can hold personal data). Draft runs a person starts in the editor are not
 announced unless their step names who decides them: that person is watching the run. Test and evaluation runs never.
 
+With the organisation's Approve and Deny links on (`OrgNotifier.actions`, services/approval_links.py), an approval's
+e-mail goes to each person on their own, with links bound to them; Slack gets the links as buttons and the webhook as
+`actions`, there links that open the item in the Inbox (a channel is not a person).
+
 An announced item still waiting `AGENTCANVAS_APPROVAL_REMINDER_HOURS` before it expires or escalates is announced
 once more (event "reminder"), claimed like the announcement (`interrupt_task.reminded_at`); an escalation clears the
 claim, so the item's new deadline gets a reminder of its own.
@@ -62,7 +66,7 @@ from agentcanvas.ids import new_id
 from agentcanvas.log import get_logger
 from agentcanvas.security.addresses import is_metadata, is_public
 from agentcanvas.security.kms import Keyring
-from agentcanvas.services import project_access
+from agentcanvas.services import approval_links, project_access
 from agentcanvas.services.approvers import ROLES, Approvers
 from agentcanvas.services.triggers import sign
 from agentcanvas.settings import Settings
@@ -105,6 +109,7 @@ class Channels:
     slack_url: str | None = None
     webhook_url: str | None = None
     webhook_secret: str | None = None
+    actions: bool = False  # Approve and Deny links
 
     def enabled(self, smtp: bool) -> list[str]:
         on = {
@@ -131,7 +136,7 @@ async def load(session: AsyncSession, keyring: Keyring, org_id: str) -> Channels
         return None
     f = await keyring.fernet(session, org_id) if row.slack_url or row.webhook_secret else None
     return Channels(
-        email=row.email, email_to=list(row.email_to or []), webhook_url=row.webhook_url,
+        email=row.email, email_to=list(row.email_to or []), webhook_url=row.webhook_url, actions=row.actions,
         slack_url=f.decrypt(row.slack_url).decode() if f and row.slack_url else None,
         webhook_secret=f.decrypt(row.webhook_secret).decode() if f and row.webhook_secret else None,
     )  # fmt: skip
@@ -188,6 +193,13 @@ class Notice:
     link: str
     escalates_at: datetime | None = None  # when nobody deciding sends it to `escalate_to`
     escalate_to: str | None = None
+    item_expires: datetime | None = None  # when it expires, escalating first or not: its links' end
+    sample: bool = False  # the test notification: no item to decide
+
+    @property
+    def decidable(self) -> bool:
+        """A button can decide it (an approval; a question needs an answer written in the Inbox)."""
+        return self.kind in approval_links.KINDS and not self.sample
 
     @property
     def subject(self) -> str:
@@ -197,6 +209,10 @@ class Notice:
 
     @property
     def text(self) -> str:
+        return self.body()
+
+    def body(self, links: Links | None = None) -> str:
+        """The message; with `links`, Approve and Deny before the Inbox link (always the last line)."""
         what = "an answer" if self.kind == "input" else "a decision"
         lines = [
             *(["A reminder: nobody has decided this yet."] if self.event == "reminder" else []),
@@ -208,12 +224,14 @@ class Notice:
             else f"It expires on {self.expires_at:%Y-%m-%d %H:%M} UTC unless someone decides it."
             if self.expires_at
             else "It waits until someone decides it.",
+            *(links.lines() if links else []),
             f"Open it in the Inbox: {self.link}",
         ]
         return "\n".join(lines) + "\n"
 
-    def payload(self, notice_id: str) -> dict[str, Any]:
+    def payload(self, notice_id: str, links: Links | None = None) -> dict[str, Any]:
         return {
+            **({"actions": {"approve": links.approve, "deny": links.deny}} if links else {}),
             "type": f"approval.{self.event}", "id": notice_id, "interrupt_id": self.interrupt_id, "kind": self.kind,
             "organisation_id": self.org_id, "project": {"id": self.project_id, "name": self.project_name},
             "workflow": {"id": self.workflow_id, "name": self.workflow_name}, "step": self.step,
@@ -225,6 +243,24 @@ class Notice:
         }  # fmt: skip
 
 
+@dataclass(frozen=True)
+class Links:
+    """An item's Approve and Deny links for one recipient (`personal`) or for a channel."""
+
+    approve: str
+    deny: str
+    expires: datetime
+    personal: bool
+
+    def lines(self) -> list[str]:
+        how = (
+            "Each opens a page that asks you to confirm, works once and for you only"
+            if self.personal
+            else "Each opens it in AgentCanvas, where you sign in to decide"
+        )
+        return [f"Approve: {self.approve}", f"Deny: {self.deny}", f"{how}, until {self.expires:%Y-%m-%d %H:%M} UTC."]
+
+
 def _one_line(text: str) -> str:
     return " ".join(text.split())[:250]
 
@@ -234,12 +270,25 @@ def slack_escape(text: str) -> str:
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-def slack_body(n: Notice) -> dict[str, Any]:
+def slack_body(n: Notice, links: Links | None = None) -> dict[str, Any]:
     lines = [slack_escape(line) for line in n.text.strip().splitlines()[:-1]]
-    return {"text": slack_escape(n.subject), "blocks": [
-        {"type": "section", "text": {"type": "mrkdwn", "text": f"*{slack_escape(n.subject)}*\n" + "\n".join(lines)}},
-        {"type": "section", "text": {"type": "mrkdwn", "text": f"<{n.link}|Open it in the Inbox>"}},
-    ]}  # fmt: skip
+    head = {"type": "section", "text": {"type": "mrkdwn", "text": f"*{slack_escape(n.subject)}*\n" + "\n".join(lines)}}
+    if links is None:
+        return {"text": slack_escape(n.subject), "blocks": [
+            head, {"type": "section", "text": {"type": "mrkdwn", "text": f"<{n.link}|Open it in the Inbox>"}},
+        ]}  # fmt: skip
+    # link buttons (no Slack app needed): each opens AgentCanvas, where the person signs in and confirms
+    buttons = [
+        {"type": "button", "action_id": "approve", "style": "primary", "url": links.approve,
+         "text": {"type": "plain_text", "text": "Approve"}},
+        {"type": "button", "action_id": "deny", "style": "danger", "url": links.deny,
+         "text": {"type": "plain_text", "text": "Deny"}},
+        {"type": "button", "action_id": "open", "url": n.link,
+         "text": {"type": "plain_text", "text": "Open in the Inbox"}},
+    ]  # fmt: skip
+    note = f"Approve and Deny open AgentCanvas: sign in to decide. Until {links.expires:%Y-%m-%d %H:%M} UTC."
+    context = {"type": "context", "elements": [{"type": "plain_text", "text": note}]}
+    return {"text": slack_escape(n.subject), "blocks": [head, {"type": "actions", "elements": buttons}, context]}
 
 
 # ------------------------------------------------------------------------------------------------ delivery ---
@@ -653,20 +702,39 @@ class NotifierJob:
         NOTICES.labels(channel=channel, outcome=outcome).inc()
         return outcome == "sent"
 
-    async def _deliver(self, channel: str, n: Notice, notice_id: str, channels: Channels | None, to: list[str]) -> None:
+    def links(self, n: Notice, recipient: str | None) -> Links:
+        """Approve and Deny links to `n`'s item, for one person (their user id) or, with None, for a channel."""
+        expires = approval_links.expiry(n.item_expires, datetime.now(UTC))
+        secret = self.settings.secret_key
+        approve, deny = (
+            f"{self.base_url}/approve#{approval_links.issue(secret, n.interrupt_id, a, recipient, expires)}"
+            for a in approval_links.ACTIONS
+        )
+        return Links(approve, deny, expires, personal=recipient is not None)
+
+    async def _deliver(
+        self, channel: str, n: Notice, notice_id: str, channels: Channels | None, to: list[tuple[str, str | None]]
+    ) -> None:
+        """Send `n` on `channel`; `to`: the e-mail recipients, each with their user id (None: a team address)."""
         if channels is None or channel not in channels.enabled(smtp_ready(self.settings)):
             raise DeliveryError(f"the organisation no longer sends {channel} notifications")
+        actions = channels.actions and n.decidable
         if channel == "email":
             if not to:
                 raise DeliveryError("nobody to send it to: no member may decide it")
-            await asyncio.to_thread(self.mailer, self.settings, to, n.subject, n.text)
+            if not actions:  # one message, everyone in Bcc
+                await asyncio.to_thread(self.mailer, self.settings, [e for e, _ in to], n.subject, n.text)
+                return
+            for email, user_id in to:  # each person their own links (a team address gets the channel's)
+                text = n.body(self.links(n, user_id))
+                await asyncio.to_thread(self.mailer, self.settings, [email], n.subject, text)
         elif channel == "slack":
             assert channels.slack_url
-            body = json.dumps(slack_body(n)).encode()
+            body = json.dumps(slack_body(n, self.links(n, None) if actions else None)).encode()
             await post(channels.slack_url, body, {"Content-Type": "application/json"}, False, self.transport)
         else:
             assert channels.webhook_url and channels.webhook_secret
-            body = json.dumps(n.payload(notice_id)).encode()
+            body = json.dumps(n.payload(notice_id, self.links(n, None) if actions else None)).encode()
             stamp = str(int(time.time()))
             headers = {
                 "Content-Type": "application/json", "User-Agent": "AgentCanvas-Notifier/1.0",
@@ -677,7 +745,8 @@ class NotifierJob:
 
     async def _recipients(
         self, s: AsyncSession, interrupt_id: str, org_id: str, channels: Channels | None, event: str
-    ) -> list[str]:
+    ) -> list[tuple[str, str | None]]:
+        """Who gets the e-mail: each address with its person's user id (None: an address of the organisation's)."""
         item = await s.get(InterruptTask, interrupt_id)
         if item is None:
             return []
@@ -685,7 +754,8 @@ class NotifierJob:
         if event == "escalated" and item.assignee_role:  # the role it went to: the others were told already
             policy = Approvers(roles=[item.assignee_role], not_initiator=policy.not_initiator)
         elif not policy.named and channels is not None and channels.email_to:
-            return channels.email_to[:MAX_RECIPIENTS]  # the organisation's team address for steps naming nobody
+            # the organisation's team address for steps naming nobody
+            return [(e, None) for e in channels.email_to[:MAX_RECIPIENTS]]
         thread = await s.execute(
             select(Thread.created_by, WorkflowRow.project_id)
             .join(WorkflowRow, WorkflowRow.id == Thread.workflow_id)
@@ -694,10 +764,11 @@ class NotifierJob:
         created_by, project_id = thread.one_or_none() or (None, None)
         started_by = item.requested_by or created_by
         ids = await deciders_of(s, org_id, policy, item.assignee_role, started_by, project_id)
-        emails = sorted({e for e in (await s.scalars(select(AppUser.email).where(AppUser.id.in_(ids)))).all() if e})
+        people = dict((await s.execute(select(AppUser.email, AppUser.id).where(AppUser.id.in_(ids)))).tuples().all())
+        emails = sorted(e for e in people if e)
         if len(emails) > MAX_RECIPIENTS:
             log.warning("notifier.too_many_recipients", interrupt_id=interrupt_id, recipients=len(emails))
-        return emails[:MAX_RECIPIENTS]
+        return [(e, people[e]) for e in emails[:MAX_RECIPIENTS]]
 
     async def notice(self, s: AsyncSession, interrupt_id: str, event: str) -> Notice | None:
         """What to say about a waiting Inbox item; None once it is no longer waiting."""
@@ -723,7 +794,7 @@ class NotifierJob:
             thread_id=item.thread_id, run_id=item.run_id,
             deciders=policy.summary(item.assignee_role), created_at=item.created_at,
             expires_at=None if escalates else expires, link=f"{self.base_url}/inbox?item={item.id}",
-            escalates_at=escalates, escalate_to=policy.escalate_to,
+            escalates_at=escalates, escalate_to=policy.escalate_to, item_expires=expires,
         )  # fmt: skip
 
     async def test(self, s: AsyncSession, org_id: str, email: str | None) -> list[dict[str, Any]]:
@@ -736,12 +807,12 @@ class NotifierJob:
             interrupt_id="test", event="waiting", kind="approval", org_id=org_id, project_id="-",
             project_name="(a test)", workflow_id="-", workflow_name="Notification test", step="Ask for approval",
             thread_id="-", run_id="-", deciders="you", created_at=datetime.now(UTC), expires_at=None,
-            link=f"{self.base_url}/inbox",
+            link=f"{self.base_url}/inbox", sample=True,
         )  # fmt: skip
         out = []
         for channel in channels.enabled(smtp_ready(self.settings)):
             try:
-                await self._deliver(channel, n, new_id("ntc"), channels, [email] if email else [])
+                await self._deliver(channel, n, new_id("ntc"), channels, [(email, None)] if email else [])
                 out.append({"channel": channel, "ok": True, "error": None})
             except DeliveryError as exc:
                 out.append({"channel": channel, "ok": False, "error": str(exc)})

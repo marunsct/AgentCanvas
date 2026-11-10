@@ -670,6 +670,8 @@ class OrgNotifier(Base):
     webhook_secret: Mapped[bytes | None] = mapped_column(LargeBinary)  # encrypted: signs what the webhook gets
     # each project's weekly run digest goes to the same channels too (an organisation's opt-in)
     digest: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    # approval notifications carry Approve and Deny links (services/approval_links.py; an organisation's opt-in)
+    actions: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     updated_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id", ondelete="SET NULL"))
     updated_at: Mapped[datetime] = mapped_column(
         UtcDateTime(), server_default=text("CURRENT_TIMESTAMP"), onupdate=func.now(), nullable=False

@@ -21,6 +21,7 @@ const GuidePage = lazy(() => import("../guide/GuidePage").then((m) => ({ default
 const SettingsPage = lazy(() => import("../settings/SettingsPage").then((m) => ({ default: m.SettingsPage })));
 const OAuthCallback = lazy(() => import("../settings/OAuthCallback").then((m) => ({ default: m.OAuthCallback })));
 const SharePage = lazy(() => import("../share/SharePage").then((m) => ({ default: m.SharePage })));
+const ApprovalLinkPage = lazy(() => import("../inbox/ApprovalLinkPage").then((m) => ({ default: m.ApprovalLinkPage })));
 const PlaygroundPage = lazy(() => import("../playground/PlaygroundPage").then((m) => ({ default: m.PlaygroundPage })));
 const WorkspacePage = lazy(() => import("../workspace/WorkspacePage").then((m) => ({ default: m.WorkspacePage })));
 
@@ -86,6 +87,15 @@ export function App() {
       <>
         <GlobalErrors />
         <Suspense fallback={<p className="share-loading" role="status">Loading…</p>}><SharePage /></Suspense>
+      </>
+    );
+  }
+  // F-9: an Approve or Deny link from an approval notification: its token decides, or it leads to the Inbox
+  if (location.pathname === "/approve") {
+    return (
+      <>
+        <GlobalErrors />
+        <Suspense fallback={<p className="share-loading" role="status">Loading…</p>}><ApprovalLinkPage /></Suspense>
       </>
     );
   }

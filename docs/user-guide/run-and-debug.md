@@ -122,6 +122,11 @@ Finance*) and, when you cannot, why; its buttons are then off. A helper agent's 
 Planning Agent. Steps inside a subgraph keep their own setting. AgentCanvas checks it; code exported from the workflow
 does not (I011).
 
+The people who may decide are told by the organisation's [approval notifications](settings.md#approval-notifications).
+When an admin adds **Approve and Deny** links to them, a person can decide an approval from their e-mail: the link
+opens a page that asks to confirm, and the decision goes through the same checks as the Inbox and is audited as theirs
+(`decide_by_link`). Links posted to Slack or a webhook open the item in the Inbox instead, behind sign-in.
+
 ## Waiting runs
 
 A run that reaches a [Wait](widgets.md#wait) step pauses until its time comes or its event arrives, then continues on

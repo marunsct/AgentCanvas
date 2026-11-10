@@ -178,6 +178,27 @@ When a step escalates an item nobody decided ([Who may decide](run-and-debug.md#
 role's members get an e-mail of their own, and Slack and the webhook get the item again as *escalated*. A message
 before the escalation says when it will happen instead of when the item expires.
 
+**Approve and Deny in messages** (off until an admin ticks **Add Approve and Deny links to approval messages**, or sends
+`"actions": true` on `PUT /v1/org/notifications`) lets people decide an approval where they read about it:
+
+- **E-mail** then goes to each person on their own, with an **Approve** and a **Deny** link made for them. A link opens
+  a page of AgentCanvas that says what it decides and asks to confirm: opening it decides nothing, so a mail scanner or
+  a link preview cannot approve. The button decides as the person the link was sent to, after the same checks as the
+  Inbox (their role in the project, who the step names, approving your own runs), from the organisation's [allowed
+  networks](accounts.md#allowed-networks) only, and the audit log records it as `decide_by_link` with them as the actor.
+  A link works once (after that, or once anyone decided the item, it says so), only for the item, the action and the
+  person it was made for (it is signed with the server's `AGENTCANVAS_SECRET_KEY`; changing any part breaks it), and
+  until the item expires, a week at most: a reminder (below) brings fresh ones. Denying an agent's tool call asks a
+  reason the agent reads. The team addresses listed for steps that name nobody are not a person: they get links that
+  open the Inbox, like Slack's.
+- **Slack** gets **Approve**, **Deny** and **Open in the Inbox** buttons (no Slack app is needed), and the **webhook**
+  `"actions": {"approve": "<url>", "deny": "<url>"}`. A channel is not a person, so these links open the item in the
+  Inbox, where whoever decides signs in first and decides as themselves.
+- An organisation that requires [multi-factor sign-in](accounts.md#multi-factor-sign-in), a server that requires a
+  stronger sign-in, and Matura sign-in get no decision without a sign-in: every link then opens the item in the Inbox.
+  So do questions (*Ask a person*), which need a written answer. Switching the setting off stops links already sent from
+  deciding.
+
 **Reminders.** An item still waiting 24 hours before it escalates or expires is announced once more, on the same
 channels and to the same people (*Approval still waiting: …*; the webhook's `type` is `approval.reminder`). Each
 item gets one reminder, sent by one server whatever their number; an escalated item gets one more before it expires.
