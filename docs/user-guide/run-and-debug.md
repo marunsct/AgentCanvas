@@ -183,8 +183,8 @@ Timeline. Narrow it with the workflow filter below.
 
 ## Weekly digest
 
-**Weekly digest** at the top of the **Runs** page sums up the week before (Monday to Sunday, UTC), each against the
-week before it:
+**Weekly digest** at the top of the **Runs** page sums up the week before (Monday to Sunday, UTC), with the change on
+the week before that when that week had runs too:
 
 - how many runs there were, how many failed and what they spent;
 - how long they took: typically (the median) and at the 95th percentile;
@@ -193,7 +193,7 @@ week before it:
 - the runs flagged most: failing evaluator scores, thumbs-down feedback and review queue items;
 - the busiest workflows, when there are several.
 
-**This week so far** computes the same for the current week on the spot. The server makes each week's digest once
+**This week so far** computes the same for the current week on the spot (not compared: the week is not over). The server makes each week's digest once
 it is over, for projects that had runs in it; test and experiment runs are left out, and no model is asked. A digest
 holds counts, workflow names and shortened errors (numbers and quoted values taken out, secret values masked), never
 what a run was asked or answered. An admin can also have every project's digest sent to the organisation's

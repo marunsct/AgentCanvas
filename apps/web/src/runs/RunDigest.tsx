@@ -41,6 +41,13 @@ export function change(now: number, before: number | undefined): string {
   return p === 0 ? " (same as the week before)" : ` (${p > 0 ? "+" : ""}${p}% on the week before)`;
 }
 
+/** The summary to compare the newest kept digest with: the week right before it, when it has one. A week without
+ * runs has no digest, and a part week (this week so far) is not compared with a whole one. */
+export function weekBefore(list: RunDigestOut[]): DigestSummary | undefined {
+  const [latest, prior] = list;
+  return latest && prior && Date.parse(prior.week_end) === Date.parse(latest.week_start) ? prior.summary : undefined;
+}
+
 export function RunDigest() {
   const [current, setCurrent] = useState(false);
   const stored = useQuery({
@@ -54,7 +61,7 @@ export function RunDigest() {
   });
   const list = Array.isArray(stored.data) ? stored.data : [];
   const shown = current ? live.data : list[0];
-  const before = current ? list[0]?.summary : list[1]?.summary;
+  const before = current ? undefined : weekBefore(list);
   const s = shown?.summary;
   return (
     <details className="run-digest settings-card" aria-label="weekly digest">

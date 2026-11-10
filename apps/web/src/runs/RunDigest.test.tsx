@@ -18,7 +18,7 @@ const now = { week_start: "2026-11-09T00:00:00Z", week_end: "2026-11-16T00:00:00
 const apiFetch = vi.fn(async (path: string) => (path.endsWith("/current") ? now : digests));
 vi.mock("../api/client", () => ({ ApiError: class extends Error {}, apiFetch }));
 
-const { RunDigest, change, seconds, weekLabel } = await import("./RunDigest");
+const { RunDigest, change, seconds, weekBefore, weekLabel } = await import("./RunDigest");
 
 afterEach(cleanup);
 
@@ -37,6 +37,14 @@ describe("RunDigest (F-11)", () => {
     fireEvent.click(screen.getByRole("button", { name: "This week so far" }));
     expect(await screen.findByText(/This week so far \(since/, { selector: "strong" })).toBeTruthy();
     expect(apiFetch.mock.calls.some(([p]) => p === "/projects/prj_default/run-digests/current")).toBe(true);
+    expect(screen.getByTestId("run-digest").textContent).not.toContain("on the week before"); // a part week
+  });
+
+  it("compares only with the week right before", () => {
+    expect(weekBefore(digests)?.runs).toBe(2);
+    const gap = { ...digests[1], week_start: "2026-10-19T00:00:00Z", week_end: "2026-10-26T00:00:00Z" };
+    expect(weekBefore([digests[0], gap])).toBeUndefined(); // no runs the week between: nothing to compare with
+    expect(weekBefore(digests.slice(0, 1))).toBeUndefined();
   });
 
   it("formats weeks, changes and durations", () => {
