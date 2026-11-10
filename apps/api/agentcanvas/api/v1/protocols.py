@@ -385,7 +385,8 @@ async def _mcp_call(
         if name == "answer" and c.pauses:
             thread_id, iid = str(args.get("thread_id") or ""), args.get("interrupt_id")
             iid = str(iid) if iid else None
-            await own_thread(session, dep, thread_id)  # before anything about its pauses is said
+            # before anything about its pauses is said: a signed-in person learns nothing of another's conversation
+            await own_thread(session, dep, thread_id, bound_end_user(request, dep))
             pending = await _pending(request, session, thread_id, iid)
             value = answer_value(pending, args.get("approve"), args.get("text"), args.get("value"))
             h = await _resume_run(request, session, dep, wf, thread_id, value, iid)
