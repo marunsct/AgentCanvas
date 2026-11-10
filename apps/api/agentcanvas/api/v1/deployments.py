@@ -50,7 +50,7 @@ from agentcanvas.runtime.types import ResumeSpec
 from agentcanvas.services import annotation, approvers, callbacks, gates, networks
 from agentcanvas.services.data_subjects import end_user_label
 from agentcanvas.services.deployments import Check, DeploymentService
-from agentcanvas.services.disclosure import AI_HEADER, GeneratedBy, generated_by, marked
+from agentcanvas.services.disclosure import AI_HEADER, GeneratedBy, marked
 from agentcanvas.services.projects import PROJECT_OF
 from agentcanvas.services.redeploy import thread_version
 from agentcanvas.services.run_results import ResultRepo, RunResult, from_handle
@@ -479,9 +479,7 @@ async def _result(h: RunHandle) -> ApiResult:
         await asyncio.wait_for(h.done.wait(), WAIT_TIMEOUT_S)
     except TimeoutError:
         return ApiResult(run_id=h.run_id, thread_id=h.thread_id, status="running")
-    res = api_result(from_handle(h))
-    res.generated_by = generated_by(h.events)  # E-5: which models wrote it (none for a run read back from the database)
-    return res
+    return api_result(from_handle(h))
 
 
 def api_result(res: RunResult) -> ApiResult:

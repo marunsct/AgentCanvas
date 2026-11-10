@@ -16,6 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.db.models import InterruptTask, Run, Thread
+from agentcanvas.services.disclosure import generated_by
 
 Status = Literal["success", "interrupted", "error", "cancelled", "running"]
 # a run that a server restart (or a stalled server) stopped: another server continues it, so it is still running
@@ -30,11 +31,15 @@ class RunResult:
     output: dict[str, Any] | None = None
     interrupts: list[dict[str, Any]] = field(default_factory=list)
     error: str | None = None
+    # the output is AI-generated, and by which models (AI Act Art. 50): the same on every server and in callbacks
+    generated_by: dict[str, Any] = field(default_factory=lambda: generated_by([]).model_dump())
 
 
 def from_handle(h: Any) -> RunResult:
     """The result of a run that ended on this server, from its events."""
-    res = RunResult(run_id=h.run_id, thread_id=h.thread_id, status="error")
+    res = RunResult(
+        run_id=h.run_id, thread_id=h.thread_id, status="error", generated_by=generated_by(h.events).model_dump()
+    )
     for ev in h.events:
         if ev["type"] == "RUN_FINISHED":
             res.status, res.output = ev.get("status") or "success", ev.get("output")
@@ -70,15 +75,16 @@ class ResultRepo:
                 return res
         if row.status == "running" or (row.status == "interrupted" and row.error is not None):
             return RunResult(run_id=row.id, thread_id=row.thread_id, status="running")  # here or another server
-        saved = (await self.s.execute(select(Run.output, Run.interrupts).where(Run.id == row.id))).first()
+        saved = (await self.s.execute(select(Run.output, Run.interrupts, Run.events).where(Run.id == row.id))).first()
         output, interrupts = (saved.output, saved.interrupts) if saved else (None, None)
+        marked = generated_by(saved.events or [] if saved else []).model_dump()  # the kept events name the models
         if row.status == "interrupted" and interrupts is None:  # ended before results were kept: its open pauses
             asked = select(InterruptTask).where(InterruptTask.run_id == row.id, InterruptTask.status == "pending")
             interrupts = [{"id": t.id, "kind": t.kind, "payload": t.payload, "canvas_node_id": t.canvas_node_id}
                           for t in (await self.s.scalars(asked)).all()]  # fmt: skip
         return RunResult(
             run_id=row.id, thread_id=row.thread_id, status=row.status, output=output, interrupts=interrupts or [],
-            error=row.error,
+            error=row.error, generated_by=marked,
         )  # fmt: skip
 
     async def _continuation(self, row: Any) -> Any:
