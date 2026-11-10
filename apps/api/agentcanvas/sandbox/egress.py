@@ -1,6 +1,6 @@
 """The sandbox's way out: an HTTP proxy that lets workspace code reach only the hosts its project's `sandbox.json`
-allows (FR-X-08). Standard library only, so it runs from the API image or as a single file mounted into any Python
-image (the Docker mode does that).
+allows (FR-X-08). Standard library only (with `security/addresses.py`), so it runs from the API image or as those
+two files mounted into any Python image (the Docker mode does that).
 
 Sandboxed code has no route to the network except this proxy (the `docker` mode puts its containers on an internal
 network; the `remote` mode's service sits on one). Each call carries its own allow-list to the proxy, signed by the

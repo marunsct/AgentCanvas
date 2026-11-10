@@ -142,6 +142,45 @@ UPSTREAM = (
 )
 
 
+async def test_the_docker_egress_proxy_starts_from_the_files_it_is_given(tmp_path, monkeypatch):
+    """The `docker` mode runs the proxy from files mounted into a plain Python image: they must be all it imports.
+    Here its `docker run` is replayed with this Python and those files at the same paths."""
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    from agentcanvas.sandbox import docker_egress
+
+    calls: list[tuple[str, ...]] = []
+
+    async def docker(*args: str) -> tuple[int, str]:
+        calls.append(args)
+        return (1, "") if args[0] in ("network", "inspect") and args[1] == "inspect" else (0, "")
+
+    monkeypatch.setattr(docker_egress, "_docker", docker)
+    monkeypatch.setattr(docker_egress, "_ready", {})
+    await docker_egress.ensure(Settings(script_execution="docker", secret_key="d" * 64))
+    run = list(next(c for c in calls if c[0] == "run"))
+    image = run.index("python:3.12-slim")
+    for i, a in enumerate(run[:image]):
+        if a == "-v":
+            src, dst, _ = run[i + 1].split(":")
+            target = tmp_path / dst.lstrip("/")  # a path the command names is replayed under tmp_path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(Path(src).read_bytes())
+    workdir = tmp_path / (run[run.index("-w") + 1].lstrip("/") if "-w" in run else "")
+    # the interpreter without this virtual environment, which would find the installed agentcanvas instead
+    argv = [os.path.join(sys.base_prefix, "bin", "python3"), *run[image + 2 :]]
+    assert argv[-2:] == ["--port", "3128"]
+    env = {"PATH": os.environ.get("PATH", ""), "AGENTCANVAS_EGRESS_SECRET": "s" * 32}
+    out = subprocess.run(
+        [*argv[:-2], "--help"], cwd=workdir, env=env, capture_output=True, text=True, timeout=60, check=False
+    )
+    assert out.returncode == 0, out.stderr  # e.g. ModuleNotFoundError: No module named 'agentcanvas'
+    assert "egress proxy" in out.stdout
+
+
 @pytest.mark.skipif(not _docker_ready(), reason="needs a Docker daemon (CI has one)")
 async def test_docker_code_reaches_only_the_listed_hosts(tmp_path):
     """The real thing: the sandbox container sits on the internal network, the proxy container is the only way out.
