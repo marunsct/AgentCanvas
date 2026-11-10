@@ -166,3 +166,21 @@ async def test_the_endpoint_shows_a_finished_conversation(app, triage_api):  # n
     tools = [c for c in drafter["children"] if c["kind"] == "tool"]
     assert tools and tools[0]["label"] == "Tool send_reply" and tools[0]["detail"]["args"]
     assert (await api.get("/v1/threads/th_nope/trajectory")).status_code == 404
+
+
+def test_thinking_in_a_streamed_chunk_becomes_a_reasoning_event():
+    """F-8: thinking streams as `ac.reasoning` (AG-UI REASONING events); the run does not keep it."""
+    names = {"agent": "n_ag"}
+    blocks = AIMessageChunk(content=[{"type": "thinking", "thinking": "Hmm, "}, {"type": "text", "text": "ignored"}])
+    kwargs = AIMessageChunk(content="Yes", additional_kwargs={"reasoning_content": "so"})
+    out = [
+        ev
+        for chunk in (blocks, kwargs)
+        for ev in translate({"type": "messages", "ns": (), "data": (chunk, {"langgraph_node": "agent"})}, names)
+    ]
+    assert out == [
+        {"type": "CUSTOM", "name": "ac.reasoning", "canvas_node_id": "n_ag", "value": {"delta": "Hmm, "}},
+        {"type": "CUSTOM", "name": "ac.reasoning", "canvas_node_id": "n_ag", "value": {"delta": "so"}},
+        {"type": "TEXT_MESSAGE_CONTENT", "canvas_node_id": "n_ag", "delta": "Yes"},
+    ]
+    assert [e["type"] for e in kept.compact(out, [0, 0, 0], 0)] == ["TEXT"]
