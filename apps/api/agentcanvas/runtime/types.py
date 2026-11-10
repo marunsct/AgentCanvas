@@ -8,17 +8,22 @@ from typing import Any, Literal
 
 from agentcanvas.ir.models import Workflow
 
-InterruptKind = Literal["tool_approval", "approval", "input"]
+# client_tool: a tool the caller's application runs (AG-UI front-end tools): it waits for the application, not a
+# person, so it never becomes an Inbox item
+InterruptKind = Literal["tool_approval", "approval", "input", "client_tool"]
+CLIENT_TOOL = "client_tool"
 RunMode = Literal["normal", "debug"]
 
 
 @dataclass
 class ResumeSpec:
     """Answer to one pending interrupt. The runner fills in `interrupt_id` when the caller left it out and one
-    waits (several waiting need it): through the runner, None reaches an adapter only to go on from a breakpoint."""
+    waits (several waiting need it): through the runner, None reaches an adapter only to go on from a breakpoint.
+    `by_id`: `value` maps interrupt ids to their answers, one each (parallel pauses answered together)."""
 
     value: Any
     interrupt_id: str | None = None
+    by_id: bool = False
 
 
 @dataclass
@@ -46,6 +51,10 @@ class RunSpec:
     service_connection: bool = False  # connectors set to the service identity may use it though a person started it
     # deployment and trigger runs: app connectors offer only the tools pinned at publish, unchanged (OWASP ASI04)
     pin_tools: bool = False
+    # tools the caller's application runs itself, and what it tells the agents (AG-UI): [{name, description,
+    # parameters}] and [{description, value}]; offered to the workflow's agents, a call pauses the run for its result
+    client_tools: list[dict[str, Any]] = field(default_factory=list)
+    client_context: list[dict[str, str]] = field(default_factory=list)
 
 
 @dataclass
@@ -79,6 +88,8 @@ class CheckpointInfo:
 
 def interrupt_kind(payload: Any) -> InterruptKind:
     if isinstance(payload, dict):
+        if payload.get("kind") == CLIENT_TOOL:
+            return "client_tool"
         if "action_requests" in payload:
             return "tool_approval"
         if payload.get("kind") == "approval":

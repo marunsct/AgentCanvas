@@ -46,7 +46,7 @@ from agentcanvas.runtime.admission import Admission, Priority, QueueTimeout, pri
 from agentcanvas.runtime.identity import CURRENT, RunIdentity
 from agentcanvas.runtime.tracing import trace_ref
 from agentcanvas.runtime.trajectory import compact
-from agentcanvas.runtime.types import REPLAYABLE, ResumeSpec, RunMode, RunSpec
+from agentcanvas.runtime.types import CLIENT_TOOL, REPLAYABLE, ResumeSpec, RunMode, RunSpec
 from agentcanvas.services import offboarding
 from agentcanvas.services.approvers import answered, escalate_at, node_approvers
 from agentcanvas.services.files import DEFAULT_MAX_BYTES, FileService
@@ -500,6 +500,8 @@ class Runner:
         handed_over: bool = False,
         caller_run_id: str | None = None,
         end_user: str | None = None,
+        client_tools: list[dict[str, Any]] | None = None,
+        client_context: list[dict[str, str]] | None = None,
     ) -> RunHandle:
         """Start a run. `context=None` reuses the context of the last run on `context_from` (default: this thread).
         A deployment's run takes only files given to that deployment (`visitor_hash`: a share link's visitor, whose
@@ -510,7 +512,8 @@ class Runner:
         hand-over continues, whose place in that queue it keeps; `handed_over`: started by the hand-over;
         `caller_run_id`: the run of the organisation that called this deployment run (it takes no place in the
         queue while that run holds a slot: runtime/nesting.py). `end_user`: the deployment API's end user a new
-        conversation belongs to (kept for erasure and export requests)."""
+        conversation belongs to (kept for erasure and export requests). `client_tools` and `client_context`: the
+        tools the caller's application runs itself and what it tells the agents (AG-UI, `RunSpec`)."""
         if self.draining:
             raise Unavailable("this server is restarting; retry the request", retry_after=5)
         adapter = self.adapter_for(wf)
@@ -634,6 +637,8 @@ class Runner:
             user_id=user_id,
             service_connection=service_connection or deployment_id is not None,
             pin_tools=deployment_id is not None or origin == "trigger",
+            client_tools=list(client_tools or []),
+            client_context=list(client_context or []),
             labels={
                 k: v
                 for k, v in {"origin": origin, "deployment_id": deployment_id, "version_id": version_id}.items()
@@ -674,19 +679,33 @@ class Runner:
     async def _decide_interrupts(
         self, s: Any, thread_id: str, resume: ResumeSpec, decided_by: str | None
     ) -> tuple[list[str], ResumeSpec]:
-        """Mark the answered Inbox item decided; returns its id (none for a breakpoint) and the resume naming it: the
-        engine is always told which pause the answer is for (strict resume), so parallel pauses answer separately."""
-        task = await answered(s, thread_id, resume.interrupt_id)
-        if task is None:
-            return [], resume
-        q = update(InterruptTask).where(InterruptTask.id == task.id, InterruptTask.status == "pending")
-        decision = resume.value if isinstance(resume.value, dict) else {"value": resume.value}
-        res = await s.execute(
-            q.values(status="decided", decision=decision, decided_by=decided_by, decided_at=datetime.now(UTC))
+        """Mark the answered Inbox items decided; returns their ids (none for a breakpoint) and the resume naming
+        them: the engine is always told which pause an answer is for (strict resume), so parallel pauses answer
+        separately. `resume.by_id`: several pauses answered together, each with its own answer (AG-UI)."""
+
+        def decision(value: Any) -> dict[str, Any]:
+            return value if isinstance(value, dict) else {"value": value}
+
+        now = datetime.now(UTC)
+        pairs: list[tuple[str | None, Any]] = (
+            list(resume.value.items()) if resume.by_id else [(resume.interrupt_id, resume.value)]
         )
-        if res.rowcount == 0:
-            raise Conflict(f"inbox item '{task.id}' was already decided")  # a concurrent decision won
-        return [task.id], replace(resume, interrupt_id=task.id)
+        ids: list[str] = []
+        for asked, value in pairs:
+            task = await answered(s, thread_id, asked)  # unknown, decided or expired: refused with the reason
+            if task is None:  # a breakpoint: nothing waits in the Inbox
+                continue
+            res = await s.execute(
+                update(InterruptTask)
+                .where(InterruptTask.id == task.id, InterruptTask.status == "pending")
+                .values(status="decided", decision=decision(value), decided_by=decided_by, decided_at=now)
+            )
+            if res.rowcount == 0:  # type: ignore[attr-defined]
+                raise Conflict(f"inbox item '{task.id}' was already decided")  # a concurrent decision won
+            ids.append(task.id)
+        if resume.by_id or not ids:
+            return ids, resume
+        return ids, replace(resume, interrupt_id=ids[0])
 
     async def _tool_drift(self, h: RunHandle, spec: RunSpec, warning: dict[str, Any]) -> None:
         """An app connector's server changed tools this run's version pinned (E-4): the deployment keeps it for the
@@ -977,6 +996,8 @@ class Runner:
                     if thread_status in ("error", "idle"):
                         await s.execute(update(Thread).where(Thread.id == h.thread_id).values(status="interrupted"))
                 for intr in interrupts:
+                    if intr.get("kind") == CLIENT_TOOL:  # the caller's application answers it: not an Inbox item
+                        continue
                     asked = {
                         "run_id": h.run_id, "canvas_node_id": intr.get("canvas_node_id") or "", "kind": intr["kind"],
                         "payload": _as_object(intr["payload"]), "requested_by": h.requested_by,

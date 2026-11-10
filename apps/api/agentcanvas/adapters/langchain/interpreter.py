@@ -185,6 +185,9 @@ def build_from_plan(plan: Plan, resources: ac.Resources, checkpointer=None, stor
     registry = _registry(resources) if resources.dry_run is not None else None
     for pr in plan.resources:
         objs[pr.resource.name] = _resource(pr, plan, resources, objs)
+    # the caller's application's tools and context (AG-UI): every agent is offered them, after its own middleware
+    client = getattr(resources, "client_tools", None) or getattr(resources, "client_context", None)
+    extra = [ac.client_tools_middleware(resources.client_tools, resources.client_context)] if client else []
 
     for p in plan.nodes:
         n, cfg = p.node, p.node.config
@@ -212,7 +215,7 @@ def build_from_plan(plan: Plan, resources: ac.Resources, checkpointer=None, stor
                 tools=wired("tools"),
                 system_prompt=cfg.get("system_prompt", ""),
                 approve_tools=cfg.get("approve_tools"),
-                middleware=wired("middleware"),
+                middleware=[*wired("middleware"), *extra],
                 response_format=cfg.get("response_format"),
                 files=ac.file_fields(plan.channels, cfg.get("files")),
                 read_file=getattr(resources, "files", None),
@@ -223,7 +226,7 @@ def build_from_plan(plan: Plan, resources: ac.Resources, checkpointer=None, stor
                 model=wired("model")[0],
                 tools=wired("tools"),
                 system_prompt=cfg.get("system_prompt", ""),
-                middleware=wired("middleware"),
+                middleware=[*wired("middleware"), *extra],
                 subagents=wired("subagents"),
                 backends=wired("backend"),
                 planning=cfg.get("planning", True),

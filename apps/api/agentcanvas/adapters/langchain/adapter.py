@@ -286,7 +286,10 @@ class LangChainAdapter:
         if spec.pin_tools:  # a deployment or trigger run: app connectors offer the tools pinned at publish only
             resources = resources.pinned()
         try:
-            if spec.pins or spec.mocks or spec.dry_run:  # debug aids: a one-off graph, never cached
+            client = bool(spec.client_tools or spec.client_context)
+            if client:  # the caller's application's own tools and context (AG-UI)
+                resources = resources.with_client_tools(spec.client_tools, spec.client_context)
+            if spec.pins or spec.mocks or spec.dry_run or client:  # debug aids, a caller's tools: one-off, not cached
                 if spec.mocks:
                     resources = resources.with_mocks(spec.mocks)
                 if spec.dry_run:

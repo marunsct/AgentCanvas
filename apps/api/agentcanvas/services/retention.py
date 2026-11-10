@@ -5,7 +5,8 @@ longer than its organisation keeps conversations: `Organization.retention_days`,
 (default 90) when the organisation sets none; 0 keeps them forever. Conversations that are running or waiting
 for a person (interrupted) are kept whatever their age, but a decision nobody gives for
 `AGENTCANVAS_APPROVAL_EXPIRY_DAYS` (default 90) expires: the Inbox item is marked expired, the run that asked is
-cancelled, and the conversation becomes idle, so retention deletes it once it has been inactive long enough. An item
+cancelled, and the conversation becomes idle, so retention deletes it once it has been inactive long enough (so does a
+conversation that waits for a tool the caller's application runs, AG-UI, whose result never came). An item
 whose step names an escalation role is escalated instead (E-6, `notifier.escalate`): the run keeps waiting and the
 expiry counts again from the escalation.
 
@@ -47,6 +48,7 @@ from agentcanvas.db.models import (
 )
 from agentcanvas.db.repositories import delete_thread_rows
 from agentcanvas.log import get_logger
+from agentcanvas.runtime.types import CLIENT_TOOL
 from agentcanvas.services import org_settings
 from agentcanvas.services.approvers import Approvers
 from agentcanvas.services.files import expire_files
@@ -136,6 +138,7 @@ class RetentionJob:
     async def tick(self, now: datetime) -> list[str]:
         """Delete the conversations that expired by `now`; returns their ids."""
         await self.expire_approvals(now)
+        await self.expire_tool_calls(now)
         deleted: list[str] = []
         until = time.monotonic() + BUDGET_S
         async with self.db.sessionmaker() as s:
@@ -246,6 +249,57 @@ class RetentionJob:
         APPROVALS_EXPIRED.inc(n)
         if escalated:
             log.info("retention.approvals_escalated", items=escalated, days=days)
+        return n
+
+    async def expire_tool_calls(self, now: datetime) -> int:
+        """Conversations that wait only for the result of a tool the caller's application runs (AG-UI front-end
+        tools have no Inbox item): one not answered within the approval expiry is no longer waiting, like an expired
+        approval. Its run is cancelled and the conversation becomes idle. Returns the conversations released."""
+        days = self.server.approval_expiry_days
+        if days <= 0:
+            return 0
+        cutoff, until, n, after = now - timedelta(days=days), time.monotonic() + BUDGET_S, 0, ""
+        error = f"no one answered within {days} days: the application never sent the tool's result"
+        asked = select(InterruptTask.id).where(InterruptTask.thread_id == Thread.id, InterruptTask.status == "pending")
+        while time.monotonic() < until:
+            busy = list(self.runner.active_by_thread)
+            async with self.db.sessionmaker() as s:
+                waiting = (
+                    Thread.status == "interrupted",
+                    Thread.deployment_id.is_not(None),
+                    Thread.updated_at < cutoff,
+                )
+                found = list(
+                    (
+                        await s.scalars(
+                            select(Thread.id)
+                            .where(*waiting, Thread.id > after, Thread.id.not_in(busy), ~asked.exists())
+                            .order_by(Thread.id)
+                            .limit(BATCH)
+                        )
+                    ).all()
+                )
+                for thread_id in found:
+                    q = select(Run.id, Run.interrupts, Run.handover).where(Run.thread_id == thread_id)
+                    last = (await s.execute(q.order_by(Run.started_at.desc(), Run.id.desc()).limit(1))).first()
+                    kinds = {i.get("kind") for i in (last.interrupts or []) if isinstance(i, dict)} if last else set()
+                    if last is None or last.handover or kinds != {CLIENT_TOOL}:  # waits for something else
+                        continue
+                    await s.execute(
+                        update(Run)
+                        .where(Run.id == last.id, Run.status == "interrupted")
+                        .values(status="cancelled", error=error, ended_at=now)
+                    )
+                    released = await s.execute(
+                        update(Thread).where(Thread.id == thread_id, *waiting).values(status="idle")
+                    )
+                    n += released.rowcount or 0  # type: ignore[attr-defined]
+                await s.commit()
+            if len(found) < BATCH:
+                break
+            after = found[-1]
+        if n:
+            log.info("retention.tool_calls_expired", threads=n, days=days)
         return n
 
     async def expire_events(self, now: datetime, orgs: list[tuple[str, int]]) -> int:
