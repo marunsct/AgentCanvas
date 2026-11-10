@@ -88,6 +88,10 @@
       "what": "A step reads a data field that does not exist.",
       "fix": "Add the field (click empty canvas, \u201c+ Channel\u201d) or correct its name in the step."
     },
+    "E024": {
+      "what": "This AI model runs in your own cloud account (AWS Bedrock or Google Vertex AI) and needs a region: the place its prompts are sent to and processed in. It always uses the provider's own address.",
+      "fix": "Select the AI model block and fill in Region (e.g. eu-central-1 on AWS, europe-west4, eu or global on Google Cloud), or ask whoever runs the server to set a default region. Clear Base URL."
+    },
     "E030": {
       "what": "The chosen AI model cannot do what this step asks (use tools or give structured answers).",
       "fix": "Pick a more capable model in the AI model block, or remove the tools / structured output."
@@ -136,6 +140,10 @@
       "what": "Publishing pins an app connector’s tools as you reviewed them, so a server that changes later cannot reach the published agent. This connector’s tools were never listed, so there is nothing to pin.",
       "fix": "Select the connector, click Browse tools and check its tools (untick the ones the agent should not have), then publish."
     },
+    "E046": {
+      "what": "This app connector starts a program. The hosted service runs such programs only in its sandbox, and only the gallery's connectors marked as running there.",
+      "fix": "Add the connector again from App connectors (one marked “runs in the sandbox”) and change only the arguments after its package, or use a connector with a URL."
+    },
     "E050": {
       "what": "A password or API key is typed straight into a setting, where others could see it.",
       "fix": "Store it as a project secret (Workspace \u2192 Secrets) and pick it from the list instead."
@@ -163,6 +171,10 @@
     "E096": {
       "what": "An organisation rule could not be checked.",
       "fix": "Ask an admin to look at the rule; the message says which one."
+    },
+    "E097": {
+      "what": "A Wait block is missing how long or until when to wait, or a duration, time, time zone or event it cannot use.",
+      "fix": "Select the Wait block and fill in how long (e.g. 3d or 2h 30m), the time (e.g. 2026-12-01T09:00), or the event and its time limit. A wait lasts at most a year."
     },
     "E999": {
       "what": "One of the checks failed while checking this workflow (a problem in AgentCanvas, not in your workflow). The other checks still ran.",
@@ -272,6 +284,10 @@
       "what": "The workflow’s budget stops runs on AgentCanvas, but an export of this workflow does not enforce some of its limits: the exported code runs past them.",
       "fix": "Keep the limit for runs on AgentCanvas. Before running the export elsewhere, set a spending cap at the model provider, or check the limits the message names in your own code (GAPS.md lists them)."
     },
+    "W028": {
+      "what": "This agent can click, type, fill in forms or upload files in a browser without asking a person first, so a page that misleads it could make it submit or buy something.",
+      "fix": "Select the agent and add the browser's acting tools to \u201cTools that need approval\u201d: each click or entry then waits for a person."
+    },
     "W027": {
       "what": "This agent names who may approve its tool calls, but none of its tools needs approval, so it never asks anyone.",
       "fix": "Add the tools that need a person’s approval, or clear “Who may approve its tool calls”."
@@ -284,6 +300,14 @@
       "what": "The provider stops serving this model on the day shown; after it, every call to it fails.",
       "fix": "Pick a newer model from the list before that day (the provider names a successor)."
     },
+    "W028": {
+      "what": "This AI model runs in your own cloud account, but no credentials for it were found: neither project secrets nor an identity of the server's.",
+      "fix": "Add the project secrets the message names (Workspace \u2192 Secrets), or ask whoever runs the server to give it a cloud identity (an IAM role on AWS, Workload Identity on Google Cloud)."
+    },
+    "W029": {
+      "what": "A region or Google Cloud project is set on a model that is not in your own cloud account, so it is not used.",
+      "fix": "Clear the setting, or pick an AWS Bedrock or Google Vertex AI model if the region matters."
+    },
     "W045": {
       "what": "An app connector’s server added or changed tools since this workflow was published. The deployment leaves those tools out (or stops), because nobody reviewed them.",
       "fix": "Select the connector, click Browse tools and review what changed. If you trust it, publish again: the new version pins the tools as they are now."
@@ -291,6 +315,10 @@
     "W095": {
       "what": "This goes against a recommended organisation rule.",
       "fix": "Read the rule in the message; consider changing the workflow."
+    },
+    "W096": {
+      "what": "A Wait block waits for an event without a key: one such event ends every run that waits for it.",
+      "fix": "Set \u201cOnly the event with this key\u201d (e.g. {{ state.order_id }}) and send the same value as \"key\" in the event's data."
     }
   },
   "run_errors": [

@@ -59,6 +59,12 @@ The Copilot can find, explain and fix problems:
   these** at the top of the Problems list sends them over.
 - **Failed runs:** it reads recent runs and what each step did (the same data as Explain mode), and explains the cause
   in plain words. **✦ Ask the Copilot why** under a run error asks about that run.
+- **Runs across the project:** it can search every run of the project by status, start time, cost, workflow, the
+  labels an API caller set, and topic, so "failed runs about refunds last week that cost over $0.10" finds them. It
+  only turns your words into those filters: the runs come from the database and the
+  [run search](run-and-debug.md#find-conversations-by-meaning) index, and the answer says how many runs matched and
+  what they cost together. Test and experiment runs are left out. The **Ask** box on the Runs page asks the same
+  question without opening a workflow ([Ask about runs](run-and-debug.md#ask-about-runs)).
 - **Fixes it can check:** after proposing a fix it reruns the failed run's input on the fixed workflow, replaying
   that run's recorded model replies and tool outputs when it has them, so you see whether the fix works before you
   accept it. A run that recorded no replies calls the real models again, so it asks you first, like a test run.

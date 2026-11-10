@@ -1049,7 +1049,19 @@
             }
           },
           "format": "secret_ref",
-          "description": "A project secret holding the key. Empty: the project secret or server variable named after the provider (e.g. OPENAI_API_KEY)"
+          "description": "A project secret holding the key. Empty: the project secret or server variable named after the provider (e.g. OPENAI_API_KEY). AWS Bedrock: a Bedrock API key, instead of the AWS credentials"
+        },
+        "region": {
+          "type": "string",
+          "title": "Region",
+          "pattern": "^[a-z0-9-]+$",
+          "description": "AWS Bedrock and Google Vertex AI models only: the cloud region the prompts are sent to and processed in (data residency), e.g. eu-central-1 on AWS, europe-west4, eu or global on Google Cloud. Empty: the server's AWS_REGION or GOOGLE_CLOUD_LOCATION"
+        },
+        "project": {
+          "type": "string",
+          "title": "Google Cloud project",
+          "pattern": "^[a-z0-9.:-]+$",
+          "description": "Google Vertex AI models only: the project billed for the calls. Empty: the project of the service account key (the project secret GOOGLE_SERVICE_ACCOUNT_KEY), else the server's GOOGLE_CLOUD_PROJECT"
         },
         "fallbacks": {
           "type": "array",
@@ -2687,6 +2699,122 @@
     "docs": null
   },
   {
+    "type": "core.wait",
+    "version": "1.0.0",
+    "kind": "runtime",
+    "label": "Wait",
+    "category": "Flow control",
+    "icon": "hourglass",
+    "color": "#64748B",
+    "description": "Pauses the workflow for a while, until a time, or until an event arrives (with a time limit), then continues on its own. Nothing runs while it waits, and the wait survives restarts.",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "next",
+        "type": "Flow",
+        "required": false,
+        "multi": false,
+        "ordered": false,
+        "description": "Where to go once the wait is over: connect the next step, or Finish."
+      }
+    ],
+    "dynamic_outputs": null,
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "type": "string",
+          "title": "Wait",
+          "enum": [
+            "for",
+            "until",
+            "event"
+          ],
+          "default": "for",
+          "description": "For a while: a duration from when the run gets here. Until a time: a date and time. Until an event: an event sent to the project, or the time limit, whichever comes first."
+        },
+        "duration": {
+          "type": "string",
+          "title": "How long",
+          "format": "wait_duration",
+          "minLength": 1,
+          "maxLength": 200,
+          "description": "e.g. 3d, 2h 30m, 90 minutes or PT45M; or a template such as {{ state.delay }}. Up to a year."
+        },
+        "until": {
+          "type": "string",
+          "title": "Until",
+          "format": "wait_time",
+          "minLength": 1,
+          "maxLength": 200,
+          "description": "e.g. 2026-12-01T09:00 (in the time zone below) or 2026-12-01T09:00:00Z; or a template such as {{ state.follow_up_at }}. A time already past does not wait."
+        },
+        "timezone": {
+          "type": "string",
+          "title": "Time zone",
+          "maxLength": 64,
+          "description": "For a time without an offset, e.g. Europe/Berlin. Empty: UTC."
+        },
+        "event": {
+          "type": "string",
+          "title": "Event",
+          "pattern": "^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)+$",
+          "maxLength": 200,
+          "description": "The event type that ends the wait, e.g. invoice.paid. Send it to the project's events (POST /v1/projects/{project}/events)."
+        },
+        "event_key": {
+          "type": "string",
+          "title": "Only the event with this key",
+          "format": "template",
+          "maxLength": 500,
+          "description": "e.g. {{ state.invoice_id }}: only an event whose data has this \"key\" ends the wait. Empty: any event of that type ends every run waiting for it."
+        },
+        "timeout": {
+          "type": "string",
+          "title": "Time limit",
+          "format": "wait_duration",
+          "minLength": 1,
+          "maxLength": 200,
+          "description": "How long to wait for the event, e.g. 3d. When it runs out, the run continues with timed_out true."
+        },
+        "output": {
+          "type": "string",
+          "title": "Save what ended the wait in",
+          "format": "channel",
+          "description": "Optional. The data field that receives {timed_out, event, woke_at}: route on state.<field>.timed_out after it."
+        }
+      }
+    },
+    "reads": [],
+    "writes": [],
+    "channel_fields": [
+      "output"
+    ],
+    "read_fields": [],
+    "channel_map_fields": [],
+    "list_write_fields": [],
+    "list_read_fields": [],
+    "conditional_writes": {},
+    "template_fields": [
+      "duration",
+      "until",
+      "event_key",
+      "timeout"
+    ],
+    "builtin_tools": [],
+    "interrupts": true,
+    "side_effects": [],
+    "hosted_forbidden": false,
+    "stability": "stable",
+    "targets": {
+      "python": "full"
+    },
+    "impl": null,
+    "provenance": "builtin",
+    "docs": null
+  },
+  {
     "type": "core.join",
     "version": "1.0.0",
     "kind": "runtime",
@@ -4057,7 +4185,7 @@
           ],
           "title": "Transport",
           "default": "http",
-          "description": "stdio starts a local process: local edition + admin setting only (E042)"
+          "description": "stdio starts a program: on the server (local edition) or in the sandbox, once an admin allows it (E042, E046)"
         },
         "url": {
           "type": "string",
@@ -4148,6 +4276,15 @@
               }
             ]
           }
+        },
+        "session": {
+          "enum": [
+            "run",
+            "thread"
+          ],
+          "title": "Keep the program (sandbox)",
+          "default": "run",
+          "description": "When the program runs in the sandbox: run = a fresh one for each run; thread = the same one for a conversation's runs (a browser keeps its pages), until it is idle for a while"
         },
         "on_tool_change": {
           "enum": [

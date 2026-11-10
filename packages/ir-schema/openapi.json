@@ -1,6 +1,61 @@
 {
   "components": {
     "schemas": {
+      "ActivityMessage": {
+        "additionalProperties": true,
+        "description": "Structured progress that is not conversation content, materialised as a\nmessage so it keeps its place in the sequence. Stands alone rather than\ncomposing BaseMessage, because its content is an object rather than a\nstring.",
+        "properties": {
+          "activityType": {
+            "title": "Activitytype",
+            "type": "string"
+          },
+          "content": {
+            "additionalProperties": true,
+            "title": "Content",
+            "type": "object"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          },
+          "role": {
+            "const": "activity",
+            "default": "activity",
+            "title": "Role",
+            "type": "string"
+          },
+          "subagentRunId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subagentrunid"
+          }
+        },
+        "required": [
+          "id",
+          "activityType",
+          "content"
+        ],
+        "title": "ActivityMessage",
+        "type": "object"
+      },
       "AddNode": {
         "additionalProperties": false,
         "properties": {
@@ -550,12 +605,14 @@
           "interrupt_id": {
             "anyOf": [
               {
+                "maxLength": 200,
                 "type": "string"
               },
               {
                 "type": "null"
               }
             ],
+            "description": "the pause this answers (an id from the run's interrupts); may be left out only while one waits",
             "title": "Interrupt Id"
           },
           "value": {
@@ -628,6 +685,127 @@
         "title": "ApiRunIn",
         "type": "object"
       },
+      "Approval": {
+        "properties": {
+          "deciders": {
+            "description": "who may decide",
+            "title": "Deciders",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "step": {
+            "title": "Step",
+            "type": "string"
+          },
+          "what": {
+            "description": "what a person approves or answers",
+            "title": "What",
+            "type": "string"
+          }
+        },
+        "required": [
+          "step",
+          "label",
+          "what",
+          "deciders"
+        ],
+        "title": "Approval",
+        "type": "object"
+      },
+      "AssistantMessage": {
+        "additionalProperties": true,
+        "description": "A message from the agent. Content is optional because a turn may consist\nonly of tool calls.",
+        "properties": {
+          "content": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content"
+          },
+          "encryptedValue": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Encryptedvalue"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "role": {
+            "const": "assistant",
+            "default": "assistant",
+            "title": "Role",
+            "type": "string"
+          },
+          "subagentRunId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subagentrunid"
+          },
+          "toolCalls": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ag_ui___generated__models__ToolCall"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Toolcalls"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "AssistantMessage",
+        "type": "object"
+      },
       "AttachShape": {
         "properties": {
           "accept": {
@@ -658,6 +836,65 @@
           "field"
         ],
         "title": "AttachShape",
+        "type": "object"
+      },
+      "AudioPart": {
+        "additionalProperties": true,
+        "description": "An audio part.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "metadata": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          },
+          "source": {
+            "discriminator": {
+              "mapping": {
+                "data": "#/components/schemas/DataSource",
+                "file": "#/components/schemas/FileSource",
+                "url": "#/components/schemas/UrlSource"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DataSource"
+              },
+              {
+                "$ref": "#/components/schemas/UrlSource"
+              },
+              {
+                "$ref": "#/components/schemas/FileSource"
+              }
+            ],
+            "title": "Source"
+          },
+          "type": {
+            "const": "audio",
+            "default": "audio",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "title": "AudioPart",
         "type": "object"
       },
       "AuditOut": {
@@ -1623,6 +1860,62 @@
         "title": "ChainProblem",
         "type": "object"
       },
+      "Changes": {
+        "properties": {
+          "added": {
+            "description": "steps and resources added, by name",
+            "items": {
+              "type": "string"
+            },
+            "title": "Added",
+            "type": "array"
+          },
+          "changed": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Changed",
+            "type": "array"
+          },
+          "copilot": {
+            "description": "Copilot proposals accepted for this version",
+            "items": {
+              "type": "string"
+            },
+            "title": "Copilot",
+            "type": "array"
+          },
+          "previous": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the semver of the version before; none: the first version",
+            "title": "Previous"
+          },
+          "removed": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Removed",
+            "type": "array"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "previous",
+          "summary"
+        ],
+        "title": "Changes",
+        "type": "object"
+      },
       "Channel": {
         "additionalProperties": false,
         "description": "One field of the shared graph state.",
@@ -2486,6 +2779,26 @@
         "title": "ConnectorSecret",
         "type": "object"
       },
+      "Context": {
+        "additionalProperties": true,
+        "description": "A named piece of ambient information given to the agent for the run,\ndistinct from the conversation.",
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "description",
+          "value"
+        ],
+        "title": "Context",
+        "type": "object"
+      },
       "ContextField": {
         "additionalProperties": false,
         "description": "Run-scoped, immutable value (LangGraph ``Runtime.context``), e.g. user_id, tenant_id.\n\n``source=\"user\"`` means the runner fills it from the authenticated identity \u2014 never from\nmodel output or client input (spec doc 08 rule 2).",
@@ -3059,6 +3372,112 @@
         "title": "Criterion",
         "type": "object"
       },
+      "DataHandling": {
+        "properties": {
+          "ai_notice": {
+            "description": "what the share link's chat page and widget tell people",
+            "title": "Ai Notice",
+            "type": "string"
+          },
+          "approval_expiry_days": {
+            "title": "Approval Expiry Days",
+            "type": "integer"
+          },
+          "audit_days": {
+            "description": "audit entries are kept this many days (0: forever)",
+            "title": "Audit Days",
+            "type": "integer"
+          },
+          "conversation_days": {
+            "description": "conversations are deleted this many days after their last activity (0: kept)",
+            "title": "Conversation Days",
+            "type": "integer"
+          },
+          "memory_days": {
+            "description": "long-term memories not updated for this long are deleted (0: kept)",
+            "title": "Memory Days",
+            "type": "integer"
+          },
+          "output_marked": {
+            "default": true,
+            "description": "its answers are marked as AI-generated (X-AI-Generated)",
+            "title": "Output Marked",
+            "type": "boolean"
+          },
+          "share_link": {
+            "description": "a share link is switched on",
+            "title": "Share Link",
+            "type": "boolean"
+          },
+          "trace_content": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the trace export sends inputs and outputs (masked)",
+            "title": "Trace Content"
+          },
+          "trace_export": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Recipient"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "trace_redact": {
+            "description": "fields whose values never reach a trace",
+            "items": {
+              "type": "string"
+            },
+            "title": "Trace Redact",
+            "type": "array"
+          }
+        },
+        "required": [
+          "conversation_days",
+          "audit_days",
+          "memory_days",
+          "approval_expiry_days",
+          "trace_redact",
+          "ai_notice",
+          "share_link"
+        ],
+        "title": "DataHandling",
+        "type": "object"
+      },
+      "DataSource": {
+        "additionalProperties": true,
+        "description": "Bytes carried inline.",
+        "properties": {
+          "mimeType": {
+            "title": "Mimetype",
+            "type": "string"
+          },
+          "type": {
+            "const": "data",
+            "default": "data",
+            "title": "Type",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "mimeType"
+        ],
+        "title": "DataSource",
+        "type": "object"
+      },
       "DatasetDetail": {
         "properties": {
           "created_at": {
@@ -3601,6 +4020,12 @@
             ],
             "title": "Key Prefix"
           },
+          "oauth": {
+            "default": false,
+            "description": "people may also sign in to its MCP and A2A endpoints with OAuth",
+            "title": "Oauth",
+            "type": "boolean"
+          },
           "semver": {
             "title": "Semver",
             "type": "string"
@@ -3652,6 +4077,77 @@
           "text"
         ],
         "title": "DesignGapOut",
+        "type": "object"
+      },
+      "DeveloperMessage": {
+        "additionalProperties": true,
+        "description": "Instructions from the application developer.",
+        "properties": {
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "encryptedValue": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Encryptedvalue"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "role": {
+            "const": "developer",
+            "default": "developer",
+            "title": "Role",
+            "type": "string"
+          },
+          "subagentRunId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subagentrunid"
+          }
+        },
+        "required": [
+          "id",
+          "content"
+        ],
+        "title": "DeveloperMessage",
         "type": "object"
       },
       "Diagnostic": {
@@ -3768,6 +4264,96 @@
         "title": "DiffOut",
         "type": "object"
       },
+      "DigestSummary": {
+        "properties": {
+          "cost_usd": {
+            "title": "Cost Usd",
+            "type": "number"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "failure_groups": {
+            "items": {
+              "$ref": "#/components/schemas/FailureGroupOut"
+            },
+            "title": "Failure Groups",
+            "type": "array"
+          },
+          "failure_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Rate"
+          },
+          "flagged": {
+            "description": "the runs flagged most (at most 5)",
+            "items": {
+              "$ref": "#/components/schemas/FlaggedRun"
+            },
+            "title": "Flagged",
+            "type": "array"
+          },
+          "latency_p50_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latency P50 Ms"
+          },
+          "latency_p95_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latency P95 Ms"
+          },
+          "runs": {
+            "title": "Runs",
+            "type": "integer"
+          },
+          "tokens": {
+            "title": "Tokens",
+            "type": "integer"
+          },
+          "workflows": {
+            "description": "the busiest workflows (at most 5)",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowLine"
+            },
+            "title": "Workflows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "runs",
+          "failed",
+          "failure_rate",
+          "cost_usd",
+          "tokens",
+          "latency_p50_ms",
+          "latency_p95_ms",
+          "failure_groups",
+          "workflows",
+          "flagged"
+        ],
+        "title": "DigestSummary",
+        "type": "object"
+      },
       "Disconnect": {
         "additionalProperties": false,
         "properties": {
@@ -3838,6 +4424,65 @@
           "created_at"
         ],
         "title": "DocumentOut",
+        "type": "object"
+      },
+      "DocumentPart": {
+        "additionalProperties": true,
+        "description": "A document part.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "metadata": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          },
+          "source": {
+            "discriminator": {
+              "mapping": {
+                "data": "#/components/schemas/DataSource",
+                "file": "#/components/schemas/FileSource",
+                "url": "#/components/schemas/UrlSource"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DataSource"
+              },
+              {
+                "$ref": "#/components/schemas/UrlSource"
+              },
+              {
+                "$ref": "#/components/schemas/FileSource"
+              }
+            ],
+            "title": "Source"
+          },
+          "type": {
+            "const": "document",
+            "default": "document",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "title": "DocumentPart",
         "type": "object"
       },
       "DuplicateIn": {
@@ -4206,6 +4851,56 @@
           "account_erased"
         ],
         "title": "ErasedMemberOut",
+        "type": "object"
+      },
+      "Evaluation": {
+        "properties": {
+          "experiment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExperimentEvidence"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the latest finished experiment"
+          },
+          "online": {
+            "items": {
+              "$ref": "#/components/schemas/OnlineEvidence"
+            },
+            "title": "Online",
+            "type": "array"
+          },
+          "red_team": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExperimentEvidence"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the latest finished red-team run"
+          },
+          "release_gate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GateEvidence"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "test_cases": {
+            "default": 0,
+            "title": "Test Cases",
+            "type": "integer"
+          }
+        },
+        "title": "Evaluation",
         "type": "object"
       },
       "EvaluatorIn": {
@@ -4612,7 +5307,7 @@
                       "type": "string"
                     },
                     {
-                      "$ref": "#/components/schemas/ToolCall"
+                      "$ref": "#/components/schemas/ToolCall-Output"
                     }
                   ]
                 },
@@ -4699,7 +5394,7 @@
                       "type": "string"
                     },
                     {
-                      "$ref": "#/components/schemas/ToolCall"
+                      "$ref": "#/components/schemas/agentcanvas__evaluation__ToolCall"
                     }
                   ]
                 },
@@ -4772,6 +5467,60 @@
           }
         },
         "title": "Expect",
+        "type": "object"
+      },
+      "ExperimentEvidence": {
+        "properties": {
+          "dataset": {
+            "title": "Dataset",
+            "type": "string"
+          },
+          "dataset_version": {
+            "title": "Dataset Version",
+            "type": "integer"
+          },
+          "ended_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/TargetResult"
+            },
+            "title": "Targets",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "status",
+          "dataset",
+          "dataset_version",
+          "ended_at",
+          "targets"
+        ],
+        "title": "ExperimentEvidence",
         "type": "object"
       },
       "ExperimentIn": {
@@ -5437,6 +6186,43 @@
         "title": "FailureGroup",
         "type": "object"
       },
+      "FailureGroupOut": {
+        "properties": {
+          "example": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "the newest such run: run_id, thread_id, workflow_id",
+            "title": "Example",
+            "type": "object"
+          },
+          "reason": {
+            "description": "the error, with what differs between runs (numbers, quoted values) taken out",
+            "title": "Reason",
+            "type": "string"
+          },
+          "runs": {
+            "title": "Runs",
+            "type": "integer"
+          },
+          "workflows": {
+            "description": "the workflows it happened in (at most 5)",
+            "items": {
+              "type": "string"
+            },
+            "title": "Workflows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "reason",
+          "runs",
+          "workflows",
+          "example"
+        ],
+        "title": "FailureGroupOut",
+        "type": "object"
+      },
       "FeedbackIn": {
         "properties": {
           "comment": {
@@ -5545,6 +6331,49 @@
           "content"
         ],
         "title": "FileSave",
+        "type": "object"
+      },
+      "FileSource": {
+        "additionalProperties": true,
+        "description": "Bytes already at the provider, named by a handle the provider issued: an\nOpenAI or Anthropic file id, a Gemini file URI, a storage URL only that\nprovider can read. No bytes travel and nothing is fetched. Only the\nprovider that minted the handle can resolve it; a peer that cannot drops\nthe part as it drops any part it cannot use.",
+        "properties": {
+          "mimeType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mimetype"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "type": {
+            "const": "file",
+            "default": "file",
+            "title": "Type",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "title": "FileSource",
         "type": "object"
       },
       "FilesOut": {
@@ -5742,6 +6571,48 @@
         "title": "FinetunePreview",
         "type": "object"
       },
+      "FlaggedRun": {
+        "properties": {
+          "flags": {
+            "description": "failing scores (evaluators, thumbs-down) and review queue items",
+            "title": "Flags",
+            "type": "integer"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "thread_id": {
+            "title": "Thread Id",
+            "type": "string"
+          },
+          "why": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Why",
+            "type": "array"
+          },
+          "workflow_id": {
+            "title": "Workflow Id",
+            "type": "string"
+          },
+          "workflow_name": {
+            "title": "Workflow Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "thread_id",
+          "workflow_id",
+          "workflow_name",
+          "flags",
+          "why"
+        ],
+        "title": "FlaggedRun",
+        "type": "object"
+      },
       "ForkRequest": {
         "properties": {
           "as_node": {
@@ -5792,6 +6663,118 @@
         "title": "ForkRequest",
         "type": "object"
       },
+      "FoundRun": {
+        "properties": {
+          "cost_usd": {
+            "title": "Cost Usd",
+            "type": "number"
+          },
+          "duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Ms"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "labels": {
+            "additionalProperties": true,
+            "title": "Labels",
+            "type": "object"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "with `text`: how well it matches, 0-1",
+            "title": "Score"
+          },
+          "snippet": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "with `text`: the start of what was asked and answered",
+            "title": "Snippet"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "thread_id": {
+            "title": "Thread Id",
+            "type": "string"
+          },
+          "tokens": {
+            "title": "Tokens",
+            "type": "integer"
+          },
+          "workflow_id": {
+            "title": "Workflow Id",
+            "type": "string"
+          },
+          "workflow_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workflow Name"
+          }
+        },
+        "required": [
+          "run_id",
+          "thread_id",
+          "workflow_id",
+          "status",
+          "cost_usd",
+          "tokens"
+        ],
+        "title": "FoundRun",
+        "type": "object"
+      },
       "FrameworkOut": {
         "additionalProperties": false,
         "properties": {
@@ -5803,7 +6786,8 @@
                 "memory_store",
                 "mcp_inspect",
                 "breakpoints",
-                "agent_designs"
+                "agent_designs",
+                "browser_tools"
               ],
               "type": "string"
             },
@@ -5950,6 +6934,26 @@
         "title": "FromTestCasesIn",
         "type": "object"
       },
+      "FunctionCall": {
+        "additionalProperties": true,
+        "description": "The name and arguments of a tool call.",
+        "properties": {
+          "arguments": {
+            "title": "Arguments",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "arguments"
+        ],
+        "title": "FunctionCall",
+        "type": "object"
+      },
       "GapOut": {
         "properties": {
           "blocks": {
@@ -5966,6 +6970,57 @@
           "text"
         ],
         "title": "GapOut",
+        "type": "object"
+      },
+      "GateEvidence": {
+        "properties": {
+          "dataset": {
+            "title": "Dataset",
+            "type": "string"
+          },
+          "dataset_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dataset Version"
+          },
+          "evaluators": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evaluators",
+            "type": "array"
+          },
+          "max_regression": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Regression"
+          },
+          "min_scores": {
+            "additionalProperties": true,
+            "title": "Min Scores",
+            "type": "object"
+          }
+        },
+        "required": [
+          "dataset",
+          "dataset_version",
+          "min_scores",
+          "max_regression",
+          "evaluators"
+        ],
+        "title": "GateEvidence",
         "type": "object"
       },
       "GateIn": {
@@ -6466,6 +7521,29 @@
         "title": "GroupMapping",
         "type": "object"
       },
+      "Guardrail": {
+        "properties": {
+          "detail": {
+            "default": "",
+            "title": "Detail",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "label"
+        ],
+        "title": "Guardrail",
+        "type": "object"
+      },
       "GuidePage": {
         "properties": {
           "markdown": {
@@ -6564,6 +7642,123 @@
           "peers"
         ],
         "title": "Here",
+        "type": "object"
+      },
+      "HistoryEntry": {
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "detail": {
+            "default": "",
+            "title": "Detail",
+            "type": "string"
+          },
+          "environment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Environment"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          },
+          "who": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Who"
+          }
+        },
+        "required": [
+          "at",
+          "action",
+          "who"
+        ],
+        "title": "HistoryEntry",
+        "type": "object"
+      },
+      "ImagePart": {
+        "additionalProperties": true,
+        "description": "An image part.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "metadata": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          },
+          "source": {
+            "discriminator": {
+              "mapping": {
+                "data": "#/components/schemas/DataSource",
+                "file": "#/components/schemas/FileSource",
+                "url": "#/components/schemas/UrlSource"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DataSource"
+              },
+              {
+                "$ref": "#/components/schemas/UrlSource"
+              },
+              {
+                "$ref": "#/components/schemas/FileSource"
+              }
+            ],
+            "title": "Source"
+          },
+          "type": {
+            "const": "image",
+            "default": "image",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "title": "ImagePart",
         "type": "object"
       },
       "ImportFile": {
@@ -7750,6 +8945,11 @@
             "title": "Publisher",
             "type": "string"
           },
+          "sandboxable": {
+            "default": false,
+            "title": "Sandboxable",
+            "type": "boolean"
+          },
           "secrets": {
             "default": [],
             "items": {
@@ -7802,6 +9002,38 @@
           "config"
         ],
         "title": "McpInspectRequest",
+        "type": "object"
+      },
+      "McpPolicy": {
+        "additionalProperties": false,
+        "description": "Limits of a local (stdio) app connector's sandbox: it lives for a run, or a conversation, within these.",
+        "properties": {
+          "idle_s": {
+            "default": 300,
+            "description": "stopped after this long without a tool call",
+            "exclusiveMinimum": 0.0,
+            "maximum": 3600.0,
+            "title": "Idle S",
+            "type": "number"
+          },
+          "lifetime_s": {
+            "default": 1800,
+            "description": "stopped after this long in any case",
+            "exclusiveMinimum": 0.0,
+            "maximum": 14400.0,
+            "title": "Lifetime S",
+            "type": "number"
+          },
+          "memory_mb": {
+            "default": 1024,
+            "description": "memory of the connector's processes",
+            "maximum": 16384.0,
+            "minimum": 128.0,
+            "title": "Memory Mb",
+            "type": "integer"
+          }
+        },
+        "title": "McpPolicy",
         "type": "object"
       },
       "McpToolInfo": {
@@ -8380,6 +9612,67 @@
         "title": "ModelOption",
         "type": "object"
       },
+      "ModelUse": {
+        "properties": {
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the model server's address when the block sets one",
+            "title": "Address"
+          },
+          "block": {
+            "description": "the AI model block",
+            "title": "Block",
+            "type": "string"
+          },
+          "model": {
+            "description": "provider:model",
+            "title": "Model",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "provider_label": {
+            "title": "Provider Label",
+            "type": "string"
+          },
+          "role": {
+            "default": "model",
+            "enum": [
+              "model",
+              "backup",
+              "cheapest of",
+              "project default"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "used_by": {
+            "description": "the steps it is wired to",
+            "items": {
+              "type": "string"
+            },
+            "title": "Used By",
+            "type": "array"
+          }
+        },
+        "required": [
+          "block",
+          "model",
+          "provider",
+          "provider_label"
+        ],
+        "title": "ModelUse",
+        "type": "object"
+      },
       "NamespaceOut": {
         "properties": {
           "namespace": {
@@ -8855,6 +10148,17 @@
       "NotificationsIn": {
         "description": "Only what is sent changes; `null` removes the Slack address or the webhook.",
         "properties": {
+          "digest": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Digest"
+          },
           "email": {
             "anyOf": [
               {
@@ -8926,6 +10230,12 @@
       },
       "NotificationsOut": {
         "properties": {
+          "digest": {
+            "default": false,
+            "description": "each project's weekly run digest also goes to these channels",
+            "title": "Digest",
+            "type": "boolean"
+          },
           "email": {
             "$ref": "#/components/schemas/EmailOut"
           },
@@ -8973,6 +10283,12 @@
       },
       "NotificationsSaved": {
         "properties": {
+          "digest": {
+            "default": false,
+            "description": "each project's weekly run digest also goes to these channels",
+            "title": "Digest",
+            "type": "boolean"
+          },
           "email": {
             "$ref": "#/components/schemas/EmailOut"
           },
@@ -9030,13 +10346,146 @@
         "title": "NotificationsSaved",
         "type": "object"
       },
+      "OAuthIn": {
+        "properties": {
+          "audience": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "also accepted as the token's audience besides the endpoint's own address (an identity provider that cannot issue tokens for an address, e.g. api://agentcanvas)",
+            "title": "Audience"
+          },
+          "enabled": {
+            "description": "people may sign in to the MCP and A2A endpoints; the keys keep working",
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "issuer": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the authorization server (its `iss`); none: the one people sign in with",
+            "title": "Issuer"
+          },
+          "scopes": {
+            "description": "the scopes a token must have, every one (empty: none)",
+            "items": {
+              "pattern": "^[\\x21\\x23-\\x5b\\x5d-\\x7e]{1,200}$",
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Scopes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "OAuthIn",
+        "type": "object"
+      },
+      "OAuthOut": {
+        "properties": {
+          "a2a_metadata": {
+            "description": "the A2A endpoint's protected resource metadata",
+            "title": "A2A Metadata",
+            "type": "string"
+          },
+          "a2a_resource": {
+            "description": "the A2A endpoint's resource identifier: its tokens' audience",
+            "title": "A2A Resource",
+            "type": "string"
+          },
+          "audience": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audience"
+          },
+          "authorization_server": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the issuer tokens must come from",
+            "title": "Authorization Server"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "issuer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the issuer set for this deployment (none: the server's)",
+            "title": "Issuer"
+          },
+          "mcp_metadata": {
+            "description": "the MCP endpoint's protected resource metadata (RFC 9728)",
+            "title": "Mcp Metadata",
+            "type": "string"
+          },
+          "mcp_resource": {
+            "description": "the MCP endpoint's resource identifier: its tokens' audience",
+            "title": "Mcp Resource",
+            "type": "string"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Scopes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "enabled",
+          "issuer",
+          "authorization_server",
+          "audience",
+          "scopes",
+          "mcp_resource",
+          "a2a_resource",
+          "mcp_metadata",
+          "a2a_metadata"
+        ],
+        "title": "OAuthOut",
+        "type": "object"
+      },
       "Observation": {
         "properties": {
           "calls": {
             "anyOf": [
               {
                 "items": {
-                  "$ref": "#/components/schemas/ToolCall"
+                  "$ref": "#/components/schemas/agentcanvas__evaluation__ToolCall"
                 },
                 "type": "array"
               },
@@ -9067,7 +10516,7 @@
                       "type": "string"
                     },
                     {
-                      "$ref": "#/components/schemas/ToolCall"
+                      "$ref": "#/components/schemas/agentcanvas__evaluation__ToolCall"
                     }
                   ]
                 },
@@ -9109,6 +10558,59 @@
           }
         },
         "title": "Observation",
+        "type": "object"
+      },
+      "OnlineEvidence": {
+        "properties": {
+          "evaluator": {
+            "title": "Evaluator",
+            "type": "string"
+          },
+          "mean": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean"
+          },
+          "open_alerts": {
+            "title": "Open Alerts",
+            "type": "integer"
+          },
+          "pass_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pass Rate"
+          },
+          "sampling": {
+            "title": "Sampling",
+            "type": "number"
+          },
+          "scored": {
+            "description": "runs scored in the last 30 days",
+            "title": "Scored",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "evaluator",
+          "sampling",
+          "scored",
+          "mean",
+          "pass_rate",
+          "open_alerts"
+        ],
+        "title": "OnlineEvidence",
         "type": "object"
       },
       "OnlineIn": {
@@ -9604,6 +11106,18 @@
             "description": "the only networks (CIDR or addresses) requests may come from, for every sign-in, token, deployment key, share link and SCIM; [] or null: any address. Your own address must be on it",
             "title": "Allowed Networks"
           },
+          "private_projects": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "each project is seen only by organisation admins and its own members (people and SCIM groups added in its settings); false: every member sees every project",
+            "title": "Private Projects"
+          },
           "require_mfa": {
             "anyOf": [
               {
@@ -9638,6 +11152,12 @@
           "networks_ignored": {
             "description": "the operator switched every allow-list off (an emergency)",
             "title": "Networks Ignored",
+            "type": "boolean"
+          },
+          "private_projects": {
+            "default": false,
+            "description": "projects are seen only by organisation admins and their members",
+            "title": "Private Projects",
             "type": "boolean"
           },
           "require_mfa": {
@@ -9911,6 +11431,32 @@
         "title": "Peer",
         "type": "object"
       },
+      "PinnedTool": {
+        "properties": {
+          "fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the hash recorded when its tools were browsed; none: by name only",
+            "title": "Fingerprint"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "fingerprint"
+        ],
+        "title": "PinnedTool",
+        "type": "object"
+      },
       "PolicyIn": {
         "properties": {
           "description": {
@@ -9979,6 +11525,29 @@
           "require"
         ],
         "title": "PolicyIn",
+        "type": "object"
+      },
+      "PolicyInForce": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "severity": {
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "severity",
+          "description"
+        ],
+        "title": "PolicyInForce",
         "type": "object"
       },
       "PolicyOut": {
@@ -10307,6 +11876,43 @@
         "title": "ProjectCaps",
         "type": "object"
       },
+      "ProjectCapsOut": {
+        "properties": {
+          "day": {
+            "$ref": "#/components/schemas/CapUse"
+          },
+          "month": {
+            "$ref": "#/components/schemas/CapUse"
+          },
+          "organisation": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "description": "the organisation's caps, which bind the project too",
+            "title": "Organisation",
+            "type": "object"
+          },
+          "own": {
+            "$ref": "#/components/schemas/ProjectCaps",
+            "description": "the project's own caps (null: none)"
+          }
+        },
+        "required": [
+          "own",
+          "organisation",
+          "day",
+          "month"
+        ],
+        "title": "ProjectCapsOut",
+        "type": "object"
+      },
       "ProjectIn": {
         "properties": {
           "name": {
@@ -10333,6 +11939,148 @@
         "title": "ProjectIn",
         "type": "object"
       },
+      "ProjectMemberIn": {
+        "description": "One person (by the email they are a member of the organisation with) or one SCIM group (by its name).",
+        "properties": {
+          "email": {
+            "anyOf": [
+              {
+                "maxLength": 320,
+                "pattern": "^[^@\\s]+@[^@\\s]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "a SCIM group's display name",
+            "title": "Group"
+          },
+          "role": {
+            "enum": [
+              "admin",
+              "builder",
+              "reviewer",
+              "viewer"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role"
+        ],
+        "title": "ProjectMemberIn",
+        "type": "object"
+      },
+      "ProjectMemberOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the SCIM group's display name",
+            "title": "Group"
+          },
+          "group_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Id"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "user",
+              "group"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "admin",
+              "builder",
+              "reviewer",
+              "viewer"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "role",
+          "created_at"
+        ],
+        "title": "ProjectMemberOut",
+        "type": "object"
+      },
       "ProjectOut": {
         "properties": {
           "created_at": {
@@ -10347,6 +12095,24 @@
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "enum": [
+                  "admin",
+                  "builder",
+                  "reviewer",
+                  "viewer"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "your role in this project",
+            "title": "Role"
           },
           "workspace_id": {
             "anyOf": [
@@ -10917,6 +12683,316 @@
         "title": "QueuePatch",
         "type": "object"
       },
+      "ReasoningMessage": {
+        "additionalProperties": true,
+        "description": "A span of the agent's reasoning, materialised as a message. Stands alone\nrather than composing BaseMessage, because it carries no name.",
+        "properties": {
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "encryptedValue": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Encryptedvalue"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          },
+          "role": {
+            "const": "reasoning",
+            "default": "reasoning",
+            "title": "Role",
+            "type": "string"
+          },
+          "subagentRunId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subagentrunid"
+          }
+        },
+        "required": [
+          "id",
+          "content"
+        ],
+        "title": "ReasoningMessage",
+        "type": "object"
+      },
+      "Recipient": {
+        "description": "A service its runs, or the scoring of its runs, send data to.",
+        "properties": {
+          "detail": {
+            "default": "",
+            "title": "Detail",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "model provider",
+              "judge model",
+              "app connector",
+              "web API",
+              "remote agent",
+              "trace export"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "local": {
+            "default": false,
+            "description": "runs on your own machines or network (a local model server)",
+            "title": "Local",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "kind"
+        ],
+        "title": "Recipient",
+        "type": "object"
+      },
+      "RecordFields": {
+        "description": "What the person responsible writes down; every field may stay empty.",
+        "properties": {
+          "data_categories": {
+            "description": "kinds of data it handles, e.g. personal data, health data",
+            "items": {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Data Categories",
+            "type": "array"
+          },
+          "end_user_facing": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "its end users are the public (customers, visitors); false: only your own staff, which picks the internal wording of its AI notice",
+            "title": "End User Facing"
+          },
+          "owner_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the member who answers for it (a user id)",
+            "title": "Owner Id"
+          },
+          "purpose": {
+            "default": "",
+            "description": "what the system is for, and what it must not be used for",
+            "maxLength": 2000,
+            "title": "Purpose",
+            "type": "string"
+          },
+          "review_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "when the record is next reviewed",
+            "title": "Review Date"
+          },
+          "risk_class": {
+            "anyOf": [
+              {
+                "enum": [
+                  "minimal",
+                  "limited",
+                  "high"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "minimal, limited or high; with a rationale",
+            "title": "Risk Class"
+          },
+          "risk_rationale": {
+            "default": "",
+            "description": "why it has this risk class",
+            "maxLength": 2000,
+            "title": "Risk Rationale",
+            "type": "string"
+          }
+        },
+        "title": "RecordFields",
+        "type": "object"
+      },
+      "RecordOut": {
+        "properties": {
+          "data_categories": {
+            "description": "kinds of data it handles, e.g. personal data, health data",
+            "items": {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Data Categories",
+            "type": "array"
+          },
+          "end_user_facing": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "its end users are the public (customers, visitors); false: only your own staff, which picks the internal wording of its AI notice",
+            "title": "End User Facing"
+          },
+          "owner_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the owner's email; none when they are no longer a member",
+            "title": "Owner Email"
+          },
+          "owner_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the member who answers for it (a user id)",
+            "title": "Owner Id"
+          },
+          "owner_member": {
+            "default": true,
+            "description": "false: the owner left the organisation",
+            "title": "Owner Member",
+            "type": "boolean"
+          },
+          "purpose": {
+            "default": "",
+            "description": "what the system is for, and what it must not be used for",
+            "maxLength": 2000,
+            "title": "Purpose",
+            "type": "string"
+          },
+          "review_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "when the record is next reviewed",
+            "title": "Review Date"
+          },
+          "risk_class": {
+            "anyOf": [
+              {
+                "enum": [
+                  "minimal",
+                  "limited",
+                  "high"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "minimal, limited or high; with a rationale",
+            "title": "Risk Class"
+          },
+          "risk_rationale": {
+            "default": "",
+            "description": "why it has this risk class",
+            "maxLength": 2000,
+            "title": "Risk Rationale",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "updated_by_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By Email"
+          }
+        },
+        "title": "RecordOut",
+        "type": "object"
+      },
       "RecrawlIn": {
         "properties": {
           "every_hours": {
@@ -11386,6 +13462,51 @@
         "title": "Resource",
         "type": "object"
       },
+      "ResumeEntry": {
+        "additionalProperties": true,
+        "description": "An answer to one interrupt, sent on the run that continues from it.",
+        "properties": {
+          "interruptId": {
+            "title": "Interruptid",
+            "type": "string"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          },
+          "payload": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payload"
+          },
+          "status": {
+            "enum": [
+              "resolved",
+              "cancelled"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "interruptId",
+          "status"
+        ],
+        "title": "ResumeEntry",
+        "type": "object"
+      },
       "ResumeRequest": {
         "properties": {
           "dry_run": {
@@ -11396,12 +13517,14 @@
           "interrupt_id": {
             "anyOf": [
               {
+                "maxLength": 200,
                 "type": "string"
               },
               {
                 "type": "null"
               }
             ],
+            "description": "the pause this answers (an id from the run's interrupts); may be left out only while one waits",
             "title": "Interrupt Id"
           },
           "mocks": {
@@ -11530,6 +13653,247 @@
         "title": "Rules",
         "type": "object"
       },
+      "RunAgentInput": {
+        "additionalProperties": true,
+        "description": "A request to run an agent. Also echoed back as RUN_STARTED.input. Only\nthreadId, runId and messages are required: those are the three the SDKs\nalready agree on, and for tools and context an absent key and an empty\narray mean the same thing, so requiring them would catch nothing a\nproducer could get wrong.",
+        "properties": {
+          "context": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/Context"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context"
+          },
+          "forwardedProps": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Forwardedprops"
+          },
+          "messages": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "activity": "#/components/schemas/ActivityMessage",
+                  "assistant": "#/components/schemas/AssistantMessage",
+                  "developer": "#/components/schemas/DeveloperMessage",
+                  "reasoning": "#/components/schemas/ReasoningMessage",
+                  "system": "#/components/schemas/SystemMessage",
+                  "tool": "#/components/schemas/ToolMessage",
+                  "user": "#/components/schemas/UserMessage"
+                },
+                "propertyName": "role"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/DeveloperMessage"
+                },
+                {
+                  "$ref": "#/components/schemas/SystemMessage"
+                },
+                {
+                  "$ref": "#/components/schemas/AssistantMessage"
+                },
+                {
+                  "$ref": "#/components/schemas/UserMessage"
+                },
+                {
+                  "$ref": "#/components/schemas/ToolMessage"
+                },
+                {
+                  "$ref": "#/components/schemas/ActivityMessage"
+                },
+                {
+                  "$ref": "#/components/schemas/ReasoningMessage"
+                }
+              ]
+            },
+            "title": "Messages",
+            "type": "array"
+          },
+          "parentRunId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parentrunid"
+          },
+          "protocolVersion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Protocolversion"
+          },
+          "resume": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ResumeEntry"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resume"
+          },
+          "runId": {
+            "title": "Runid",
+            "type": "string"
+          },
+          "state": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          },
+          "threadId": {
+            "title": "Threadid",
+            "type": "string"
+          },
+          "tools": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/Tool"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tools"
+          }
+        },
+        "required": [
+          "threadId",
+          "runId",
+          "messages"
+        ],
+        "title": "RunAgentInput",
+        "type": "object"
+      },
+      "RunAskIn": {
+        "properties": {
+          "question": {
+            "description": "e.g. \"failed runs about refunds last week\"",
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Question",
+            "type": "string"
+          },
+          "workflow_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "keep the searches to this workflow (the page's filter)",
+            "title": "Workflow Id"
+          }
+        },
+        "required": [
+          "question"
+        ],
+        "title": "RunAskIn",
+        "type": "object"
+      },
+      "RunAskOut": {
+        "properties": {
+          "answer": {
+            "description": "the Copilot's answer in a few sentences; empty when `error` says why",
+            "title": "Answer",
+            "type": "string"
+          },
+          "cost_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "what the answer cost, where the model's price is known",
+            "title": "Cost Usd"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "runs": {
+            "description": "the runs its searches returned, in the order they were found",
+            "items": {
+              "$ref": "#/components/schemas/FoundRun"
+            },
+            "title": "Runs",
+            "type": "array"
+          },
+          "searches": {
+            "description": "each search's filters and how many runs matched them",
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Searches",
+            "type": "array"
+          },
+          "usage": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Usage",
+            "type": "object"
+          }
+        },
+        "required": [
+          "answer",
+          "runs",
+          "searches",
+          "model",
+          "usage"
+        ],
+        "title": "RunAskOut",
+        "type": "object"
+      },
       "RunCallbackOut": {
         "properties": {
           "attempts": {
@@ -11600,6 +13964,49 @@
           "attempts"
         ],
         "title": "RunCallbackOut",
+        "type": "object"
+      },
+      "RunDigestOut": {
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "current": {
+            "description": "this week so far, computed now and not kept",
+            "title": "Current",
+            "type": "boolean"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/DigestSummary"
+          },
+          "week_end": {
+            "format": "date-time",
+            "title": "Week End",
+            "type": "string"
+          },
+          "week_start": {
+            "description": "Monday 00:00 UTC",
+            "format": "date-time",
+            "title": "Week Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "week_start",
+          "week_end",
+          "current",
+          "summary"
+        ],
+        "title": "RunDigestOut",
         "type": "object"
       },
       "RunHit": {
@@ -11994,6 +14401,9 @@
             },
             "title": "Inject",
             "type": "array"
+          },
+          "mcp": {
+            "$ref": "#/components/schemas/McpPolicy"
           },
           "memory_mb": {
             "default": 512,
@@ -13176,12 +15586,14 @@
           "interrupt_id": {
             "anyOf": [
               {
+                "maxLength": 200,
                 "type": "string"
               },
               {
                 "type": "null"
               }
             ],
+            "description": "the question this answers; may be left out only while one waits",
             "title": "Interrupt Id"
           },
           "text": {
@@ -14118,7 +16530,7 @@
       "StopRunsOut": {
         "properties": {
           "cancelled": {
-            "description": "runs that were waiting for another server to continue them",
+            "description": "runs that ran nowhere: waiting for another server to continue them, or paused at a Wait step",
             "items": {
               "type": "string"
             },
@@ -14185,6 +16597,231 @@
           "detail"
         ],
         "title": "Surface",
+        "type": "object"
+      },
+      "SystemMessage": {
+        "additionalProperties": true,
+        "description": "Instructions from the system.",
+        "properties": {
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "encryptedValue": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Encryptedvalue"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "role": {
+            "const": "system",
+            "default": "system",
+            "title": "Role",
+            "type": "string"
+          },
+          "subagentRunId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subagentrunid"
+          }
+        },
+        "required": [
+          "id",
+          "content"
+        ],
+        "title": "SystemMessage",
+        "type": "object"
+      },
+      "SystemRecordOut": {
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "approvals": {
+            "items": {
+              "$ref": "#/components/schemas/Approval"
+            },
+            "title": "Approvals",
+            "type": "array"
+          },
+          "changes": {
+            "$ref": "#/components/schemas/Changes"
+          },
+          "data_handling": {
+            "$ref": "#/components/schemas/DataHandling"
+          },
+          "deployment_id": {
+            "title": "Deployment Id",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "environment": {
+            "title": "Environment",
+            "type": "string"
+          },
+          "evaluation": {
+            "$ref": "#/components/schemas/Evaluation"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "guardrails": {
+            "items": {
+              "$ref": "#/components/schemas/Guardrail"
+            },
+            "title": "Guardrails",
+            "type": "array"
+          },
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/HistoryEntry"
+            },
+            "title": "History",
+            "type": "array"
+          },
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/ModelUse"
+            },
+            "title": "Models",
+            "type": "array"
+          },
+          "notes": {
+            "description": "reminders, not errors: what an auditor would ask about",
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "organisation": {
+            "title": "Organisation",
+            "type": "string"
+          },
+          "policies": {
+            "items": {
+              "$ref": "#/components/schemas/PolicyInForce"
+            },
+            "title": "Policies",
+            "type": "array"
+          },
+          "project": {
+            "title": "Project",
+            "type": "string"
+          },
+          "published_at": {
+            "format": "date-time",
+            "title": "Published At",
+            "type": "string"
+          },
+          "record": {
+            "$ref": "#/components/schemas/RecordOut"
+          },
+          "subprocessors": {
+            "items": {
+              "$ref": "#/components/schemas/Recipient"
+            },
+            "title": "Subprocessors",
+            "type": "array"
+          },
+          "tools": {
+            "items": {
+              "$ref": "#/components/schemas/ToolInfo"
+            },
+            "title": "Tools",
+            "type": "array"
+          },
+          "ungated": {
+            "description": "steps that act outside (write, send, run code) without a person approving",
+            "items": {
+              "type": "string"
+            },
+            "title": "Ungated",
+            "type": "array"
+          },
+          "version": {
+            "$ref": "#/components/schemas/VersionInfo"
+          },
+          "workflow": {
+            "title": "Workflow",
+            "type": "string"
+          },
+          "workflow_id": {
+            "title": "Workflow Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "generated_at",
+          "organisation",
+          "project",
+          "workflow_id",
+          "workflow",
+          "description",
+          "deployment_id",
+          "environment",
+          "active",
+          "published_at",
+          "record",
+          "version",
+          "changes",
+          "models",
+          "subprocessors",
+          "tools",
+          "guardrails",
+          "policies",
+          "approvals",
+          "ungated",
+          "evaluation",
+          "history",
+          "data_handling",
+          "notes"
+        ],
+        "title": "SystemRecordOut",
         "type": "object"
       },
       "TargetIn": {
@@ -14282,6 +16919,71 @@
           "overrides"
         ],
         "title": "TargetOut",
+        "type": "object"
+      },
+      "TargetResult": {
+        "properties": {
+          "completed": {
+            "title": "Completed",
+            "type": "integer"
+          },
+          "evaluators": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "description": "evaluator -> mean score",
+            "title": "Evaluators",
+            "type": "object"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "pass_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pass Rate"
+          },
+          "this_version": {
+            "description": "it ran exactly the published version",
+            "title": "This Version",
+            "type": "boolean"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the semver it ran, or 'draft'",
+            "title": "Version"
+          }
+        },
+        "required": [
+          "label",
+          "version",
+          "this_version",
+          "pass_rate",
+          "completed",
+          "evaluators"
+        ],
+        "title": "TargetResult",
         "type": "object"
       },
       "TargetSummary": {
@@ -14771,6 +17473,47 @@
         "title": "TextIn",
         "type": "object"
       },
+      "TextPart": {
+        "additionalProperties": true,
+        "description": "A text part.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "metadata": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "type": {
+            "const": "text",
+            "default": "text",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "TextPart",
+        "type": "object"
+      },
       "ThreadOut": {
         "properties": {
           "cost_usd": {
@@ -15232,7 +17975,48 @@
         "title": "TokenOut",
         "type": "object"
       },
-      "ToolCall": {
+      "Tool": {
+        "additionalProperties": true,
+        "description": "A tool the agent may call.",
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "parameters": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parameters"
+          }
+        },
+        "required": [
+          "name",
+          "description"
+        ],
+        "title": "Tool",
+        "type": "object"
+      },
+      "ToolCall-Output": {
         "description": "One tool call: in an example, its arguments are what the run's call must have (a value, or {\"$regex\": \u2026}).",
         "properties": {
           "args": {
@@ -15257,6 +18041,196 @@
           "name"
         ],
         "title": "ToolCall",
+        "type": "object"
+      },
+      "ToolInfo": {
+        "properties": {
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "drift": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "what the server changed since publishing",
+            "title": "Drift"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "on_tool_change": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "app connectors: drop a changed tool, or fail the run",
+            "title": "On Tool Change"
+          },
+          "pinned": {
+            "description": "app connectors: the tools it may offer",
+            "items": {
+              "$ref": "#/components/schemas/PinnedTool"
+            },
+            "title": "Pinned",
+            "type": "array"
+          },
+          "pinning": {
+            "default": "",
+            "enum": [
+              "pinned",
+              "names only",
+              "not pinned",
+              ""
+            ],
+            "title": "Pinning",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "label"
+        ],
+        "title": "ToolInfo",
+        "type": "object"
+      },
+      "ToolMessage": {
+        "additionalProperties": true,
+        "description": "What a tool returned, as a message in the conversation. Stands alone\nrather than composing BaseMessage, because it carries no name.",
+        "properties": {
+          "content": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "discriminator": {
+                    "mapping": {
+                      "audio": "#/components/schemas/AudioPart",
+                      "document": "#/components/schemas/DocumentPart",
+                      "image": "#/components/schemas/ImagePart",
+                      "text": "#/components/schemas/TextPart",
+                      "video": "#/components/schemas/VideoPart"
+                    },
+                    "propertyName": "type"
+                  },
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/TextPart"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ImagePart"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AudioPart"
+                    },
+                    {
+                      "$ref": "#/components/schemas/VideoPart"
+                    },
+                    {
+                      "$ref": "#/components/schemas/DocumentPart"
+                    }
+                  ]
+                },
+                "type": "array"
+              }
+            ],
+            "title": "Content"
+          },
+          "encryptedValue": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Encryptedvalue"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          },
+          "role": {
+            "const": "tool",
+            "default": "tool",
+            "title": "Role",
+            "type": "string"
+          },
+          "subagentRunId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subagentrunid"
+          },
+          "toolCallId": {
+            "title": "Toolcallid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "content",
+          "toolCallId"
+        ],
+        "title": "ToolMessage",
         "type": "object"
       },
       "ToolUse": {
@@ -15931,6 +18905,145 @@
         "title": "UrlIn",
         "type": "object"
       },
+      "UrlSource": {
+        "additionalProperties": true,
+        "description": "Bytes referenced by URL, fetched by whoever needs them.",
+        "properties": {
+          "mimeType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mimetype"
+          },
+          "type": {
+            "const": "url",
+            "default": "url",
+            "title": "Type",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "title": "UrlSource",
+        "type": "object"
+      },
+      "UserMessage": {
+        "additionalProperties": true,
+        "description": "A message from the person using the application.",
+        "properties": {
+          "content": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "discriminator": {
+                    "mapping": {
+                      "audio": "#/components/schemas/AudioPart",
+                      "document": "#/components/schemas/DocumentPart",
+                      "image": "#/components/schemas/ImagePart",
+                      "text": "#/components/schemas/TextPart",
+                      "video": "#/components/schemas/VideoPart"
+                    },
+                    "propertyName": "type"
+                  },
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/TextPart"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ImagePart"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AudioPart"
+                    },
+                    {
+                      "$ref": "#/components/schemas/VideoPart"
+                    },
+                    {
+                      "$ref": "#/components/schemas/DocumentPart"
+                    }
+                  ]
+                },
+                "type": "array"
+              }
+            ],
+            "title": "Content"
+          },
+          "encryptedValue": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Encryptedvalue"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "role": {
+            "const": "user",
+            "default": "user",
+            "title": "Role",
+            "type": "string"
+          },
+          "subagentRunId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subagentrunid"
+          }
+        },
+        "required": [
+          "id",
+          "content"
+        ],
+        "title": "UserMessage",
+        "type": "object"
+      },
       "VersionDetail": {
         "properties": {
           "copilot_changes": {
@@ -16031,6 +19144,60 @@
         "title": "VersionIn",
         "type": "object"
       },
+      "VersionInfo": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the email of who made the version, or their id",
+            "title": "Created By"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "semver": {
+            "title": "Semver",
+            "type": "string"
+          },
+          "workspace_commit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace Commit"
+          }
+        },
+        "required": [
+          "id",
+          "semver",
+          "message",
+          "created_at",
+          "created_by",
+          "workspace_commit"
+        ],
+        "title": "VersionInfo",
+        "type": "object"
+      },
       "VersionOut": {
         "properties": {
           "copilot_changes": {
@@ -16097,6 +19264,65 @@
         "title": "VersionOut",
         "type": "object"
       },
+      "VideoPart": {
+        "additionalProperties": true,
+        "description": "A video part.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "metadata": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          },
+          "source": {
+            "discriminator": {
+              "mapping": {
+                "data": "#/components/schemas/DataSource",
+                "file": "#/components/schemas/FileSource",
+                "url": "#/components/schemas/UrlSource"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DataSource"
+              },
+              {
+                "$ref": "#/components/schemas/UrlSource"
+              },
+              {
+                "$ref": "#/components/schemas/FileSource"
+              }
+            ],
+            "title": "Source"
+          },
+          "type": {
+            "const": "video",
+            "default": "video",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "title": "VideoPart",
+        "type": "object"
+      },
       "WorkflowIn": {
         "properties": {
           "model": {
@@ -16149,6 +19375,39 @@
           }
         },
         "title": "WorkflowIn",
+        "type": "object"
+      },
+      "WorkflowLine": {
+        "properties": {
+          "cost_usd": {
+            "title": "Cost Usd",
+            "type": "number"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "runs": {
+            "title": "Runs",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "runs",
+          "failed",
+          "cost_usd"
+        ],
+        "title": "WorkflowLine",
         "type": "object"
       },
       "WorkflowOut": {
@@ -16322,6 +19581,54 @@
         "title": "WorkspaceOut",
         "type": "object"
       },
+      "ag_ui___generated__models__ToolCall": {
+        "additionalProperties": true,
+        "description": "A call an assistant message made. Carries no subagent attribution of its\nown and inherits its containing message's, since several calls can share\none parent.",
+        "properties": {
+          "encryptedValue": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Encryptedvalue"
+          },
+          "function": {
+            "$ref": "#/components/schemas/FunctionCall"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          },
+          "type": {
+            "const": "function",
+            "default": "function",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "function"
+        ],
+        "title": "ToolCall",
+        "type": "object"
+      },
       "agentcanvas__api__v1__datasets__PushIn": {
         "properties": {
           "version": {
@@ -16486,6 +19793,33 @@
           "modified"
         ],
         "title": "FileOut",
+        "type": "object"
+      },
+      "agentcanvas__evaluation__ToolCall": {
+        "description": "One tool call: in an example, its arguments are what the run's call must have (a value, or {\"$regex\": \u2026}).",
+        "properties": {
+          "args": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Args"
+          },
+          "name": {
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "ToolCall",
         "type": "object"
       }
     },
@@ -19897,6 +23231,78 @@
         ]
       }
     },
+    "/v1/deployments/{dep_id}/ag-ui": {
+      "post": {
+        "description": "Run the published version for an AG-UI client (CopilotKit and others): the request is a `RunAgentInput`, the\nanswer a stream of AG-UI 1.0 events (SSE). A new `threadId` starts a conversation, a known one continues it;\n`resume` entries and tool messages answer what the last run waits for.",
+        "operationId": "api_ag_ui_v1_deployments__dep_id__ag_ui_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dep_id",
+            "required": true,
+            "schema": {
+              "title": "Dep Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunAgentInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error (a problem document)"
+          }
+        },
+        "summary": "Api Ag Ui",
+        "tags": [
+          "deployments"
+        ]
+      }
+    },
     "/v1/deployments/{dep_id}/callback-secret": {
       "post": {
         "description": "Create the secret that signs this deployment's run callbacks, or replace it (the old one stops signing at\nonce, also for callbacks still waiting to be delivered). Runs can ask for a callback once it exists.",
@@ -20614,6 +24020,166 @@
         "summary": "Mcp Server Card",
         "tags": [
           "agent protocols"
+        ]
+      }
+    },
+    "/v1/deployments/{dep_id}/oauth": {
+      "get": {
+        "description": "Whether people may sign in to the deployment's MCP and A2A endpoints with OAuth, and the addresses a client\nand the identity provider need.",
+        "operationId": "get_deployment_oauth_v1_deployments__dep_id__oauth_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dep_id",
+            "required": true,
+            "schema": {
+              "title": "Dep Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error (a problem document)"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Deployment Oauth",
+        "tags": [
+          "deployments"
+        ]
+      },
+      "put": {
+        "description": "Let people sign in to the deployment's MCP and A2A endpoints with an access token from the identity provider\n(OAuth 2.1, the MCP authorization spec), or stop it. The keys keep working either way. Turning it on checks that\nthe issuer's signing keys can be loaded (502 otherwise).",
+        "operationId": "put_deployment_oauth_v1_deployments__dep_id__oauth_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dep_id",
+            "required": true,
+            "schema": {
+              "title": "Dep Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OAuthIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error (a problem document)"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Put Deployment Oauth",
+        "tags": [
+          "deployments"
         ]
       }
     },
@@ -21779,6 +25345,256 @@
         ]
       }
     },
+    "/v1/deployments/{dep_id}/system-record": {
+      "get": {
+        "description": "The deployment's AI-system record: what people wrote (purpose, owner, risk class, data categories, review\ndate) with the evidence read now (version and changes, models and subprocessors, tools and pinned fingerprints,\nguardrails and policies, approvals, evaluation results, who published it, retention), and reminders (`notes`).",
+        "operationId": "get_system_record_v1_deployments__dep_id__system_record_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dep_id",
+            "required": true,
+            "schema": {
+              "title": "Dep Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemRecordOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error (a problem document)"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get System Record",
+        "tags": [
+          "deployments"
+        ]
+      },
+      "put": {
+        "description": "Replace what people wrote in the record (every field; leave one empty to clear it). The owner must be a\nmember, and a risk class needs a rationale. The audit log keeps the risk class, owner and review date.",
+        "operationId": "update_system_record_v1_deployments__dep_id__system_record_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dep_id",
+            "required": true,
+            "schema": {
+              "title": "Dep Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordFields"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemRecordOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error (a problem document)"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update System Record",
+        "tags": [
+          "deployments"
+        ]
+      }
+    },
+    "/v1/deployments/{dep_id}/system-record/export": {
+      "get": {
+        "description": "The record as a document to hand an auditor or file in your AI inventory: Markdown, or an HTML page that\nprints as a PDF. Each download is in the audit log (`export_system_record`).",
+        "operationId": "export_system_record_v1_deployments__dep_id__system_record_export_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dep_id",
+            "required": true,
+            "schema": {
+              "title": "Dep Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "markdown or html (prints as a PDF)",
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "default": "markdown",
+              "description": "markdown or html (prints as a PDF)",
+              "enum": [
+                "markdown",
+                "html"
+              ],
+              "title": "Format",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error (a problem document)"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Export System Record",
+        "tags": [
+          "deployments"
+        ]
+      }
+    },
     "/v1/deployments/{dep_id}/threads/{thread_id}/resume": {
       "post": {
         "description": "Answer a pending interrupt (approval, input) of a conversation this deployment started.",
@@ -22928,6 +26744,7 @@
     },
     "/v1/inbox": {
       "get": {
+        "description": "What waits for a person (or was decided), of the projects the caller sees, with whether they may decide each:\nby their role in its project.",
         "operationId": "inbox_v1_inbox_get",
         "parameters": [
           {
@@ -28413,6 +32230,7 @@
     },
     "/v1/projects": {
       "get": {
+        "description": "The projects you see (all of the organisation's, unless its projects are private), with your role in each.",
         "operationId": "list_projects_v1_projects_get",
         "parameters": [
           {
@@ -28499,7 +32317,7 @@
         ]
       },
       "post": {
-        "description": "A new project in the caller's organisation (409 when the name is taken there), optionally in one of its\nMatura workspaces (422 when that is not an active workspace of the organisation).",
+        "description": "A new project in the caller's organisation (409 when the name is taken there), optionally in one of its\nMatura workspaces (422 when that is not an active workspace of the organisation). With the organisation's projects\nprivate, whoever creates one becomes its admin (else they could not see it).",
         "operationId": "create_project_v1_projects_post",
         "parameters": [
           {
@@ -30122,6 +33940,248 @@
         ]
       }
     },
+    "/v1/projects/{project_id}/members": {
+      "get": {
+        "description": "The people and SCIM groups bound to the project, with their role there. Organisation admins are admins of every\nproject without being listed.",
+        "operationId": "list_project_members_v1_projects__project_id__members_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ProjectMemberOut"
+                  },
+                  "title": "Response List Project Members V1 Projects  Project Id  Members Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error (a problem document)"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Project Members",
+        "tags": [
+          "projects"
+        ]
+      },
+      "put": {
+        "description": "Add a member of the organisation, or one of its SCIM groups, to the project with a role, or change that role\n(project admins and organisation admins). The role may be above their organisation role: it applies here only.",
+        "operationId": "put_project_member_v1_projects__project_id__members_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectMemberIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectMemberOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error (a problem document)"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Put Project Member",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/members/{member_id}": {
+      "delete": {
+        "description": "Take a person or group out of the project. With the organisation's projects private, they no longer see it\n(unless another binding, or being an organisation admin, still lets them).",
+        "operationId": "delete_project_member_v1_projects__project_id__members__member_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "member_id",
+            "required": true,
+            "schema": {
+              "title": "Member Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error (a problem document)"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Project Member",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
     "/v1/projects/{project_id}/model-defaults": {
       "get": {
         "description": "The project's models by purpose: chat, judges, simulated users, embeddings, and why each is what it is.",
@@ -30532,6 +34592,260 @@
         ]
       }
     },
+    "/v1/projects/{project_id}/run-digests": {
+      "get": {
+        "description": "The project's weekly run digests, newest first. One is made each Monday for the week before, when the\nproject had runs in it.",
+        "operationId": "list_digests_v1_projects__project_id__run_digests_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 8,
+              "maximum": 52,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RunDigestOut"
+                  },
+                  "title": "Response List Digests V1 Projects  Project Id  Run Digests Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error (a problem document)"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Digests",
+        "tags": [
+          "runs"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/run-digests/current": {
+      "get": {
+        "description": "This week so far (since Monday 00:00 UTC), computed now and not kept.",
+        "operationId": "current_digest_v1_projects__project_id__run_digests_current_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunDigestOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error (a problem document)"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Current Digest",
+        "tags": [
+          "runs"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/runs/ask": {
+      "post": {
+        "description": "Ask the Copilot about the project's runs (the Runs page's Ask box): it searches them with `search_runs` only\nand answers in a few sentences, with the runs it found. Nothing is kept. Counts against the spending caps.",
+        "operationId": "ask_about_runs_v1_projects__project_id__runs_ask_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunAskIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunAskOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error (a problem document)"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Ask About Runs",
+        "tags": [
+          "copilot"
+        ]
+      }
+    },
     "/v1/projects/{project_id}/runs/search": {
       "get": {
         "description": "Find conversations by meaning (G-10): the project's runs ranked against `q` with its embedding model, the\nbest run of each conversation first. `stale` counts runs not in the index yet (`POST \u2026/runs/search/index`).",
@@ -30820,7 +35134,7 @@
         ]
       },
       "put": {
-        "description": "Save the sandbox policy as `sandbox.json` (the same checks as the file: hostnames, secrets, limits).",
+        "description": "Save the sandbox policy as `sandbox.json` (the same checks as the file: hostnames, secrets, limits). A body\nwithout `mcp` keeps the file's app connector limits (a form that does not show them leaves them as they are).",
         "operationId": "put_sandbox_v1_projects__project_id__sandbox_put",
         "parameters": [
           {
@@ -31647,8 +35961,82 @@
       }
     },
     "/v1/projects/{project_id}/spending-caps": {
+      "get": {
+        "description": "The project's spending caps, the organisation's that bind it too, and what the project spent today and this\nmonth (UTC), as the caps count it (project admins and organisation admins).",
+        "operationId": "get_spending_caps_v1_projects__project_id__spending_caps_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "organisation to act in (default: last used)",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "organisation to act in (default: last used)",
+              "title": "X-Org-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectCapsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error (a problem document)"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Spending Caps",
+        "tags": [
+          "projects"
+        ]
+      },
       "put": {
-        "description": "Cap what the project spends a UTC day and a calendar month, in USD (admins). A field left out keeps its value,\nnull removes the cap. Never above the organisation's cap, which binds the project as well; at a cap, the\nproject's new runs are refused (429) and its runs in flight stop.",
+        "description": "Cap what the project spends a UTC day and a calendar month, in USD (project admins and organisation admins). A\nfield left out keeps its value, null removes the cap. Never above the organisation's cap, which binds the project\nas well; at a cap, the project's new runs are refused (429) and its runs in flight stop.",
         "operationId": "put_spending_caps_v1_projects__project_id__spending_caps_put",
         "parameters": [
           {
@@ -32927,7 +37315,7 @@
     },
     "/v1/runs/{run_id}/cancel": {
       "post": {
-        "description": "Stop a run. One running on this instance stops now. Requests are spread over the replicas, so the run may be\nrunning on another one: it is marked in the database and that instance stops it at its next heartbeat\n(`pending`, within `AGENTCANVAS_HANDOVER_INTERVAL_S`).",
+        "description": "Stop a run. One running on this instance stops now. Requests are spread over the replicas, so the run may be\nrunning on another one: it is marked in the database and that instance stops it at its next heartbeat\n(`pending`, within `AGENTCANVAS_HANDOVER_INTERVAL_S`). A run paused at a Wait step is cancelled at once.",
         "operationId": "cancel_run_v1_runs__run_id__cancel_post",
         "parameters": [
           {
@@ -33845,7 +38233,7 @@
     },
     "/v1/threads": {
       "get": {
-        "description": "Conversations (threads) newest first, each with its workflow's name and a summary of its runs.",
+        "description": "Conversations (threads) newest first, each with its workflow's name and a summary of its runs: of the projects\nthe caller sees.",
         "operationId": "list_threads_v1_threads_get",
         "parameters": [
           {
