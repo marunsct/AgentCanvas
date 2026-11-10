@@ -263,6 +263,87 @@ async def test_an_escalation_made_by_a_background_job_reaches_the_audit_outbox(a
     assert (queued.destination, queued.org_id) == ("webhook", "org_default")
 
 
+async def test_a_reminder_goes_once_before_an_item_escalates_and_again_before_it_expires(app, triage_api, smtp):  # noqa: F811
+    api, wf = triage_api, triage_api.wf_id
+    await _configure(api, email=True, slack_url=SLACK)
+    await _member(app, "usr_lee", "lee@example.com", "reviewer")
+    approvers = {"people": ["lee@example.com"], "escalate_to": "admin", "escalate_after_hours": 72}
+    await edit_node(api, wf, "n_ag", approvers=approvers)
+    item = await _waiting(api, wf, "th_remind")
+    async with app.state.db.sessionmaker() as s:
+        due = (await s.get(InterruptTask, item["id"])).escalate_at
+    job = app.state.notifier
+    other = NotifierJob(app.state.db, app.state.keyring, app.state.settings)  # a second API server
+    wire, wire_b = Wire(job), Wire(other)
+    await job.tick(datetime.now(UTC))
+    assert len(wire.mails) == 1 and len(wire.to(SLACK)) == 1  # the announcement
+    await job.tick(due - timedelta(hours=25))
+    assert len(wire.mails) == 1  # not yet: the reminder goes 24 hours before
+
+    await asyncio.gather(job.tick(due - timedelta(hours=23)), other.tick(due - timedelta(hours=23)))
+    mails, posts = wire.mails[1:] + wire_b.mails, wire.to(SLACK)[1:] + wire_b.to(SLACK)
+    assert len(mails) == 1 and len(posts) == 1  # once, whatever the number of servers
+    [(to, subject, text)] = mails
+    assert to == ["lee@example.com"] and subject.startswith("Approval still waiting: Support triage")
+    assert text.startswith("A reminder") and "it goes to the admin role" in text
+    assert "Approval still waiting" in posts[0].content.decode()
+    await job.tick(due - timedelta(hours=1))
+    assert len(wire.mails) + len(wire_b.mails) == 2  # not again
+
+    await job.tick(due + timedelta(minutes=1))  # escalated: the expiry now counts from here, with its own reminder
+    async with app.state.db.sessionmaker() as s:
+        row = await s.get(InterruptTask, item["id"])
+        assert row.escalated_at is not None and row.reminded_at is None
+        expires = row.escalated_at + timedelta(days=app.state.settings.approval_expiry_days)
+    await job.tick(expires - timedelta(hours=23))
+    (_, subject, text) = wire.mails[-1]
+    assert subject.startswith("Approval still waiting") and "It expires on" in text
+
+
+async def test_no_reminder_for_a_short_wait_or_with_reminders_off(app, triage_api, smtp, monkeypatch):  # noqa: F811
+    api, wf = triage_api, triage_api.wf_id
+    await _configure(api, email=True)
+    short = {"roles": ["admin"], "escalate_to": "builder", "escalate_after_hours": 30}
+    await edit_node(api, wf, "n_ag", approvers=short)
+    item = await _waiting(api, wf, "th_short")
+    job = app.state.notifier
+    wire = Wire(job)
+    async with app.state.db.sessionmaker() as s:
+        due = (await s.get(InterruptTask, item["id"])).escalate_at
+    await job.tick(datetime.now(UTC))
+    await job.tick(due - timedelta(hours=23))
+    assert len(wire.mails) == 1  # 30 hours in all: a reminder 6 hours after the first message would be noise
+    async with app.state.db.sessionmaker() as s:
+        assert (await s.get(InterruptTask, item["id"])).reminded_at is not None  # claimed, so not looked at again
+
+    monkeypatch.setattr(app.state.settings, "approval_reminder_hours", 0)
+    monkeypatch.setattr(app.state.settings, "approval_expiry_days", 3)
+    await edit_node(api, wf, "n_ag", approvers={"roles": ["admin"]})
+    other = await _waiting(api, wf, "th_off")
+    await job.tick(datetime.now(UTC))
+    await job.tick(datetime.now(UTC) + timedelta(days=2, hours=12))
+    assert [m for m in wire.mails if "reminder" in m[2].lower()] == []
+    async with app.state.db.sessionmaker() as s:
+        assert (await s.get(InterruptTask, other["id"])).reminded_at is None
+
+
+async def test_a_reminder_before_an_item_expires(app, triage_api, smtp, monkeypatch):  # noqa: F811
+    monkeypatch.setattr(app.state.settings, "approval_expiry_days", 3)
+    api, wf = triage_api, triage_api.wf_id
+    await _configure(api, email=True)
+    await edit_node(api, wf, "n_ag", approvers={"roles": ["admin"]})
+    item = await _waiting(api, wf, "th_expiring")
+    job = app.state.notifier
+    wire = Wire(job)
+    await job.tick(datetime.now(UTC))
+    await job.tick(datetime.now(UTC) + timedelta(days=1, hours=12))
+    assert len(wire.mails) == 1
+    await job.tick(datetime.now(UTC) + timedelta(days=2, hours=1))
+    (to, subject, text) = wire.mails[-1]
+    assert len(wire.mails) == 2 and to == ["dev@localhost"] and "It expires on" in text
+    assert f"/inbox?item={item['id']}" in text and subject.startswith("Approval still waiting")
+
+
 async def test_at_the_expiry_a_step_that_escalates_is_handed_on_instead_of_cancelled(app, triage_api):  # noqa: F811
     api, wf = triage_api, triage_api.wf_id
     await edit_node(api, wf, "n_ag", approvers={"roles": ["admin"], "escalate_to": "builder"})

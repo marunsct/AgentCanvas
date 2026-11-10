@@ -599,6 +599,9 @@ class InterruptTask(Base):
     # the step escalates at all), and when it was escalated to `assignee_role` (its expiry counts from then)
     escalate_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
     escalated_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
+    # when the notifier claimed its reminder before it expires or escalates (cleared by an escalation: the new
+    # deadline gets its own)
+    reminded_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
     # a Wait step (kind "timer", services/timers.py): when it is due (an event wait's timeout), the event type and key
     # that wake it sooner, and until when one server holds it while it starts the run that continues
     due_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
@@ -621,7 +624,7 @@ class ApprovalNotice(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True)
     org_id: Mapped[str] = mapped_column(ForeignKey("organization.id", ondelete="CASCADE"))
     interrupt_id: Mapped[str] = mapped_column(ForeignKey("interrupt_task.id", ondelete="CASCADE"))
-    event: Mapped[str] = mapped_column(Text)  # waiting | escalated
+    event: Mapped[str] = mapped_column(Text)  # waiting | escalated | reminder
     channel: Mapped[str] = mapped_column(Text)  # email | slack | webhook
     status: Mapped[str] = mapped_column(Text, server_default=text("'pending'"), default="pending")
     attempts: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)

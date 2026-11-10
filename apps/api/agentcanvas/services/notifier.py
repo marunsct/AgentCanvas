@@ -15,6 +15,10 @@ server that dies mid-send leaves the row to be sent again after the lease. Outco
 A message names the workflow, the project, the step, who may decide and when the item expires, with a link to the
 Inbox; never what the run asks (it can hold personal data). Draft runs a person starts in the editor are not
 announced unless their step names who decides them: that person is watching the run. Test and evaluation runs never.
+
+An announced item still waiting `AGENTCANVAS_APPROVAL_REMINDER_HOURS` before it expires or escalates is announced
+once more (event "reminder"), claimed like the announcement (`interrupt_task.reminded_at`); an escalation clears the
+claim, so the item's new deadline gets a reminder of its own.
 """
 
 from __future__ import annotations
@@ -34,7 +38,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from prometheus_client import Counter
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas import observability
@@ -168,7 +172,7 @@ class Notice:
     """What a notification says about one Inbox item."""
 
     interrupt_id: str
-    event: str  # waiting | escalated
+    event: str  # waiting | escalated | reminder
     kind: str  # approval | tool_approval | input
     org_id: str
     project_id: str
@@ -188,13 +192,14 @@ class Notice:
     @property
     def subject(self) -> str:
         what = "Question" if self.kind == "input" else "Approval"
-        lead = "escalated" if self.event == "escalated" else "waiting"
+        lead = {"escalated": "escalated", "reminder": "still waiting"}.get(self.event, "waiting")
         return _one_line(f"{what} {lead}: {self.workflow_name}, {self.step}")
 
     @property
     def text(self) -> str:
         what = "an answer" if self.kind == "input" else "a decision"
         lines = [
+            *(["A reminder: nobody has decided this yet."] if self.event == "reminder" else []),
             f'{self.workflow_name} (project {self.project_name}) is waiting for {what} at the step "{self.step}".',
             *(["Nobody decided it in time, so it was escalated."] if self.event == "escalated" else []),
             f"Who may decide: {self.deciders}.",
@@ -333,7 +338,7 @@ async def escalate(s: AsyncSession, items: list[tuple[str, str, str]], now: date
                 InterruptTask.status == "pending",
                 InterruptTask.escalated_at.is_(None),
             )
-            .values(assignee_role=role, escalated_at=now, escalate_at=None)
+            .values(assignee_role=role, escalated_at=now, escalate_at=None, reminded_at=None)
         )
         if res.rowcount != 1:  # type: ignore[attr-defined]
             continue  # decided meanwhile, or another server escalated it
@@ -435,6 +440,7 @@ class NotifierJob:
         the notifications sent."""
         await self.escalate_due(now)
         await self.announce(now)
+        await self.remind(now)
         sent = await self.deliver(now)
         for more in self.rounds:
             try:
@@ -466,6 +472,14 @@ class NotifierJob:
             n = await escalate(s, items, now, smtp_ready(self.settings))
             await s.commit()
         return n
+
+    def deadline(self, item: InterruptTask) -> datetime | None:
+        """When an item escalates, else expires (None: it waits until someone decides it), as its messages say."""
+        days = self.settings.approval_expiry_days
+        expires = (item.escalated_at or item.created_at) + timedelta(days=days) if days > 0 else None
+        if item.escalated_at or not Approvers.of(item.approvers).escalate_to:
+            return expires
+        return item.escalate_at or expires
 
     # ------------------------------------------------------------------------------------------ announce ---
     async def announce(self, now: datetime) -> int:
@@ -507,6 +521,58 @@ class NotifierJob:
                 if claimed.rowcount != 1 or state != "waiting":  # type: ignore[attr-defined]
                     continue  # another server announced it
                 queued += self._queue(s, r.org_id, r.id, "waiting", channels, now)
+            await s.commit()
+        return queued
+
+    async def remind(self, now: datetime) -> int:
+        """Claim the reminder of each announced item that is due one (its deadline is within the reminder hours) and
+        queue it on the organisation's channels. An item whose whole wait is shorter than twice the reminder hours,
+        or whose deadline passed already, is claimed without a reminder. Returns the notifications queued."""
+        lead_h = self.settings.approval_reminder_hours
+        if lead_h <= 0:
+            return 0
+        lead, days = timedelta(hours=lead_h), self.settings.approval_expiry_days
+        near = [InterruptTask.escalate_at <= now + lead]  # its step's own escalation time
+        if days > 0:  # else its expiry (or an escalation then)
+            start = func.coalesce(InterruptTask.escalated_at, InterruptTask.created_at)
+            near.append(InterruptTask.escalate_at.is_(None) & (start <= now + lead - timedelta(days=days)))
+        smtp = smtp_ready(self.settings)
+        async with self.db.sessionmaker() as s:
+            q = (
+                select(InterruptTask, Project.org_id)
+                .join(Thread, Thread.id == InterruptTask.thread_id)
+                .join(WorkflowRow, WorkflowRow.id == Thread.workflow_id)
+                .join(Project, Project.id == WorkflowRow.project_id)
+                .where(
+                    InterruptTask.status == "pending",
+                    InterruptTask.noticed == "waiting",
+                    InterruptTask.reminded_at.is_(None),
+                    or_(*near),
+                )
+                .order_by(InterruptTask.created_at, InterruptTask.id)
+                .limit(BATCH)
+            )
+            rows = (await s.execute(q)).all()
+            found = await s.scalars(select(OrgNotifier).where(OrgNotifier.org_id.in_({r.org_id for r in rows})))
+            configs = {row.org_id: channels_on(row, smtp) for row in found.all()}
+            queued = 0
+            for item, org_id in rows:
+                due = self.deadline(item)
+                if due is None or due - lead > now:
+                    continue  # not yet (an escalation at the expiry instead of its own time)
+                start = item.escalated_at or item.created_at
+                worth = due > now and due - lead - start >= lead  # not a moment after its first message
+                claimed = await s.execute(
+                    update(InterruptTask)
+                    .where(
+                        InterruptTask.id == item.id,
+                        InterruptTask.status == "pending",
+                        InterruptTask.reminded_at.is_(None),
+                    )
+                    .values(reminded_at=now)
+                )
+                if claimed.rowcount == 1 and worth:  # type: ignore[attr-defined]
+                    queued += self._queue(s, org_id, item.id, "reminder", configs.get(org_id, []), now)
             await s.commit()
         return queued
 
