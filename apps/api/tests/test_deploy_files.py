@@ -173,7 +173,7 @@ def security_txt(env: dict[str, str] | None = None) -> subprocess.CompletedProce
     body = re.search(r'location = /\.well-known/security\.txt \{[^}]*?return 200 "([^"]*)";', template, re.S)
     assert body is not None
     text = body.group(1).replace("\\n", "\n").replace("${SECURITY_CONTACT}", "%s").replace("${SECURITY_POLICY}", "%s")
-    script = ROOT / "infra" / "web" / "21-security-txt.envsh"
+    script = ROOT / "infra" / "web" / "19-security-txt.envsh"
     return subprocess.run(
         ["sh", "-c", f'. "{script}" && printf "$1" "$SECURITY_CONTACT" "$SECURITY_POLICY"', "sh", text],
         capture_output=True,
@@ -205,7 +205,7 @@ def test_the_web_image_serves_a_security_txt_that_has_not_expired():
     now = datetime.now(UTC)
     # renew it in nginx.conf (to under a year from the release) when this fails
     assert now + timedelta(days=30) < expires <= now + timedelta(days=366), f"security.txt expires {expires}"
-    assert "21-security-txt.envsh" in (ROOT / "infra" / "Dockerfile.web").read_text()
+    assert "19-security-txt.envsh" in (ROOT / "infra" / "Dockerfile.web").read_text()
 
 
 @pytest.mark.skipif(shutil.which("sh") is None, reason="no POSIX shell")
@@ -314,6 +314,7 @@ def test_backups_hold_the_workspaces_and_a_restore_creates_the_api_role_before_t
 def test_the_alerts_watch_series_the_api_exports_and_link_to_runbooks_that_exist():
     import re
 
+    import agentcanvas.api.main  # noqa: F401 - the app imports every service, which registers its metrics
     from agentcanvas import observability
 
     rules = yaml.safe_load((ROOT / "infra" / "observability" / "alerts.yaml").read_text())["groups"][0]["rules"]
@@ -659,3 +660,18 @@ def test_the_web_app_imports_only_what_its_image_build_has():
             if not target.is_relative_to(web) and not any(target.is_relative_to(c) for c in copied):
                 outside.append(f"{f.relative_to(ROOT)}: {spec}")
     assert not outside, f"not in the web image's build (copy it in Dockerfile.web or import a copied file): {outside}"
+
+
+def test_entrypoint_scripts_that_set_template_variables_run_before_the_substitution():
+    """nginx's entrypoint runs /docker-entrypoint.d/ in name order and fills the templates in
+    20-envsubst-on-templates.sh. A script named after it (19-security-txt.envsh) set SECURITY_CONTACT too late:
+    the variable stayed in the config and nginx refused to start ("unknown security_contact variable")."""
+    docker = (ROOT / "infra" / "Dockerfile.web").read_text()
+    template = (ROOT / "infra" / "nginx.conf").read_text()
+    used = set(re.findall(r"\$\{([A-Z][A-Z0-9_]*)\}", template))
+    late = []
+    for src, dest in re.findall(r"^COPY (?:--\S+ )*(\S+\.envsh) /docker-entrypoint\.d/(\S+)$", docker, re.M):
+        sets = set(re.findall(r"^\s*export\s+([A-Z][A-Z0-9_]*)", (ROOT / src).read_text(), re.M))
+        if sets & used and dest >= "20-envsubst-on-templates.sh":
+            late.append(dest)
+    assert not late, f"rename to sort before 20-envsubst-on-templates.sh: {late}"
