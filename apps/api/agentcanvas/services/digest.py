@@ -285,6 +285,7 @@ class DigestJob:
     ):
         self.db, self.interval_s, self.secrets, self.notifier = db, interval_s, secrets, notifier
         self._task: asyncio.Task | None = None
+        self._all_made: datetime | None = None  # the week this server found every digest made for
 
     def start(self) -> None:
         if self.interval_s <= 0:
@@ -311,6 +312,8 @@ class DigestJob:
         returns how many this server made."""
         end = week_of(now)
         start = end - WEEK
+        if self._all_made == start:  # nothing starts in a week that is over: no need to read its runs again
+            return 0
         async with self.db.sessionmaker() as s:
             done = select(RunDigest.project_id).where(RunDigest.week_start == start)
             q = (
@@ -325,6 +328,8 @@ class DigestJob:
             projects = list((await s.scalars(q)).all())
             await s.execute(delete(RunDigest).where(RunDigest.week_start < start - KEEP))
             await s.commit()
+        if not projects:
+            self._all_made = start
         made = 0
         for project_id in projects:
             try:

@@ -12,7 +12,7 @@ from sqlalchemy import delete, func, select, update
 from test_run_find import CONVERSATIONS, NOW, make_chat, talk
 
 from agentcanvas.db.models import AnnotationItem, AnnotationQueue, DigestNotice, Run, RunDigest, RunScore
-from agentcanvas.services.digest import DigestJob, week_of
+from agentcanvas.services.digest import WEEK, DigestJob, week_of
 from agentcanvas.services.triggers import sign
 
 P = "/v1/projects/prj_default"
@@ -74,6 +74,20 @@ async def test_last_weeks_digest_counts_groups_and_flags(app, api_client, week):
 
     assert await job(app).tick(NOW) == 0  # made once
     assert await job(app).tick(NOW + timedelta(days=3)) == 0  # still the same week
+
+
+async def test_a_server_stops_reading_a_week_once_every_digest_is_made(app, week, monkeypatch):
+    j = job(app)
+    assert await j.tick(NOW) == 1
+    assert await j.tick(NOW) == 0  # found nothing left to make: the week is done for this server
+    calls = []
+    monkeypatch.setattr(j.db, "sessionmaker", lambda: calls.append(1))  # any read now would fail
+    assert await j.tick(NOW + timedelta(hours=1)) == 0 and calls == []
+    monkeypatch.undo()
+    async with app.state.db.sessionmaker() as s:
+        await s.execute(update(Run).where(Run.thread_id == "th_hotel").values(started_at=NOW))
+        await s.commit()
+    assert await j.tick(NOW + WEEK) == 1  # the next week is read again
 
 
 async def test_several_servers_make_it_once(app, week):
