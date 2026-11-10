@@ -207,6 +207,9 @@ class Settings(BaseSettings):
     # how long a run may wait in that queue before it gives up with an error (seconds); 0 = as long as it takes
     max_queue_wait_s: float = Field(default=3600, ge=0)
     retention_interval_s: int = 3600  # how often the retention job looks for expired conversations
+    # how often each server looks for projects whose weekly run digest (last week's failures, spend and latency, on
+    # the Runs page) is due, in seconds; 0 = no digests are made
+    digest_interval_s: float = Field(default=3600, ge=0)
     # a cron occurrence no scheduler ticked in (a restart, an outage) fires once when ticking resumes, if it is no
     # older than this; 0 = only the minute a scheduler ticks in
     cron_catchup_s: int = Field(default=3600, ge=0)

@@ -53,6 +53,7 @@ from agentcanvas.security.kms import Keyring
 from agentcanvas.services import audit_sink, oauth, routing
 from agentcanvas.services import projects as projects_module
 from agentcanvas.services.callbacks import CallbackJob
+from agentcanvas.services.digest import DigestJob
 from agentcanvas.services.events import EventService
 from agentcanvas.services.experiments import ExperimentJob
 from agentcanvas.services.files import FileStore
@@ -314,6 +315,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # F-10: Wait steps continue when due, or when their event arrives (on the version that paused)
             app.state.timers = TimerJob(db, runner, handover_target)
             app.state.events.timers = app.state.timers
+            # F-11: each project's weekly run digest, made once by whichever server claims it
+            app.state.digests = DigestJob(
+                db, settings.digest_interval_s, lambda project_id: app.state.projects.secrets.get(project_id, {})
+            )
             app.state.handover = HandoverJob(
                 db, runner, handover_target, settings.handover_interval_s, settings.orphan_after_s
             )
@@ -324,6 +329,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 app.state.timers.start()
                 app.state.retention.start()
                 app.state.notifier.start()
+                app.state.digests.start()
                 app.state.offboarding.start()
                 app.state.crawl.start()
                 app.state.handover.start()
@@ -359,6 +365,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 await app.state.timers.stop()
                 await app.state.retention.stop()
                 await app.state.notifier.stop()
+                await app.state.digests.stop()
                 await app.state.offboarding.stop()
                 await app.state.crawl.stop()
                 await app.state.secrets.stop()

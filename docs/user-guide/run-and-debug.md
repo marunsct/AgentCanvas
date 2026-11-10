@@ -181,6 +181,23 @@ Timeline. Narrow it with the workflow filter below.
   entry, and nobody sees another organisation's runs. Secret values are masked before anything is embedded, but with
   a hosted embedding model the masked text of inputs and answers is sent to that provider, as with a knowledge base.
 
+## Weekly digest
+
+**Weekly digest** at the top of the **Runs** page sums up the week before (Monday to Sunday, UTC), each against the
+week before it:
+
+- how many runs there were, how many failed and what they spent;
+- how long they took: typically (the median) and at the 95th percentile;
+- why runs failed, grouped: errors that differ only in numbers or quoted values count as one, with the workflows they
+  happened in and a link to the newest such run;
+- the runs flagged most: failing evaluator scores, thumbs-down feedback and review queue items;
+- the busiest workflows, when there are several.
+
+**This week so far** computes the same for the current week on the spot. The server makes each week's digest once
+it is over, for projects that had runs in it; test and experiment runs are left out, and no model is asked. A digest
+holds counts, workflow names and shortened errors (numbers and quoted values taken out, secret values masked), never
+what a run was asked or answered.
+
 ## Ask about runs
 
 The **Ask** box above the search takes a question in plain words, such as *failed runs about refunds last week over

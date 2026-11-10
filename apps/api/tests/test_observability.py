@@ -214,6 +214,7 @@ JOBS = [  # app.state attribute, its round, the job label
     ("online", "report", "online_metrics"),
     ("secrets", "sync", "secrets"),
     ("notifier", "tick", "notifier"),
+    ("digests", "tick", "run_digest"),
     ("matura_feed", "tick", "matura_feed"),  # only with Matura sign-in: made here
 ]
 

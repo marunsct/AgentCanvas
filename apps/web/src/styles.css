@@ -1257,6 +1257,10 @@ ul.plain.files { max-height: none; }
 
 /* run search (G-10) */
 .run-search { margin-bottom: 12px; }
+.run-digest { margin-bottom: 12px; }
+.run-digest > summary { cursor: pointer; }
+.run-digest h4 { margin: 10px 0 4px; }
+.run-ask-text { margin: 6px 0; }
 .run-hits { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .run-snippet { margin: 2px 0 0; white-space: pre-wrap; max-height: 90px; overflow: auto; }
 

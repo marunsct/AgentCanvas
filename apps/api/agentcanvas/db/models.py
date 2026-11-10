@@ -470,6 +470,23 @@ class ModelSpend(Base):
     cost_usd: Mapped[Decimal] = mapped_column(Numeric(14, 6), server_default=text("0"), default=Decimal(0))
 
 
+class RunDigest(Base):
+    """A project's weekly run digest (F-11): what the week's runs did (failure groups, spend, latency, the most
+    flagged runs), made once per project and UTC week (Monday to Monday) by whichever server inserts it first: the
+    unique key is the claim. It goes with its project; digests older than a year are deleted."""
+
+    __tablename__ = "run_digest"
+    __table_args__ = (
+        UniqueConstraint("project_id", "week_start", name="run_digest_once"),
+        Index("run_digest_week_idx", "week_start"),  # deleting old ones
+    )
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("project.id", ondelete="CASCADE"))
+    week_start: Mapped[datetime] = mapped_column(UtcDateTime())
+    summary: Mapped[dict[str, Any]]
+    created_at: Mapped[datetime] = _now()
+
+
 class RunSearch(Base):
     """G-10: a finished run's input and answer, embedded for "find conversations where …". One row per run; it goes
     with its run (retention, deleting the conversation or the workflow). `model` is the embedding model that made
