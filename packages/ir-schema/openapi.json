@@ -3043,7 +3043,10 @@
           "messages",
           "brief",
           "proposals",
+          "pending",
           "usage",
+          "chosen_model",
+          "cost_usd",
           "token_cap",
           "model",
           "pack_tokens"

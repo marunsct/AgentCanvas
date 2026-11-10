@@ -10,6 +10,7 @@ import { create } from "zustand";
 import { ApiError, apiFetch } from "../api/client";
 import { can, ME } from "../api/session";
 import { followProject, PROJECT_ID } from "../api/queries";
+import type * as A from "../api/generated";
 import type { Diagnostic, Layout, Position } from "../api/types";
 import { applyAll, applyLocal, type Command, CommandError, composePatches } from "../ir/commands";
 import { normalize, type WF } from "../ir/model";
@@ -20,20 +21,10 @@ export interface Notice {
   text: string;
 }
 
-interface WorkflowOut {
-  id: string;
-  name: string;
-  project_id: string;
-  version: number;
-  ir_hash: string;
-  ir: G.Workflow;
-  layout: Layout;
-  diagnostics: Diagnostic[];
-}
-
-interface CommandResult extends WorkflowOut {
-  inverse: Command[];
-}
+/** The generated types with the IR, layout and commands typed by the IR schema (the API's are open objects). */
+type Typed = { ir: G.Workflow; layout: Layout };
+type WorkflowOut = Omit<A.WorkflowOut, keyof Typed> & Typed;
+type CommandResult = Omit<A.CommandResult, keyof Typed | "inverse"> & Typed & { inverse: Command[] };
 
 export interface EditorState {
   workflowId: string | null;

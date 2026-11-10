@@ -1,6 +1,7 @@
 /** Copilot state (S14): the conversation, the live answer, and the proposal previewed on the canvas. */
 import { create } from "zustand";
 import { apiFetch } from "../api/client";
+import type { ConversationOut } from "../api/generated";
 import type * as G from "../ir/generated";
 import type { Command } from "../ir/commands";
 import { normalize, type WF } from "../ir/model";
@@ -67,19 +68,14 @@ export interface Live { text: string[]; streaming: string; activity: Activity[];
 
 const NO_LIVE: Live = { text: [], streaming: "", activity: [], todos: [] };
 
-export interface Conversation {
-  id: string | null;
-  enabled: boolean;
+/** GET /workflows/{id}/copilot, with the messages, brief and proposals typed (the API's are open objects). */
+export type Conversation = Omit<ConversationOut, "messages" | "brief" | "proposals" | "pending" | "usage"> & {
   messages: ChatMessage[];
   brief: Brief | null;
   proposals: Proposal[];
   pending: Proposal | null;
   usage: Usage;
-  cost_usd?: number | null; // the answers' costs, summed (where the model's price is known)
-  chosen_model?: string | null; // a model chosen for this conversation; null: the project's
-  token_cap: number;
-  model: { model?: string | null; origin?: string | null; problem?: string | null };
-}
+};
 
 type Event =
   | { type: "start"; model: string; origin: string; engine?: string }

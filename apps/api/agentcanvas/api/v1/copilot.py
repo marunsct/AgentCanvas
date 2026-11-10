@@ -96,6 +96,8 @@ class ModelInfoOut(BaseModel):
 
 
 class ConversationOut(BaseModel):
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True)  # every field is sent
+
     id: str | None
     enabled: bool
     messages: list[dict[str, Any]]

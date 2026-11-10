@@ -6327,14 +6327,14 @@ export interface Surface {
  */
 export interface ConversationOut {
   brief: Brief;
-  chosen_model?: ChosenModel;
-  cost_usd?: CostUsd;
+  chosen_model: ChosenModel;
+  cost_usd: CostUsd;
   enabled: Enabled;
   id: Id23;
   messages: Messages1;
   model: ModelInfoOut;
   pack_tokens: PackTokens;
-  pending?: Pending1;
+  pending: Pending1;
   proposals: Proposals;
   token_cap: TokenCap;
   usage: Usage2;
