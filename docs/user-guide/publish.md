@@ -96,7 +96,11 @@ deployment; the deployment's keys keep working beside it. With it on:
   ([Call a deployment](#call-a-deployment)). A deployment key acts for your own systems as before: it can continue any
   of the deployment's conversations, so give keys only to your own back end.
 
-Turn it on with the API (builders):
+Builders turn it on under the deployment in the Publish panel: **Sign-in with OAuth (MCP, A2A)** takes the issuer
+(empty: the one people sign in to AgentCanvas with), an optional audience and the required scopes, and **Turn on**
+checks the issuer and shows the addresses to register with your identity provider; **Turn off** goes back to keys
+only. The **Use from other agents** panel then says that clients which support sign-in need only the address. The
+same through the API:
 
 | Request | Does |
 |---|---|

@@ -20,6 +20,9 @@ export function ConnectSection({ deployment, apiKey }: { deployment: DeploymentO
       <p>
         This deployment is also an <b>MCP server</b> (Claude Desktop, Cursor, ChatGPT and agent frameworks call it as a
         tool) and an <b>A2A agent</b>. Both use the deployment's API key.
+        {(deployment as DeploymentOut & { oauth?: boolean }).oauth && (
+          <> People can also <b>sign in with OAuth</b>: clients that support it need only the address below.</>
+        )}
       </p>
       <p id={`${id}-mcp`} className="connect-label">MCP server (Streamable HTTP)</p>
       <code className="mono" aria-labelledby={`${id}-mcp`} data-testid="connect-mcp">{s.mcp}</code>

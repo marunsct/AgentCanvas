@@ -8,6 +8,7 @@ import { can } from "../api/session";
 import { useEditor } from "../editor/store";
 import { ConnectSection } from "./ConnectSection";
 import { DeploymentKeys } from "./DeploymentKeys";
+import { DeploymentOAuth } from "./DeploymentOAuth";
 import { ShareSection } from "./ShareSection";
 import { confirmDialog, promptDialog } from "../ui/dialog";
 
@@ -143,6 +144,7 @@ export function PublishSection({ wfId }: { wfId: string }) {
               {d.active && can("builder") && <button type="button" className="small danger" onClick={() => void unpublish(d)}>Unpublish</button>}
             </div>
             {d.active && can("builder") && <DeploymentKeys deployment={d} onNewKey={(k) => setKey({ deployment: d.id, key: k })} />}
+            {d.active && can("builder") && <DeploymentOAuth deployment={d} />}
             {d.active && <ConnectSection deployment={d} apiKey={key?.deployment === d.id ? key.key : undefined} />}
             {d.active && can("builder") && <ShareSection deployment={d} />}
           </li>
