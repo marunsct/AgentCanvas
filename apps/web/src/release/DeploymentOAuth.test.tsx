@@ -2,11 +2,10 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DeploymentOut } from "../api/generated";
-import type { DeploymentOAuthOut } from "./DeploymentOAuth";
+import type { DeploymentOut, OAuthOut } from "../api/generated";
 
 const calls: { path: string; method?: string; json?: unknown }[] = [];
-let state: DeploymentOAuthOut;
+let state: OAuthOut;
 let refuse: string | null = null;
 vi.mock("../api/client", () => ({
   apiFetch: vi.fn(async (path: string, init?: { method?: string; json?: Record<string, unknown> }) => {

@@ -3,7 +3,7 @@
 import { useInfiniteQuery, useMutation } from "@tanstack/react-query";
 import { Fragment, useMemo, useState } from "react";
 import { apiFetch } from "../api/client";
-import type { AuditOut as Entry } from "../api/generated";
+import type { AuditOut as Entry, AuditVerifyOut } from "../api/generated";
 import { QueryStatus } from "../ui/QueryStatus";
 import { ago, exact } from "../ui/time";
 
@@ -22,17 +22,8 @@ export function toCsv(rows: Entry[]): string {
     [e.created_at, e.actor_email ?? e.actor_id ?? "", e.action, e.target, e.ip ?? "", e.detail].map(cell).join(","))].join("\n") + "\n";
 }
 
-/** GET /org/audit/verify (written here until the generated API types include it). */
-export interface ChainReport {
-  ok: boolean;
-  checked: number;
-  unchained: number;
-  head_hash: string | null;
-  problems: { id: number; kind: "changed" | "missing" | "unchained"; message: string }[];
-}
-
 /** What checking the hash chain found, in a sentence. */
-export function chainSummary(r: ChainReport): string {
+export function chainSummary(r: Pick<AuditVerifyOut, "ok" | "checked" | "unchained" | "problems">): string {
   const older = r.unchained ? `; ${r.unchained} older ${r.unchained === 1 ? "entry was" : "entries were"} written before the chain existed` : "";
   if (r.ok) return `Intact: ${r.checked} ${r.checked === 1 ? "entry" : "entries"} checked, none changed or missing${older}.`;
   const n = r.problems.length;
@@ -70,7 +61,7 @@ export function AuditPage() {
   });
   const rows = useMemo(() => (log.data?.pages ?? []).flatMap((p) => (Array.isArray(p) ? p : [])), [log.data]);
   const seen = useMemo(() => [...new Set(rows.map((e) => e.action))].sort(), [rows]);
-  const check = useMutation({ mutationFn: () => apiFetch<ChainReport>("/org/audit/verify") });
+  const check = useMutation({ mutationFn: () => apiFetch<AuditVerifyOut>("/org/audit/verify") });
   return (
     <section className="settings-card audit">
       <h2>Audit log</h2>

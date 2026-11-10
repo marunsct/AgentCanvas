@@ -214,11 +214,11 @@ class ProjectMemberIn(BaseModel):
 class ProjectMemberOut(BaseModel):
     id: str
     kind: Literal["user", "group"]
-    user_id: str | None = None
-    email: str | None = None
-    display_name: str | None = None
-    group_id: str | None = None
-    group: str | None = Field(None, description="the SCIM group's display name")
+    user_id: str | None
+    email: str | None
+    display_name: str | None
+    group_id: str | None
+    group: str | None = Field(description="the SCIM group's display name")
     role: Role
     created_at: datetime
 

@@ -4,33 +4,20 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { apiFetch } from "../api/client";
-import type { DeploymentOut } from "../api/generated";
-
-// narrow local types until the generated API types are regenerated (GET/PUT /deployments/{id}/oauth)
-export interface DeploymentOAuthOut {
-  enabled: boolean;
-  issuer: string | null;
-  authorization_server: string | null;
-  audience: string | null;
-  scopes: string[];
-  mcp_resource: string;
-  a2a_resource: string;
-  mcp_metadata: string;
-  a2a_metadata: string;
-}
+import type { DeploymentOut, OAuthOut } from "../api/generated";
 
 export const DEFAULT_SCOPE = "agentcanvas:deployment:run";
 
 export function DeploymentOAuth({ deployment }: { deployment: DeploymentOut }) {
   const qc = useQueryClient();
   const queryKey = ["deployment-oauth", deployment.id];
-  const oauth = useQuery({ queryKey, queryFn: () => apiFetch<DeploymentOAuthOut>(`/deployments/${deployment.id}/oauth`) });
+  const oauth = useQuery({ queryKey, queryFn: () => apiFetch<OAuthOut>(`/deployments/${deployment.id}/oauth`) });
   const [issuer, setIssuer] = useState("");
   const [audience, setAudience] = useState("");
   const [scopes, setScopes] = useState(DEFAULT_SCOPE);
   const [note, setNote] = useState<string | null>(null);
   const seeded = useRef<string | null>(null); // the deployment the form was filled from
-  const seed = (d: DeploymentOAuthOut) => {
+  const seed = (d: OAuthOut) => {
     setIssuer(d.issuer ?? "");
     setAudience(d.audience ?? "");
     setScopes(d.scopes.join(" "));
@@ -41,7 +28,7 @@ export function DeploymentOAuth({ deployment }: { deployment: DeploymentOut }) {
     seed(oauth.data);
   }, [oauth.data, deployment.id]);
   const save = useMutation({
-    mutationFn: (enabled: boolean) => apiFetch<DeploymentOAuthOut>(`/deployments/${deployment.id}/oauth`, {
+    mutationFn: (enabled: boolean) => apiFetch<OAuthOut>(`/deployments/${deployment.id}/oauth`, {
       method: "PUT",
       json: enabled
         ? { enabled, issuer: issuer.trim() || null, audience: audience.trim() || null, scopes: scopes.split(/\s+/).filter(Boolean) }

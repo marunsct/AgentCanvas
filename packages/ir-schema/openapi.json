@@ -4900,6 +4900,13 @@
             "type": "integer"
           }
         },
+        "required": [
+          "release_gate",
+          "experiment",
+          "red_team",
+          "online",
+          "test_cases"
+        ],
         "title": "Evaluation",
         "type": "object"
       },
@@ -12075,6 +12082,11 @@
         "required": [
           "id",
           "kind",
+          "user_id",
+          "email",
+          "display_name",
+          "group_id",
+          "group",
           "role",
           "created_at"
         ],
@@ -12990,6 +13002,19 @@
             "title": "Updated By Email"
           }
         },
+        "required": [
+          "purpose",
+          "owner_id",
+          "risk_class",
+          "risk_rationale",
+          "data_categories",
+          "end_user_facing",
+          "review_date",
+          "owner_email",
+          "owner_member",
+          "updated_by_email",
+          "updated_at"
+        ],
         "title": "RecordOut",
         "type": "object"
       },

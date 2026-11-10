@@ -6886,14 +6886,14 @@ export interface Evaluation {
   /**
    * the latest finished experiment
    */
-  experiment?: ExperimentEvidence | null;
-  online?: Online;
+  experiment: ExperimentEvidence | null;
+  online: Online;
   /**
    * the latest finished red-team run
    */
-  red_team?: ExperimentEvidence | null;
-  release_gate?: GateEvidence | null;
-  test_cases?: TestCases;
+  red_team: ExperimentEvidence | null;
+  release_gate: GateEvidence | null;
+  test_cases: TestCases;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -8747,14 +8747,14 @@ export interface ProjectMemberIn {
  */
 export interface ProjectMemberOut {
   created_at: CreatedAt29;
-  display_name?: DisplayName1;
-  email?: Email5;
-  group?: Group1;
-  group_id?: GroupId;
+  display_name: DisplayName1;
+  email: Email5;
+  group: Group1;
+  group_id: GroupId;
   id: Id60;
   kind: Kind12;
   role: Role10;
-  user_id?: UserId5;
+  user_id: UserId5;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -8960,17 +8960,17 @@ export interface RecordFields {
  * via the `definition` "RecordOut".
  */
 export interface RecordOut {
-  data_categories?: DataCategories1;
-  end_user_facing?: EndUserFacing1;
-  owner_email?: OwnerEmail;
-  owner_id?: OwnerId1;
-  owner_member?: OwnerMember;
-  purpose?: Purpose2;
-  review_date?: ReviewDate1;
-  risk_class?: RiskClass1;
-  risk_rationale?: RiskRationale1;
-  updated_at?: UpdatedAt12;
-  updated_by_email?: UpdatedByEmail;
+  data_categories: DataCategories1;
+  end_user_facing: EndUserFacing1;
+  owner_email: OwnerEmail;
+  owner_id: OwnerId1;
+  owner_member: OwnerMember;
+  purpose: Purpose2;
+  review_date: ReviewDate1;
+  risk_class: RiskClass1;
+  risk_rationale: RiskRationale1;
+  updated_at: UpdatedAt12;
+  updated_by_email: UpdatedByEmail;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema

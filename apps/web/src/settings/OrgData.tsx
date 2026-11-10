@@ -1,23 +1,11 @@
 /** Settings › Organisation › General (admins): the organisation's data (E-7). Export everything as a zip, built in
  * the background and downloaded once through a short-lived link; delete the organisation, suspended at once and
- * deleted for good after a grace period that can be taken back.
- * The API's generated types do not have these routes yet: the narrow types below stand in for them. */
+ * deleted for good after a grace period that can be taken back. */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiDownload, apiFetch } from "../api/client";
+import type { DeletionOut, ExportLinkOut, ExportOut } from "../api/generated";
 import { useCanOrg, useMe } from "../api/session";
 import { confirmDialog, promptDialog, toast } from "../ui/dialog";
-
-export interface OrgExport {
-  id: string;
-  status: "queued" | "building" | "ready" | "downloaded" | "expired" | "failed";
-  created_at: string;
-  finished_at: string | null;
-  expires_at: string | null;
-  size: number | null;
-  sha256: string | null;
-  error: string | null;
-}
-export interface Deletion { scheduled: boolean; suspended_at: string | null; delete_after: string | null }
 
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : "");
 const mb = (n: number | null) => (n == null ? "" : `${(n / 1024 / 1024).toFixed(1)} MB`);
@@ -28,28 +16,28 @@ export function OrgData() {
   const qc = useQueryClient();
   const exports = useQuery({
     queryKey: ["org-exports"], enabled: admin,
-    queryFn: () => apiFetch<OrgExport[]>("/org/export"),
+    queryFn: () => apiFetch<ExportOut[]>("/org/export"),
     // poll while one is being built
     refetchInterval: (q) => (q.state.data?.some((e) => e.status === "queued" || e.status === "building") ? 3000 : false),
   });
-  const deletion = useQuery({ queryKey: ["org-deletion"], enabled: admin, queryFn: () => apiFetch<Deletion>("/org/deletion") });
+  const deletion = useQuery({ queryKey: ["org-deletion"], enabled: admin, queryFn: () => apiFetch<DeletionOut>("/org/deletion") });
   const start = useMutation({
-    mutationFn: () => apiFetch<OrgExport>("/org/export", { method: "POST" }),
+    mutationFn: () => apiFetch<ExportOut>("/org/export", { method: "POST" }),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["org-exports"] }),
   });
   const download = useMutation({
-    mutationFn: (id: string) => apiFetch<{ path: string }>(`/org/export/${id}/link`, { method: "POST" }),
+    mutationFn: (id: string) => apiFetch<ExportLinkOut>(`/org/export/${id}/link`, { method: "POST" }),
     onSuccess: (link) => {
       window.location.assign(`/api${link.path}`);  // the link needs no sign-in: the browser downloads it itself
       void qc.invalidateQueries({ queryKey: ["org-exports"] });
     },
   });
   const remove = useMutation({
-    mutationFn: (body: { confirm: string; reason: string }) => apiFetch<Deletion>("/org", { method: "DELETE", json: body }),
+    mutationFn: (body: { confirm: string; reason: string }) => apiFetch<DeletionOut>("/org", { method: "DELETE", json: body }),
     onSuccess: (d) => { qc.setQueryData(["org-deletion"], d); toast(`The organisation will be deleted on ${when(d.delete_after)}`); },
   });
   const keep = useMutation({
-    mutationFn: () => apiFetch<Deletion>("/org/deletion", { method: "DELETE" }),
+    mutationFn: () => apiFetch<DeletionOut>("/org/deletion", { method: "DELETE" }),
     onSuccess: (d) => { qc.setQueryData(["org-deletion"], d); toast("The deletion was taken back"); },
   });
   if (!admin) return null;

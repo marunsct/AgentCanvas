@@ -5,31 +5,10 @@ import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router";
 import { apiFetch } from "../api/client";
+import type { RunAskOut } from "../api/generated";
 import { PROJECT_ID } from "../api/queries";
 import { Badge, type Tone } from "../ui/Badge";
 import { ago, exact } from "../ui/time";
-
-// typed here until the generated API types are regenerated
-export interface FoundRun {
-  run_id: string;
-  thread_id: string;
-  workflow_id: string;
-  workflow_name?: string | null;
-  status: string;
-  error?: string | null;
-  cost_usd: number;
-  started_at?: string | null;
-  duration_ms?: number | null;
-  score?: number | null;
-}
-export interface RunAskOut {
-  answer: string;
-  runs: FoundRun[];
-  searches: Record<string, unknown>[];
-  error?: string | null;
-  model: string;
-  cost_usd?: number | null;
-}
 
 const STATUS: Record<string, { label: string; tone: Tone }> = {
   success: { label: "done", tone: "ok" },

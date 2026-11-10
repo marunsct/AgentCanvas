@@ -2,10 +2,10 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import type { DeploymentOut } from "../api/generated";
-import type { RecordFields, SystemRecordOut } from "./SystemRecordSection";
+import type { DeploymentOut, SystemRecordOut } from "../api/generated";
+import type { RecordForm } from "./SystemRecordSection";
 
-const puts: RecordFields[] = [];
+const puts: RecordForm[] = [];
 const downloads: string[] = [];
 let builder = true;
 let record: SystemRecordOut;
@@ -19,11 +19,11 @@ function made(fields: Partial<SystemRecordOut["record"]> = {}, notes: string[] =
     version: { semver: "1.2.0" }, models: [{ model: "anthropic:claude-sonnet-5-5" }], subprocessors: [{ name: "Anthropic" }],
     tools: [], approvals: [], ungated: ["send_email"],
     evaluation: { release_gate: null, experiment: null, red_team: null, online: [], test_cases: 0 }, history: [], notes,
-  };
+  } as unknown as SystemRecordOut; // only what the section reads
 }
 
 vi.mock("../api/client", () => ({
-  apiFetch: vi.fn(async (path: string, init?: { method?: string; json?: RecordFields }) => {
+  apiFetch: vi.fn(async (path: string, init?: { method?: string; json?: RecordForm }) => {
     if (path === "/org/members") return [
       { user_id: "usr_ada", email: "ada@example.com", display_name: "Ada", role: "admin", invited: false },
       { user_id: "usr_gone", email: "gone@example.com", display_name: null, role: "viewer", invited: false, deactivated: true },
