@@ -7,7 +7,7 @@ from collections.abc import Iterator
 
 from agentcanvas import cloudmodels
 from agentcanvas.ir.models import BUDGET_LIMITS, Node, Resource, unenforced_limits
-from agentcanvas.registry import SAMPLING, provider_installed
+from agentcanvas.registry import SAMPLING, gallery_connector, provider_installed
 from agentcanvas.sampling import refuses
 from agentcanvas.validation.engine import Diagnostic, ValidationContext, error, info, rule, warning
 
@@ -97,6 +97,7 @@ def agent_tools(ctx: ValidationContext) -> Iterator[Diagnostic]:
                 offered = mcp_tools(t)
                 known = known and offered is not None
                 names |= {x["name"] for x in offered or []}
+                destructive = {x["name"] for x in offered or [] if x.get("destructive")}
                 for x in offered or []:
                     if x.get("destructive") and x["name"] not in approve:
                         yield warning(
@@ -105,6 +106,16 @@ def agent_tools(ctx: ValidationContext) -> Iterator[Diagnostic]:
                             node_id=el.id,
                             hint="add it to the tools that need approval",
                         )
+                acting = [a for a in _acts(t, offered) if a not in approve and a not in destructive]
+                if acting:
+                    yield warning(
+                        "W028",
+                        f"'{el.name}' can click, type or submit through '{t.name}' without a person's approval "
+                        f"({', '.join(acting)})",
+                        node_id=el.id,
+                        path="config.approve_tools",
+                        hint="add these tools to the tools that need approval, so a person confirms each one",
+                    )
             elif (tm := ctx.manifest(t)) is not None and tm.builtin_tools:
                 names |= set(tm.builtin_tools)  # e.g. memory tools: search_memory, save_memory
             else:
@@ -140,6 +151,17 @@ def mcp_pinned(ctx: ValidationContext) -> Iterator[Diagnostic]:
             node_id=r.id,
             hint="select the connector, click Browse tools and review its tools, then publish",
         )
+
+
+def _acts(r: Resource, offered: list[dict] | None) -> list[str]:
+    """The tools of a gallery connector that act for someone on a site (a browser's click, type, upload: the
+    gallery's `acts`), as far as the block offers them (its browsed tools and tool filter)."""
+    if r.config.get("transport") != "stdio":
+        return []
+    entry = gallery_connector(r.config)
+    acts = [str(a) for a in (entry or {}).get("acts") or []]
+    names = None if offered is None else {x.get("name") for x in offered}
+    return [a for a in acts if names is None or a in names]
 
 
 def mcp_tools(r: Resource) -> list[dict] | None:

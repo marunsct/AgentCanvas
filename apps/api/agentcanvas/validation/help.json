@@ -284,6 +284,10 @@
       "what": "The workflow’s budget stops runs on AgentCanvas, but an export of this workflow does not enforce some of its limits: the exported code runs past them.",
       "fix": "Keep the limit for runs on AgentCanvas. Before running the export elsewhere, set a spending cap at the model provider, or check the limits the message names in your own code (GAPS.md lists them)."
     },
+    "W028": {
+      "what": "This agent can click, type, fill in forms or upload files in a browser without asking a person first, so a page that misleads it could make it submit or buy something.",
+      "fix": "Select the agent and add the browser's acting tools to \u201cTools that need approval\u201d: each click or entry then waits for a person."
+    },
     "W027": {
       "what": "This agent names who may approve its tool calls, but none of its tools needs approval, so it never asks anyone.",
       "fix": "Add the tools that need a person’s approval, or clear “Who may approve its tool calls”."

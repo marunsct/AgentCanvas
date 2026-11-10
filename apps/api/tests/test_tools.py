@@ -116,6 +116,37 @@ def test_mcp_approval_rules():
     assert "E042" in errors(mcp_wf({"transport": "stdio", "command": "python", "url": None}))
 
 
+def test_an_agent_that_can_act_in_a_browser_without_approval_is_warned():
+    """W028: a browser connector's click, type and upload tools let a page that misleads the agent submit or buy
+    something; the gallery names them (`acts`), at any version of its package."""
+    from agentcanvas.validation import validate
+
+    browser = {
+        "transport": "stdio",
+        "command": "npx",
+        "args": ["-y", "@playwright/mcp@0.0.90", "--isolated"],
+        "url": None,
+    }
+
+    def w028(config: dict, agent: dict | None = None) -> list[str]:
+        return [d.message for d in validate(mcp_wf(config, agent)) if d.code == "W028"]
+
+    (message,) = w028(browser)  # never browsed: what the gallery names
+    assert "browser_click" in message and "browser_file_upload" in message and "browser_navigate" not in message
+    approve = ["browser_click", "browser_type", "browser_fill_form", "browser_select_option", "browser_press_key"]
+    assert w028(browser, {"approve_tools": [*approve, "browser_file_upload", "browser_evaluate"]}) == []
+    (partly,) = w028(browser, {"approve_tools": approve})
+    assert partly.endswith("(browser_file_upload, browser_evaluate)")
+    browsed = {"discovered": [{"name": "browser_navigate"}, {"name": "browser_click"}], **browser}
+    (only,) = w028(browsed)  # as far as the block offers them
+    assert only.endswith("(browser_click)")
+    assert w028({**browsed, "tool_filter": ["browser_navigate"]}) == []
+    destructive = {"discovered": [{"name": "browser_click", "destructive": True}], **browser}
+    assert w028(destructive) == []  # W002 says it already
+    assert w028({"transport": "stdio", "command": "uvx", "args": ["mcp-server-git==2026.8.18"], "url": None}) == []
+    assert w028({}) == []  # a connector with a URL is not the gallery's browser
+
+
 async def test_mcp_inspect_endpoint(app, api_client):
     app.state.resources_factory = lambda thread_id, wf: Resources(overrides={"support": support_server()})
     r = await api_client.post(

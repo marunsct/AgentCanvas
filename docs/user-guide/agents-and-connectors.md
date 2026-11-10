@@ -239,8 +239,14 @@ The hosted edition runs local connectors only this way, and only the gallery's c
 (the block list says **also in the sandbox**): those the sandbox's browser image comes with, such as **Browser
 (Playwright)**. A connector you set up by hand, or a gallery one whose command, flags or package version you
 changed, is refused there (**E046**); arguments after the package (`--headless`, a viewport size) are yours to
-change. To let an agent click or type in a browser only with a person's say-so, put an approval on its submit-like tools (`browser_click`, `browser_type`,
-`browser_file_upload`) under **Tools that need approval** on the agent.
+change.
+
+A browser lets an agent act on sites for someone: a page it reads can try to talk it into submitting a form or
+buying something. To let it click, type or upload only with a person's say-so, add the browser's acting tools
+(`browser_click`, `browser_type`, `browser_fill_form`, `browser_select_option`, `browser_press_key`,
+`browser_file_upload`, `browser_evaluate`) to **Tools that need approval** on the agent; reading pages
+(`browser_navigate`, `browser_snapshot`) needs no approval. The canvas warns (**W028**) about each of those tools an
+agent can use without approval, wherever the browser runs.
 
 ### Published tools are pinned
 
