@@ -90,7 +90,7 @@ def agent_tools(ctx: ValidationContext) -> Iterator[Diagnostic]:
         if isinstance(el, Resource) and not tools:
             continue  # a subagent without its own tools inherits the main agent's tools
         approve = el.config.get("approve_tools") or []
-        approve = approve if isinstance(approve, list) else []
+        approve = [t for t in approve if isinstance(t, str)] if isinstance(approve, list) else []  # schema: names
         names, known = set(m.builtin_tools), True
         for t in tools:
             if t.type == "mcp.server":

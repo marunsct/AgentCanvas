@@ -90,7 +90,8 @@ def blast_radius(wf: Workflow, registry: Registry | None = None) -> BlastRadius:
     def analyse(n: Node) -> NodeBlast:
         m = registry.get(n.type)
         gate_all = n.id in behind_gate
-        approve = set(n.config.get("approve_tools") or [])
+        listed = n.config.get("approve_tools")  # names; a malformed setting (the schema reports it) gates nothing
+        approve = {t for t in listed if isinstance(t, str)} if isinstance(listed, list) else set()
         nb = NodeBlast(node_id=n.id, name=n.name)
         for effect in sorted(node_side_effects(n, m) if m else set()):
             nb.capabilities.append(Capability(effect=effect, source=n.name, gated=gate_all))

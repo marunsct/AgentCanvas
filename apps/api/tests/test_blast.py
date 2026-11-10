@@ -138,6 +138,16 @@ def test_a_damaged_group_of_steps_does_not_break_the_blast_radius():
     assert blast_radius(wf).nodes == [] and dry_run_tools(wf) == set()
 
 
+def test_a_malformed_approval_list_does_not_break_the_blast_radius_or_the_checks():
+    """A hand-edited `approve_tools` with a list inside it: the schema reports it; the overlay and the agent checks
+    read only the names in it, instead of failing."""
+    from agentcanvas.validation import validate
+
+    wf = Workflow.model_validate(agent_wf(approve=[["update_crm"], "update_crm"]))  # type: ignore[list-item]
+    assert blast_radius(wf).ungated == []
+    assert not [d for d in validate(wf) if "failed:" in d.message]
+
+
 async def test_a_conversation_reads_while_its_mcp_server_is_down(app):
     """R-5: reading a conversation (its state, history, an edit of its state) built the run's graph, which contacts
     every MCP server first: with one down, opening the conversation failed. Reading needs only the checkpoints."""
