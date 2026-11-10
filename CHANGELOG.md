@@ -8,6 +8,13 @@ The product pass ([PLAN.md](docs/developer/history/product-plan-2026-10.md): one
 review of 2026-10-29 ([HARDENING.md](docs/developer/hardening.md)); no version has been tagged for them yet.
 
 ### Security
+- Run search no longer shows the start of a project secret that falls where a run's error is cut short.
+- The hosted edition no longer runs a local (stdio) app connector on the API server; it runs only the gallery's
+  connectors marked for the sandbox, and only there (E046)
+- With an organisation's projects private, approval e-mails are sent only to people who see the project, by their role
+  there.
+- An admin of one project only does not get the organisation's service connection for app connectors in draft runs or
+  Browse tools.
 - The web server publishes /.well-known/security.txt naming where to report a vulnerability; SECURITY_CONTACT and
   SECURITY_POLICY point it at your own security team.
 - Admins can limit the networks their organisation is used from, for sign-ins, API tokens, deployment keys, share links
@@ -190,6 +197,26 @@ review of 2026-10-29 ([HARDENING.md](docs/developer/hardening.md)); no version h
   and metadata addresses are never reached, and a list naming one is refused (HARDENING S-1).
 
 ### Fixed
+- The web image builds again (make docker-up failed after the approval routing changes).
+- The Share section's AI notice follows the deployment's new default wording after its system record changes, instead of
+  saving the old wording as a custom one.
+- Two pauses waiting at once (approvals on parallel branches) are answered separately, in either order, and an answer
+  that names no pause while several wait, or one that is no longer waiting, is refused instead of failing or being
+  ignored.
+- MCP `answer`, A2A replies, share-link answers and event handlers' `act.resume` answer one of several waiting pauses by
+  its `interrupt_id`, and refuse an answer that names none while several wait.
+- An exported workflow's service answers each of several waiting pauses by its `interrupt_id` and refuses an answer that
+  names none, instead of failing the run.
+- The web container starts again after the security.txt change (nginx stopped at an unknown security_contact variable).
+- A malformed list of tools needing approval no longer breaks the blast-radius view or the agent checks.
+- The weekly run digest compares a week only with the week right before it, never a part week with a whole one.
+- A browser in a connector sandbox is no longer stopped for memory its processes share, and a connector variable name
+  that cannot be passed safely is refused
+- The connector sandbox tests pass the type checker
+- With Docker script execution, code and app connectors with a sandbox.json egress list reach their listed hosts again
+  (the egress proxy container failed to start)
+- The project switcher offers New project only to builders of the organisation, not to someone who builds in the current
+  project only.
 - An AI agent whose "Who may decide" field was opened but left empty no longer shows warning W027.
 - A deployment run's result read later from any server, and its completion callback, carry `generated_by` too.
 - A master key in AWS KMS or Google Cloud KMS (AGENTCANVAS_KMS_KEY=aws:… or gcp:…) works with the API image, and a
@@ -793,6 +820,54 @@ review of 2026-10-29 ([HARDENING.md](docs/developer/hardening.md)); no version h
   1.9.1 and dnspython 2.9.0.
 
 ### Added
+- Builders can let people sign in to a deployment's MCP server and A2A agent with an OAuth access token from the
+  organisation's identity provider (RFC 9728 discovery, audience-bound tokens), each person being their own end user.
+- The Publish panel turns on OAuth sign-in for a deployment's MCP server and A2A agent, with its issuer, audience and
+  scopes.
+- Each deployment has an AI-system record (purpose, owner, risk class, data categories, review date) with its models,
+  subprocessors, tools, guardrails, approvals, evaluation evidence and publish history, at GET
+  /v1/deployments/{id}/system-record.
+- A deployment's AI-system record downloads as Markdown or as an HTML page that prints as a PDF (GET
+  /v1/deployments/{id}/system-record/export).
+- Publishing lists the notes of the environment's AI-system record (for example high risk with no evaluation evidence or
+  approval step) without refusing, and the publish audit entry names the environment and version.
+- The Publish panel's System record section, to fill in a deployment's AI-system record and download it as Markdown or
+  HTML.
+- Thinking a model streams is a run event (`ac.reasoning`), which the AG-UI endpoint sends as REASONING events.
+- Runs can offer the caller's own tools (run by its application, e.g. in the browser) and context to the workflow's
+  agents; parallel pauses can be answered together.
+- A published workflow speaks AG-UI 1.0 (`POST /v1/deployments/{id}/ag-ui`) for CopilotKit-style front ends, with
+  streamed messages, tool calls, reasoning, state, pauses answered by resume entries, and tools that run in the user's
+  browser.
+- The deployment's connect panel shows its AG-UI address.
+- AWS Bedrock and Google Vertex AI (Gemini and Claude) as model providers, with region-specific catalog prices, a Region
+  setting that decides where prompts go, and credentials from project secrets or the server's cloud identity.
+- The editor warns when an AWS Bedrock or Google Vertex AI model has no credentials (W028), and the model menus offer
+  these models when they have credentials and a default region.
+- The Helm chart's api.serviceAccount gives the API pods a service account of their own with the annotations of AWS IRSA
+  or GKE Workload Identity, for Bedrock and Vertex AI models and KMS keys without stored keys.
+- A Wait block that pauses a run for a while, until a time, or until an event arrives (with a time limit), and continues
+  it on its own on one server.
+- Stop and the kill switch cancel runs paused at a Wait step, and retention keeps a waiting conversation until its wait
+  is due.
+- The Inbox, MCP, A2A and share links show a run at a Wait step as waiting on its own, and a caller can cancel it.
+- The Inspector explains a Wait step's duration or time in words, and the Run tab and Inbox show a waiting run with a
+  Stop waiting button.
+- The Copilot's search_runs finds the project's runs by status, time, cost, workflow, label and topic.
+- An Ask box on the Runs page answers questions about the project's runs with the Copilot.
+- A weekly run digest per project (failure groups, spend, latency, flagged runs) on the Runs page.
+- Each project's weekly run digest can be sent to the organisation's e-mail, Slack or webhook channels.
+- Local (stdio) app connectors such as the Playwright browser can run in the sandbox, with the project's egress list and
+  limits, for one run or one conversation (AGENTCANVAS_SANDBOX_MCP)
+- The API image can be built with WITH_BROWSER=true (about 950 MB more) so the sandbox runs Playwright MCP and the
+  gallery's other sandbox connectors; compose SANDBOX_IMAGE and Helm sandbox.image run the sandbox from it
+- A warning (W028) when an agent can click, type or upload in a browser connector without a person's approval
+- Projects can have their own members (people and SCIM groups) with a role each, and an organisation can make its
+  projects private so that only its admins and each project's members see it.
+- A project's admins can read and set their project's spending caps (GET and PUT /v1/projects/{id}/spending-caps).
+- Settings › Project › Members and › Spending, and the "Projects are private" switch under Settings › Organisation ›
+  Security; buttons follow your role in the current project.
+- A person's data export lists the projects they were added to, with their role there.
 - Deployment answers are marked as AI-generated: an X-AI-Generated header on every run answer, and generated_by with the
   models that answered on API results and the stream's last event.
 - Deployments can have several named API keys with an optional expiry and last-used time, and rotating a key can keep
@@ -1212,6 +1287,9 @@ review of 2026-10-29 ([HARDENING.md](docs/developer/hardening.md)); no version h
 - An e2e check that every control in the inspector has an accessible name and stays in the tab order.
 
 ### Changed
+- A deployment whose AI-system record says it serves only your own staff shows an AI notice worded for colleagues on its
+  share link and widget, unless a builder reworded it.
+- Weekly run digests no longer re-read the past week's runs every hour once all of its digests are made.
 - The shared chat page and the chat widget always show an AI notice (reworded per link, never removed), and the widget's
   button is named "AI assistant" by default.
 - When a published workflow's step is decided by named people, its MCP result and A2A task tell the calling agent that a
