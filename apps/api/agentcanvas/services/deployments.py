@@ -246,12 +246,14 @@ class DeploymentService:
         return new, value
 
     async def unpublish(self, dep_id: str) -> None:
-        """Like the keys, the share link is revoked: sharing goes off with a new token and the visitors' conversations
-        end, so publishing again does not bring back an old link or its conversations."""
+        """Like the keys, the share link and OAuth sign-in are turned off: sharing goes off with a new token and the
+        visitors' conversations end, so publishing again does not bring back an old link, its conversations or a
+        sign-in nobody turned on again."""
         from agentcanvas.services.share import new_token
 
         dep = await self.require(dep_id)
         dep.active = False
+        dep.oauth = None  # nor does sign-in come back on its own
         await self._revoke_all(dep_id, datetime.now(UTC))
         await self.s.execute(
             update(DeploymentShare)
@@ -277,10 +279,7 @@ class DeploymentService:
             raise Unauthorized(f"this deployment key ({key.prefix}…) was revoked")
         if key.expires_at is not None and key.expires_at <= now:
             raise Unauthorized(f"this deployment key ({key.prefix}…) expired")
-        await offboarding.refuse_if_closed(self.s, await ScopeRepo(self.s).org_of("deployment", dep.id))
-        version = await self.s.get(WorkflowVersion, dep.version_id)
-        if version is None:
-            raise InvalidInput("the deployment's version is missing")
+        wf = await self.pinned(dep)
         if key.last_used_at is None or key.last_used_at <= now - USED_EVERY:
             # the condition is repeated in the statement: replicas serving the same key at once write it only once
             stale = or_(DeploymentKey.last_used_at.is_(None), DeploymentKey.last_used_at <= now - USED_EVERY)
@@ -288,7 +287,26 @@ class DeploymentService:
                 update(DeploymentKey).where(DeploymentKey.id == key.id, stale).values(last_used_at=now)
             )
             await self.s.commit()
-        return dep, Workflow.model_validate(version.ir)
+        return dep, wf
+
+    async def pinned(self, dep: Deployment) -> Workflow:
+        """The workflow a published deployment runs, once its caller is known (a key or a sign-in): refused while
+        its organisation is being deleted."""
+        await offboarding.refuse_if_closed(self.s, await ScopeRepo(self.s).org_of("deployment", dep.id))
+        version = await self.s.get(WorkflowVersion, dep.version_id)
+        if version is None:
+            raise InvalidInput("the deployment's version is missing")
+        return Workflow.model_validate(version.ir)
+
+    async def set_oauth(self, dep_id: str, value: dict[str, Any] | None) -> Deployment:
+        """Turn the deployment's OAuth sign-in on (with its settings) or off (None)."""
+        dep = await self.require(dep_id)
+        if not dep.active and value is not None:
+            raise Conflict("this deployment is unpublished: publish it again first")
+        dep.oauth = value
+        await self.s.commit()
+        await self.s.refresh(dep)
+        return dep
 
 
 def _working(now: datetime) -> tuple[Any, ...]:

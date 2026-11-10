@@ -84,7 +84,9 @@ which shows what will be sent on an approval card; a rejection skips the agent.
 
 [Publish](publish.md) the workflow, then open **Versions** → the deployment → **Use from other agents (MCP, A2A)**.
 The panel shows the addresses and a ready-to-paste Claude Desktop setting. Both use the deployment's API key, the
-same one as the [deployment API](publish.md), with the same rate limits.
+same one as the [deployment API](publish.md), with the same rate limits. A builder can also let people sign in with
+the organisation's identity provider instead ([Sign-in with OAuth](publish.md#sign-in-with-oauth-mcp-and-a2a)): then
+each person is their own end user, with their own memories and conversations.
 
 ### As an MCP server
 
@@ -93,7 +95,7 @@ same one as the [deployment API](publish.md), with the same rate limits.
 | Address | `https://<your AgentCanvas>/api/v1/deployments/<id>/mcp` |
 | Transport | Streamable HTTP (every answer is one JSON message; no server-sent stream) |
 | Protocol | MCP `2026-07-28` (no handshake: `server/discover`, the version in each request) and the earlier revisions back to `2024-11-05` for clients that open with `initialize` |
-| Sign-in | `Authorization: Bearer <deployment key>` |
+| Sign-in | `Authorization: Bearer <deployment key>`, or an OAuth access token when the deployment allows it (the MCP authorization spec: a `401` names the protected resource metadata, RFC 9728) |
 | Tools | one tool named after the workflow, with the workflow's input fields; plus `answer` when the workflow can pause for a person and the client cannot show forms (see below) |
 
 **Claude Desktop** connects to remote servers through [`mcp-remote`](https://www.npmjs.com/package/mcp-remote)
@@ -114,6 +116,13 @@ same one as the [deployment API](publish.md), with the same rate limits.
 Clients that support remote MCP servers with headers (Cursor, VS Code, agent frameworks such as LangChain's MCP
 adapter or the OpenAI Agents SDK) take the address and the header directly.
 
+With [OAuth sign-in](publish.md#sign-in-with-oauth-mcp-and-a2a) on, clients that follow the MCP authorization spec
+(Claude's custom connectors, ChatGPT, VS Code and others) need only the address: they find the identity provider
+from the `401`, sign the person in and send their access token. The identity provider must let the client
+register (Client ID Metadata Documents, dynamic client registration, or a client you register for it there). Nobody
+pastes a key, and every person's runs, memories and conversations are their own. A client that can only send a
+fixed header keeps using a key.
+
 Each deployment also has an **MCP Server Card** at `https://<your AgentCanvas>/api/v1/deployments/<id>/mcp/server-card`
 (no key needed): its name, version, address and the header it needs, for registries and clients that discover servers
 before connecting. It never contains the key. Its name is the public host reversed and the workflow's tool name
@@ -125,7 +134,8 @@ When a run pauses for an approval or a question, who answers depends on the clie
   form (approve or reject with a comment, or the answer to the question, shaped by the question's answer schema)
   and sends the answer back by retrying the call, and the run goes on. The calling model never answers for the
   person, so it cannot approve its own tool calls; these clients get no `answer` tool. The form's answer is tied
-  to the deployment key that started the call, to that call and its arguments, and to 15 minutes; a pause is
+  to the deployment key that started the call (or, for a person signed in with OAuth, to that person, so their
+  token may be refreshed meanwhile), to that call and its arguments, and to 15 minutes; a pause is
   answered once. Declining an approval rejects it; closing the form leaves the run waiting (it can still be
   answered in the **Inbox**). Each answer that leads to another pause asks again.
 - **Other clients**: the tool's answer says the run paused and gives a `thread_id`; the calling agent continues
@@ -140,7 +150,8 @@ for a slot in the run queue, the tool call answers with a `taskId` (the run's id
 `cancelled`; `tasks/cancel` stops the run on whichever server runs it. A task whose run pauses for a person shows
 `input_required` with the form (for clients that show forms; the answer goes back with `tasks/update`), else it
 completes with the paused result, like a call without tasks. Tasks are polled with the deployment key and only
-the deployment's own runs are found, so a task id alone grants nothing. Any server answers.
+the deployment's own runs are found, so a task id alone grants nothing; a person signed in with OAuth finds only
+their own tasks. Any server answers.
 
 Other clients wait up to 5 minutes for the run. A longer run answers `running` with its `run_id` and the address
 of its result (`GET /v1/deployments/<id>/runs/<run_id>` with the deployment key, see
@@ -152,7 +163,7 @@ of its result (`GET /v1/deployments/<id>/runs/<run_id>` with the deployment key,
 |---|---|
 | Agent card | `https://<your AgentCanvas>/api/v1/deployments/<id>/a2a/.well-known/agent-card.json` (no key needed to read it) |
 | Endpoint | `https://<your AgentCanvas>/api/v1/deployments/<id>/a2a` (JSON-RPC: A2A 1.0 with the header `A2A-Version: 1.0`, and A2A 0.3) |
-| Sign-in | `Authorization: Bearer <deployment key>` |
+| Sign-in | `Authorization: Bearer <deployment key>`, or an OAuth access token for the A2A endpoint when the deployment allows it |
 
 - `message/send` runs the workflow. A **data** part gives the input fields; a **text** part goes to the workflow's
   text field (one named `message`, `question`, `query`, `input`, `text`, `request`, `prompt` or `ticket`, or its
@@ -170,6 +181,12 @@ of its result (`GET /v1/deployments/<id>/runs/<run_id>` with the deployment key,
 - Not supported: streaming (`message/stream`, `SendStreamingMessage`) and push notifications.
 - The agent card (and the MCP Server Card) may be cached for five minutes and carry an `ETag`: a republished
   deployment's new card reaches clients that cache it within that time.
+- With [OAuth sign-in](publish.md#sign-in-with-oauth-mcp-and-a2a) on, the card's `securitySchemes` lists an OpenID
+  Connect scheme (`openIdConnectUrl`: the issuer's discovery document) beside the key, with the scopes the
+  deployment requires; either one will do. Its description names the audience the token must have (the A2A
+  endpoint's address, or the deployment's audience), which is what Microsoft 365 Copilot and Agent 365 ask for when
+  you connect an A2A agent under Entra ID. The issuer must publish an OpenID Connect discovery document for A2A
+  clients; a person signed in this way finds only their own tasks and conversations.
 
 Runs started over MCP or A2A are ordinary runs of the deployment: they appear under **Runs**, count towards online
 evaluation and keep their conversations.

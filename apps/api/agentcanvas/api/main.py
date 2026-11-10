@@ -36,6 +36,7 @@ from agentcanvas.api.scim import router as scim_router
 from agentcanvas.api.shutdown import WindDown
 from agentcanvas.api.v1 import router as v1_router
 from agentcanvas.api.v1 import runs as runs_module
+from agentcanvas.api.v1.protocols import well_known as well_known_router
 from agentcanvas.db.repositories import DEV_ORG, retire_dev_user, seed_dev
 from agentcanvas.db.rls import bypasses_policies, sees_no_rows
 from agentcanvas.db.session import Database
@@ -470,6 +471,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(v1_router)
     app.include_router(scim_router)  # /scim/v2: the organisation's SCIM token (G-13)
+    app.include_router(well_known_router)  # deployments' OAuth protected resource metadata (E-11, RFC 9728)
     return app
 
 

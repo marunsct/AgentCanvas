@@ -81,6 +81,8 @@ async def test_org_b_cannot_read_org_a(app, api_client, org_b):
             ("DELETE", f"/v1/deployments/{dep_id}/keys/{key_id}", None),
             ("PUT", "/v1/projects/prj_default/spending-caps", {"max_cost_usd_day": 1000}),  # E-9: spending caps
             ("POST", f"/v1/deployments/{dep_id}/callback-secret", None),  # E-2: run callbacks' signing secret
+            ("GET", f"/v1/deployments/{dep_id}/oauth", None),  # E-11: OAuth sign-in to its MCP and A2A endpoints
+            ("PUT", f"/v1/deployments/{dep_id}/oauth", {"enabled": False}),
         ]:
             r = await api_client.request(method, path, json=body)
             assert r.status_code == 404, f"{method} {path}: {r.status_code} {r.text}"

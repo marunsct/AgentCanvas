@@ -71,6 +71,58 @@ moving, then revoke it (or rotate with an overlap, which does the same on a time
 `401` with a message that says which. Making, revoking and rotating keys are in the audit log
 (`create_deployment_key`, `revoke_deployment_key`, `rotate_key`) with the key's first characters, never the key.
 
+### Sign-in with OAuth (MCP and A2A)
+
+A deployment's [MCP server and A2A agent](agents-and-connectors.md#call-a-workflow-from-other-agents) can also let
+people sign in with your identity provider instead of sharing a key. It is **off** until a builder turns it on for a
+deployment; the deployment's keys keep working beside it. With it on:
+
+- **Clients find where to sign in on their own.** A call without a token, or with one that is not accepted, answers
+  `401` with `WWW-Authenticate: Bearer resource_metadata="…", scope="…"`. That address is the endpoint's protected
+  resource metadata (RFC 9728), which names the **authorization server**: the issuer you set for the deployment, or
+  else the one people sign in to AgentCanvas with (`AGENTCANVAS_OIDC_ISSUER`). Clients that follow the MCP
+  authorization spec (Claude, ChatGPT, VS Code and others) then sign the person in and call with
+  `Authorization: Bearer <access token>`.
+- **Only tokens for this endpoint work.** The token must be a JWT signed with a key the issuer publishes (its
+  discovery document's `jwks_uri`), from that issuer, not expired, and for this endpoint: its audience (`aud`) is the
+  endpoint's address (`https://<your AgentCanvas>/api/v1/deployments/<id>/mcp`, or `…/a2a` for the A2A agent, as
+  clients ask for it with RFC 8707's `resource`), or the **audience** you set for the deployment. A token issued for
+  another server is refused, and so is the MCP endpoint's token on the A2A endpoint. A token without every
+  **scope** the deployment requires (by default `agentcanvas:deployment:run`; `scope` or `scp` claims both count)
+  gets `403` with `error="insufficient_scope"`.
+- **Every person is their own end user.** The token's subject becomes the run's `user_id`, written
+  `oidc:<issuer>:<subject>`: their memories are their own, and they can continue and read only the conversations and
+  tasks they started (another person's answers like an unknown one). Erase or export their data with that id
+  ([Call a deployment](#call-a-deployment)). A deployment key acts for your own systems as before: it can continue any
+  of the deployment's conversations, so give keys only to your own back end.
+
+Turn it on with the API (builders):
+
+| Request | Does |
+|---|---|
+| `GET /v1/deployments/{id}/oauth` | Whether it is on, the issuer tokens must come from, the audience and scopes, and the endpoints' addresses and metadata addresses (what your identity provider needs to know) |
+| `PUT /v1/deployments/{id}/oauth` with `{"enabled": true}` | Turn it on with the server's sign-in issuer and the default scope. Optional: `"issuer": "https://login.example.com/…"` (another authorization server), `"audience": "api://agentcanvas"` (for identity providers that issue tokens for a fixed audience rather than an address, such as Microsoft Entra ID or an Okta authorization server), `"scopes": ["…"]` (every one required; `[]` for none) |
+| `PUT /v1/deployments/{id}/oauth` with `{"enabled": false}` | Turn it off: only the keys work again |
+
+Turning it on loads the issuer's signing keys at once, so a wrong address is told then (`502`); the issuer must be an
+`https://` address, and on the hosted edition a public one. In staging and production `AGENTCANVAS_PUBLIC_URL` must be
+set: tokens are bound to the endpoint's public address, which must not come from what a caller sends. Changes are in
+the audit log (`put_deployment_oauth`, forwarded as a security event), and each signed-in call's entry names its end
+user. **Unpublish** turns sign-in off with the keys; publishing again does not turn it back on.
+
+Each server keeps an issuer's keys for `AGENTCANVAS_OIDC_JWKS_CACHE_S` (one hour), and loads them again at once when a
+token is signed with a key it has not seen (the issuer rotated its keys). Register the endpoint with your identity
+provider as an API (resource) whose identifier is the endpoint's address or your audience, with the scope the
+deployment requires; the web server serves the metadata at `/.well-known/oauth-protected-resource/api/v1/deployments/…`
+(a proxy in front of it must pass that path on). Only the MCP and A2A endpoints take access tokens; the
+[deployment API](#call-a-deployment) (`runs/wait`, `runs/{run_id}` and the others) takes keys only.
+
+**Enterprise-Managed Authorization.** With MCP's enterprise-managed authorization extension (Identity Assertion
+Authorization Grant, ID-JAG), the organisation's identity provider decides which agents its people may connect,
+and the client trades the person's sign-in for an access token without a consent screen. Nothing is needed on the
+AgentCanvas side: the token comes from your identity provider and is checked like any other, so name that identity
+provider as the deployment's issuer.
+
 ## Call a deployment
 
 ```bash
