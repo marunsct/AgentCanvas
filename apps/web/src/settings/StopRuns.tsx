@@ -3,11 +3,11 @@
 import { useMutation } from "@tanstack/react-query";
 import { apiFetch } from "../api/client";
 import type { StopRunsOut } from "../api/generated";
-import { useCan } from "../api/session";
+import { useCanOrg } from "../api/session";
 import { promptDialog, toast } from "../ui/dialog";
 
 export function StopRuns() {
-  const admin = useCan("admin");
+  const admin = useCanOrg("admin");
   const stop = useMutation({
     mutationFn: (reason: string) => apiFetch<StopRunsOut>("/org/runs/stop", { method: "POST", json: { reason } }),
     onSuccess: (out) => {

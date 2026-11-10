@@ -127,7 +127,8 @@ export function PersonMenu() {
         <>
           <div className="menu-person">
             <b>{me.email || "Local developer"}</b>
-            <span className="muted small" data-testid="me-role">{me.role}{me.org_names?.[me.org_id] ? ` · ${me.org_names[me.org_id]}` : ""}</span>
+            <span className="muted small" data-testid="me-role">{me.role}{me.org_names?.[me.org_id] ? ` · ${me.org_names[me.org_id]}` : ""}
+              {me.project_role && me.project_role !== me.role && <> · {me.project_role} in this project</>}</span>
           </div>
           {maturaMode() && orgs.length > 1 && (
             <>

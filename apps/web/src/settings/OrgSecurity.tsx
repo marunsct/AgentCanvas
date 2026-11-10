@@ -1,12 +1,13 @@
 /** Settings › Organisation › Security (E-8): the networks the organisation's requests may come from, and whether its
  * members must sign in with multi-factor authentication. The list covers every credential acting in the organisation
  * (sign-ins, API tokens, deployment keys, share links, SCIM); the server refuses a list that leaves out the admin
- * saving it, and requiring MFA from an admin whose own sign-in is not. Admins change them. */
+ * saving it, and requiring MFA from an admin whose own sign-in is not; and whether projects are private (E-10). Admins
+ * change them. */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { apiFetch } from "../api/client";
 import type { OrgSettingsOut } from "../api/generated";
-import { useCan } from "../api/session";
+import { useCanOrg } from "../api/session";
 import { toast } from "../ui/dialog";
 import { QueryStatus } from "../ui/QueryStatus";
 
@@ -18,6 +19,7 @@ export interface OrgSecurityOut {
   require_mfa: boolean;
   mfa_available: boolean;
   your_sign_in_is_mfa: boolean;
+  private_projects?: boolean;
 }
 type WithSecurity = OrgSettingsOut & { security?: OrgSecurityOut };
 
@@ -28,17 +30,24 @@ export function networkLines(text: string): string[] {
 
 export function OrgSecurity() {
   const qc = useQueryClient();
-  const admin = useCan("admin");
+  const admin = useCanOrg("admin");
   const q = useQuery({ queryKey: ["org-settings"], queryFn: () => apiFetch<WithSecurity>("/org/settings") });
   const sec = q.data?.security;
   const [text, setText] = useState("");
   const [requireMfa, setRequireMfa] = useState(false);
-  useEffect(() => { if (sec) { setText(sec.allowed_networks.join("\n")); setRequireMfa(sec.require_mfa); } }, [sec]);
+  const [privateProjects, setPrivateProjects] = useState(false);
+  useEffect(() => {
+    if (sec) { setText(sec.allowed_networks.join("\n")); setRequireMfa(sec.require_mfa); setPrivateProjects(sec.private_projects === true); }
+  }, [sec]);
   const save = useMutation({
     mutationFn: () => apiFetch<WithSecurity>("/org/settings", {
       method: "PUT",
       // only what changed: switching MFA needs a real sign-in, and saving the list must not depend on that
-      json: { security: { allowed_networks: networkLines(text), ...(requireMfa !== sec?.require_mfa ? { require_mfa: requireMfa } : {}) } },
+      json: { security: {
+        allowed_networks: networkLines(text),
+        ...(requireMfa !== sec?.require_mfa ? { require_mfa: requireMfa } : {}),
+        ...(privateProjects !== (sec?.private_projects === true) ? { private_projects: privateProjects } : {}),
+      } },
     }),
     onSuccess: (out) => { qc.setQueryData(["org-settings"], out); toast("Saved the security settings"); },
   });
@@ -72,6 +81,17 @@ export function OrgSecurity() {
           : sec.your_sign_in_is_mfa
             ? "A member whose sign-in has no second factor is sent back to the identity provider to add one. API tokens are not affected."
             : "To switch it on, sign in with a second factor first: your current sign-in does not count as multi-factor here, so requiring it would lock you out."}
+      </p>
+      <h3>Projects</h3>
+      <label className="row">
+        <input type="checkbox" data-testid="private-projects" checked={privateProjects} disabled={!admin}
+          onChange={(e) => setPrivateProjects(e.target.checked)} />
+        Projects are private
+      </label>
+      <p className="muted small">
+        {privateProjects
+          ? "Each project is seen only by organisation admins and its own members (Settings › Project › Members), with the role given there. Add each team to its projects first: someone who belongs to no project sees none."
+          : "Every member sees every project with their organisation role; a project's own members can only be given more there."}
       </p>
       {admin
         ? <button type="button" className="primary" disabled={save.isPending} onClick={() => save.mutate()}>Save</button>

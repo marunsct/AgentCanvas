@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { apiFetch } from "../api/client";
 import type { ScimCreated, ScimStatus } from "../api/generated";
-import { useCan } from "../api/session";
+import { useCanOrg } from "../api/session";
 import { confirmDialog, toast } from "../ui/dialog";
 import { ago } from "../ui/time";
 
@@ -15,7 +15,7 @@ export function scimBaseUrl(origin: string, basePath: string): string {
 
 export function ScimSettings() {
   const qc = useQueryClient();
-  const admin = useCan("admin");
+  const admin = useCanOrg("admin");
   const q = useQuery({ queryKey: ["scim"], queryFn: () => apiFetch<ScimStatus>("/org/scim"), enabled: admin });
   const [made, setMade] = useState<ScimCreated | null>(null);
   const create = useMutation({

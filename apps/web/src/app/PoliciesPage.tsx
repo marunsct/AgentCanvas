@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { apiFetch } from "../api/client";
 import { maturaMode } from "../api/auth";
-import { can, orgPortalUrl } from "../api/session";
+import { canOrg, orgPortalUrl } from "../api/session";
 import { QueryStatus } from "../ui/QueryStatus";
 import { confirmDialog, toast } from "../ui/dialog";
 
@@ -49,7 +49,7 @@ export function PoliciesPage() {
     mutationFn: (id: string) => apiFetch(`/org/policies/${id}`, { method: "DELETE" }),
     onSuccess: done,
   });
-  const admin = can("admin");
+  const admin = canOrg("admin");
   const error = (create.error ?? update.error ?? remove.error) as Error | null;
   const edit = (patch: Partial<PolicyIn>) => setDraft((d) => ({ ...d, ...patch }));
   const portal = orgPortalUrl();

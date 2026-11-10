@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const can = vi.hoisted(() => ({ builder: true }));
 const apiFetch = vi.hoisted(() => vi.fn());
 vi.mock("../api/client", () => ({ ApiError: class extends Error {}, apiFetch }));
-vi.mock("../api/session", () => ({ can: () => can.builder, useCan: () => can.builder, ME: { role: "builder" } }));
+vi.mock("../api/session", () => ({ can: () => can.builder, canOrg: () => can.builder, useCan: () => can.builder, useCanOrg: () => can.builder, ME: { role: "builder" } }));
 apiFetch.mockImplementation(async (_path: string, init?: { method?: string; json?: { chunking: unknown } }) =>
   init?.method === "PUT" ? init.json : { chunking: { strategy: "markdown", size: 800, overlap: 100 } });
 

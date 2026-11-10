@@ -30,7 +30,7 @@ vi.mock("../api/client", () => {
     }),
   };
 });
-vi.mock("../api/session", () => ({ can: () => true, ME: { role: "builder" } }));
+vi.mock("../api/session", () => ({ can: () => true, canOrg: () => true, ME: { role: "builder" } }));
 
 const { useEditor, hasUnsavedEdits } = await import("./store");
 const rename = (name: string): Command => ({ op: "UpdateMeta", name }) as Command;

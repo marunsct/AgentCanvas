@@ -31,7 +31,7 @@ vi.mock("../api/client", () => {
     }),
   };
 });
-vi.mock("../api/session", () => ({ can: () => true }));
+vi.mock("../api/session", () => ({ can: () => true, canOrg: () => true }));
 vi.mock("../editor/store", () => ({ useEditor: { getState: () => ({ flush: async () => undefined, load: async () => undefined }) } }));
 
 const { GitSync } = await import("./GitSync");

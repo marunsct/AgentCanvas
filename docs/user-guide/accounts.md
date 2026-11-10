@@ -51,7 +51,9 @@ pages; the project role decides everything inside the project:
 
 By default every member of the organisation sees every project, with their organisation role. A project can also have
 **members** of its own: people of the organisation, or groups your identity provider pushes over
-[SCIM](#provisioning-from-your-directory-scim), each with a role in that project. Its admins (and the organisation's) manage them:
+[SCIM](#provisioning-from-your-directory-scim), each with a role in that project. Its admins (and the organisation's) manage them in
+**Settings › Project › Members**: type an email (someone already in the organisation) or a SCIM group's name, pick a
+role and click **Add**; change a role in the list, or **Remove** someone. On the API,
 `PUT /v1/projects/{id}/members {"email": "ana@example.com", "role": "builder"}` adds someone already in the
 organisation, or changes their role (`{"group": "Support", "role": "reviewer"}` for a SCIM group, by its name);
 `GET /v1/projects/{id}/members` lists them and `DELETE /v1/projects/{id}/members/{member id}` removes one.
@@ -75,8 +77,8 @@ project. It applies to that project only; the organisation's pages keep the orga
 never does more than the role it was made with, in any project.
 
 - Whoever creates a project while projects are private becomes its admin; otherwise they could not see it.
-- Before switching it on, add each team to its projects: people who belong to no project then see none until an admin
-  adds them.
+- Before switching it on, add each team to its projects: people who belong to no project then see none (the app says
+  so) until an admin adds them.
 - Someone removed from the organisation leaves its projects too: inviting them back gives them none of their old
   project memberships. A SCIM group removed by the provider takes its memberships with it, and leaving a group takes
   what it gave. Invitations can be added to projects before the person first signs in.

@@ -101,7 +101,8 @@ export function InboxPage() {
               <p className="small muted" data-testid="inbox-why-not">You cannot decide this one: {item.why_not}.</p>
             )}
             <DecisionCard intr={item}
-              busy={busy.has(item.id) || (item.kind !== "timer" && (!can("reviewer") || item.may_decide === false))}
+              busy={busy.has(item.id) || (item.kind !== "timer"
+                && (item.may_decide === false || (item.may_decide == null && !can("reviewer"))))}
               onDecide={(value) => void decide(item.id, value)}
               onStop={item.kind === "timer" && can("builder") ? () => void stop(item) : undefined} />
             {errors[item.id] && <p className="error-text" role="alert">Could not decide: {errors[item.id]}</p>}

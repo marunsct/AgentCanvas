@@ -9,7 +9,7 @@ const apiDownload = vi.hoisted(() => vi.fn());
 const dialog = vi.hoisted(() => ({ promptDialog: vi.fn(), confirmDialog: vi.fn(), toast: vi.fn() }));
 vi.mock("../api/client", () => ({ ApiError: class extends Error {}, apiFetch, apiDownload }));
 vi.mock("../api/session", () => ({
-  useCan: () => admin.is,
+  useCan: () => admin.is, useCanOrg: () => admin.is,
   useMe: (pick: (s: unknown) => unknown) => pick({ me: { org_id: "org_a", org_names: { org_a: "Acme" } } }),
 }));
 vi.mock("../ui/dialog", () => dialog);

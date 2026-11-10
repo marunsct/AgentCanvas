@@ -45,6 +45,22 @@ describe("Settings", () => {
     expect(screen.getByTestId("settings-section-general")).toBeTruthy();
   });
 
+  it("shows a project's admin its Spending section, and not the organisation's (E-10)", async () => {
+    useMe.setState({
+      me: { id: "usr_x", email: "pat@example.com", org_id: "org_x", role: "viewer", memberships: { org_x: "viewer" }, project_role: "admin" },
+      loaded: true,
+    });
+    await act(async () => { at("/settings/project-spending"); });
+    expect(screen.getByTestId("settings-section-project-spending")).toBeTruthy();
+    expect(screen.getByTestId("settings-project-members")).toBeTruthy();
+    expect(screen.queryByTestId("settings-spending")).toBeNull();
+    expect(screen.queryByTestId("settings-audit")).toBeNull();
+    cleanup();
+    as("viewer");
+    await act(async () => { at("/settings/project-spending"); });
+    expect(screen.queryByTestId("settings-project-spending")).toBeNull();
+  });
+
   it("is reached from the top bar, which shows a viewer no Playground", async () => {
     as("viewer");
     await act(async () => { at("/settings/appearance"); });

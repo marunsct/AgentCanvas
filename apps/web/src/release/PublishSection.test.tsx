@@ -17,7 +17,7 @@ vi.mock("../api/client", () => ({
     return [];
   }),
 }));
-vi.mock("../api/session", () => ({ can: () => true, useCan: () => true, ME: { role: "builder" } }));
+vi.mock("../api/session", () => ({ can: () => true, canOrg: () => true, useCan: () => true, useCanOrg: () => true, ME: { role: "builder" } }));
 vi.mock("./ConnectSection", () => ({ ConnectSection: () => null }));
 vi.mock("./ShareSection", () => ({ ShareSection: () => null }));
 vi.mock("./DeploymentOAuth", () => ({ DeploymentOAuth: () => null }));

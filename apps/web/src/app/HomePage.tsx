@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { apiFetch } from "../api/client";
 import { PROJECT_ID, PROJECT_NAME, useSetup, useTemplates, useWorkflows } from "../api/queries";
-import { useCan, useMe } from "../api/session";
+import { projectRole, useCan, useMe } from "../api/session";
 import { FileImport, FORMAT_LABELS, type ImportOut } from "../release/Import";
 import { startTour } from "../tutor/Tutor";
 import { QueryStatus } from "../ui/QueryStatus";
@@ -60,7 +60,7 @@ export function HomePage() {
         </> : undefined} />
       <Invitations />
       {!canBuild && (
-        <p className="muted" data-testid="read-only-note">You can view workflows and runs here; your role ({me.role}) cannot create or edit them.</p>
+        <p className="muted" data-testid="read-only-note">You can view workflows and runs here; your role ({projectRole(me)}) cannot create or edit them.</p>
       )}
       {canBuild && <>
       <SetupBanner />

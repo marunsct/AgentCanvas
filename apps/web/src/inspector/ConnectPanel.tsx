@@ -2,7 +2,7 @@
  * `oauth`. "Acts as" decides whose connection a run uses; the panel shows that connection and connects it. */
 import { useState } from "react";
 import type { IRResource } from "../ir/model";
-import { useCan } from "../api/session";
+import { useCanOrg } from "../api/session";
 import { connect, connectionFor, resourceOf, useConnections } from "../settings/connections";
 
 type Identity = "starter" | "service";
@@ -10,7 +10,7 @@ type Identity = "starter" | "service";
 export function ConnectPanel({ resource }: { resource: IRResource }) {
   const cfg = (resource.config ?? {}) as { url?: string; oauth?: { identity?: Identity } };
   const identity: Identity = cfg.oauth?.identity === "service" ? "service" : "starter";
-  const admin = useCan("admin");
+  const admin = useCanOrg("admin");
   const list = useConnections();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);

@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { apiFetch } from "../api/client";
 import { PROJECT_ID } from "../api/queries";
-import { can } from "../api/session";
+import { canOrg } from "../api/session";
 
 type Kind = "langfuse" | "phoenix" | "datadog" | "otlp";
 type Ref = { $secret: string };
@@ -51,7 +51,7 @@ export function TraceExportSettings() {
   const off = useMutation({ mutationFn: () => apiFetch<Out>(`/projects/${PROJECT_ID}/trace-export`, { method: "DELETE" }), onSuccess: (o) => { done(o); setKind(""); } });
   const test = useMutation({ mutationFn: () => apiFetch<{ ok: boolean; detail: string }>(`/projects/${PROJECT_ID}/trace-export/test`, { method: "POST" }) });
   if (!q.data) return null;
-  const admin = can("admin");
+  const admin = canOrg("admin");
   const savedKind = q.data.config?.kind;
   const pickKind = (k: Kind | "") => { setKind(k); save.reset(); test.reset(); };
 

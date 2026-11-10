@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { apiFetch } from "../api/client";
 import type { OrgSettingsOut } from "../api/generated";
-import { useCan } from "../api/session";
+import { useCanOrg } from "../api/session";
 import { toast } from "../ui/dialog";
 import { QueryStatus } from "../ui/QueryStatus";
 import { ScimSettings } from "./ScimSettings";
@@ -14,7 +14,7 @@ const days = (n: number) => (n === 0 ? "kept forever" : `${n} days`);
 
 export function OrgSettings() {
   const qc = useQueryClient();
-  const admin = useCan("admin");
+  const admin = useCanOrg("admin");
   const q = useQuery({ queryKey: ["org-settings"], queryFn: () => apiFetch<OrgSettingsOut>("/org/settings") });
   const [name, setName] = useState("");
   const [mode, setMode] = useState<"server" | "days" | "forever">("server");

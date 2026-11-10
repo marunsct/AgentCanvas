@@ -9,7 +9,7 @@ const dialog = vi.hoisted(() => ({ promptDialog: vi.fn(), confirmDialog: vi.fn()
 vi.mock("../api/client", () => ({ ApiError: class extends Error {}, apiFetch, apiDownload }));
 vi.mock("../api/auth", () => ({ maturaMode: () => false }));
 vi.mock("../api/session", () => ({
-  useCan: () => true, orgPortalUrl: () => null,
+  useCan: () => true, useCanOrg: () => true, orgPortalUrl: () => null,
   useMe: (pick: (s: unknown) => unknown) => pick({ me: { id: "usr_me" } }),
 }));
 vi.mock("../ui/dialog", () => dialog);
