@@ -96,6 +96,10 @@ api:
 sandbox:
   enabled: true
   replicas: 4  # each pod runs one call at a time (calls of different projects never share a pod at once)
+  # the sandbox pods' image (empty: the API image). For local app connectors in the sandbox (config.extraEnv
+  # AGENTCANVAS_SANDBOX_MCP: "true"), the API image built with --build-arg WITH_BROWSER=true, which adds Node.js,
+  # Chromium and the gallery's sandbox connectors (docs/user-guide/deploy.md)
+  image: ""
   # run workspace code on nodes of its own (e.g. a tainted pool), away from the API and other tenants' data
   nodeSelector: {}
   tolerations: []

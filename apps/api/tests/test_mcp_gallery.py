@@ -84,3 +84,24 @@ def test_a_connector_runs_in_the_sandbox_only_as_the_gallery_starts_it():
 async def test_the_gallery_says_which_connectors_run_in_the_sandbox(api_client):
     by_id = {c["id"]: c for c in (await api_client.get("/v1/mcp-connectors")).json()}
     assert by_id["playwright"]["sandboxable"] is True and by_id["slack"]["sandboxable"] is False
+
+
+def test_the_browser_image_installs_every_connector_marked_for_the_sandbox():
+    """What the hosted edition allows (sandboxable) is what the sandbox's browser image comes with, at the gallery's
+    exact version, and the image installs it from the lockfile (infra/Dockerfile.api, WITH_BROWSER)."""
+    import json
+    from pathlib import Path
+
+    folder = Path(__file__).parents[1] / "agentcanvas" / "sandbox" / "connectors"
+    wanted = json.loads((folder / "package.json").read_text())["dependencies"]
+    locked = json.loads((folder / "package-lock.json").read_text())["packages"]
+    marked = [c for c in load_gallery()["connectors"] if c.get("sandboxable")]
+    for c in marked:
+        name, _, version = c["source"].removeprefix("npm:").rpartition("@")
+        assert wanted.get(name) == version, c["id"]
+        assert locked[f"node_modules/{name}"]["version"] == version, c["id"]
+        assert f"{name}@{version}" in c["config"]["args"], c["id"]  # the gallery starts what the image installed
+    assert len(wanted) == len(marked)  # nothing installed that the gallery does not offer
+    dockerfile = (Path(__file__).parents[3] / "infra" / "Dockerfile.api").read_text()
+    assert "ARG WITH_BROWSER=false" in dockerfile and "agentcanvas/sandbox/connectors/package-lock.json" in dockerfile
+    assert "npm ci" in dockerfile and "install --no-shell chromium" in dockerfile and "AC_MCP_SERVERS=" in dockerfile

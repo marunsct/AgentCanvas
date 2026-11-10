@@ -9,13 +9,18 @@ The server's stdin and stdout are this process's, so the MCP messages pass strai
 127.0.0.1 as its HTTP(S) proxy, which adds the signed credential to every request on its way to the egress proxy:
 browsers (Chromium reads the proxy from the environment but sends no credential in it) and Node.js reach the hosts
 of the project's egress list like any client, and the credential never enters the server's environment.
+
+`npx <package>@<version>` starts the copy the image installed under `AC_MCP_SERVERS` (the browser image's
+/opt/mcp-servers), when that exact version is there: npx would otherwise want the registry and a writable cache.
 """
 
 from __future__ import annotations
 
 import asyncio
 import base64
+import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -23,6 +28,36 @@ import threading
 from urllib.parse import unquote, urlsplit
 
 HEAD_LIMIT = 16 * 1024
+NPX_FLAGS = ("-y", "--yes", "-q", "--quiet")
+PACKAGE = re.compile(r"^(@[a-z0-9][\w.-]*/)?[a-z0-9][\w.-]*$")
+
+
+def installed(argv: list[str], servers: str) -> list[str]:
+    """`npx [-y] <package>@<version> args...` as `node <its program> args...` when `servers` has that version
+    installed (node_modules/<package>), else `argv` unchanged."""
+    if not servers or not argv or os.path.basename(argv[0]) != "npx":
+        return argv
+    rest = argv[1:]
+    while rest and rest[0] in NPX_FLAGS:
+        rest = rest[1:]
+    if not rest:
+        return argv
+    name, sep, version = rest[0].rpartition("@")
+    if not sep or not version or not PACKAGE.match(name):
+        return argv
+    folder = os.path.join(servers, "node_modules", name)
+    try:
+        with open(os.path.join(folder, "package.json"), encoding="utf-8") as f:
+            manifest = json.load(f)
+    except (OSError, ValueError):
+        return argv
+    program = manifest.get("bin") if isinstance(manifest, dict) and manifest.get("version") == version else None
+    if isinstance(program, dict):
+        program = program.get(name.rsplit("/", 1)[-1]) or (next(iter(program.values())) if len(program) == 1 else None)
+    if not isinstance(program, str):
+        return argv
+    node = os.path.join(servers, "bin", "node")
+    return [node if os.path.isfile(node) else "node", os.path.normpath(os.path.join(folder, program)), *rest[1:]]
 
 
 def _upstream(url: str) -> tuple[str, int, bytes]:
@@ -108,6 +143,7 @@ def main(argv: list[str]) -> int:
             env[name] = relay
         env["NO_PROXY"] = env["no_proxy"] = "localhost,127.0.0.1,::1"
         env["NODE_USE_ENV_PROXY"] = "1"  # Node.js 24's fetch and http follow HTTPS_PROXY with it
+    argv = installed(argv, env.get("AC_MCP_SERVERS", ""))
     try:
         proc = subprocess.Popen(argv, env=env)  # stdin, stdout and stderr are this process's
     except OSError as exc:

@@ -91,6 +91,19 @@ def test_the_chart_signs_in_with_oidc_by_default_and_with_matura_when_asked():
 
 
 @needs_helm
+def test_the_sandbox_pods_may_run_another_image_such_as_the_browser_one():
+    """Local app connectors in the sandbox need the API image built WITH_BROWSER: only the sandbox pods run it."""
+    docs = render()
+    api_image = pod_spec(docs, "-api")["containers"][0]["image"]
+    assert pod_spec(docs, "-sandbox")["containers"][0]["image"] == api_image
+    browser = render("sandbox.image=registry.example.com/agentcanvas-api:browser")
+    assert pod_spec(browser, "-sandbox")["containers"][0]["image"] == "registry.example.com/agentcanvas-api:browser"
+    assert pod_spec(browser, "-api")["containers"][0]["image"] == api_image
+    compose = yaml.safe_load((ROOT / "infra" / "compose.prod.yml").read_text())
+    assert compose["services"]["sandbox"]["image"] == "${SANDBOX_IMAGE:-${API_IMAGE:-agentcanvas-api:latest}}"
+
+
+@needs_helm
 def test_remote_script_execution_without_the_sandbox_service_is_refused():
     bad = helm("sandbox.enabled=false")
     assert bad.returncode != 0 and "set sandbox.enabled=true" in bad.stderr

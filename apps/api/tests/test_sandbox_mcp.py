@@ -442,3 +442,38 @@ async def test_browsing_a_connector_the_hosted_edition_does_not_run_is_refused(a
     finally:
         app.state.settings.edition = "dev"
         app.state.settings.allow_local_mcp = False
+
+
+# ------------------------------------------------------------------- connectors the image comes with ----
+def fake_servers(root: Path, name: str = "@ac-test/tiny", version: str = "1.0.0") -> Path:
+    """An /opt/mcp-servers look-alike whose `node` runs Python, so the tiny server stands in for a Node.js one."""
+    folder = root / "node_modules" / name
+    folder.mkdir(parents=True)
+    (folder / "package.json").write_text(json.dumps({"name": name, "version": version, "bin": {"tiny": "tiny.py"}}))
+    shutil.copy(TINY, folder / "tiny.py")
+    (root / "bin").mkdir()
+    (root / "bin" / "node").write_text(f'#!/bin/sh\nexec "{sys.executable}" "$@"\n')
+    (root / "bin" / "node").chmod(0o755)
+    return root
+
+
+def test_npx_starts_the_installed_copy_of_that_exact_version(tmp_path):
+    from agentcanvas.sandbox.mcp_child import installed
+
+    servers = str(fake_servers(tmp_path / "servers"))
+    node, program = f"{servers}/bin/node", f"{servers}/node_modules/@ac-test/tiny/tiny.py"
+    assert installed(["npx", "-y", "@ac-test/tiny@1.0.0", "--headless"], servers) == [node, program, "--headless"]
+    for argv in (
+        ["npx", "-y", "@ac-test/tiny@1.0.1"],  # another version: npx as asked (offline, it fails)
+        ["npx", "-y", "@ac-test/tiny"], ["npx", "-y", "../../etc@1.0.0"], ["uvx", "tiny==1.0.0"], ["npx", "-y"],
+    ):  # fmt: skip
+        assert installed(argv, servers) == argv, argv
+    assert installed(["npx", "-y", "@ac-test/tiny@1.0.0"], "") == ["npx", "-y", "@ac-test/tiny@1.0.0"]
+
+
+async def test_a_gallery_style_connector_starts_from_the_images_copy(service, ws, tmp_path, monkeypatch):
+    monkeypatch.setenv("AC_MCP_SERVERS", str(fake_servers(tmp_path / "servers")))  # what the image sets
+    runner = SandboxRunner(remote(service), ws, {})
+    transport = runner.mcp_transport("tiny", "npx", ["-y", "@ac-test/tiny@1.0.0"], {})
+    async with McpSessions().once(lambda: Client(transport)) as client:
+        assert await text(client, "recall") == "[]"

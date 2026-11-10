@@ -135,7 +135,7 @@ MCP_MAX_LINE = 32 * 1024 * 1024
 MEMORY_POLL_S = 1.0  # how often a connector's memory is measured
 # what of the service's environment a connector's server gets: where programs are and how npm, uv, Node.js and
 # Playwright are set up in the image (never the service's token)
-PASS_ENV = ("PATH", "LANG", "LC_ALL", "TZ")
+PASS_ENV = ("PATH", "LANG", "LC_ALL", "TZ", "AC_MCP_SERVERS")
 PASS_PREFIXES = ("npm_config_", "NPM_CONFIG_", "PLAYWRIGHT_", "UV_", "NODE_")
 
 

@@ -189,10 +189,32 @@ AGENTCANVAS_SANDBOX_MCP=true   # needs AGENTCANVAS_SCRIPT_EXECUTION=remote (the 
 - `AGENTCANVAS_SANDBOX_MCP_SESSIONS` (default 8) caps the connector sandboxes one API server runs at once; past
   it the least recently used idle one is stopped, or the run fails with "8 app connector sandboxes are in use".
 - The image needs Python 3 (which starts the program) and the program itself. Programs are not downloaded at run
-  time unless the egress list allows the registry (`registry.npmjs.org`, `pypi.org`, `files.pythonhosted.org`).
+  time unless the egress list allows the registry (`registry.npmjs.org`, `pypi.org`, `files.pythonhosted.org`);
+  the browser image below comes with the gallery's sandbox connectors.
 - The hosted edition allows only the gallery's connectors marked to run in the sandbox (E046), and checks it again
   before every run. With `AGENTCANVAS_EDITION=hosted` and `SANDBOX_MCP` off, no local connector runs at all: the
   hosted edition never starts one on the API server.
+
+**The browser image.** Build the API image with `--build-arg WITH_BROWSER=true` and run the sandbox from it; the API
+itself keeps the plain image:
+
+```bash
+docker build -f infra/Dockerfile.api --build-arg FRAMEWORKS=all --build-arg WITH_MASTRA=true \
+  --build-arg WITH_BROWSER=true -t agentcanvas-api:browser apps/api
+```
+
+- It adds Node.js, the gallery's connectors that run in the sandbox (**Browser (Playwright)**, **Sequential
+  thinking**, at the gallery's versions, installed from `agentcanvas/sandbox/connectors/package-lock.json`) and
+  Chromium with its system libraries: about 950 MB more on disk (about 370 MB to download): Chromium, Node.js and
+  the connectors 595 MB, Chromium's libraries and fonts 350 MB.
+- Compose: `SANDBOX_IMAGE=agentcanvas-api:browser`. Helm: `sandbox.image`. Docker mode:
+  `AGENTCANVAS_SANDBOX_MCP_IMAGE=agentcanvas-api:browser`.
+- In it, `npx @playwright/mcp@0.0.83 …` starts the installed copy, offline; Playwright MCP uses that Chromium and
+  writes its snapshots under `/tmp`. Chromium runs without its own sandbox (the container is the sandbox) and with
+  the connector's memory limit: give a browser `"mcp": {"memory_mb": 1024}` or more in `sandbox.json`, and the
+  sandbox pods or containers that much on top of what scripts need (the compose file gives them 2 GB).
+- To offer another connector in the hosted edition, add it to that `package.json` (and its lockfile) at the
+  gallery's exact version and mark the gallery entry `sandboxable`; a test checks the two agree.
 
 ## Sign-in
 

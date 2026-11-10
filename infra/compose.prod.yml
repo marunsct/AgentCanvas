@@ -65,7 +65,8 @@ services:
   # no capabilities, and two internal networks: `sandbox`, whose only way out is the egress proxy (for the hosts a
   # project's sandbox.json lists), and `sandbox-control`, where the API calls it and refuses any request from it.
   sandbox:
-    image: ${API_IMAGE:-agentcanvas-api:latest}
+    # SANDBOX_IMAGE: the API image built with WITH_BROWSER=true, for local app connectors in the sandbox
+    image: ${SANDBOX_IMAGE:-${API_IMAGE:-agentcanvas-api:latest}}
     command: ["uvicorn", "agentcanvas.sandbox.service:app", "--host", "0.0.0.0", "--port", "8090"]
     environment:
       AGENTCANVAS_SANDBOX_TOKEN: ${AGENTCANVAS_SANDBOX_TOKEN:?set AGENTCANVAS_SANDBOX_TOKEN (32+ random characters)}
