@@ -6,7 +6,7 @@ gets a reminder of its own). Nullable without a default, so no row is rewritten 
 like new ones.
 
 Revision ID: 98d069f94d68
-Revises: a4c85440520c
+Revises: 72239139b385
 Create Date: 2026-11-13 09:00:00
 """
 
@@ -18,7 +18,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "98d069f94d68"
-down_revision: str | None = "a4c85440520c"
+down_revision: str | None = "72239139b385"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
