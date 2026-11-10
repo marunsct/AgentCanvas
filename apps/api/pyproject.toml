@@ -11,23 +11,23 @@ dependencies = [
   "deepagents>=0.7.34,<0.8",
   "langsmith>=0.14.1,<0.15",
   "langgraph-checkpoint-postgres>=3.1",
-  "psycopg[binary,pool]>=3.2",
-  "fastapi>=0.141",
-  "uvicorn[standard]>=0.30",
-  "pydantic>=2.9",
+  "psycopg[binary,pool]>=3.3.8",
+  "fastapi>=0.162.2",
+  "uvicorn[standard]>=0.54.0",
+  "pydantic>=2.14.3",
   "jinja2>=3.1",
   "cel-python>=0.4",
-  "ruff>=0.9", # used at runtime by the code generator (ruff format)
-  "sqlalchemy[asyncio]>=2.0.36",
-  "alembic>=1.14",
-  "aiosqlite>=0.20",
-  "python-ulid>=3.0",
+  "ruff>=0.17.4", # used at runtime by the code generator (ruff format)
+  "sqlalchemy[asyncio]>=2.1.8",
+  "alembic>=1.20.1",
+  "aiosqlite>=0.22.1",
+  "python-ulid>=4.1.0",
   "structlog>=24.4",
-  "pydantic-settings>=2.6",
+  "pydantic-settings>=2.16.2",
   "jsonschema>=4.23",
   "httpx>=0.27", # HTTP request tool (M3-T6)
-  "cryptography>=43", # project secrets (M5-T6)
-  "pyjwt[crypto]>=2.9", # OIDC bearer tokens (M7-T1)
+  "cryptography>=50.0.2", # project secrets (M5-T6)
+  "pyjwt[crypto]>=2.15.1", # OIDC bearer tokens (M7-T1)
   "langgraph-checkpoint-sqlite>=3.1.1,<4",
   "prometheus-client>=0.21",
   "opentelemetry-api>=1.45.1", # 1.45.0: CVE-2026-114603, a slow `tracestate` header parse before sign-in
@@ -36,19 +36,19 @@ dependencies = [
   "opentelemetry-instrumentation-fastapi>=0.51b0",
   "opentelemetry-instrumentation-sqlalchemy>=0.51b0",
   "opentelemetry-instrumentation-httpx>=0.51b0",
-  "pycryptodome>=3.23",
-  "langchain-openai>=1.0",
+  "pycryptodome>=4.4.0",
+  "langchain-openai>=1.7.4",
   "langchain-google-genai>=4.0",
   "langchain-mistralai>=1.0",
   "langchain-groq>=1.0",
   "langchain-ollama>=1.0",
   "langchain-deepseek>=1.0",
   "langchain-xai>=1.0",
-  "pypdf>=5",
+  "pypdf>=7.0.0",
   "python-docx>=1.1",
-  "python-multipart>=0.0.20",
+  "python-multipart>=0.0.33",
   "openai-agents==0.24.0",  # S25: workflows designed for the OpenAI Agents SDK (pre-1.0: exact pin)
-  "pypdfium2>=4",
+  "pypdfium2>=5.15.0",
   "pillow>=11",
   "ag-ui-protocol>=1.0,<2",
 ]
@@ -56,7 +56,7 @@ dependencies = [
 [project.optional-dependencies]
 # cloud KMS clients for AGENTCANVAS_KMS_KEY=aws:/gcp: (the API image installs both; a source install adds
 # the one it needs: uv sync --extra kms-aws)
-kms-aws = ["boto3>=1.35"]
+kms-aws = ["boto3>=1.43.126"]
 kms-gcp = ["google-cloud-kms>=3.2"]
 # model providers in your own cloud account: AWS Bedrock (bedrock_converse:) and Claude on Google Vertex AI
 # (google_anthropic_vertex:). The API image installs both; a source install adds the one it needs: uv sync --extra
@@ -66,13 +66,13 @@ models-gcp = ["langchain-google-vertexai>=3.2,<4"]
 
 [dependency-groups]
 dev = [
-    "pytest>=8",
-    "pytest-asyncio>=0.24",
+    "pytest>=9.2.0",
+    "pytest-asyncio>=1.4.1.post1",
     "httpx>=0.27",
     "pyright>=1.1.390",
-    "ruff>=0.9",
-    "hypothesis>=6.120",
-    "import-linter>=2.1",
+    "ruff>=0.17.4",
+    "hypothesis>=6.170.15",
+    "import-linter>=2.16",
     # the cloud model providers (the models-aws and models-gcp extras), so their tests run
     "langchain-aws>=1.9,<2",
     "langchain-google-vertexai>=3.2,<4",
