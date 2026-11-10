@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -12,6 +13,7 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from agentcanvas import cloudmodels
 from agentcanvas.db.models import Deployment, WorkflowRow, WorkflowVersion
 from agentcanvas.db.repositories import PolicyRepo, ProjectRepo, WorkflowRepo
 from agentcanvas.errors import InvalidInput, NotFound
@@ -145,10 +147,29 @@ class WorkflowService:
             policies=await self.policies(project_id) if project_id else None, environment=environment,
             publishing=environment is not None,
         )  # fmt: skip
+        found += await self._cloud_credentials(wf, project_id, hosted=settings.edition == "hosted")
         if not any(r.type == "mcp.server" for r in wf.resources):
-            return found
+            return sorted(found, key=lambda d: SEVERITY_ORDER[d.severity])
         drift = await self._tool_drift(wf)
         return sorted(found + drift, key=lambda d: SEVERITY_ORDER[d.severity]) if drift else found
+
+    async def _cloud_credentials(self, wf: Workflow, project_id: str | None, *, hosted: bool) -> list[Diagnostic]:
+        """W028: a model in your own cloud account with no credentials in sight (the project's secrets, or the
+        server's identity, which the hosted edition does not lend)."""
+        from agentcanvas.services import projects
+
+        blocks = [r for r in wf.resources if r.type == "model.chat" and cloudmodels.cloud_of(r.config.get("model", ""))]
+        if not blocks or not project_id:
+            return []
+        secrets = projects.CURRENT.secrets.get(project_id, {}) if projects.CURRENT else {}
+        out = []
+        for r in blocks:
+            model = str(r.config["model"])
+            # the server's identity is looked for in files: off the event loop
+            problem = await asyncio.to_thread(cloudmodels.credentials_problem, model, secrets, hosted=hosted)
+            if problem:
+                out.append(warning("W028", f"'{r.name}': {problem}", node_id=r.id, path="config.model"))
+        return out
 
     async def _tool_drift(self, wf: Workflow) -> list[Diagnostic]:
         """W045: app connectors whose server changed tools a live deployment pinned (its runs leave them out)."""

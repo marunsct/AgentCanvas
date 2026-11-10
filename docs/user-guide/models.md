@@ -216,6 +216,9 @@ Open it from **Choose a model** on Home (until setup is done) or **Settings › 
 | `W010` | The model is not in the catalog, so its tool calling and structured-output support are not checked. It still runs. |
 | `W011` | The provider's integration is not installed on this server. Install the package named in the message. |
 | `E017` | An OpenAI-compatible model has no Base URL. |
+| `E024` | An AWS Bedrock or Google Vertex AI model has no region (neither the block's nor a server default), a region that is not one, or a Base URL. |
+| `W028` | An AWS Bedrock or Google Vertex AI model has no credentials in sight: no project secrets for it, and the server shows no cloud identity (in the hosted edition, only the project secrets count). On AWS an instance role is seen from the machine itself; if your server has one the editor does not see, runs still use it. |
+| `W029` | A Region or Google Cloud project is set on a model of another provider: it is not used. |
 
 Under the Model field, a hint names the provider, where its key comes from, and its default address.
 
@@ -234,7 +237,9 @@ purpose, the model it comes to and why. A default is applied when something is s
 without a model keeps the model it got even if the default changes later; edit the evaluator to change it.
 
 Each choice lists only models that can answer here: hosted models whose provider key is set (a project secret or a
-server variable), the models a local server (Ollama, LM Studio, vLLM, llama.cpp) lists while it runs, and the
+server variable), AWS Bedrock and Vertex AI models with credentials (project secrets, or the server's identity
+outside the hosted edition) when the server has a default region (`AWS_REGION`, `GOOGLE_CLOUD_LOCATION`: a menu
+sets no region of its own), the models a local server (Ollama, LM Studio, vLLM, llama.cpp) lists while it runs, and the
 project's own OpenAI-compatible model. Knowledge embeddings list only models that embed text: the built-in one,
 OpenAI's and Mistral's and Gemini's embedding models when their key is set, and local models whose names say they
 embed (`nomic-embed-text`, `mxbai-embed-large`, `bge-m3`, …). A chat model such as `gpt-oss` cannot embed, so to

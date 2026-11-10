@@ -62,6 +62,13 @@ RUNTIME_TABLES = [
 ]  # LangGraph persistence data
 
 
+@pytest.fixture(autouse=True)
+def no_server_cloud_identity(monkeypatch):
+    """The machine running the tests may have an AWS profile or run on a cloud VM: the model menus and the editor
+    would offer Bedrock and Vertex AI models as if the server had a cloud identity. Tests that need one say so."""
+    monkeypatch.setattr("agentcanvas.cloudmodels.server_identity", lambda *a, **k: False)
+
+
 @pytest.fixture
 def triage() -> Workflow:
     return Workflow.model_validate(json.loads((ROOT / "examples/support_triage.ir.json").read_text()))

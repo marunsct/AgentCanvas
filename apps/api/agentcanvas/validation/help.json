@@ -288,6 +288,10 @@
       "what": "The provider stops serving this model on the day shown; after it, every call to it fails.",
       "fix": "Pick a newer model from the list before that day (the provider names a successor)."
     },
+    "W028": {
+      "what": "This AI model runs in your own cloud account, but no credentials for it were found: neither project secrets nor an identity of the server's.",
+      "fix": "Add the project secrets the message names (Workspace \u2192 Secrets), or ask whoever runs the server to give it a cloud identity (an IAM role on AWS, Workload Identity on Google Cloud)."
+    },
     "W029": {
       "what": "A region or Google Cloud project is set on a model that is not in your own cloud account, so it is not used.",
       "fix": "Clear the setting, or pick an AWS Bedrock or Google Vertex AI model if the region matters."

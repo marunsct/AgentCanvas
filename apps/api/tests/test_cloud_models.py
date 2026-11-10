@@ -17,6 +17,7 @@ from agentcanvas.runtime.runner import price
 from agentcanvas.validation import validate
 
 API = Path(__file__).resolve().parents[1]
+SERVER_IDENTITY = cloudmodels.server_identity  # the real one: conftest stubs it for every test
 AWS_KEYS = {"AWS_ACCESS_KEY_ID": "AKIAEXAMPLE", "AWS_SECRET_ACCESS_KEY": "s3cret"}
 CLOUD_VARS = (
     "AWS_REGION", "AWS_DEFAULT_REGION", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN",
@@ -238,14 +239,14 @@ def test_the_servers_identity_is_seen_without_a_network_call(tmp_path):
     root = tmp_path / "root"
     (root / "sys/class/dmi/id").mkdir(parents=True)
     env = {"HOME": str(tmp_path)}
-    assert not cloudmodels.server_identity("aws", env, root) and not cloudmodels.server_identity("gcp", env, root)
-    assert cloudmodels.server_identity("aws", {**env, "AWS_WEB_IDENTITY_TOKEN_FILE": "/var/run/token"}, root)  # IRSA
-    assert cloudmodels.server_identity("aws", {**env, "AWS_CONTAINER_CREDENTIALS_FULL_URI": "http://x"}, root)
-    assert cloudmodels.server_identity("gcp", {**env, "K_SERVICE": "api"}, root)  # Cloud Run
+    assert not SERVER_IDENTITY("aws", env, root) and not SERVER_IDENTITY("gcp", env, root)
+    assert SERVER_IDENTITY("aws", {**env, "AWS_WEB_IDENTITY_TOKEN_FILE": "/var/run/token"}, root)  # IRSA
+    assert SERVER_IDENTITY("aws", {**env, "AWS_CONTAINER_CREDENTIALS_FULL_URI": "http://x"}, root)
+    assert SERVER_IDENTITY("gcp", {**env, "K_SERVICE": "api"}, root)  # Cloud Run
     (root / "sys/class/dmi/id/product_name").write_text("Google Compute Engine\n")  # GCE, GKE (Workload Identity)
-    assert cloudmodels.server_identity("gcp", env, root) and not cloudmodels.server_identity("aws", env, root)
+    assert SERVER_IDENTITY("gcp", env, root) and not SERVER_IDENTITY("aws", env, root)
     (root / "sys/class/dmi/id/sys_vendor").write_text("Amazon EC2\n")  # an instance role
-    assert cloudmodels.server_identity("aws", env, root)
+    assert SERVER_IDENTITY("aws", env, root)
 
 
 # ------------------------------------------------------------------ catalog and image ----
@@ -364,3 +365,51 @@ def test_price_routing_keeps_prompts_in_the_blocks_region(monkeypatch):
     monkeypatch.setenv("AWS_REGION", "eu-central-1")
     out, _ = routing.route(plain, default_registry(), AWS_KEYS, [])
     assert out.resources[0].config["model"] == eu
+
+
+# ------------------------------------------------------------------ credentials in the editor and the menus ----
+HAIKU_EU = {"model": "bedrock_converse:eu.anthropic.claude-haiku-5-5", "region": "eu-central-1"}
+BEDROCK_WF = {"name": "cloud", "nodes": [],
+              "resources": [{"id": "r_b", "type": "model.chat", "name": "bedrock", "config": HAIKU_EU}]}  # fmt: skip
+
+
+async def test_the_editor_says_when_a_cloud_model_has_no_credentials(api_client, app, monkeypatch):
+    wf = (await api_client.post("/v1/projects/prj_default/workflows", json={"name": "cloud"})).json()
+    ir = {**BEDROCK_WF, "id": wf["id"]}
+    put = await api_client.put(f"/v1/workflows/{wf['id']}", json={"ir": ir}, headers={"If-Match": '"1"'})
+    assert put.status_code == 200
+
+    async def w028() -> list[str]:
+        found = (await api_client.post(f"/v1/workflows/{wf['id']}/validate")).json()
+        return [d["message"] for d in found if d["code"] == "W028"]
+
+    (message,) = await w028()
+    assert "found no AWS Bedrock credentials: add the project secret(s) AWS_ACCESS_KEY_ID" in message
+    monkeypatch.setattr("agentcanvas.cloudmodels.server_identity", lambda *a, **k: True)  # e.g. IRSA
+    assert await w028() == []
+    monkeypatch.setattr(app.state.settings, "edition", "hosted")  # whose identity is not a tenant's
+    assert "use the project's own credentials" in (await w028())[0]
+    secrets = app.state.projects.secrets.setdefault("prj_default", {})
+    for k, v in AWS_KEYS.items():
+        monkeypatch.setitem(secrets, k, v)
+    assert await w028() == []
+
+
+async def test_menus_offer_cloud_models_with_credentials_and_a_default_region(api_client, app, monkeypatch):
+    async def offered() -> set[str]:
+        return {m["id"] for m in (await api_client.get("/v1/projects/prj_default/chat-models")).json()}
+
+    eu = "bedrock_converse:eu.anthropic.claude-haiku-5-5"
+    assert eu not in await offered()
+    secrets = app.state.projects.secrets.setdefault("prj_default", {})
+    for k, v in AWS_KEYS.items():
+        monkeypatch.setitem(secrets, k, v)
+    assert eu not in await offered()  # a menu sets no region: the server's default is needed
+    monkeypatch.setenv("AWS_REGION", "eu-central-1")
+    assert eu in await offered() and "google_vertexai:gemini-3.8-flash" not in await offered()
+    for k in AWS_KEYS:
+        monkeypatch.delitem(secrets, k)
+    monkeypatch.setattr("agentcanvas.cloudmodels.server_identity", lambda *a, **k: True)
+    assert eu in await offered()
+    monkeypatch.setattr(app.state.settings, "edition", "hosted")
+    assert eu not in await offered()
