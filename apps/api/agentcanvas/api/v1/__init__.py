@@ -1,8 +1,8 @@
 """Versioned public API (/v1).
 
 Every route requires a signed-in user (M7-T1), and every id it names must belong to the user's
-organisation (M7-T2) and the user's role must allow it (M7-T3), except the deployment endpoints and their MCP and A2A
-faces (deployment API keys), signed webhooks (HMAC, from triggers and Matura), share links (their token) and the
+organisation (M7-T2) and the user's role must allow it (M7-T3), except the deployment endpoints and their MCP, A2A and
+AG-UI faces (deployment API keys), signed webhooks (HMAC, from triggers and Matura), share links (their token) and the
 sign-in configuration.
 """
 
@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends
 
 from agentcanvas.api.deps import current_user, org_scope, role_policy
 from agentcanvas.api.v1 import (
+    agui,
     annotation,
     auth,
     bridges,
@@ -101,6 +102,7 @@ router.include_router(auth.public_router)
 router.include_router(connections.public_router)  # our OAuth client metadata document: fetched by servers
 router.include_router(deployments.public_router)
 router.include_router(protocols.router)  # MCP and A2A, deployment keys
+router.include_router(agui.router)  # AG-UI, deployment keys
 router.include_router(triggers.public_router)
 router.include_router(share.public_router)  # share links (S23): the token is the capability
 router.include_router(org.exports_router)  # an organisation export's download link (E-7): the token is the capability

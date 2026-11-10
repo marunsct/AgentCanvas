@@ -50,6 +50,7 @@ dependencies = [
   "openai-agents==0.24.0",  # S25: workflows designed for the OpenAI Agents SDK (pre-1.0: exact pin)
   "pypdfium2>=4",
   "pillow>=11",
+  "ag-ui-protocol>=1.0,<2",
 ]
 
 [project.optional-dependencies]

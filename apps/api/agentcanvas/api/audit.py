@@ -26,6 +26,8 @@ SKIPPED = {
     "api_run_wait", "api_run_stream", "api_run_start", "webhook", "check_expression", "validate_workflow",
     "inspect_mcp", "dry_run", "set_layout", "share_run_stream",
 }  # fmt: skip
+# public run calls that are recorded only when they carry a decision (an AG-UI resume): the route notes it
+NOTED_ONLY = {"api_ag_ui"}
 # path parameters, most specific first: the first one present is the row's target
 TARGETS = ("interrupt_id", "run_id", "thread_id", "trigger_id", "dep_id", "ex_id", "ds_id", "evaluator_id", "exp_id",
            "oev_id", "item_id", "aq_id", "case_id", "policy_id", "token_id", "name", "environment", "user_id", "wf_id",
@@ -88,6 +90,8 @@ async def record(request: Request, response: Response) -> None:
     route = request.scope.get("route")
     name = getattr(route, "name", None)
     if request.method in READS or name is None or name in SKIPPED or not 200 <= response.status_code < 300:
+        return
+    if name in NOTED_ONLY and not getattr(request.state, "audit", None):
         return
     if not request.url.path.startswith("/v1/"):
         return

@@ -214,6 +214,7 @@ async def test_organisation_b_is_refused_the_routes_the_crawl_cannot_reach(app, 
         ("get", f"/v1/workflows/{wf}/bridges/langgraph/export.zip"),
         ("get", f"/v1/projects/{PROJECT}/uploads/f_01HZZZZZZZZZZZZZZZZZZZZZZZ"),
         ("get", f"/v1/deployments/{dep}/mcp"),
+        ("post", f"/v1/deployments/{dep}/ag-ui"),  # F-8: its deployment's key, never a member's sign-in
     ]
     act_as_b(app)
     try:
