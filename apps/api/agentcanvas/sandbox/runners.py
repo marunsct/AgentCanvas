@@ -51,6 +51,7 @@ def _jsonable(v: Any) -> Any:
 # processes and threads a call's code may start on top of what its user runs already: room for a thread per core
 # (OpenBLAS, say) on a big node, not for a fork loop
 PROCESSES = 256
+MCP_PROCESSES = 512  # a local app connector's: a browser runs a process per page, each with dozens of threads
 
 
 def _tasks_of_this_user() -> int | None:

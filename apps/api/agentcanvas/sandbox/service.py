@@ -40,8 +40,8 @@ from pydantic import BaseModel, Field, ValidationError
 
 from agentcanvas.sandbox.runners import (
     MCP_CHILD,
+    MCP_PROCESSES,
     MEMORY_MB,
-    PROCESSES,
     QUEUE_WAIT_S,
     TIMEOUT_S,
     ScriptError,
@@ -166,12 +166,19 @@ def _connector_limits(cpu_s: int, processes: int | None) -> Callable[[], None]:
 
 
 def _memory_mb(root: int) -> float:
-    """Resident memory of a process and everything it started (Linux; 0 elsewhere)."""
+    """Memory of a process and everything it started (Linux; 0 elsewhere): proportional set sizes, so pages a
+    browser's processes share count once, not once per process; resident size where the kernel has no rollup."""
     if sys.platform != "linux":
         return 0.0
     page = os.sysconf("SC_PAGE_SIZE")
     total = 0
     for pid in [root, *_descendants(root)]:
+        try:
+            rollup = Path(f"/proc/{pid}/smaps_rollup").read_text()
+            total += next(int(ln.split()[1]) * 1024 for ln in rollup.splitlines() if ln.startswith("Pss:"))
+            continue
+        except (OSError, ValueError, IndexError, StopIteration):
+            pass
         try:
             total += int(Path(f"/proc/{pid}/statm").read_text().split()[1]) * page
         except (OSError, ValueError, IndexError):
@@ -200,7 +207,7 @@ async def _run_connector(ws: WebSocket, body: McpStartIn, work: Path) -> None:
             sys.executable, "-I", str(MCP_CHILD), body.command, *body.args,
             stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
             env=_connector_env(body, home), cwd=work, limit=MCP_MAX_LINE, start_new_session=True,
-            preexec_fn=_connector_limits(math.ceil(body.lifetime_s), running + PROCESSES if running else None)
+            preexec_fn=_connector_limits(math.ceil(body.lifetime_s), running + MCP_PROCESSES if running else None)
             if os.name == "posix" else None,
         )  # fmt: skip
     except OSError as exc:

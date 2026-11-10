@@ -207,9 +207,13 @@ def test_a_docker_connector_is_confined():
     assert online[online.index("--network") + 1] == "agentcanvas-sandbox"
 
 
-def test_a_line_break_in_a_connector_variable_is_refused():
+def test_a_connector_variable_that_an_env_file_cannot_carry_is_refused():
     with pytest.raises(McpSandboxError, match="line break"):
-        sandbox_mcp._env_lines({"A": "x\nB=y"})
+        sandbox_mcp._env_lines({"A": "x\nB=y"})  # would set B too
+    for name in ("A=B", "#A", "A B", ""):
+        with pytest.raises(McpSandboxError, match="not an environment variable name"):
+            sandbox_mcp._env_lines({name: "v"})
+    assert sandbox_mcp._env_lines({"TOKEN": "a=b c"}) == "TOKEN=a=b c\n"
 
 
 def _docker_ready() -> bool:

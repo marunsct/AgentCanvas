@@ -18,6 +18,7 @@ import asyncio
 import contextlib
 import json
 import os
+import re
 import shutil
 import tempfile
 import time
@@ -36,13 +37,12 @@ from mcp.shared.message import SessionMessage
 
 from agentcanvas.log import get_logger
 from agentcanvas.sandbox.policy import McpPolicy, PolicyError, load_policy
-from agentcanvas.sandbox.runners import MCP_CHILD, QUEUE_WAIT_S, _docker
+from agentcanvas.sandbox.runners import MCP_CHILD, MCP_PROCESSES, QUEUE_WAIT_S, _docker
 
 log = get_logger(__name__)
 
 MAX_LINE = 32 * 1024 * 1024  # one MCP message (a browser screenshot arrives as base64 in one line)
 STDERR_TAIL = 16 * 1024
-PROCESSES = 512  # a browser runs a process per page and many threads
 TMP_MB = 512  # the connector's /tmp (its home: a browser profile, npm's cache)
 START_S = 120.0  # starting the server, after a free sandbox was found
 MODES = ("docker", "remote")
@@ -255,16 +255,22 @@ def docker_mcp_command(
         "docker", "create", "-i", "--name", name, "--label", "agentcanvas.mcp=1", "--init",
         "--user", "65534:65534", "--network", NETWORK if online else "none", "--env-file", env_file,
         "--memory", f"{limits.memory_mb}m", "--memory-swap", f"{limits.memory_mb}m", "--cpus", "1",
-        "--pids-limit", str(PROCESSES), "--read-only", "--tmpfs", f"/tmp:size={TMP_MB}m",
+        "--pids-limit", str(MCP_PROCESSES), "--read-only", "--tmpfs", f"/tmp:size={TMP_MB}m",
         "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
         "-v", f"{workspace}:/ws:ro", "-v", f"{MCP_CHILD}:/sandbox/mcp_child.py:ro", "-w", "/ws",
         image, "python3", "-I", "/sandbox/mcp_child.py", server.command, *server.args,
     ]  # fmt: skip
 
 
+_ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
 def _env_lines(env: dict[str, str]) -> str:
+    """An env file (`docker --env-file` takes each line as it is: no quotes, no line breaks)."""
     for k, v in env.items():
-        if "\n" in v or "\r" in v or "=" in k or not k:
+        if not _ENV_NAME.match(k):
+            raise McpSandboxError(f"'{k}' is not an environment variable name (letters, digits and _)")
+        if "\n" in v or "\r" in v or "\0" in v:
             raise McpSandboxError(f"environment variable '{k}' of a connector cannot hold a line break")
     return "".join(f"{k}={v}\n" for k, v in env.items())
 
@@ -429,6 +435,10 @@ class McpSessions:
                 client = await _start(open_client())
                 limits = getattr(client.transport, "limits", None) or McpPolicy()
                 live = self._live[key] = _Live(client, time.monotonic(), time.monotonic(), limits)
+                log.info(
+                    "sandbox.mcp_started", scope=key[0], connector=getattr(client.transport, "label", "?"),
+                    sandboxes=len(self._live), lifetime_s=limits.lifetime_s,
+                )  # fmt: skip
             finally:
                 self._starting -= 1
             if self._reaper is None or self._reaper.done():
