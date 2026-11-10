@@ -55,6 +55,11 @@ async def test_a_new_conversation_never_starts_from_state_left_under_its_id(app,
     """Checkpoints left behind before deletes took them (or by a run on another server as it was deleted)."""
     old = await make_greeter(api_client)
     await converse(api_client, old, "th_reused")
+    # the run's finish hooks and the search index write after RUN_FINISHED reaches the client: let them end before
+    # deleting under them (Postgres could otherwise pick this delete as a deadlock's victim)
+    for h in [h for h in app.state.runner.handles.values() if h.thread_id == "th_reused"]:
+        await app.state.runner.wait(h.run_id)
+    await app.state.run_search.drain()
     async with app.state.db.sessionmaker() as s:  # the rows go, the checkpoints stay: as deletes used to leave them
         await s.execute(delete(WorkflowRow).where(WorkflowRow.id == old))
         await s.commit()

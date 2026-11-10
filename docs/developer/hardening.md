@@ -76,6 +76,7 @@ Done: F-2 (2026-11-09), F-4, F-5, F-6, F-7 (2026-11-09; F-5's queue redesigned 2
 
 ## 2a. Left over from the 2026-11-08 fixes
 
+- **Deletes right after a run:** a run's finish hooks and its search indexing write after `RUN_FINISHED` reaches the client; on Postgres a delete of the workflow or conversation at that moment can lose a deadlock to them (seen once in a test that deleted rows directly; the API's delete paths stop runs first but do not wait for their hooks). Retry the delete on `DeadlockDetected`, or have the delete paths wait for the thread's last run's hooks.
 - **Web types:** narrow local types written before the generated ones existed remain in `ProjectMembers.tsx`, `ProjectSpending.tsx`, `RunAsk.tsx`, `RunDigest.tsx`, `DeploymentOAuth.tsx` and `SystemRecordSection.tsx` too; swap them for `generated.ts` types.
 
 - **Service connection:** a builder can still use the organisation's service connection by publishing and running the deployment (inherent in builders being allowed to publish). A schedule's own input may use any of the project's files.
