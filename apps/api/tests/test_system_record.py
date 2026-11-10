@@ -265,3 +265,47 @@ async def test_subprocessors_name_every_service_its_runs_send_data_to(app, api_c
     ]
     assert [a["step"] for a in rec["approvals"]] == ["helper", "sign_off"] and rec["ungated"] == []
     assert [g["name"] for g in rec["guardrails"]] == ["screen", "mask", "budget"]
+
+
+EVIL = "Greets <script>alert(1)</script> [click](https://evil.test) | ![x](https://evil.test/p.png)\n# heading"
+
+
+async def test_the_record_downloads_as_markdown_or_html_with_user_text_escaped(app, api_client):
+    _, dep, _ = await published(api_client)
+    url = f"/v1/deployments/{dep}/system-record"
+    assert (await api_client.put(url, json={"purpose": EVIL, "risk_class": "limited", "risk_rationale": "chat",
+                                            "owner_id": "usr_dev"})).status_code == 200  # fmt: skip
+    r = await api_client.get(f"{url}/export")
+    assert r.status_code == 200, r.text
+    assert r.headers["content-type"].startswith("text/markdown")
+    assert r.headers["content-disposition"] == 'attachment; filename="Greeter-prod-v1.0.0-system-record.md"'
+    assert "sandbox" in r.headers["content-security-policy"] and r.headers["x-content-type-options"] == "nosniff"
+    text = r.text
+    assert text.startswith("# AI-system record: Greeter (prod)")
+    assert "## Summary" in text and "## Evaluation evidence" in text and "## Publish history" in text
+    assert "| **Risk class** | Limited: chat |" in text and "| **Owner** | dev@localhost |" in text
+    # nothing the person wrote becomes HTML, a link, an image, a heading or a new table cell
+    purpose = next(line for line in text.splitlines() if line.startswith("| **Purpose**"))
+    assert "<script>" not in purpose and "](" not in purpose.replace("\\](", "") and purpose.count(" | ") == 1
+    assert "\\<script\\>" in purpose and "\\[click\\](https:" in purpose and "\\# heading" in purpose
+
+    r = await api_client.get(f"{url}/export", params={"format": "html"})
+    assert r.status_code == 200 and r.headers["content-type"].startswith("text/html")
+    assert r.headers["content-disposition"].endswith('-system-record.html"')
+    assert "<script>" not in r.text and "&lt;script&gt;alert(1)&lt;/script&gt;" in r.text
+    assert "<h2>Human oversight</h2>" in r.text and "<p>No step asks a person.</p>" in r.text
+    assert (await api_client.get(f"{url}/export", params={"format": "pdf"})).status_code == 422
+
+    async with app.state.db.sessionmaker() as s:  # each download is in the audit log
+        from sqlalchemy import select
+
+        found = (await s.scalars(select(AuditLog).where(AuditLog.action == "export_system_record"))).all()
+        assert [(e.target, e.detail["format"], e.actor_id) for e in found] == [
+            (f"dep_id={dep}", "markdown", "usr_dev"), (f"dep_id={dep}", "html", "usr_dev"),
+        ]  # fmt: skip
+
+
+def test_markdown_escaping_keeps_text_on_one_line_and_inert():
+    from agentcanvas.services.system_record_doc import md
+
+    assert md("a|b\n\n<b>*x*</b> `c` [l](u)") == "a\\|b \\<b\\>\\*x\\*\\</b\\> \\`c\\` \\[l\\](u)"

@@ -102,6 +102,7 @@ owner who left the organisation and a review date that passed.
 | Request | Does |
 |---|---|
 | `GET /v1/deployments/{id}/system-record` | The whole record as JSON (viewers and above) |
+| `GET /v1/deployments/{id}/system-record/export?format=markdown` (or `html`) | The record as a document to hand an auditor or file in your AI inventory: Markdown, or an HTML page that prints as a PDF. Each download is in the audit log (`export_system_record`) |
 | `PUT /v1/deployments/{id}/system-record` with `{"purpose": "…", "owner_id": "usr_…", "risk_class": "high", "risk_rationale": "…", "data_categories": ["personal data"], "end_user_facing": true, "review_date": "2027-05-01"}` | Replace the fields people write (builders and above); a field left out is cleared. Refused when the owner is not a member or a risk class has no rationale |
 
 Changing the record is in the audit log (`update_system_record`, with the risk class, owner and review date) and is
