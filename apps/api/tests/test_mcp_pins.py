@@ -257,15 +257,14 @@ def w045(view: dict) -> list[dict]:
     return [d for d in view["diagnostics"] if d["code"] == "W045"]
 
 
-async def test_drift_is_audited_once_and_shown_in_the_editor_until_published_again(app, api_client):
+async def test_drift_is_audited_once_and_shown_in_the_editor_until_published_again(app, api_client, monkeypatch):
+    from sqlalchemy import select
+
+    from agentcanvas.db.models import AuditLog, AuditOutbox
+    from agentcanvas.services import audit_sink
+
     server = Server(app)
-    sent: list = []
-
-    class Sink:
-        async def emit(self, event):
-            sent.append(event)
-
-    app.state.audit_sink = Sink()
+    monkeypatch.setattr(audit_sink, "_forwarding", audit_sink.Forwarding(("webhook",)))  # queued for a SIEM
     wf, dep, key = await published_agent(app, api_client)
     call, auth = f"/v1/deployments/{dep}/runs/wait", {"Authorization": f"Bearer {key}"}
     server.now = support_server(description="Rewritten.", extra=True)
@@ -276,7 +275,9 @@ async def test_drift_is_audited_once_and_shown_in_the_editor_until_published_aga
     assert row["actor_id"] is None and row["target"].startswith("run_id=")
     assert row["detail"]["deployment_id"] == dep and row["detail"]["resource"] == "support"
     assert row["detail"]["added"] == ["delete_everything"] and row["detail"]["changed"] == ["lookup_order"]
-    assert [e.action for e in sent] == ["publish", "mcp_tool_drift"]  # forwarded like other security entries
+    async with app.state.db.sessionmaker() as s:  # forwarded like other security entries
+        q = select(AuditLog.action).join(AuditOutbox, AuditOutbox.audit_id == AuditLog.id).order_by(AuditLog.id)
+        assert list((await s.scalars(q)).all()) == ["publish", "mcp_tool_drift"]
 
     [listed] = (await api_client.get(f"/v1/workflows/{wf}/deployments")).json()
     assert listed["tool_drift"]["support"]["changed"] == ["lookup_order"]

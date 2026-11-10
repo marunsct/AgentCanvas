@@ -32,9 +32,10 @@ ROUTINE = {
     # projects and their files, defaults and first-run setup
     "create_project", "rename_project", "save_file", "delete_file", "move_file", "new_script", "upload_file",
     "put_copilot_settings", "put_knowledge_defaults", "put_model_defaults", "put_setup", "skip_setup", "test_model",
-    "server_models", "test_trace_export", "index_runs",
+    "server_models", "test_trace_export", "test_notifications",
+    "index_runs",
     # running, conversations, feedback (approvals are security events, above)
-    "start_run", "cancel_run", "continue_thread", "fork_thread", "delete_thread", "api_feedback", "api_upload",
+    "start_run", "cancel_run", "api_run_cancel", "continue_thread", "fork_thread", "delete_thread", "api_feedback", "api_upload",
     "share_feedback", "share_upload", "share_close_conversation", "a2a_endpoint", "mcp_endpoint", "send_event",
     "delete_trigger", "chat", "chat_stream", "make_workflow",
     # evaluation: datasets, test cases, evaluators, experiments, annotation, red team
@@ -91,6 +92,10 @@ def test_security_actions_name_routes_or_the_rows_services_write():
         "scim_create_user", "scim_set_active", "scim_delete_user", "scim_role_sync", "scim_create_group",
         "scim_replace_group", "scim_patch_group", "scim_delete_group", "sso_role_sync", "sso_member_removed",
         "audit_outbox_retried", "audit_outbox_discarded",  # the command line (agentcanvas/audit.py)
+        "mcp_tool_drift",  # the runner, when a pinned app connector's tools changed
+        "spend_cap_warning", "spend_cap_reached",  # the spending caps, as a run's spend crosses one
+        "purge_organization", "download_org_export",  # the offboarding job; an export's (token-only) download link
+        "export_member",  # a person's data export (record_read)
     }  # fmt: skip
     assert SECURITY_ACTIONS - written_by_services <= _audited_writes()
 
