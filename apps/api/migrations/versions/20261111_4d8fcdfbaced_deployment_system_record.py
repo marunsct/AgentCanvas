@@ -6,7 +6,7 @@ whether its end users are the public, and when it is next reviewed. Everything e
 what the server already keeps. The deployment table is small: a plain nullable column.
 
 Revision ID: 4d8fcdfbaced
-Revises: d32911f9085f
+Revises: 20c9bc969e5b
 Create Date: 2026-11-11 09:00:00
 """
 
@@ -19,7 +19,7 @@ from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
 
 revision: str = "4d8fcdfbaced"
-down_revision: str | None = "d32911f9085f"
+down_revision: str | None = "20c9bc969e5b"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
