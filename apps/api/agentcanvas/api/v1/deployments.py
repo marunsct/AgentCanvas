@@ -7,6 +7,7 @@ version — editing the draft never changes what callers get.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
@@ -54,6 +55,7 @@ from agentcanvas.services.disclosure import AI_HEADER, GeneratedBy, marked
 from agentcanvas.services.projects import PROJECT_OF
 from agentcanvas.services.redeploy import thread_version
 from agentcanvas.services.run_results import ResultRepo, RunResult, from_handle
+from agentcanvas.services.share import visitor_hash
 from agentcanvas.services.testcases import TestCaseService
 from agentcanvas.services.versions import VersionService
 from agentcanvas.services.workflows import WorkflowService
@@ -87,7 +89,7 @@ class DeploymentOut(BaseModel):
         description="app connector -> the tools its runs leave out because the server changed them since publishing "
         "(added, changed, outcome); cleared when the workflow is published again",
     )
-    oauth: bool = Field(False, description="people may also sign in to its MCP and A2A endpoints with OAuth")
+    oauth: bool = Field(False, description="people may also sign in to its endpoints and API with OAuth")
 
 
 class PublishOut(BaseModel):
@@ -348,7 +350,9 @@ SCOPE = Annotated[str, StringConstraints(pattern=r"^[\x21\x23-\x5b\x5d-\x7e]{1,2
 
 
 class OAuthIn(BaseModel):
-    enabled: bool = Field(description="people may sign in to the MCP and A2A endpoints; the keys keep working")
+    enabled: bool = Field(
+        description="people may sign in to the MCP, A2A and AG-UI endpoints and the deployment API; keys keep working"
+    )
     issuer: str | None = Field(
         None, max_length=2000, description="the authorization server (its `iss`); none: the one people sign in with"
     )
@@ -371,31 +375,56 @@ class OAuthOut(BaseModel):
     scopes: list[str]
     mcp_resource: str = Field(description="the MCP endpoint's resource identifier: its tokens' audience")
     a2a_resource: str = Field(description="the A2A endpoint's resource identifier: its tokens' audience")
+    ag_ui_resource: str = Field(description="the AG-UI endpoint's resource identifier: its tokens' audience")
+    api_resource: str = Field(
+        description="the deployment API's resource identifier (runs/wait and the others): its tokens' audience"
+    )
     mcp_metadata: str = Field(description="the MCP endpoint's protected resource metadata (RFC 9728)")
     a2a_metadata: str = Field(description="the A2A endpoint's protected resource metadata")
+    ag_ui_metadata: str = Field(description="the AG-UI endpoint's protected resource metadata")
+    api_metadata: str = Field(description="the deployment API's protected resource metadata")
+
+
+API = "deployment_api"  # the deployment API's routes (runs/wait, runs/{run_id}, …): one resource for all of them
+
+
+def _address(request: Request, route: str, dep_id: str) -> str:
+    """The public address of a deployment's endpoint; the deployment API's is the deployment's own, under which all
+    its routes are (a resource identifier names the API, not one of its runs)."""
+    if route == API:
+        return api_url(request, "api_run_start", dep_id=dep_id).removesuffix("/runs")
+    return api_url(request, route, dep_id=dep_id)
 
 
 def oauth_resource(request: Request, route: str, dep_id: str) -> str:
-    """The resource identifier of a deployment's MCP or A2A endpoint: its public address. Tokens are bound to it, so
-    in production it must not come from the request's Host header (a token issued for another server, replayed with
-    that server's name as Host, would match): AGENTCANVAS_PUBLIC_URL is required there."""
+    """The resource identifier of a deployment's endpoint (MCP, A2A, AG-UI, or `API`): its public address. Tokens
+    are bound to it, so in production it must not come from the request's Host header (a token issued for another
+    server, replayed with that server's name as Host, would match): AGENTCANVAS_PUBLIC_URL is required there."""
     s: Settings = request.app.state.settings
     if not s.public_url and (s.env in ("staging", "prod") or s.edition == "hosted"):
         raise Conflict("OAuth sign-in needs AGENTCANVAS_PUBLIC_URL: access tokens are bound to the public address")
-    return api_url(request, route, dep_id=dep_id)
+    return _address(request, route, dep_id)
+
+
+def oauth_scopes(cfg: deployment_oauth.OAuthConfig, route: str) -> list[str]:
+    """The scopes an endpoint's tokens may carry (its metadata's `scopes_supported`): the deployment's, and for the
+    deployment API the one that only reads."""
+    extra = [deployment_oauth.READ_SCOPE] if route == API else []
+    return list(dict.fromkeys([*cfg.scopes, *extra]))
 
 
 def _oauth_out(request: Request, dep: Deployment) -> OAuthOut:
     cfg = deployment_oauth.config(dep.oauth)
-    mcp = api_url(request, "mcp_endpoint", dep_id=dep.id)
-    a2a = api_url(request, "a2a_endpoint", dep_id=dep.id)
+    mcp, a2a = _address(request, "mcp_endpoint", dep.id), _address(request, "a2a_endpoint", dep.id)
+    ag_ui, rest = _address(request, "api_ag_ui", dep.id), _address(request, API, dep.id)
     settings = request.app.state.settings
     issuer = deployment_oauth.issuer_of(cfg, settings) if cfg else settings.oidc_issuer
+    meta = deployment_oauth.metadata_url
     return OAuthOut(
         enabled=cfg is not None, issuer=cfg.issuer if cfg else None, authorization_server=issuer,
         audience=cfg.audience if cfg else None, scopes=cfg.scopes if cfg else [deployment_oauth.DEFAULT_SCOPE],
-        mcp_resource=mcp, a2a_resource=a2a,
-        mcp_metadata=deployment_oauth.metadata_url(mcp), a2a_metadata=deployment_oauth.metadata_url(a2a),
+        mcp_resource=mcp, a2a_resource=a2a, ag_ui_resource=ag_ui, api_resource=rest,
+        mcp_metadata=meta(mcp), a2a_metadata=meta(a2a), ag_ui_metadata=meta(ag_ui), api_metadata=meta(rest),
     )  # fmt: skip
 
 
@@ -408,8 +437,8 @@ def access_tokens(request: Request) -> deployment_oauth.AccessTokens:
 
 @router.get("/deployments/{dep_id}/oauth", response_model=OAuthOut)
 async def get_deployment_oauth(dep_id: str, request: Request, session: AsyncSession = Depends(get_session)) -> OAuthOut:
-    """Whether people may sign in to the deployment's MCP and A2A endpoints with OAuth, and the addresses a client
-    and the identity provider need."""
+    """Whether people may sign in to the deployment's endpoints and API with OAuth, and the addresses a client and
+    the identity provider need."""
     return _oauth_out(request, await DeploymentService(session).require(dep_id))
 
 
@@ -421,9 +450,9 @@ async def put_deployment_oauth(
     session: AsyncSession = Depends(get_session),
     settings: Settings = Depends(get_settings_dep),
 ) -> OAuthOut:
-    """Let people sign in to the deployment's MCP and A2A endpoints with an access token from the identity provider
-    (OAuth 2.1, the MCP authorization spec), or stop it. The keys keep working either way. Turning it on checks that
-    the issuer's signing keys can be loaded (502 otherwise)."""
+    """Let people sign in to the deployment's MCP, A2A and AG-UI endpoints and its API with an access token from the
+    identity provider (OAuth 2.1, the MCP authorization spec), or stop it. The keys keep working either way. Turning it
+    on checks that the issuer's signing keys can be loaded (502 otherwise)."""
     svc = DeploymentService(session)
     await svc.require(dep_id)
     if not body.enabled:
@@ -493,18 +522,24 @@ class ApiResult(BaseModel):
 
 
 async def _caller(
-    request: Request, session: AsyncSession, dep_id: str, authorization: str | None, oauth: str | None = None
+    request: Request,
+    session: AsyncSession,
+    dep_id: str,
+    authorization: str | None,
+    oauth: str | None = API,
+    reading: bool = False,
 ) -> tuple[Deployment, Workflow]:
     """The key's deployment and workflow, after counting the request against the deployment's and the project's
     rate limits (429 when over). The organisation's IP allow-list comes first, so a caller outside it cannot even
-    learn whether a key is valid. `oauth`: the route (MCP or A2A) whose callers may also sign in with an access
-    token when the deployment allows it (E-11)."""
+    learn whether a key is valid. `oauth`: the endpoint (MCP, A2A, AG-UI or the deployment API) whose callers may
+    also sign in with an access token when the deployment allows it (E-11); `reading`: the call only reads, so the
+    read scope is enough."""
     await networks.check_deployment(request, session, dep_id, "deployment key")
     svc = DeploymentService(session)
     dep = await session.get(Deployment, dep_id) if oauth else None
     cfg = deployment_oauth.config(dep.oauth) if dep is not None and dep.active else None
     if oauth and dep is not None and cfg is not None:
-        dep, wf = await _signed_in(request, svc, dep, cfg, oauth, authorization)
+        dep, wf = await _signed_in(request, svc, dep, cfg, oauth, authorization, reading)
     else:
         dep, wf = await svc.authenticate(dep_id, authorization)
     await count_call(request, session, dep, wf)
@@ -518,6 +553,7 @@ async def _signed_in(
     cfg: deployment_oauth.OAuthConfig,
     route: str,
     authorization: str | None,
+    reading: bool = False,
 ) -> tuple[Deployment, Workflow]:
     """A call of an endpoint that takes OAuth: a deployment key as always, else an access token for this endpoint.
     Every refusal names where to sign in (`WWW-Authenticate`, RFC 9728), so a client can find it on its own."""
@@ -542,8 +578,11 @@ async def _signed_in(
     if issuer is None:
         raise Unauthorized("this deployment's sign-in has no issuer: set one in its OAuth settings", challenge=ask)
     audiences = [resource, *([cfg.audience] if cfg.audience else [])]
+    enough = deployment_oauth.READ_SCOPE if reading else None
     try:
-        who = await access_tokens(request).verify(token, issuer=issuer, audiences=audiences, scopes=cfg.scopes)
+        who = await access_tokens(request).verify(
+            token, issuer=issuer, audiences=audiences, scopes=cfg.scopes, enough=enough
+        )
     except deployment_oauth.InvalidToken as exc:
         bad = deployment_oauth.challenge(meta, cfg.scopes, "invalid_token", exc.detail)
         raise Unauthorized(exc.detail, challenge=bad) from None
@@ -551,8 +590,7 @@ async def _signed_in(
         bad = deployment_oauth.challenge(meta, cfg.scopes, "insufficient_scope", exc.detail)
         raise Forbidden(exc.detail, challenge=bad) from None
     wf = await svc.pinned(dep)
-    request.state.signed_in = who
-    note(request, caller="oauth", end_user=who.user_id)
+    request.state.signed_in = who  # the audit entry names them (api/audit.py)
     return dep, wf
 
 
@@ -566,6 +604,13 @@ def bound_end_user(request: Request, dep: Deployment) -> str | None:
     who acts for the deployment's owner and may continue any of its conversations."""
     who = signed_in(request)
     return end_user_label(dep.id, who.user_id) if who else None
+
+
+def own_files(request: Request) -> str | None:
+    """The mark on a signed-in person's uploads: their runs may use those (and the ones uploaded with a key), never
+    another person's. Like a share link visitor's, which can never be the same (a visitor's secret has no ':')."""
+    who = signed_in(request)
+    return visitor_hash(f"oauth:{who.user_id}") if who else None
 
 
 async def count_call(
@@ -625,16 +670,20 @@ async def _start(
         wf, thread_id=body.thread_id, input=body.input, context=await _api_context(session, dep, wf, body),
         deployment_id=dep.id, version_id=version_id, labels={**body.metadata, **(labels or {})},
         caller_run_id=nesting.caller(request.headers.get(nesting.HEADER)),
-        end_user=end_user_label(dep.id, body.user_id) if body.user_id else None,
+        end_user=end_user_label(dep.id, body.user_id) if body.user_id else None, visitor_hash=own_files(request),
     )  # fmt: skip
     await _add_callback(session, dep, h, callback)
     return h
 
 
 async def _callback_url(request: Request, session: AsyncSession, dep: Deployment, url: str | None) -> str | None:
-    """The run's callback address, checked before the run starts (422 when it may not be used)."""
+    """The run's callback address, checked before the run starts (422 when it may not be used). Only for key holders:
+    a callback is signed with the deployment's secret, which the deployment's own systems trust, so a signed-in
+    person may not have one sent where they choose (they read their result with `GET .../runs/{run_id}`)."""
     if url is None:
         return None
+    if signed_in(request) is not None:
+        raise InvalidInput("callback_url needs a deployment key; read the result with GET …/runs/{run_id}")
     await callbacks.require_secret(session, dep)
     return await callbacks.check_url(url, request.app.state.settings.edition == "hosted")
 
@@ -643,6 +692,16 @@ async def _add_callback(session: AsyncSession, dep: Deployment, h: RunHandle, ur
     if url is not None:
         session.add(RunCallback(run_id=h.run_id, deployment_id=dep.id, url=url))
         await session.commit()
+
+
+async def own_run(session: AsyncSession, dep: Deployment, run_id: str, end_user: str | None) -> str:
+    """The conversation of a run of this deployment (its thread id). Another deployment's run, and for a signed-in
+    caller (`end_user`) another person's, is the same 404 as an unknown one."""
+    q = select(Thread.id, Thread.end_user).join(Run, Run.thread_id == Thread.id)
+    row = (await session.execute(q.where(Run.id == run_id, Thread.deployment_id == dep.id))).first()
+    if row is None or (end_user is not None and row.end_user != end_user):
+        raise NotFound(f"run '{run_id}' not found")
+    return row.id
 
 
 async def own_thread(session: AsyncSession, dep: Deployment, thread_id: str, end_user: str | None = None) -> Thread:
@@ -693,21 +752,32 @@ async def api_run_wait(
     return await _result(h)
 
 
-async def key_caller(
-    dep_id: str,
-    request: Request,
-    authorization: str | None = Header(None),
-    session: AsyncSession = Depends(get_session),
-) -> tuple[Deployment, Workflow]:
-    """The deployment and workflow of the request's key, as a dependency: the key is checked before the body is read."""
-    return await _caller(request, session, dep_id, authorization)
+Caller = tuple[Deployment, Workflow]
+
+
+def deployment_caller(route: str = API, *, reading: bool = False) -> Callable[..., Awaitable[Caller]]:
+    """A dependency: the deployment and workflow of the request's key or access token (for `route`; `reading`: the
+    read scope is enough), checked before the body is read, so a request without them is refused (401) first."""
+
+    async def caller(
+        dep_id: str,
+        request: Request,
+        authorization: str | None = Header(None),
+        session: AsyncSession = Depends(get_session),
+    ) -> Caller:
+        return await _caller(request, session, dep_id, authorization, route, reading)
+
+    return caller
+
+
+api_caller, api_reader = deployment_caller(), deployment_caller(reading=True)
 
 
 @public_router.post("/deployments/{dep_id}/files", response_model=FileOut, status_code=201)
 async def api_upload(
     request: Request,
     file: Annotated[UploadFile, File(description="an image, PDF, .docx or text file")],
-    caller: tuple[Deployment, Workflow] = Depends(key_caller),
+    caller: Caller = Depends(api_caller),
     session: AsyncSession = Depends(get_session),
 ) -> FileOut:
     """Upload a file for the workflow's file input, with the deployment's key (N-4): the answer is the reference to
@@ -726,7 +796,7 @@ async def api_upload(
     files = file_service(request, session)
     stored = await files.add(
         row.project_id, file.filename, await read_upload(file, files), source="api", deployment_id=dep.id,
-        accept=shape.accept,
+        visitor_hash=own_files(request), accept=shape.accept,
     )  # fmt: skip
     note(request, file=stored.id, media_type=stored.media_type, size=stored.size)
     return file_out(stored)
@@ -754,17 +824,6 @@ class FeedbackIn(BaseModel):
     comment: str = Field(default="", max_length=2000)
 
 
-async def _key_holder(
-    dep_id: str,
-    request: Request,
-    authorization: str | None = Header(None),
-    session: AsyncSession = Depends(get_session),
-) -> Deployment:
-    """The deployment whose key the caller holds; a dependency, so a request without a key is refused (401) before
-    its body is read."""
-    return (await _caller(request, session, dep_id, authorization))[0]
-
-
 @public_router.post("/deployments/{dep_id}/runs", response_model=ApiResult, status_code=202)
 async def api_run_start(
     dep_id: str,
@@ -785,11 +844,15 @@ async def api_run_start(
 async def api_run_get(
     run_id: str,
     request: Request,
-    dep: Deployment = Depends(_key_holder),
+    caller: Caller = Depends(api_reader),
     session: AsyncSession = Depends(get_session),
 ) -> ApiResult:
     """A run of this deployment: `running` while it works (or waits for a run slot), then its output, the pauses it
-    waits for, or its error. Any server answers; a run another deployment made is not found."""
+    waits for, or its error. Any server answers; a run another deployment made (or, signed in, another person) is not
+    found."""
+    dep = caller[0]
+    if (mine := bound_end_user(request, dep)) is not None:  # polled often: a key holder's needs no extra query
+        await own_run(session, dep, run_id, mine)
     found = await ResultRepo(session, request.app.state.runner).of(run_id, dep.id)
     if found is None:
         raise NotFound(f"run '{run_id}' not found")
@@ -805,10 +868,13 @@ class CancelOut(BaseModel):
 async def api_run_cancel(
     run_id: str,
     request: Request,
-    dep: Deployment = Depends(_key_holder),
+    caller: Caller = Depends(api_caller),
     session: AsyncSession = Depends(get_session),
 ) -> CancelOut:
     """Stop a run of this deployment, wherever it runs. A run that already ended answers `cancelled: false`."""
+    dep = caller[0]
+    if (mine := bound_end_user(request, dep)) is not None:  # polled often: a key holder's needs no extra query
+        await own_run(session, dep, run_id, mine)
     found = await ResultRepo(session, request.app.state.runner).of(run_id, dep.id)
     if found is None:
         raise NotFound(f"run '{run_id}' not found")
@@ -820,15 +886,14 @@ async def api_run_cancel(
 async def api_feedback(
     run_id: str,
     body: FeedbackIn,
-    dep: Deployment = Depends(_key_holder),
+    request: Request,
+    caller: Caller = Depends(api_caller),
     session: AsyncSession = Depends(get_session),
 ) -> Response:
     """Your end user's thumbs up or down on a run's answer (a later rating replaces the earlier one). A thumbs-down
     puts the run in the annotation queues that ask for them."""
-    q = select(Run.thread_id).join(Thread, Thread.id == Run.thread_id)
-    thread_id = await session.scalar(q.where(Run.id == run_id, Thread.deployment_id == dep.id))
-    if thread_id is None:
-        raise NotFound(f"run '{run_id}' not found")
+    dep = caller[0]
+    thread_id = await own_run(session, dep, run_id, bound_end_user(request, dep))
     await session.execute(delete(RunScore).where(RunScore.run_id == run_id, RunScore.source == "feedback"))
     down = body.rating == "down"
     session.add(
@@ -853,25 +918,42 @@ async def api_feedback(
 
 
 class ApiEndUserIn(BaseModel):
-    user_id: str = Field(min_length=1, max_length=500, description="the `user_id` you sent with their runs")
+    user_id: str | None = Field(
+        None, min_length=1, max_length=500,
+        description="the `user_id` you sent with their runs; left out by a person signed in with OAuth (their own)",
+    )  # fmt: skip
+
+
+def _data_subject(request: Request, body: ApiEndUserIn) -> str:
+    """Whose data an erase or export is for: the `user_id` a key holder names, or the signed-in person's own (they
+    may name no one else)."""
+    who = signed_in(request)
+    if who is not None:
+        if body.user_id is not None and body.user_id != who.user_id:
+            raise Forbidden("a person signed in with OAuth can export or erase only their own data")
+        return who.user_id
+    if body.user_id is None:
+        raise InvalidInput("user_id is required: the id you sent with that end user's runs")
+    return body.user_id
 
 
 @public_router.post("/deployments/{dep_id}/end-users/erase", response_model=ErasedEndUserOut)
 async def api_erase_end_user(
     body: ApiEndUserIn,
     request: Request,
-    dep: Deployment = Depends(_key_holder),
+    caller: Caller = Depends(api_caller),
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, int]:
     """Erase one of your end users (GDPR Art. 17), by the `user_id` you sent with their runs: their conversations on
     this deployment (with feedback), long-term memories and the files their runs used. Answers the counts; an
-    end user with nothing left answers zeros."""
+    end user with nothing left answers zeros. A person signed in with OAuth erases their own."""
     from agentcanvas.db.repositories import ScopeRepo
     from agentcanvas.services.data_subjects import erase_end_user
 
+    dep, user_id = caller[0], _data_subject(request, body)
     org_id = await ScopeRepo(session).org_of("deployment", dep.id) or ""
-    counts = await erase_end_user(session, request.app.state.runner, org_id, body.user_id, dep.id)
-    note(request, target=end_user_ref(body.user_id), **counts)
+    counts = await erase_end_user(session, request.app.state.runner, org_id, user_id, dep.id)
+    note(request, target=end_user_ref(user_id), **counts)
     return counts
 
 
@@ -879,19 +961,20 @@ async def api_erase_end_user(
 async def api_export_end_user(
     body: ApiEndUserIn,
     request: Request,
-    dep: Deployment = Depends(_key_holder),
+    caller: Caller = Depends(api_reader),
     session: AsyncSession = Depends(get_session),
 ) -> JSONResponse:
     """One of your end users' data as JSON (GDPR Art. 15 and 20), by the `user_id` you sent with their runs: their
     conversations on this deployment with each run's input, answer and steps, long-term memories and the files their
-    runs used (names and sizes)."""
+    runs used (names and sizes). A person signed in with OAuth exports their own."""
     from agentcanvas.api.v1.org import download
     from agentcanvas.db.repositories import ScopeRepo
     from agentcanvas.services.data_subjects import export_end_user
 
+    dep, user_id = caller[0], _data_subject(request, body)
     org_id = await ScopeRepo(session).org_of("deployment", dep.id) or ""
-    data = await export_end_user(session, request.app.state.runner, org_id, body.user_id, dep.id)
-    note(request, target=end_user_ref(body.user_id), conversations=len(data["conversations"]))
+    data = await export_end_user(session, request.app.state.runner, org_id, user_id, dep.id)
+    note(request, target=end_user_ref(user_id), conversations=len(data["conversations"]))
     return download(data, "agentcanvas-end-user.json")
 
 
@@ -905,10 +988,11 @@ async def api_resume(
     authorization: str | None = Header(None),
     session: AsyncSession = Depends(get_session),
 ) -> ApiResult:
-    """Answer a pending interrupt (approval, input) of a conversation this deployment started."""
+    """Answer a pending interrupt (approval, input) of a conversation this deployment started (signed in: one of
+    your own)."""
     dep, wf = await _caller(request, session, dep_id, authorization)
     response.headers.update(AI_HEADER)
-    await own_thread(session, dep, thread_id)
+    await own_thread(session, dep, thread_id, bound_end_user(request, dep))
     note(request, interrupt_id=body.interrupt_id, payload_sha256=payload_hash(body.value))
     iid = await approvers.check_pending(session, thread_id, body.interrupt_id, approvers.CALLER)
     note(request, interrupt_id=iid)  # the pause it answers, also when the caller named none

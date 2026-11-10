@@ -237,7 +237,7 @@ class Deployment(Base):
     # app connector name -> the tools its runs left out because the server changed them since publishing (E-4):
     # {"added", "changed", "outcome", "unpinned", "run_id", "seen_at"}; shown in the editor, cleared on publish
     tool_drift: Mapped[dict[str, Any] | None] = mapped_column(Json)
-    # OAuth sign-in for its MCP and A2A endpoints (E-11, services/deployment_oauth.py): {"issuer", "audience",
+    # OAuth sign-in for its endpoints and API (E-11, services/deployment_oauth.py): {"issuer", "audience",
     # "scopes"}; NULL: off, only its keys work
     oauth: Mapped[dict[str, Any] | None] = mapped_column(Json)
     # its AI-system record (services/system_record.py): purpose, owner_id, risk_class, risk_rationale,

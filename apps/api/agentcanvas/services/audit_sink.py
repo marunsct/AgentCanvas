@@ -50,7 +50,7 @@ SECURITY_ACTIONS = frozenset({
     "publish", "unpublish", "rotate_key",  # workflows published to an environment, their keys
     "create_deployment_key", "revoke_deployment_key",
     "rotate_callback_secret",  # the secret that signs a deployment's run callbacks
-    "put_deployment_oauth",  # who may sign in to a deployment's MCP and A2A endpoints, and with which issuer
+    "put_deployment_oauth",  # who may sign in to a deployment's endpoints and API, and with which issuer
     "update_share", "regenerate_share",  # public share links of deployments
     "create_trigger", "enable_trigger",  # webhooks and schedules: a way in that runs workflows without a person
     "put_secret", "delete_secret",  # project secrets

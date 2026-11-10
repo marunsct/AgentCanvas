@@ -13,7 +13,7 @@ Every memory belongs to a **space** (a name you choose, e.g. `knowledge` or `pre
 
 | Shared per | Meaning |
 |---|---|
-| `user` (default) | Each end user has their own memories. Needs a context field with source `user` so the run knows who the user is. API callers pass `user_id`; it is stored as `api:<deployment>:<user_id>` so API users never mix with organisation members. MCP and A2A callers with a deployment key share one end user (the deployment); a person signed in with [OAuth](publish.md#sign-in-with-oauth-mcp-and-a2a) is `oidc:<issuer>:<subject>`. |
+| `user` (default) | Each end user has their own memories. Needs a context field with source `user` so the run knows who the user is. API callers pass `user_id`; it is stored as `api:<deployment>:<user_id>` so API users never mix with organisation members. MCP and A2A callers with a deployment key share one end user (the deployment); a person signed in with [OAuth](publish.md#sign-in-with-oauth) is `oidc:<issuer>:<subject>`. |
 | `workflow` | One set of memories for everyone using the workflow. |
 | `thread` | Memories that last for one conversation. |
 

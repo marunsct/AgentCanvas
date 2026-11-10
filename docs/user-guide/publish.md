@@ -114,11 +114,13 @@ owner who left the organisation and a review date that passed. Publishing lists 
 Changing the record is in the audit log (`update_system_record`, with the risk class, owner and review date) and is
 forwarded as a security event.
 
-### Sign-in with OAuth (MCP and A2A)
+### Sign-in with OAuth
 
-A deployment's [MCP server and A2A agent](agents-and-connectors.md#call-a-workflow-from-other-agents) can also let
-people sign in with your identity provider instead of sharing a key. It is **off** until a builder turns it on for a
-deployment; the deployment's keys keep working beside it. With it on:
+A deployment can also let people sign in with your identity provider instead of sharing a key: its
+[MCP server and A2A agent](agents-and-connectors.md#call-a-workflow-from-other-agents), its
+[AG-UI endpoint](#connect-a-copilotkit-style-front-end-ag-ui) and its [deployment API](#call-a-deployment)
+(`runs/wait` and the others). It is **off** until a builder turns it on for a deployment; the deployment's keys keep
+working beside it. With it on:
 
 - **Clients find where to sign in on their own.** A call without a token, or with one that is not accepted, answers
   `401` with `WWW-Authenticate: Bearer resource_metadata="…", scope="…"`. That address is the endpoint's protected
@@ -128,18 +130,32 @@ deployment; the deployment's keys keep working beside it. With it on:
   `Authorization: Bearer <access token>`.
 - **Only tokens for this endpoint work.** The token must be a JWT signed with a key the issuer publishes (its
   discovery document's `jwks_uri`), from that issuer, not expired, and for this endpoint: its audience (`aud`) is the
-  endpoint's address (`https://<your AgentCanvas>/api/v1/deployments/<id>/mcp`, or `…/a2a` for the A2A agent, as
-  clients ask for it with RFC 8707's `resource`), or the **audience** you set for the deployment. A token issued for
-  another server is refused, and so is the MCP endpoint's token on the A2A endpoint. A token without every
-  **scope** the deployment requires (by default `agentcanvas:deployment:run`; `scope` or `scp` claims both count)
-  gets `403` with `error="insufficient_scope"`.
-- **Every person is their own end user.** The token's subject becomes the run's `user_id`, written
-  `oidc:<issuer>:<subject>`: their memories are their own, and they can continue and read only the conversations and
-  tasks they started (another person's answers like an unknown one). Erase or export their data with that id
-  ([Call a deployment](#call-a-deployment)). A deployment key acts for your own systems as before: it can continue any
-  of the deployment's conversations, so give keys only to your own back end.
+  endpoint's address, as clients ask for it with RFC 8707's `resource`, or the **audience** you set for the
+  deployment. A token issued for another server is refused, and so is one endpoint's token on another. The addresses:
 
-Builders turn it on under the deployment in the Publish panel: **Sign-in with OAuth (MCP, A2A)** takes the issuer
+  | Endpoint | Its address (the token's audience) |
+  |---|---|
+  | MCP server | `https://<your AgentCanvas>/api/v1/deployments/<id>/mcp` |
+  | A2A agent | `…/v1/deployments/<id>/a2a` |
+  | AG-UI | `…/v1/deployments/<id>/ag-ui` |
+  | Deployment API (`runs/wait`, `runs`, `runs/stream`, `runs/{run_id}`, `cancel`, `feedback`, `threads/…/resume`, `files`, `end-users/…`) | `…/v1/deployments/<id>`: one address for all of them |
+
+- **Scopes.** A token without every **scope** the deployment requires (by default `agentcanvas:deployment:run`;
+  `scope` or `scp` claims both count) gets `403` with `error="insufficient_scope"`. Reading through the deployment
+  API (`GET …/runs/{run_id}` and `end-users/export`) also takes `agentcanvas:deployment:read` alone, so a client that
+  only shows results can be given just that.
+- **Every person is their own end user.** The token's subject becomes the run's `user_id`, written
+  `oidc:<issuer>:<subject>` (a `user_id` in the request, or AG-UI's `forwardedProps.user_id`, is ignored): their
+  memories are their own, and they can continue, read, stop and rate only the conversations, runs and tasks they
+  started (another person's answers `404`, like an unknown one; an AG-UI `threadId` of another person's is "taken",
+  `409`). The files they upload are theirs too: another person's run cannot use them. `end-users/export` and
+  `end-users/erase` with no `user_id` give or erase their own data, and they may name no one else (`403`). A
+  deployment key acts for your own systems as before: it can continue, read and erase any of the deployment's
+  conversations and end users, so give keys only to your own back end.
+- **Callbacks need a key.** A run started with a token cannot ask for a `callback_url` (`422`): callbacks are signed
+  with the deployment's secret, which your own systems trust. Read the result with `GET …/runs/{run_id}`.
+
+Builders turn it on under the deployment in the Publish panel: **Sign-in with OAuth** takes the issuer
 (empty: the one people sign in to AgentCanvas with), an optional audience and the required scopes, and **Turn on**
 checks the issuer and shows the addresses to register with your identity provider; **Turn off** goes back to keys
 only. The **Use from other agents** panel then says that clients which support sign-in need only the address. The
@@ -147,7 +163,7 @@ same through the API:
 
 | Request | Does |
 |---|---|
-| `GET /v1/deployments/{id}/oauth` | Whether it is on, the issuer tokens must come from, the audience and scopes, and the endpoints' addresses and metadata addresses (what your identity provider needs to know) |
+| `GET /v1/deployments/{id}/oauth` | Whether it is on, the issuer tokens must come from, the audience and scopes, and the addresses of the endpoints and the deployment API with their metadata addresses (what your identity provider needs to know) |
 | `PUT /v1/deployments/{id}/oauth` with `{"enabled": true}` | Turn it on with the server's sign-in issuer and the default scope. Optional: `"issuer": "https://login.example.com/…"` (another authorization server), `"audience": "api://agentcanvas"` (for identity providers that issue tokens for a fixed audience rather than an address, such as Microsoft Entra ID or an Okta authorization server), `"scopes": ["…"]` (every one required; `[]` for none) |
 | `PUT /v1/deployments/{id}/oauth` with `{"enabled": false}` | Turn it off: only the keys work again |
 
@@ -161,8 +177,9 @@ Each server keeps an issuer's keys for `AGENTCANVAS_OIDC_JWKS_CACHE_S` (one hour
 token is signed with a key it has not seen (the issuer rotated its keys). Register the endpoint with your identity
 provider as an API (resource) whose identifier is the endpoint's address or your audience, with the scope the
 deployment requires; the web server serves the metadata at `/.well-known/oauth-protected-resource/api/v1/deployments/…`
-(a proxy in front of it must pass that path on). Only the MCP and A2A endpoints take access tokens; the
-[deployment API](#call-a-deployment) (`runs/wait`, `runs/{run_id}` and the others) takes keys only.
+(a proxy in front of it must pass that path on). The deployment API's metadata is the deployment's own
+(`…/oauth-protected-resource/api/v1/deployments/<id>`), and lists `agentcanvas:deployment:read` beside the required
+scopes.
 
 **Enterprise-Managed Authorization.** With MCP's enterprise-managed authorization extension (Identity Assertion
 Authorization Grant, ID-JAG), the organisation's identity provider decides which agents its people may connect,
@@ -204,8 +221,8 @@ was generated by AI ([EU AI Act](security.md#eu-ai-act)).
 | `POST /v1/deployments/{id}/threads/{thread_id}/resume` | Answer a pause: body `{"value": true}`, plus `interrupt_id` naming the pause. You may leave the id out while only one pause waits; with several waiting the call is refused with `409` and the waiting ids in `pending` ([Several pauses at once](run-and-debug.md#several-pauses-at-once)). A step that names who decides it answers `403` unless it lets the caller answer too ([Who may decide](run-and-debug.md#who-may-decide)); it waits in the Inbox instead. The MCP `answer` tool and an A2A reply are refused the same way, and the paused run's MCP result or A2A task says that a person decides it in AgentCanvas instead of asking the caller to answer. |
 | `POST /v1/deployments/{id}/ag-ui` | Run for an AG-UI front end (CopilotKit and others): an AG-UI `RunAgentInput` in, AG-UI events out. See [Connect a CopilotKit-style front end](#connect-a-copilotkit-style-front-end-ag-ui). |
 | `POST /v1/deployments/{id}/runs/{run_id}/feedback` | Send `{"rating": "up" \| "down", "comment": "…"}`. |
-| `POST /v1/deployments/{id}/end-users/export` | One of your end users' data as JSON: body `{"user_id": "…"}`. Their conversations on this deployment (each run's input, answer and steps), long-term memories and the names and sizes of the files their runs used. |
-| `POST /v1/deployments/{id}/end-users/erase` | Erase one of your end users: body `{"user_id": "…"}`, the id you sent with their runs. Their conversations on this deployment, long-term memories and the files their runs used are deleted; the answer gives the counts. |
+| `POST /v1/deployments/{id}/end-users/export` | One of your end users' data as JSON: body `{"user_id": "…"}`. Their conversations on this deployment (each run's input, answer and steps), long-term memories and the names and sizes of the files their runs used. A person [signed in with OAuth](#sign-in-with-oauth) sends `{}` and gets their own. |
+| `POST /v1/deployments/{id}/end-users/erase` | Erase one of your end users: body `{"user_id": "…"}`, the id you sent with their runs. Their conversations on this deployment, long-term memories and the files their runs used are deleted; the answer gives the counts. A person signed in with OAuth sends `{}` and erases their own. |
 
 Request fields: `input` (the workflow's input channels), `thread_id` (continue a conversation), `context`, and
 `user_id` (your end user: their memories are kept apart, and a conversation remembers whose it is, so you can
@@ -222,7 +239,8 @@ answers at once with the `run_id` (and its address in the `Location` header). As
 slot, then gives the same answer `runs/wait` would have. Any API server answers, also after the one that ran it
 restarted: a finished run's result is kept with the run, for as long as the organisation keeps conversations. A
 run that a server restart stopped is continued by another server, and the `GET` answers with the run that continues
-it (its own `run_id`). Only runs of the deployment whose key you send are found; any other id answers `404`.
+it (its own `run_id`). Only runs of the deployment whose key you send are found (signed in with OAuth, only your
+own); any other id answers `404`.
 
 ### Be called back when a run ends
 
@@ -255,7 +273,8 @@ and `deployment_id`:
 
 `POST /v1/deployments/{id}/ag-ui` speaks [AG-UI](https://docs.ag-ui.com) 1.0, the protocol that CopilotKit and
 other agent front ends use to talk to an agent. The request is an AG-UI `RunAgentInput`, sent with the deployment's
-key; the answer is a stream of AG-UI events (Server-Sent Events). It runs the published version like any other
+key (or, with [sign-in](#sign-in-with-oauth) on, a person's access token for the endpoint's address); the answer is a
+stream of AG-UI events (Server-Sent Events). It runs the published version like any other
 deployment call: the run shows in **Runs**, counts for rate limits, spending caps and online evaluators, and is
 marked as AI-generated (`X-AI-Generated`, and `generated_by` in `RUN_FINISHED`'s `metadata.agentcanvas`).
 

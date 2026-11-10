@@ -1,6 +1,7 @@
-"""OAuth sign-in for a deployment's MCP and A2A endpoints (E-11): AgentCanvas as an OAuth 2.1 resource server.
+"""OAuth sign-in for a deployment's endpoints (E-11): AgentCanvas as an OAuth 2.1 resource server.
 
-Off by default; a builder turns it on per deployment, beside its keys. Then:
+Off by default; a builder turns it on per deployment, beside its keys. Then its MCP, A2A and AG-UI endpoints and its
+deployment API (`runs/wait` and the others, one resource: the deployment's address) take access tokens:
 
 - **Discovery** (RFC 9728, MCP 2026-07-28): the endpoint's protected resource metadata is served at
   `/.well-known/oauth-protected-resource<path of the endpoint>` and names the authorization server: the issuer the
@@ -9,9 +10,10 @@ Off by default; a builder turns it on per deployment, beside its keys. Then:
   find where to sign in on its own.
 - **Tokens** are JWT access tokens, verified against the issuer's published keys: signature, issuer, expiry, the
   audience (RFC 8707: the endpoint's own address, or the deployment's configured audience, so a token issued for
-  another server is never accepted) and the scopes the deployment requires (403 `insufficient_scope` without them).
+  another server is never accepted) and the scopes the deployment requires (403 `insufficient_scope` without them);
+  reading a result of the deployment API also takes `agentcanvas:deployment:read` alone.
 - **Who calls**: the token's subject becomes the run's end user, `oidc:<issuer>:<subject>`, so every person has
-  their own memories and conversations, and may continue only their own.
+  their own memories, conversations and runs, and may continue, read or stop only their own.
 
 Enterprise-managed authorization (ID-JAG) needs nothing here: the organisation's identity provider issues the
 access token, and this side verifies it like any other.
@@ -37,6 +39,7 @@ from agentcanvas.services import oauth
 from agentcanvas.settings import Settings
 
 DEFAULT_SCOPE = "agentcanvas:deployment:run"
+READ_SCOPE = "agentcanvas:deployment:read"  # enough on its own to read results (the deployment API's GETs, an export)
 WELL_KNOWN = "/.well-known/oauth-protected-resource"
 RETRY_FAILED_S = 30.0  # an issuer whose keys could not be loaded is asked again after this long, not on every call
 REFRESH_UNKNOWN_KID_S = 30.0  # a token signed with a key not seen yet reloads the keys (rotation), at most this often
@@ -238,9 +241,11 @@ class AccessTokens:
                 break
         raise InvalidToken("the access token is signed with a key the issuer does not publish")
 
-    async def verify(self, token: str, *, issuer: str, audiences: list[str], scopes: list[str]) -> SignedIn:
+    async def verify(
+        self, token: str, *, issuer: str, audiences: list[str], scopes: list[str], enough: str | None = None
+    ) -> SignedIn:
         """The token's caller, once its signature, issuer, expiry, audience (one of `audiences`) and scopes (all of
-        `scopes`) hold."""
+        `scopes`, or else `enough` alone) hold."""
         key = await self._key(token, issuer)
         try:
             claims = jwt.decode(
@@ -260,7 +265,9 @@ class AccessTokens:
         subject = str(claims["sub"]).strip()
         if not subject:  # people are told apart by subject: a blank one would be everybody's
             raise InvalidToken("the access token's subject is empty")
-        missing = [s for s in scopes if s not in granted(claims)]
-        if missing:
-            raise InsufficientScope(f"the access token lacks the scope {' '.join(missing)}")
+        have = granted(claims)
+        missing = [s for s in scopes if s not in have]
+        if missing and not (enough and enough in have):
+            either = f" (or {enough})" if enough else ""
+            raise InsufficientScope(f"the access token lacks the scope {' '.join(missing)}{either}")
         return SignedIn(issuer=issuer, subject=subject, claims=claims)

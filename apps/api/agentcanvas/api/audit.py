@@ -111,7 +111,8 @@ async def record(request: Request, response: Response) -> None:
     if params:
         detail["params"] = params
     if user is None:
-        detail["caller"] = "deployment key"
+        who = getattr(request.state, "signed_in", None)  # a person signed in to a deployment with OAuth (E-11)
+        detail.update({"caller": "oauth", "end_user": who.user_id} if who else {"caller": "deployment key"})
     elif user.token_id:
         detail["caller"] = f"personal token {user.token_id}"
     detail.update(extra)
