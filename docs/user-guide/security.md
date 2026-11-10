@@ -186,8 +186,10 @@ organisation's controls: the database, network, backups, access to the servers a
 providers you choose are yours. This page, the [Operations reference](operations.md) and the audit log are the
 evidence AgentCanvas provides for your own assessments (GDPR, SOC 2, ISO 27001).
 
-The terms under which AgentCanvas and the code it exports may be used have not been published yet: the repository
-has no licence file. Ask the maintainers before you rely on any rights to it.
+AgentCanvas is source-available under the Business Source License 1.1: free for development and evaluation by
+anyone, free in production for individuals, small and medium organisations, non-profits and education, and under a
+commercial licence otherwise; each version becomes Apache-2.0 four years after its release. See
+[Licensing](licensing.md).
 
 ## EU AI Act
 

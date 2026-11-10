@@ -69,3 +69,15 @@ make docs         # documentation site on http://localhost:8001
 
 The repository map, conventions and CI are in the [handover](docs/developer/handover.md); the
 [developer documentation](docs/developer/README.md) maps the rest.
+
+## License
+
+AgentCanvas is source-available under the [Business Source License 1.1](LICENSE):
+
+- **Free for everyone** to develop, test, evaluate and learn.
+- **Free in production** for individuals, organizations with fewer than 250 people and under US$50M revenue, and non-profit or educational non-commercial work, as long as you do not offer AgentCanvas itself as a hosted service.
+- **Everyone else** needs a commercial license.
+- **Your workflows, prompts and data are yours.**
+- **Each version** becomes Apache-2.0 four years after its release.
+
+[Licensing](docs/user-guide/licensing.md) explains it in plain words; the LICENSE file governs.
