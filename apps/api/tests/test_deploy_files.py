@@ -643,3 +643,19 @@ def test_the_migration_step_lets_a_rolled_back_api_start():
     for command in (migrate, job):
         assert "python -m agentcanvas.db.migrate && python -m agentcanvas.db.app_role" in command
         assert "alembic upgrade head" not in command
+
+
+def test_the_web_app_imports_only_what_its_image_build_has():
+    """The web image builds (tsc -b && vite build) from apps/web plus the few folders Dockerfile.web copies. A source
+    or test file importing anything else (apps/api/agentcanvas/registry/nodes/*.json) passed every local check and
+    broke `make docker-up`."""
+    web = ROOT / "apps" / "web"
+    docker = (ROOT / "infra" / "Dockerfile.web").read_text()
+    copied = [ROOT / m for m in re.findall(r"^COPY (?:--\S+ )*(\S+?)/? \S+$", docker, re.M) if not m.startswith("--")]
+    outside = []
+    for f in (web / "src").rglob("*.ts*"):
+        for spec in re.findall(r"""^\s*import\b[^"'\n]*["'](\.\.?/[^"']+)["']""", f.read_text(), re.M):
+            target = (f.parent / spec).resolve()
+            if not target.is_relative_to(web) and not any(target.is_relative_to(c) for c in copied):
+                outside.append(f"{f.relative_to(ROOT)}: {spec}")
+    assert not outside, f"not in the web image's build (copy it in Dockerfile.web or import a copied file): {outside}"
