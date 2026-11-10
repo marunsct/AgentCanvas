@@ -1,7 +1,7 @@
 /** Canonical run events (AG-UI based, spec doc 12 §C.3) as produced by the AgentCanvas runner. */
 export interface InterruptInfo {
   id: string;
-  kind: "tool_approval" | "approval" | "input";
+  kind: "tool_approval" | "approval" | "input" | "timer"; // timer: a Wait step, continued by the server
   canvas_node_id: string | null;
   payload: unknown;
 }

@@ -9,6 +9,7 @@ import { PROJECT_ID, useModelProviders, useModels } from "../api/queries";
 import type { ProviderInfo } from "../api/types";
 import { useEditor } from "../editor/store";
 import { estimateTokens } from "./schema";
+import { describeDuration, describeTime } from "./wait";
 
 function useChannels(): string[] {
   return useEditor(useShallow((s) => s.wf?.state.channels.map((c) => c.name) ?? NONE));
@@ -158,8 +159,44 @@ export function MemberEmailWidget(props: WidgetProps) {
   );
 }
 
+/** A Wait step's duration (`3d`, `2h 30m`, a template): typed, with what it means said under it. */
+export function WaitDurationWidget(props: WidgetProps) {
+  const { id, value, onChange, disabled, readonly } = props;
+  const text = typeof value === "string" ? value : "";
+  const said = describeDuration(text);
+  return (
+    <>
+      <input id={id} value={text} placeholder="3d, 2h 30m, PT45M or {{ state.delay }}" spellCheck={false}
+        className={said.ok ? "mono" : "mono invalid"} disabled={disabled || readonly}
+        onChange={(e) => onChange(e.target.value || undefined)} />
+      {said.text && <p className={`small ${said.ok ? "muted" : "error-text"}`} data-testid={`${id}-said`}>{said.text}</p>}
+    </>
+  );
+}
+
+/** A Wait step's time: typed (or a template), or picked from a calendar, with what it means said under it. */
+export function WaitTimeWidget(props: WidgetProps) {
+  const { id, value, onChange, disabled, readonly, formContext } = props;
+  const text = typeof value === "string" ? value : "";
+  const timezone = (formContext as { timezone?: string } | undefined)?.timezone;
+  const said = describeTime(text, timezone);
+  const picked = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(text) ? text : "";
+  return (
+    <>
+      <div className="row gap">
+        <input id={id} value={text} placeholder="2026-12-01T09:00 or {{ state.follow_up_at }}" spellCheck={false}
+          className={said.ok ? "mono" : "mono invalid"} disabled={disabled || readonly}
+          onChange={(e) => onChange(e.target.value || undefined)} />
+        <input type="datetime-local" aria-label="pick a date and time" value={picked} disabled={disabled || readonly}
+          onChange={(e) => onChange(e.target.value || undefined)} />
+      </div>
+      {said.text && <p className={`small ${said.ok ? "muted" : "error-text"}`} data-testid={`${id}-said`}>{said.text}</p>}
+    </>
+  );
+}
+
 export const WIDGETS = {
   prompt: PromptWidget, template: PromptWidget, channel: ChannelWidget, cel: CelWidget, model: ModelWidget,
   import_path: MonoWidget, regex: MonoWidget, url_template: MonoWidget, knowledge_base: KnowledgeBaseWidget,
-  member_email: MemberEmailWidget,
+  member_email: MemberEmailWidget, wait_duration: WaitDurationWidget, wait_time: WaitTimeWidget,
 };

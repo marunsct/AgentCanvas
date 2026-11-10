@@ -77,7 +77,9 @@ before the run and covered by retention and the kill switch, instead of an agent
   "..."}`. After an event wait, route on it with **Choose a path**, e.g. `state.reply.timed_out == true` → send a
   reminder.
 
-The editor checks the settings it can (E097: a missing or unreadable duration, time, time zone or event, or a wait over
+The Inspector shows only the settings of the chosen way of waiting, and says under a duration or a time what it means
+(*waits 2 hours 30 minutes*, *until 1 Dec 2026, 10:00 your time*, or why it is not one); a time can also be picked from
+a calendar. The editor checks the settings it can (E097: a missing or unreadable duration, time, time zone or event, or a wait over
 a year); a template is checked when the run gets there, and a value that does not work then fails the step with the
 reason. Only LangGraph runs it (it needs checkpoints the server can wake days later); on another framework the editor
 says so (P001) and suggests switching.

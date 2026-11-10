@@ -120,10 +120,11 @@ member of the organisation).
 - **Test runs do not wait.** Saved test cases, experiments, Copilot test runs and dry runs pass through Wait steps at
   once (an event wait counts as timed out), with `skipped: true` in what the step saves. To try the event path, pin
   the Wait step's output.
-- **Stop.** A builder's **Stop** on the run (`POST /v1/runs/{run_id}/cancel`, or a deployment's cancel) ends the wait
-  and cancels the run, and the organisation's [kill switch](settings.md) cancels the waiting runs in its scope too;
-  nothing wakes them later.
-- **Callers.** In the Inbox a wait shows as waiting, not for a person, and nobody is notified about it. Through a
+- **Stop.** The Run tab and the Inbox show the step as **Waiting** (not for a person), with what it waits for and
+  until when, in your time. A builder's **■ Stop waiting** there (or `POST /v1/runs/{run_id}/cancel`, or a
+  deployment's cancel) ends the wait and cancels the run, and the organisation's [kill switch](settings.md) cancels the
+  waiting runs in its scope too; nothing wakes them later.
+- **Callers.** Nobody is notified about a wait: there is nothing to decide. Through a
   deployment's API, MCP or A2A, a run at a Wait step comes back `interrupted` with an interrupt of kind `timer` (its
   `payload` says `due_at`, and `event` and `key` for an event wait); the caller cannot answer it and reads the result
   later. An MCP or A2A task stays *working* meanwhile, and cancelling it stops the run. A share link's visitor is told

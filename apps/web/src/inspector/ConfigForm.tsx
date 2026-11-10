@@ -12,6 +12,7 @@ import { JsonSchemaField } from "./JsonSchemaField";
 import { SecretRefField } from "./SecretRefField";
 import { SubgraphField } from "./SubgraphField";
 import { diffToMergePatch, uiSchemaFromFormats } from "./schema";
+import { waitUi } from "./wait";
 import { WIDGETS } from "./widgets";
 
 const FIELDS = { json_schema: JsonSchemaField, subgraph: SubgraphField, secret_ref: SecretRefField };
@@ -21,8 +22,12 @@ export function ConfigForm({ element, manifest, isResource }: {
 }) {
   const dispatch = useEditor((s) => s.dispatch);
   const schema = useMemo(() => withItemDefaults(manifest.config_schema as Record<string, unknown>), [manifest.config_schema]);
-  const uiSchema = useMemo(() => ({ ...uiSchemaFromFormats(schema), "ui:submitButtonOptions": { norender: true } }), [schema]);
   const config = (element.config ?? {}) as Record<string, unknown>;
+  const waiting = manifest.type === "core.wait" ? config.mode : undefined; // its way of waiting picks its settings
+  const uiSchema = useMemo(() => ({
+    ...uiSchemaFromFormats(schema), ...(manifest.type === "core.wait" ? waitUi({ mode: waiting }) : {}),
+    "ui:submitButtonOptions": { norender: true },
+  }), [schema, manifest.type, waiting]);
   // the config with the schema's defaults filled in, as the form shows it: the form reports it when it mounts, and
   // that used to save it (a save and an undo step for merely selecting the block)
   const filled = useMemo(
@@ -32,6 +37,7 @@ export function ConfigForm({ element, manifest, isResource }: {
   return (
     <Form
       schema={schema} uiSchema={uiSchema} formData={config} validator={validator} widgets={WIDGETS} fields={FIELDS}
+      formContext={{ timezone: typeof config.timezone === "string" ? config.timezone : undefined }}
       templates={{ ButtonTemplates: BUTTON_TEMPLATES }}
       liveValidate showErrorList={false} noHtml5Validate idPrefix={`cfg_${element.id}`}
       onChange={(e) => {

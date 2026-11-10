@@ -13,6 +13,10 @@ vi.mock("../api/client", () => ({
   ApiError: class extends Error {},
   apiFetch: vi.fn(async (path: string) => {
     if (path === "/inbox") return listed ?? [item("a"), item("b")];
+    if (path.startsWith("/runs/")) {
+      decisions.push(path);
+      return { cancelled: true, pending: false };
+    }
     const id = /\/inbox\/(\w+)\/decision/.exec(path)?.[1] ?? "";
     decisions.push(id);
     if (id === "b") throw new Error("already decided by someone else");
@@ -50,6 +54,25 @@ describe("Inbox", () => {
       expect((await screen.findByTestId("inbox-deciders")).textContent).toBe("Decided by: admin role; group Finance");
       expect(screen.getByTestId("inbox-why-not").textContent).toContain("may be decided only by");
       expect((screen.getByRole("button", { name: "Approve" }) as HTMLButtonElement).disabled).toBe(true);
+    } finally {
+      listed = null;
+    }
+  });
+
+  it("shows a run at a Wait step as waiting, with no decision to make, and stops it", async () => {
+    listed = [{ ...item("w"), kind: "timer", run_id: "run_w", may_decide: false, why_not: "it continues on its own",
+      payload: { kind: "timer", due_at: "2030-01-02T09:00:00+00:00", event: "invoice.paid", key: "INV-7" } }];
+    decisions.length = 0;
+    try {
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false, refetchInterval: false } } });
+      render(<QueryClientProvider client={qc}><MemoryRouter><InboxPage /></MemoryRouter></QueryClientProvider>);
+      const card = await screen.findByRole("group", { name: "Waiting" });
+      expect(within(card).getByTestId("wait-for").textContent).toMatch(/^Waits for the event invoice\.paid with key INV-7, until .*2030.* at most\.$/);
+      expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
+      expect(screen.queryByTestId("inbox-why-not")).toBeNull();
+      fireEvent.click(within(card).getByRole("button", { name: "■ Stop waiting" }));
+      await waitFor(() => expect(screen.queryAllByTestId("inbox-item")).toHaveLength(0));
+      expect(decisions).toEqual(["/runs/run_w/cancel"]);
     } finally {
       listed = null;
     }

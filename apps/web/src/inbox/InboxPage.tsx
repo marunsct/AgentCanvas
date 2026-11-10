@@ -51,9 +51,21 @@ export function InboxPage() {
       mark(id, false);
     }
   };
+  const stop = async (item: InboxItem) => {
+    mark(item.id, true);
+    try {
+      await apiFetch(`/runs/${item.run_id}/cancel`, { method: "POST" });
+      qc.setQueryData<InboxItem[]>(["inbox"], (items) => items?.filter((i) => i.id !== item.id));
+      toast("Stopped: the run's wait was cancelled");
+    } catch (e) {
+      setErrors((all) => ({ ...all, [item.id]: (e as Error).message }));
+    } finally {
+      mark(item.id, false);
+    }
+  };
   return (
     <div className="page">
-      <PageHeader title="Inbox" description="Runs waiting for a person, in every project: an approval, an edit or an answer. Deciding resumes the run." />
+      <PageHeader title="Inbox" description="Runs waiting for a person, in every project: an approval, an edit or an answer. Deciding resumes the run. Runs at a Wait step show here too; they continue on their own." />
       <QueryStatus q={inbox} what="the inbox" />
       {gone && <p className="callout small" data-testid="inbox-gone">That item is no longer waiting: someone decided it, or it expired.</p>}
       {inbox.data?.length === 0 && (
@@ -85,11 +97,13 @@ export function InboxPage() {
               </small>
             </header>
             {item.deciders && <p className="small muted" data-testid="inbox-deciders">Decided by: {item.deciders}</p>}
-            {item.may_decide === false && item.why_not && (
+            {item.may_decide === false && item.why_not && item.kind !== "timer" && (
               <p className="small muted" data-testid="inbox-why-not">You cannot decide this one: {item.why_not}.</p>
             )}
-            <DecisionCard intr={item} busy={busy.has(item.id) || !can("reviewer") || item.may_decide === false}
-              onDecide={(value) => void decide(item.id, value)} />
+            <DecisionCard intr={item}
+              busy={busy.has(item.id) || (item.kind !== "timer" && (!can("reviewer") || item.may_decide === false))}
+              onDecide={(value) => void decide(item.id, value)}
+              onStop={item.kind === "timer" && can("builder") ? () => void stop(item) : undefined} />
             {errors[item.id] && <p className="error-text" role="alert">Could not decide: {errors[item.id]}</p>}
           </article>
         ))}
