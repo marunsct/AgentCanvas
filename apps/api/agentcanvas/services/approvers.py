@@ -205,9 +205,12 @@ async def answered(session: AsyncSession, thread_id: str, interrupt_id: str | No
         return waiting[0]
     # what the conversation's last run asked expired (not an older run's): its run was cancelled
     ended = select(Run.id).where(Run.thread_id == thread_id, Run.status != "running").order_by(Run.id.desc())
-    expired = q.where(InterruptTask.status == "expired", InterruptTask.run_id == ended.limit(1).scalar_subquery())
-    if await session.scalar(expired.limit(1)):
-        raise Conflict(EXPIRED)
+    gone = q.where(
+        InterruptTask.status.in_(("expired", "cancelled")), InterruptTask.run_id == ended.limit(1).scalar_subquery()
+    )
+    row = await session.scalar(gone.limit(1))
+    if row is not None:  # a Wait step that Stop or the kill switch ended is "cancelled": its run went with it
+        raise Conflict("this run's wait was cancelled, and the run with it" if row.status == "cancelled" else EXPIRED)
     return None
 
 
