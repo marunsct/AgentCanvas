@@ -15,7 +15,7 @@ from typing import Any
 
 import httpx
 from fastapi import APIRouter, Depends, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.deps import CurrentUser, current_user, get_session
@@ -59,6 +59,8 @@ class ServerModelsIn(BaseModel):
 
 
 class ServerModelsOut(BaseModel):
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True)  # every field is sent
+
     ok: bool
     models: list[str] = Field(default_factory=list, description="model names, without the provider prefix")
     error: str | None = None

@@ -6034,10 +6034,10 @@ export interface CodeHelpIn {
  * via the `definition` "CodeHelpOut".
  */
 export interface CodeHelpOut {
-  code?: Code3;
+  code: Code3;
   model: Model3;
   text: Text3;
-  usage?: Usage1;
+  usage: Usage1;
 }
 export interface Usage1 {
   [k: string]: number;
@@ -8610,15 +8610,15 @@ export interface PolicyInForce {
  */
 export interface PolicyOut {
   created_at: CreatedAt28;
-  description?: Description20;
-  enabled?: Enabled7;
-  environments?: Environments3;
+  description: Description20;
+  enabled: Enabled7;
+  environments: Environments3;
   id: Id59;
-  match?: Match1;
+  match: Match1;
   name: Name59;
   require: Require1;
-  scope?: Scope2;
-  severity?: Severity4;
+  scope: Scope2;
+  severity: Severity4;
 }
 /**
  * This interface was referenced by `ApiSchemas`'s JSON-Schema
@@ -9456,8 +9456,8 @@ export interface ServerModelsIn {
  * via the `definition` "ServerModelsOut".
  */
 export interface ServerModelsOut {
-  error?: Error14;
-  models?: Models1;
+  error: Error14;
+  models: Models1;
   ok: Ok4;
 }
 /**

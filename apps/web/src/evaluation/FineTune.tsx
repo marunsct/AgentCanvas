@@ -2,7 +2,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { apiDownload, apiFetch } from "../api/client";
-import type { DatasetOut } from "../api/generated";
+import type { DatasetOut, FinetunePreview } from "../api/generated";
 import { errorText } from "../ui/QueryStatus";
 
 export interface FineTuneDraft {
@@ -32,14 +32,12 @@ export function fineTuneBody(d: FineTuneDraft, firstDataset?: string): Record<st
   };
 }
 
-interface Preview { examples: number; skipped: { ref: string; reason: string }[] }
-
 export function FineTune({ wfId }: { wfId: string }) {
   const [d, setD] = useState<FineTuneDraft>(NEW_FINE_TUNE);
   const datasets = useQuery({ queryKey: ["datasets", wfId], queryFn: () => apiFetch<DatasetOut[]>(`/workflows/${wfId}/datasets`) });
   const url = `/workflows/${wfId}/finetune-export`;
   const body = fineTuneBody(d, datasets.data?.[0]?.id);
-  const preview = useMutation({ mutationFn: () => apiFetch<Preview>(`${url}?preview=true`, { method: "POST", json: body }) });
+  const preview = useMutation({ mutationFn: () => apiFetch<FinetunePreview>(`${url}?preview=true`, { method: "POST", json: body }) });
   const download = useMutation({ mutationFn: () => apiDownload(url, "finetune.jsonl", body) });
   const set = (patch: Partial<FineTuneDraft>) => { preview.reset(); setD((x) => ({ ...x, ...patch })); };
   return (

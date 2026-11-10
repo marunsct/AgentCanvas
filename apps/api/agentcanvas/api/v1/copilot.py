@@ -22,7 +22,7 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -847,6 +847,8 @@ class CodeHelpIn(BaseModel):
 
 
 class CodeHelpOut(BaseModel):
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True)  # every field is sent
+
     text: str = Field(description="the Copilot's explanation, in plain words")
     code: str | None = Field(None, description="the whole proposed file, to show as a diff; never saved here")
     model: str

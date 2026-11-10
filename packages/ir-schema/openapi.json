@@ -2407,7 +2407,9 @@
         },
         "required": [
           "text",
-          "model"
+          "code",
+          "model",
+          "usage"
         ],
         "title": "CodeHelpOut",
         "type": "object"
@@ -11631,7 +11633,13 @@
         },
         "required": [
           "name",
+          "description",
+          "scope",
+          "match",
           "require",
+          "severity",
+          "environments",
+          "enabled",
           "id",
           "created_at"
         ],
@@ -15124,7 +15132,9 @@
           }
         },
         "required": [
-          "ok"
+          "ok",
+          "models",
+          "error"
         ],
         "title": "ServerModelsOut",
         "type": "object"

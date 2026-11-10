@@ -10,7 +10,7 @@ from typing import Annotated, Any, Literal
 from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from sqlalchemy import null, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -543,6 +543,8 @@ class PolicyIn(BaseModel):
 
 
 class PolicyOut(PolicyIn):
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True)  # every field is sent
+
     id: str
     created_at: datetime
 

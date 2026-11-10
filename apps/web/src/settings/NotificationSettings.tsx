@@ -4,19 +4,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { apiFetch } from "../api/client";
+import type { NotificationsOut, NotificationsSaved, TestResult } from "../api/generated";
 import { toast } from "../ui/dialog";
 import { QueryStatus } from "../ui/QueryStatus";
-
-// typed here until the generated API types are regenerated
-export interface NotificationsOut {
-  email: { enabled: boolean; to: string[]; available: boolean };
-  slack: boolean;
-  webhook_url: string | null;
-  webhook_secret_set: boolean;
-  webhook_secret?: string | null;
-  digest?: boolean;
-}
-interface TestResult { channel: string; ok: boolean; error: string | null }
 
 const CHANNEL = { email: "E-mail", slack: "Slack", webhook: "Webhook" } as Record<string, string>;
 
@@ -38,7 +28,7 @@ export function NotificationSettings() {
     setDigest(Boolean(q.data.digest));
   }, [q.data]);
   const save = useMutation({
-    mutationFn: (json: Record<string, unknown>) => apiFetch<NotificationsOut>("/org/notifications", { method: "PUT", json }),
+    mutationFn: (json: Record<string, unknown>) => apiFetch<NotificationsSaved>("/org/notifications", { method: "PUT", json }),
     onSuccess: (out) => {
       qc.setQueryData(["org-notifications"], out);
       setSlack("");

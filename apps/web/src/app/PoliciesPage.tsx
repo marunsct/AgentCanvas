@@ -3,17 +3,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { apiFetch } from "../api/client";
+import type * as G from "../api/generated";
 import { maturaMode } from "../api/auth";
 import { canOrg, orgPortalUrl } from "../api/session";
 import { QueryStatus } from "../ui/QueryStatus";
 import { confirmDialog, toast } from "../ui/dialog";
 
-type Scope = "node" | "resource" | "workflow";
-interface PolicyIn {
-  name: string; description: string; scope: Scope; match: string; require: string;
-  severity: "error" | "warning"; environments: string[]; enabled: boolean;
-}
-interface Policy extends PolicyIn { id: string; created_at: string }
+/** The form: every field of a policy, filled in. */
+type PolicyIn = Required<G.PolicyIn>;
+type Scope = PolicyIn["scope"];
 
 const EMPTY: PolicyIn = {
   name: "", description: "", scope: "node", match: "true", require: "", severity: "error", environments: [], enabled: true,
@@ -33,16 +31,16 @@ const EXAMPLES: PolicyIn[] = [
 
 export function PoliciesPage() {
   const qc = useQueryClient();
-  const policies = useQuery({ queryKey: ["policies"], queryFn: () => apiFetch<Policy[]>("/org/policies") });
+  const policies = useQuery({ queryKey: ["policies"], queryFn: () => apiFetch<G.PolicyOut[]>("/org/policies") });
   const [draft, setDraft] = useState<PolicyIn>(EMPTY);
   const [editing, setEditing] = useState<string | null>(null); // the policy the form edits; null = a new one
   const done = () => void qc.invalidateQueries({ queryKey: ["policies"] });
   const create = useMutation({
-    mutationFn: (body: PolicyIn) => apiFetch<Policy>("/org/policies", { method: "POST", json: body }),
+    mutationFn: (body: PolicyIn) => apiFetch<G.PolicyOut>("/org/policies", { method: "POST", json: body }),
     onSuccess: () => { setDraft(EMPTY); done(); },
   });
   const update = useMutation({
-    mutationFn: ({ id, ...body }: PolicyIn & { id: string }) => apiFetch<Policy>(`/org/policies/${id}`, { method: "PUT", json: body }),
+    mutationFn: ({ id, ...body }: PolicyIn & { id: string }) => apiFetch<G.PolicyOut>(`/org/policies/${id}`, { method: "PUT", json: body }),
     onSuccess: (_, sent) => { if (sent.id === editing) { setEditing(null); setDraft(EMPTY); toast(`Saved ${sent.name}`); } done(); },
   });
   const remove = useMutation({
