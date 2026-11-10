@@ -207,6 +207,7 @@ async def test_organisation_b_is_refused_the_routes_the_crawl_cannot_reach(app, 
     paths = [
         ("get", f"/v1/projects/{PROJECT}/runs/search?q=Ada"),
         ("post", f"/v1/projects/{PROJECT}/runs/search/index"),
+        ("post", f"/v1/projects/{PROJECT}/runs/ask"),
         ("get", f"/v1/runs/{run_id}/trace?format=json"),
         ("get", f"/v1/workflows/{wf}/agents/{node}/code"),
         ("get", f"/v1/workflows/{wf}/agents/{node}/code.py"),

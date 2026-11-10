@@ -10,6 +10,7 @@ import pytest
 from sqlalchemy import update
 from test_copilot import ask, call, of, script
 from test_copilot_debug import separate_model
+from test_roles import as_role  # noqa: F401 - fixture
 from test_simulation import chat
 
 from agentcanvas.copilot.runs import RunFinder
@@ -178,3 +179,73 @@ async def test_the_editor_copilot_searches_the_projects_runs(app, api_client, ru
     tools = of(events, "tool")
     assert [t["name"] for t in tools] == ["search_runs"] and tools[0]["ok"], tools
     assert "One failed refund" in "".join(e["text"] for e in of(events, "text"))
+
+
+# ---------------------------------------------------------------------------------- the Runs page's Ask box ---
+async def ask_runs(api, question: str, **body):
+    return await api.post(f"{P}/runs/ask", json={"question": question, **body})
+
+
+async def test_the_ask_box_answers_with_the_runs_it_found(app, api_client, runs):
+    from langchain_core.messages import AIMessage
+    from sqlalchemy import select
+
+    from agentcanvas.db.models import ModelSpend
+
+    await separate_model(api_client)  # anthropic:claude-haiku-4-5: it has a price
+    spend = {"input_tokens": 1000, "output_tokens": 100, "total_tokens": 1100}
+    first = AIMessage(content="", usage_metadata=spend, tool_calls=[  # type: ignore[arg-type]
+        {"name": "search_runs", "args": {"status": "failed", "text": "refund", "min_cost_usd": 0.1}, "id": "c1"},
+        {"name": "get_workflow", "args": {}, "id": "c2"},  # not offered here: refused, the answer goes on
+    ])  # fmt: skip
+    script(app, first, AIMessage(content="One failed refund run cost $0.25.", usage_metadata=spend))  # type: ignore[arg-type]
+    r = await ask_runs(api_client, "failed runs about refunds that cost over 10 cents")
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["answer"] == "One failed refund run cost $0.25." and out["error"] is None
+    assert [x["thread_id"] for x in out["runs"]] == ["th_refund_1", "th_refund_old"]
+    assert out["searches"] == [{"status": "error", "min_cost_usd": 0.1, "text": "refund", "matched": 2}]
+    assert out["model"] == "anthropic:claude-haiku-4-5" and out["usage"]["input_tokens"] == 2000
+    assert out["cost_usd"] > 0
+    async with app.state.db.sessionmaker() as s:
+        [row] = (await s.scalars(select(ModelSpend))).all()
+    assert (row.kind, row.calls, row.tokens_in) == ("copilot", 1, 2000)  # the spending caps count it
+
+
+async def test_the_ask_box_keeps_to_the_pages_workflow(app, api_client, runs):
+    await separate_model(api_client)
+    other = await make_chat(api_client, name="Billing")
+    script(app, call("search_runs", workflow="Billing", status="error"), "Three failed.")
+    out = (await ask_runs(api_client, "what failed?", workflow_id=runs)).json()
+    assert out["searches"][0]["workflow"] == runs and out["searches"][0]["matched"] == 3  # the page's workflow wins
+    assert {x["workflow_id"] for x in out["runs"]} == {runs}
+    r = await ask_runs(api_client, "x", workflow_id="wf_nope")
+    assert r.status_code == 404
+    assert other
+
+
+async def test_the_ask_box_says_why_it_cannot_answer(app, api_client, runs, monkeypatch):
+    from agentcanvas.api.v1 import copilot as copilot_api
+
+    r = await ask_runs(api_client, "what failed?")  # no model anywhere
+    assert r.status_code == 422 and "needs a model" in r.json()["detail"] and "Copilot settings" in r.json()["detail"]
+    await separate_model(api_client)
+    script(app, *[call("search_runs", text=f"try {i}") for i in range(6)])  # it never stops searching
+    out = (await ask_runs(api_client, "anything?")).json()
+    assert "too many searches" in out["error"] and len(out["searches"]) == 4
+
+    monkeypatch.setattr(copilot_api, "ASKS_PER_MINUTE", 2)
+    script(app, "ok")
+    r = await ask_runs(api_client, "again?")
+    assert r.status_code == 429, r.text  # three questions this minute
+    r = await api_client.put("/v1/projects/prj_default/copilot-settings", json={"enabled": False})
+    assert r.status_code == 200, r.text
+    assert (await ask_runs(api_client, "x")).status_code == 403
+
+
+async def test_a_viewer_may_ask(app, api_client, runs, as_role):  # noqa: F811
+    await separate_model(api_client)
+    as_role("viewer")
+    script(app, call("search_runs", status="success"), "One run succeeded.")
+    r = await ask_runs(api_client, "what worked?")
+    assert r.status_code == 200 and [x["thread_id"] for x in r.json()["runs"]] == ["th_hotel"], r.text

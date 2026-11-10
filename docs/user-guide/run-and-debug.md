@@ -181,6 +181,21 @@ Timeline. Narrow it with the workflow filter below.
   entry, and nobody sees another organisation's runs. Secret values are masked before anything is embedded, but with
   a hosted embedding model the masked text of inputs and answers is sent to that provider, as with a knowledge base.
 
+## Ask about runs
+
+The **Ask** box above the search takes a question in plain words, such as *failed runs about refunds last week over
+$0.10* or *which workflow cost the most yesterday?*, and the [Copilot](copilot.md) answers it in a few sentences with
+the runs it found listed underneath (click one to open it in the Timeline). It turns the question into filters
+(status, when the run started, cost, workflow, a label the API caller set, and a topic ranked like the search above)
+and shows them under the answer, so you can tell what it looked for; the runs themselves come from the database, not
+from the model. With the workflow filter set, it keeps to that workflow.
+
+- Everyone who can see the Runs page may ask, viewers included. Nothing is saved: no conversation, no change.
+- It uses the Copilot's model (the question model when one is set in the Copilot settings), and what it sends the
+  model is the question and the runs' status, errors, costs and snippets. Each answer's cost is shown under it and
+  counts against the [spending caps](settings.md#spending-caps); one person can ask ten questions a minute.
+- Test and experiment runs are left out. When the Copilot is switched off for the project, the box says so.
+
 ## Explain
 
 The **Explain** tab narrates the run in plain language: which step ran, what each router chose and why

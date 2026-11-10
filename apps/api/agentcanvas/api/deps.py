@@ -249,6 +249,7 @@ ROLE_EXCEPTIONS = {
     ("DELETE", "/connections/{connection_id}"): "viewer",
     ("POST", "/workflows/{wf_id}/copilot/messages"): "viewer",  # Ask mode for everyone; Build checks for builder
     ("POST", "/workflows/{wf_id}/copilot/stop"): "viewer",  # stop your own answer, in either mode
+    ("POST", "/projects/{project_id}/runs/ask"): "viewer",  # a question about runs everyone may read; changes nothing
     ("DELETE", "/workflows/{wf_id}/copilot"): "viewer",  # anyone starts their own chat over
     ("POST", "/workflows/{wf_id}/copilot/threads/{conv_id}/open"): "viewer",  # their own conversations
     ("PATCH", "/workflows/{wf_id}/copilot/threads/{conv_id}"): "viewer",
