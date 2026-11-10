@@ -213,3 +213,11 @@ export type InboxItem = InterruptOut & { deciders?: string | null; may_decide?: 
 export function useInbox() {
   return useQuery({ queryKey: ["inbox"], queryFn: () => apiFetch<InboxItem[]>("/inbox"), refetchInterval: 5000 });
 }
+
+/** Inbox items withdrawn because their conversation moved on past the question (its state was edited, it went back
+ * to an earlier point, or a new message started it over): nobody can answer them any more. */
+export function useWithdrawn() {
+  return useQuery({
+    queryKey: ["inbox", "withdrawn"], queryFn: () => apiFetch<InboxItem[]>("/inbox?status=withdrawn&limit=50"), refetchInterval: 30_000,
+  });
+}

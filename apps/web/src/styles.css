@@ -552,6 +552,8 @@ p a, small a, .small a, li > a:not([class]), td a:not([class]), td a[title] { te
 .inbox-list { display: flex; flex-direction: column; gap: 12px; }
 .inbox-item { border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 14px 16px; background: var(--panel); box-shadow: var(--shadow-sm); }
 .inbox-item.linked { box-shadow: 0 0 0 2px var(--accent), 0 0 0 6px var(--accent-ring), var(--shadow-sm); }
+.inbox-withdrawn { margin-top: 24px; }
+.inbox-item.withdrawn { background: transparent; box-shadow: none; }
 .palette-overlay {
   position: fixed; inset: 0; background: var(--overlay); z-index: 50; display: flex; justify-content: center; align-items: flex-start;
   padding-top: 12vh; backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); animation: fade .15s ease-out;

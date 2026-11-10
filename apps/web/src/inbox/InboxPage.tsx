@@ -2,7 +2,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router";
 import { apiFetch } from "../api/client";
-import { type InboxItem, PROJECT_ID, useInbox } from "../api/queries";
+import { type InboxItem, PROJECT_ID, useInbox, useWithdrawn } from "../api/queries";
 import { can } from "../api/session";
 import { DecisionCard } from "./DecisionCard";
 import { QueryStatus } from "../ui/QueryStatus";
@@ -13,18 +13,27 @@ import { useEffect, useRef, useState } from "react";
 import { EmptyState } from "../ui/EmptyState";
 import { Inbox } from "lucide-react";
 
+const WEEK_MS = 7 * 24 * 3600 * 1000;
+const WITHDRAWN_WHY = "The conversation moved on past these questions (its state was edited, it went back to an "
+  + "earlier point, or a new message started it over), so they can no longer be answered.";
+
 export function InboxPage() {
   const inbox = useInbox();
+  // the last week's withdrawn items: a reviewer who saw one waiting (or follows a notification) learns what became of it
+  const withdrawnQ = useWithdrawn();
+  const since = Date.now() - WEEK_MS;
+  const withdrawn = (withdrawnQ.data ?? []).filter((i) => Date.parse(i.decided_at ?? i.created_at) >= since);
   const [only, setOnly] = useState("");
   const names = [...new Map((inbox.data ?? []).filter((i) => i.workflow_id).map((i) => [i.workflow_id!, i.workflow_name ?? "Workflow"])).entries()];
   const shown = (inbox.data ?? []).filter((i) => !only || i.workflow_id === only);
   // a notification's link names the item: it is shown first in view, or said to be gone
   const [params] = useSearchParams();
   const linked = params.get("item");
-  const gone = Boolean(linked && inbox.data && !inbox.data.some((i) => i.id === linked));
+  const linkedWithdrawn = Boolean(linked && withdrawn.some((i) => i.id === linked));
+  const gone = Boolean(linked && inbox.data && !withdrawnQ.isPending && !inbox.data.some((i) => i.id === linked) && !linkedWithdrawn);
   useEffect(() => {
-    if (linked && inbox.data?.some((i) => i.id === linked)) document.getElementById(`inbox-${linked}`)?.scrollIntoView?.({ block: "center" });
-  }, [linked, inbox.data]);
+    if (linked && (inbox.data?.some((i) => i.id === linked) || linkedWithdrawn)) document.getElementById(`inbox-${linked}`)?.scrollIntoView?.({ block: "center" });
+  }, [linked, inbox.data, linkedWithdrawn]);
   const qc = useQueryClient();
   // per item: a decided item used to stay clickable until the list reloaded (a second click: a 409), one decision
   // in flight disabled every card, and one failure was shown under all of them
@@ -68,6 +77,9 @@ export function InboxPage() {
       <PageHeader title="Inbox" description="Runs waiting for a person, in every project: an approval, an edit or an answer. Deciding resumes the run. Runs at a Wait step show here too; they continue on their own." />
       <QueryStatus q={inbox} what="the inbox" />
       {gone && <p className="callout small" data-testid="inbox-gone">That item is no longer waiting: someone decided it, or it expired.</p>}
+      {linkedWithdrawn && (
+        <p className="callout small" data-testid="inbox-gone">That item was withdrawn: its conversation moved on past the question, so it can no longer be answered (below).</p>
+      )}
       {inbox.data?.length === 0 && (
         <EmptyState icon={Inbox} title="Nothing is waiting for you" testId="inbox-empty">
           When a run pauses for an approval or an answer, it shows here for anyone with the reviewer role.
@@ -109,6 +121,28 @@ export function InboxPage() {
           </article>
         ))}
       </div>
+      {withdrawn.length > 0 && (
+        <section className="inbox-withdrawn" aria-labelledby="inbox-withdrawn-title" data-testid="inbox-withdrawn">
+          <h2 id="inbox-withdrawn-title">Withdrawn</h2>
+          <p className="small muted">{WITHDRAWN_WHY} Shown for a week.</p>
+          <div className="inbox-list">
+            {withdrawn.map((item) => (
+              <article key={item.id} id={`inbox-${item.id}`} className={item.id === linked ? "inbox-item withdrawn linked" : "inbox-item withdrawn"}
+                data-testid="inbox-withdrawn-item" aria-current={item.id === linked ? "true" : undefined}>
+                <header className="row gap">
+                  {item.workflow_id ? <Link to={`/workflows/${item.workflow_id}`}>{item.workflow_name}</Link> : <span>A deleted workflow</span>}
+                  <span className="badge">Withdrawn</span>
+                  <small className="muted">
+                    at <b>{item.node_label ?? "a step"}</b> · asked <span title={exact(item.created_at)}>{ago(item.created_at)}</span>
+                    {item.decided_at && <> · withdrawn <span title={exact(item.decided_at)}>{ago(item.decided_at)}</span></>}
+                    {item.workflow_id && <> · <Link to={`/workflows/${item.workflow_id}?thread=${item.thread_id}`}>see the conversation</Link></>}
+                  </small>
+                </header>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

@@ -547,7 +547,8 @@ class InterruptTask(Base):
     __tablename__ = "interrupt_task"
     __table_args__ = (
         CheckConstraint("kind IN ('tool_approval','approval','input','timer')", name="interrupt_kind"),
-        CheckConstraint("status IN ('pending','decided','expired','cancelled')", name="interrupt_status"),
+        # withdrawn: the conversation moved past the question (a state edit, a replay, a new message): unanswerable
+        CheckConstraint("status IN ('pending','decided','expired','cancelled','withdrawn')", name="interrupt_status"),
         Index("interrupt_pending_idx", "status", "created_at"),
         Index("interrupt_thread_idx", "thread_id"),  # deleting a conversation or a run (cascade, retention)
         Index("interrupt_run_idx", "run_id"),

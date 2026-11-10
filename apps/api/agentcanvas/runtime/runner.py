@@ -48,7 +48,7 @@ from agentcanvas.runtime.tracing import trace_ref
 from agentcanvas.runtime.trajectory import compact
 from agentcanvas.runtime.types import CLIENT_TOOL, REPLAYABLE, ResumeSpec, RunMode, RunSpec
 from agentcanvas.services import offboarding
-from agentcanvas.services.approvers import answered, escalate_at, node_approvers
+from agentcanvas.services.approvers import answered, escalate_at, node_approvers, still_waits, withdraw
 from agentcanvas.services.files import DEFAULT_MAX_BYTES, FileService
 from agentcanvas.services.secrets import masker
 from agentcanvas.services.spend_caps import SpendCaps, SpendCapStop, periods
@@ -98,6 +98,11 @@ class RunHandle:
     stop_requested: bool = False
     stop_reason: str | None = None  # why it was stopped (`Run.stop_reason`); none: the person pressed Stop here
     decided: list[str] = field(default_factory=list)  # Inbox items this run answers (back to pending if it fails)
+    # of those, the ones the framework no longer asks (moved past them): withdrawn rather than put back
+    withdrawn: list[str] = field(default_factory=list)
+    # its framework's saved state holds every pause the conversation has (LangGraph): what a finished run reports
+    # is all that still waits, and older Inbox items it does not report are withdrawn
+    holds_pauses: bool = False
     requested_by: str | None = None  # whose request it serves: its Inbox items name them (self-approval policy)
     approvers: dict[str, dict[str, Any]] = field(default_factory=dict)  # step -> who may decide its pause (E-6)
     deployment_id: str | None = None  # a run of a published deployment (online evaluators score these, S13)
@@ -878,7 +883,9 @@ class Runner:
             await self._spend_caps(h, saved=True)  # nor one whose organisation reached a cap while it waited
             resources = self.resources(spec.thread_id, spec.workflow)
             hide = masker(list((getattr(resources, "_secrets", None) or {}).values()))
-            events = self.adapter_for(spec.workflow).execute(spec, resources)
+            adapter = self.adapter_for(spec.workflow)
+            h.holds_pauses = supports(adapter, "thread_state")
+            events = adapter.execute(spec, resources)
             async with asyncio.timeout(budget.max_seconds if budget and budget.max_seconds else None):
                 async for unmasked in events:
                     raw = hide(unmasked)
@@ -909,6 +916,9 @@ class Runner:
                         }
                     elif ev["type"] == "RUN_ERROR":
                         status, error = "error", ev.get("message")
+                        if ev.get("code") == "unknown_interrupt" and ev.get("reason") == "not_pending":
+                            refused = set(ev.get("interrupt_ids") or [])  # moved past: no answer can apply
+                            h.withdrawn = [i for i in h.decided if i in refused]
                         ev = {**raw, "runId": h.run_id, "threadId": h.thread_id}
                     await emit(ev)
         except (BudgetExceeded, TimeoutError) as exc:
@@ -1042,13 +1052,23 @@ class Runner:
                 # failed, cancelled or stopped by a restart before the answer took: the run still waits for it
                 stopped = status in ("error", "cancelled") or (status == "interrupted" and h.drained)
                 if stopped and h.decided and untouched:
+                    back = [i for i in h.decided if i not in h.withdrawn]
                     await s.execute(
                         update(InterruptTask)
-                        .where(InterruptTask.id.in_(h.decided), InterruptTask.status == "decided")
+                        .where(InterruptTask.id.in_(back), InterruptTask.status == "decided")
                         .values(status="pending", decision=None, decided_by=None, decided_at=None)
                     )
+                    # the framework moved past these: the answer never applied, and no answer ever will
+                    await s.execute(
+                        update(InterruptTask)
+                        .where(InterruptTask.id.in_(h.withdrawn), InterruptTask.status == "decided")
+                        .values(status="withdrawn", decision=None, decided_by=None, decided_at=datetime.now(UTC))
+                    )
                     if thread_status in ("error", "idle"):
-                        await s.execute(update(Thread).where(Thread.id == h.thread_id).values(status="interrupted"))
+                        # nothing ran: the conversation is as it was, and waits only while something still waits
+                        waits = bool(back) or await still_waits(s, h.thread_id)
+                        settled = "interrupted" if waits else "idle"
+                        await s.execute(update(Thread).where(Thread.id == h.thread_id).values(status=settled))
                 for intr in interrupts:
                     if intr.get("kind") == CLIENT_TOOL:  # the caller's application answers it: not an Inbox item
                         continue
@@ -1069,16 +1089,19 @@ class Runner:
                             .where(InterruptTask.id == intr["id"])
                             .values(status="pending", decision=None, decided_by=None, decided_at=None, **asked)
                         )
-                if status in ("success", "interrupted") and not h.drained:
+                if status in ("success", "interrupted") and not h.drained and not h.superseded:
                     # the run reported every pause its conversation still has: a Wait step it left behind (a time
                     # that passed while another branch waited) must not wake the conversation later
-                    left = (InterruptTask.thread_id == h.thread_id, InterruptTask.status == "pending")
-                    await s.execute(
-                        update(InterruptTask)
-                        .where(*left, InterruptTask.kind == "timer")
-                        .where(InterruptTask.id.not_in([i["id"] for i in interrupts]))
-                        .values(status="cancelled", decided_at=datetime.now(UTC))
-                    )
+                    reported = [i["id"] for i in interrupts]
+                    if h.holds_pauses:  # and a question it moved past (a new message, a replay) is withdrawn
+                        await withdraw(s, h.thread_id, reported, datetime.now(UTC))
+                    else:
+                        left = (InterruptTask.thread_id == h.thread_id, InterruptTask.status == "pending")
+                        await s.execute(
+                            update(InterruptTask)
+                            .where(*left, InterruptTask.kind == "timer", InterruptTask.id.not_in(reported))
+                            .values(status="cancelled", decided_at=datetime.now(UTC))
+                        )
                 s.add_all(rubric_scores(h))
                 await s.commit()
         except Exception:
@@ -1371,6 +1394,24 @@ class Runner:
         async with self.db.sessionmaker() as s:
             q = select(InterruptTask).where(InterruptTask.thread_id == thread_id, InterruptTask.status == "pending")
             return list((await s.scalars(q)).all())
+
+    async def withdraw_moved_past(self, wf: Workflow, thread_id: str) -> list[str]:
+        """After the conversation's saved state was changed outside a run (a state edit): withdraw the Inbox items
+        it no longer asks, and release the conversation when nothing is left to wait for. Returns the ids withdrawn
+        (none for a framework whose state does not hold its pauses)."""
+        adapter = self.adapter_for(wf)
+        if not supports(adapter, "thread_state"):
+            return []
+        read_at = datetime.now(UTC)
+        state = await cast(ThreadStateAbility, adapter).get_state(wf, thread_id, self.resources(thread_id, wf))
+        async with self.db.sessionmaker() as s:
+            held = [i.id for i in state.interrupts]
+            gone = await withdraw(s, thread_id, held, datetime.now(UTC), asked_before=read_at)
+            if gone and not await still_waits(s, thread_id):
+                waiting = (Thread.id == thread_id, Thread.status == "interrupted")
+                await s.execute(update(Thread).where(*waiting).values(status="idle"))
+            await s.commit()
+        return gone
 
 
 def _pending(h: RunHandle, spec: RunSpec) -> dict[str, Any]:

@@ -782,17 +782,23 @@ async def continue_thread(
 async def edit_state(
     thread_id: str,
     body: StateEdit,
+    request: Request,
     session: AsyncSession = Depends(get_session),
     settings: Settings = Depends(get_settings_dep),
     r: Runner = Depends(runner),
 ) -> dict[str, Any]:
+    """Edit the conversation's state (a new checkpoint). A question it was waiting at is then no longer asked: its
+    Inbox item is withdrawn (`withdrawn` lists them), and Continue runs the step again, which asks anew."""
     t = await _thread(session, thread_id)
     wf, _ = await _thread_target(session, settings, t, runnable=False)
     _idle(r, thread_id)
     cid = await require(r.adapter_for(wf), "thread_state", ThreadStateAbility).update_state(
         wf, thread_id, r.resources(thread_id, wf), body.values, body.as_node, body.checkpoint_id
     )
-    return {"checkpoint_id": cid}
+    withdrawn = await r.withdraw_moved_past(wf, thread_id)
+    if withdrawn:
+        note(request, withdrawn=withdrawn)
+    return {"checkpoint_id": cid, "withdrawn": withdrawn}
 
 
 @router.post("/threads/{thread_id}/fork")
@@ -931,15 +937,15 @@ def _intr(
 @router.get("/inbox", response_model=list[InterruptOut], tags=["inbox"])
 async def inbox(
     request: Request,
-    status: Literal["pending", "decided", "expired"] = "pending",
+    status: Literal["pending", "decided", "expired", "withdrawn"] = "pending",
     workflow_id: str | None = None,
     limit: int = Query(100, ge=1, le=500),
     session: AsyncSession = Depends(get_session),
     settings: Settings = Depends(get_settings_dep),
     user: CurrentUser = Depends(current_user),
 ) -> list[InterruptOut]:
-    """What waits for a person (or was decided), of the projects the caller sees, with whether they may decide each:
-    by their role in its project."""
+    """What waits for a person (or was decided, expired, or withdrawn because the conversation moved past it), of
+    the projects the caller sees, with whether they may decide each: by their role in its project."""
     access = await project_access(request, session, user)
     q = (
         select(InterruptTask, Thread.workflow_id, WorkflowRow.name, Project, Thread.created_by)
@@ -1006,6 +1012,8 @@ async def decide(
     if task is None:
         raise NotFound(f"inbox item '{interrupt_id}' not found")
     note(request, kind=task.kind, payload_sha256=payload_hash(body.value))
+    if task.status == "withdrawn":
+        raise Conflict(approvers.WITHDRAWN)
     if task.status != "pending":
         raise Conflict(f"inbox item '{interrupt_id}' is already {task.status}")
     if task.kind == "timer":
