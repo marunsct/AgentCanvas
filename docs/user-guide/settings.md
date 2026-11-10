@@ -41,7 +41,7 @@ cannot change are shown read-only, with a sentence saying who can; sections your
 | Organisation › **Spending** | What the organisation's runs cost over a date range (the last 30 days to start with; **Last 7 / 30 / 90 days** buttons), in total and by project, by workflow, by person and by deployment, with runs, tokens, answers taken from the cache and answers from backup models. A person is whoever started the conversation; runs from deployments, schedules and events are listed as no person, and the deployment table shows which deployment (the workflow and its environment) they came through, with the rest listed as not through a deployment. Cost counts models with a price. What the Copilot and AI judges spent is listed apart, under **Outside runs** (it is not in the runs' total). Conversations deleted since (by hand or by the retention period) still count, by the hour their runs started. The same report is `GET /v1/org/spending?since=&until=`. Above it, **Spending caps**: one row for the organisation and one per project, each with its cap a day and a month (empty: no cap; **Save** on the row), how much of it is used today and this month, and below them the **Alert at** percent and the latest cap alerts (see [Spending caps](#spending-caps)) | admins |
 | Organisation › **Security** | The **allowed networks** the organisation may be used from: sign-ins, API tokens, deployment keys, share links and SCIM ([Allowed networks](accounts.md#allowed-networks)); whether members must sign in with a second factor ([Multi-factor sign-in](accounts.md#multi-factor-sign-in)) | admins |
 | Organisation › **Members**, **Policies**, **Audit log** | See [Organisations, roles and policies](accounts.md) | admins |
-| Organisation › **Notifications** | Who is told that an approval or a question waits in the Inbox ([Notifications](#approval-notifications)): e-mail to the people who may decide, a Slack channel, a signed webhook. **Send a test** tries each one | admins |
+| Organisation › **Notifications** | Who is told that an approval or a question waits in the Inbox ([Notifications](#approval-notifications)): e-mail to the people who may decide, a Slack channel, a signed webhook; and whether each project's weekly run digest goes there too. **Send a test** tries each one | admins |
 | Organisation › **Server** | How this server is set up (sign-in, where workspace code runs, frameworks offered, limits, retention), each with the environment variable an operator sets it with. Read-only | admins can read |
 | You › **Appearance** | Your colour theme, and whether the editor opens in Simple or Full mode (both saved with your account) | you |
 | You › **Keyboard shortcuts** | Every shortcut of the editor and the canvas (Ctrl/⌘+K opens the command palette) | read only |
@@ -179,6 +179,18 @@ A notification that fails (a refused address, a server error) is tried again aft
 announced unless their step names who decides them (you are watching the run), nor are test and evaluation runs. The
 same settings are `GET` and `PUT /v1/org/notifications` (admins; only what you send changes, `null` removes the Slack
 address or the webhook) and `POST /v1/org/notifications/test`.
+
+**Weekly run digests** (off until an admin ticks **Send each project's weekly run digest here too**): each project's
+[weekly digest](run-and-debug.md#weekly-digest) also goes to these channels once it is made, on Monday after the
+week ends. It says how many runs there were, how many failed, what they spent, how long they took, how many runs each
+kind of failure hit and in which workflows, and which workflows' runs were flagged most, with a link to the Runs
+page; never the errors' text or what a run was asked or answered. E-mail goes to the addresses listed above, else to
+every admin and builder (at most 100, in Bcc). The webhook gets `{"type": "digest.weekly", "id", "digest_id",
+"organisation_id", "project": {"id", "name"}, "week_start", "week_end", "runs", "failed", "failure_rate", "cost_usd",
+"tokens", "latency_p50_ms", "latency_p95_ms", "failure_groups": [{"runs", "workflows"}], "flagged": [{"run_id",
+"thread_id", "workflow_id", "workflow_name", "flags"}], "workflows", "url"}`, signed the same way
+(`X-AgentCanvas-Event: digest.weekly`). Failures are retried like approval notifications; switching the digest off
+drops the ones not sent yet. In the API it is `"digest": true` on the same `PUT /v1/org/notifications`.
 
 
 ### Spending caps

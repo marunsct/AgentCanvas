@@ -196,7 +196,8 @@ week before it:
 **This week so far** computes the same for the current week on the spot. The server makes each week's digest once
 it is over, for projects that had runs in it; test and experiment runs are left out, and no model is asked. A digest
 holds counts, workflow names and shortened errors (numbers and quoted values taken out, secret values masked), never
-what a run was asked or answered.
+what a run was asked or answered. An admin can also have every project's digest sent to the organisation's
+notification channels (e-mail, Slack, a webhook): see [Approval notifications](settings.md#approval-notifications).
 
 ## Ask about runs
 

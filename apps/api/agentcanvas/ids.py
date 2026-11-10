@@ -52,6 +52,7 @@ PREFIXES = {
     "ntc",  # a notification about an Inbox item (E-6)
     "oex",  # an organisation export (E-7)
     "rdg",  # a weekly run digest (F-11)
+    "dgn",  # a weekly run digest to send on one channel (F-11)
 }
 
 

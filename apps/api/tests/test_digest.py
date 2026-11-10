@@ -8,11 +8,12 @@ import json
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from test_run_find import CONVERSATIONS, NOW, make_chat, talk
 
-from agentcanvas.db.models import AnnotationItem, AnnotationQueue, Run, RunDigest, RunScore
+from agentcanvas.db.models import AnnotationItem, AnnotationQueue, DigestNotice, Run, RunDigest, RunScore
 from agentcanvas.services.digest import DigestJob, week_of
+from agentcanvas.services.triggers import sign
 
 P = "/v1/projects/prj_default"
 LAST_WEEK = datetime(2026, 11, 2, tzinfo=UTC)  # NOW is Tuesday 2026-11-10: the week that ended began Monday 11-02
@@ -131,3 +132,94 @@ async def test_no_digests_when_switched_off(app):
     off.start()
     assert off._task is None
     await off.stop()
+
+
+# ------------------------------------------------------------------------- sent through the E-6 channels ---
+SLACK = "https://hooks.slack.com/services/T000/B000/XXXXSECRETTOKEN"
+HOOK = "https://hooks.example.com/digests"
+
+
+@pytest.fixture
+def smtp(app, monkeypatch):
+    monkeypatch.setattr(app.state.settings, "smtp_host", "mail.example.com")
+    monkeypatch.setattr(app.state.settings, "smtp_from", "AgentCanvas <runs@example.com>")
+
+
+async def _channels(api, **body) -> dict:
+    r = await api.put("/v1/org/notifications", json={"email": True, "slack_url": SLACK, "webhook_url": HOOK, **body})
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+async def _notices(app) -> list:
+    async with app.state.db.sessionmaker() as s:
+        return list((await s.scalars(select(DigestNotice).order_by(DigestNotice.channel))).all())
+
+
+async def test_an_organisation_that_opted_in_gets_each_digest_on_its_channels(app, api_client, week, smtp):
+    from test_approvers import _member
+    from test_notifier import Wire
+
+    secret = (await _channels(api_client))["webhook_secret"]
+    assert (await api_client.get("/v1/org/notifications")).json()["digest"] is False  # off until an admin opts in
+    assert (await api_client.put("/v1/org/notifications", json={"digest": True})).json()["digest"] is True
+    await _member(app, "usr_builder", "builder@example.com", "builder")
+    await _member(app, "usr_viewer", "viewer@example.com", "viewer")
+    wire = Wire(app.state.notifier)
+    assert await app.state.digests.tick(NOW) == 1
+    assert [n.channel for n in await _notices(app)] == ["email", "slack", "webhook"]
+    assert await app.state.notifier.tick(NOW) == 3  # the notifier's loop sends them
+    assert {n.status for n in await _notices(app)} == {"sent"}
+
+    [(to, subject, text)] = wire.mails
+    assert to == ["builder@example.com", "dev@localhost"]  # admins and builders, not viewers
+    assert subject == "Weekly runs: Default project, 02 Nov to 08 Nov 2026"
+    assert "3 runs, 2 failed (67%), $0.60 spent" in text and "1 kind of error, most often 2 runs in Chat" in text
+    assert "Flagged most: Chat (2); Chat (1)." in text and text.rstrip().endswith("/runs")
+    [slack] = wire.to(SLACK)
+    [hook] = wire.to(HOOK)
+    for request in (slack, hook):  # counts and names: never the errors' text or what a run said
+        assert b"Model said" not in request.content and b"kettle" not in request.content
+    assert b"3 runs, 2 failed" in slack.content
+    payload = json.loads(hook.content)
+    assert payload["type"] == "digest.weekly" and payload["runs"] == 3
+    assert payload["project"]["name"] == "Default project"
+    assert payload["failure_groups"] == [{"runs": 2, "workflows": ["Chat"]}] and len(payload["flagged"]) == 2
+    stamp = hook.headers["X-AgentCanvas-Timestamp"]
+    assert hook.headers["X-AgentCanvas-Event"] == "digest.weekly"
+    assert hook.headers["X-AgentCanvas-Signature"] == sign(secret, hook.content, stamp)
+    assert await app.state.notifier.tick(NOW) == 0  # sent once
+
+
+async def test_team_addresses_failures_and_opting_out(app, api_client, week, smtp):
+    from test_notifier import Wire
+
+    await _channels(api_client, email_to=["runs@example.com"], digest=True)
+    wire = Wire(app.state.notifier)
+    wire.status = 500
+    await app.state.digests.tick(NOW)
+    assert await app.state.notifier.tick(NOW) == 1  # the e-mail; Slack and the webhook answered 500
+    assert wire.mails[0][0] == ["runs@example.com"]
+    retry = {n.channel: n for n in await _notices(app)}
+    slack = retry["slack"]
+    assert slack.status == "pending" and slack.attempts == 1 and "HTTP 500" in (slack.last_error or "")
+    assert slack.next_at > NOW  # tried again later
+    await api_client.put("/v1/org/notifications", json={"digest": False})
+    assert await app.state.notifier.tick(NOW + timedelta(hours=1)) == 0
+    assert {n.channel: n.status for n in await _notices(app)} == {"email": "sent", "slack": "dropped",
+                                                                  "webhook": "dropped"}  # fmt: skip
+
+
+async def test_without_the_opt_in_nothing_is_sent_and_a_race_queues_once(app, api_client, week, smtp):
+    await _channels(api_client)
+    await app.state.digests.tick(NOW)
+    assert await _notices(app) == []  # channels set for approvals do not get digests unasked
+    async with app.state.db.sessionmaker() as s:
+        await s.execute(delete(RunDigest))
+        await s.commit()
+    await api_client.put("/v1/org/notifications", json={"digest": True})
+    a = DigestJob(app.state.db, 3600, notifier=app.state.notifier)
+    b = DigestJob(app.state.db, 3600, notifier=app.state.notifier)
+    made = await asyncio.gather(a.make("prj_default", LAST_WEEK, NOW), b.make("prj_default", LAST_WEEK, NOW))
+    assert sorted(made) == [False, True]
+    assert [n.channel for n in await _notices(app)] == ["email", "slack", "webhook"]  # the loser's went with it

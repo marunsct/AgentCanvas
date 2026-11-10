@@ -607,6 +607,29 @@ class ApprovalNotice(Base):
     sent_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
 
 
+class DigestNotice(Base):
+    """One weekly run digest to send on one channel (F-11), an outbox like `ApprovalNotice`: claimed by one server
+    at a time, retried with backoff until it is sent or gives up."""
+
+    __tablename__ = "digest_notice"
+    __table_args__ = (
+        CheckConstraint("status IN ('pending','sent','failed','dropped')", name="digest_notice_status"),
+        Index("digest_notice_due_idx", "status", "next_at"),
+        Index("digest_notice_digest_idx", "digest_id"),
+        Index("digest_notice_org_idx", "org_id"),  # deleting an organisation
+    )
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    org_id: Mapped[str] = mapped_column(ForeignKey("organization.id", ondelete="CASCADE"))
+    digest_id: Mapped[str] = mapped_column(ForeignKey("run_digest.id", ondelete="CASCADE"))
+    channel: Mapped[str] = mapped_column(Text)  # email | slack | webhook
+    status: Mapped[str] = mapped_column(Text, server_default=text("'pending'"), default="pending")
+    attempts: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    next_at: Mapped[datetime] = _now()  # due from then; a claim moves it on by a lease
+    last_error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = _now()
+    sent_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
+
+
 class OrgNotifier(Base):
     """Where an organisation's approval notifications go (Settings > Organisation > Notifications). The Slack address
     and the webhook's signing secret are encrypted with the organisation's data key, like project secrets."""
@@ -618,6 +641,8 @@ class OrgNotifier(Base):
     webhook_url: Mapped[str | None] = mapped_column(Text)
     slack_url: Mapped[bytes | None] = mapped_column(LargeBinary)  # encrypted: the address holds Slack's token
     webhook_secret: Mapped[bytes | None] = mapped_column(LargeBinary)  # encrypted: signs what the webhook gets
+    # each project's weekly run digest goes to the same channels too (an organisation's opt-in)
+    digest: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     updated_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id", ondelete="SET NULL"))
     updated_at: Mapped[datetime] = mapped_column(
         UtcDateTime(), server_default=text("CURRENT_TIMESTAMP"), onupdate=func.now(), nullable=False

@@ -317,8 +317,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.events.timers = app.state.timers
             # F-11: each project's weekly run digest, made once by whichever server claims it
             app.state.digests = DigestJob(
-                db, settings.digest_interval_s, lambda project_id: app.state.projects.secrets.get(project_id, {})
-            )
+                db, settings.digest_interval_s, lambda project_id: app.state.projects.secrets.get(project_id, {}),
+                app.state.notifier,
+            )  # fmt: skip
+            app.state.notifier.rounds.append(app.state.digests.deliver)  # sent through the approval channels
             app.state.handover = HandoverJob(
                 db, runner, handover_target, settings.handover_interval_s, settings.orphan_after_s
             )

@@ -14,6 +14,7 @@ export interface NotificationsOut {
   webhook_url: string | null;
   webhook_secret_set: boolean;
   webhook_secret?: string | null;
+  digest?: boolean;
 }
 interface TestResult { channel: string; ok: boolean; error: string | null }
 
@@ -26,6 +27,7 @@ export function NotificationSettings() {
   const [to, setTo] = useState("");
   const [slack, setSlack] = useState("");
   const [hook, setHook] = useState("");
+  const [digest, setDigest] = useState(false);
   const [secret, setSecret] = useState<string | null>(null);
   const [tested, setTested] = useState<TestResult[] | null>(null);
   useEffect(() => {
@@ -33,6 +35,7 @@ export function NotificationSettings() {
     setEmail(q.data.email.enabled);
     setTo(q.data.email.to.join(", "));
     setHook(q.data.webhook_url ?? "");
+    setDigest(Boolean(q.data.digest));
   }, [q.data]);
   const save = useMutation({
     mutationFn: (json: Record<string, unknown>) => apiFetch<NotificationsOut>("/org/notifications", { method: "PUT", json }),
@@ -55,6 +58,7 @@ export function NotificationSettings() {
     ...(addresses.join(",") !== d.email.to.join(",") ? { email_to: addresses } : {}),
     ...(slack.trim() ? { slack_url: slack.trim() } : {}),
     ...(hook.trim() !== (d.webhook_url ?? "") ? { webhook_url: hook.trim() || null } : {}),
+    ...(digest !== Boolean(d.digest) ? { digest } : {}),
   };
   return (
     <section className="settings-card" aria-label="Notifications">
@@ -107,6 +111,15 @@ export function NotificationSettings() {
           </div>
         </div>
       )}
+
+      <h3>Weekly run digests</h3>
+      <label className="row"><input type="checkbox" checked={digest} onChange={(e) => setDigest(e.target.checked)} aria-label="send weekly run digests" />
+        Send each project's weekly run digest here too</label>
+      <p className="muted small">
+        Each Monday: last week's runs, failures, spend and latency per project, with a link to the Runs page. Counts and
+        workflow names only, never the errors' text or what a run was asked. E-mail goes to the addresses above, else to
+        every admin and builder.
+      </p>
 
       <div className="row gap">
         <button type="button" className="primary" disabled={save.isPending || !Object.keys(changed).length}

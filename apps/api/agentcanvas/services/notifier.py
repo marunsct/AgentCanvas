@@ -26,7 +26,7 @@ import smtplib
 import socket
 import ssl
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from email.message import EmailMessage
@@ -223,15 +223,15 @@ def _one_line(text: str) -> str:
     return " ".join(text.split())[:250]
 
 
-def _slack_escape(text: str) -> str:
+def slack_escape(text: str) -> str:
     """Names someone typed cannot mention @channel or make links in Slack."""
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
 def slack_body(n: Notice) -> dict[str, Any]:
-    lines = [_slack_escape(line) for line in n.text.strip().splitlines()[:-1]]
-    return {"text": _slack_escape(n.subject), "blocks": [
-        {"type": "section", "text": {"type": "mrkdwn", "text": f"*{_slack_escape(n.subject)}*\n" + "\n".join(lines)}},
+    lines = [slack_escape(line) for line in n.text.strip().splitlines()[:-1]]
+    return {"text": slack_escape(n.subject), "blocks": [
+        {"type": "section", "text": {"type": "mrkdwn", "text": f"*{slack_escape(n.subject)}*\n" + "\n".join(lines)}},
         {"type": "section", "text": {"type": "mrkdwn", "text": f"<{n.link}|Open it in the Inbox>"}},
     ]}  # fmt: skip
 
@@ -390,6 +390,8 @@ class NotifierJob:
         self.db, self.keyring, self.settings = db, keyring, settings
         self.transport: Any = None  # tests: an httpx mock transport
         self.mailer: Mailer = send_email
+        # other notifications sent through the same channels, each a round of this loop (weekly run digests)
+        self.rounds: list[Callable[[datetime], Awaitable[int]]] = []
         self._task: asyncio.Task | None = None
 
     @property
@@ -419,7 +421,13 @@ class NotifierJob:
         the notifications sent."""
         await self.escalate_due(now)
         await self.announce(now)
-        return await self.deliver(now)
+        sent = await self.deliver(now)
+        for more in self.rounds:
+            try:
+                sent += await more(now)
+            except Exception:  # approvals still go out when another kind of notification fails
+                log.exception("notifier.round_failed", round=getattr(more, "__qualname__", "?"))
+        return sent
 
     async def escalate_due(self, now: datetime) -> int:
         """Escalate the items whose step's "escalate after" ran out (an escalation at the approval expiry is the
