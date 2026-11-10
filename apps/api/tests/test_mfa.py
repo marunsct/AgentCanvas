@@ -3,6 +3,8 @@ token that lacks it gets a 401 asking for a stronger sign-in (RFC 9470), never a
 
 from __future__ import annotations
 
+import time
+
 import httpx
 import pytest
 from test_auth import SIGNING_JWK, bearer, settings, token  # noqa: F401 - `settings` turns OIDC sign-in on
@@ -11,8 +13,9 @@ from agentcanvas.db.models import AppUser, Membership, Organization
 from agentcanvas.security.auth import Authenticator
 from agentcanvas.services import mfa
 
-ALICE_MFA = token(amr=["pwd", "mfa"])
-ALICE_PWD = token(amr=["pwd"])
+LONG = int(time.time()) + 86400  # the whole suite may outlast a token's five minutes
+ALICE_MFA = token(amr=["pwd", "mfa"], exp=LONG)
+ALICE_PWD = token(amr=["pwd"], exp=LONG)
 
 
 @pytest.fixture
