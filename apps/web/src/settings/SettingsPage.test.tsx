@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppShell } from "../app/AppShell";
@@ -59,6 +59,17 @@ describe("Settings", () => {
     as("viewer");
     await act(async () => { at("/settings/project-spending"); });
     expect(screen.queryByTestId("settings-project-spending")).toBeNull();
+  });
+
+  it("offers a new project by the organisation role, whatever the role in this project (E-10)", async () => {
+    useMe.setState({
+      me: { id: "usr_x", email: "", org_id: "org_x", role: "viewer", memberships: { org_x: "viewer" }, project_role: "builder" },
+      loaded: true,
+    });
+    await act(async () => { at("/"); });
+    expect(screen.getByTestId("playground-link")).toBeTruthy(); // a builder here
+    await act(async () => { fireEvent.click(screen.getByTestId("project-switcher")); });
+    expect(screen.queryByTestId("new-project")).toBeNull();
   });
 
   it("is reached from the top bar, which shows a viewer no Playground", async () => {

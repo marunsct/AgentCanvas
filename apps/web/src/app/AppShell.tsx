@@ -7,7 +7,7 @@ import { NavLink, Outlet, useLocation } from "react-router";
 import { maturaMode, signInEnabled, signOut, switchOrganisation } from "../api/auth";
 import { apiFetch } from "../api/client";
 import { PROJECT_ID, PROJECT_NAME, switchProject, useInbox, WORKSPACE_ID, WORKSPACES, chooseWorkspace } from "../api/queries";
-import { useCan, useMe } from "../api/session";
+import { useCan, useCanOrg, useMe } from "../api/session";
 import { ThemeSwitcher } from "../theme/ThemeSwitcher";
 import { promptDialog } from "../ui/dialog";
 import { Menu } from "../ui/Menu";
@@ -67,7 +67,7 @@ function TopBar() {
 /** The project the app works in: switch to another, or (builders) make a new one. Switching reloads the app, since
  * every page reads the project chosen at start-up. */
 function ProjectSwitcher() {
-  const canBuild = useCan("builder");
+  const canBuild = useCanOrg("builder"); // making a project is the organisation's role, not the current project's
   const projects = useQuery({ queryKey: ["projects", WORKSPACE_ID], queryFn: () =>
     apiFetch<{ id: string; name: string }[]>(WORKSPACE_ID ? `/projects?workspace_id=${encodeURIComponent(WORKSPACE_ID)}` : "/projects") });
   const create = useMutation({
