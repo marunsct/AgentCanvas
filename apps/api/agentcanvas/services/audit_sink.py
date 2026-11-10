@@ -79,6 +79,7 @@ SECURITY_ACTIONS = frozenset({
     "export_member", "export_end_user", "api_export_end_user",  # and access (E-7)
     "create_org_export", "create_org_export_link", "download_org_export",  # the organisation's data leaving
     "audit_outbox_retried", "audit_outbox_discarded",  # undelivered entries sent again or dropped (command line)
+    "update_system_record",  # a deployment's AI-system record: its risk class, owner and purpose
 })  # fmt: skip
 
 FORWARDED, FORWARD_FAILED, FORWARD_DEAD, OUTBOX = (

@@ -217,6 +217,9 @@ class Deployment(Base):
     # OAuth sign-in for its MCP and A2A endpoints (E-11, services/deployment_oauth.py): {"issuer", "audience",
     # "scopes"}; NULL: off, only its keys work
     oauth: Mapped[dict[str, Any] | None] = mapped_column(Json)
+    # its AI-system record (services/system_record.py): purpose, owner_id, risk_class, risk_rationale,
+    # data_categories, end_user_facing, review_date, updated_by, updated_at; NULL until someone fills it in
+    system_record: Mapped[dict[str, Any] | None] = mapped_column(Json)
 
 
 class DeploymentKey(Base):
@@ -1033,7 +1036,11 @@ class Trigger(Base):
 
 class AuditLog(Base):
     __tablename__ = "audit_log"
-    __table_args__ = (Index("audit_org_time_idx", "org_id", "created_at"), Index("audit_org_id_idx", "org_id", "id"))
+    __table_args__ = (
+        Index("audit_org_time_idx", "org_id", "created_at"),
+        Index("audit_org_id_idx", "org_id", "id"),
+        Index("audit_org_target_idx", "org_id", "target", "id"),  # what happened to one thing (system records)
+    )
     id: Mapped[int] = mapped_column(BigId, primary_key=True, autoincrement=True)
     org_id: Mapped[str | None] = mapped_column(ForeignKey("organization.id"))
     actor_id: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))

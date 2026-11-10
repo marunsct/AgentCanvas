@@ -71,6 +71,42 @@ moving, then revoke it (or rotate with an overlap, which does the same on a time
 `401` with a message that says which. Making, revoking and rotating keys are in the audit log
 (`create_deployment_key`, `revoke_deployment_key`, `rotate_key`) with the key's first characters, never the key.
 
+### AI-system record
+
+Each deployment keeps an **AI-system record**: the page an auditor, a risk owner or your AI inventory asks for
+(ISO/IEC 42001, NIST AI 600-1, the EU AI Act's deployer duties; see
+[AI-system inventory](security.md#ai-system-inventory)). People write a few fields, all optional:
+
+| Field | What to write |
+|---|---|
+| Purpose | What the system is for, and what it must not be used for |
+| Owner | The member who answers for it |
+| Risk class | `minimal`, `limited` or `high`, with a rationale (required with a class): *high* is for decisions about people's access to work, credit, education, essential services or safety |
+| Data categories | The kinds of data it handles, e.g. personal data, health data, financial data |
+| End-user facing | Whether its end users are the public (customers, visitors) or only your own staff |
+| Review date | When the record is next reviewed |
+
+Everything else is read from what the server keeps, at the moment you open the record, so it never falls out of
+date: the published version and what changed since the version before it; the models and their providers, and every
+other service its runs send data to (app connectors, web APIs, remote agents, judge models, the trace export); its
+tools, with the fingerprints of the app connector tools pinned at publish; its guardrails (safety steps, agent
+add-ons, the budget) and the organisation's policies for its environment; where a person approves, and which steps
+act outside without anyone approving; evaluation evidence (the release gate, the latest experiment and red-team run,
+online evaluators' scores over 30 days); who published it, unpublished it and changed its record; and its retention
+and data handling.
+
+The record also lists **notes**: reminders, never errors, of what an auditor would ask about. A deployment marked
+high risk with no evaluation evidence, with no step that asks a person, or without an owner gets one; so does an
+owner who left the organisation and a review date that passed.
+
+| Request | Does |
+|---|---|
+| `GET /v1/deployments/{id}/system-record` | The whole record as JSON (viewers and above) |
+| `PUT /v1/deployments/{id}/system-record` with `{"purpose": "…", "owner_id": "usr_…", "risk_class": "high", "risk_rationale": "…", "data_categories": ["personal data"], "end_user_facing": true, "review_date": "2027-05-01"}` | Replace the fields people write (builders and above); a field left out is cleared. Refused when the owner is not a member or a risk class has no rationale |
+
+Changing the record is in the audit log (`update_system_record`, with the risk class, owner and review date) and is
+forwarded as a security event.
+
 ### Sign-in with OAuth (MCP and A2A)
 
 A deployment's [MCP server and A2A agent](agents-and-connectors.md#call-a-workflow-from-other-agents) can also let

@@ -83,6 +83,8 @@ async def test_org_b_cannot_read_org_a(app, api_client, org_b):
             ("POST", f"/v1/deployments/{dep_id}/callback-secret", None),  # E-2: run callbacks' signing secret
             ("GET", f"/v1/deployments/{dep_id}/oauth", None),  # E-11: OAuth sign-in to its MCP and A2A endpoints
             ("PUT", f"/v1/deployments/{dep_id}/oauth", {"enabled": False}),
+            ("GET", f"/v1/deployments/{dep_id}/system-record", None),  # E-13: the AI-system record
+            ("PUT", f"/v1/deployments/{dep_id}/system-record", {"purpose": "mine"}),
         ]:
             r = await api_client.request(method, path, json=body)
             assert r.status_code == 404, f"{method} {path}: {r.status_code} {r.text}"

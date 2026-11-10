@@ -43,6 +43,7 @@ from agentcanvas.api.v1 import (
     server,
     setup,
     share,
+    system_record,
     tokens,
     tools,
     traces,
@@ -89,6 +90,7 @@ signed_in.include_router(traces.router)
 signed_in.include_router(annotation.router)
 signed_in.include_router(deployments.router)
 signed_in.include_router(share.router)
+signed_in.include_router(system_record.router)
 signed_in.include_router(triggers.router)
 signed_in.include_router(server.router)
 signed_in.include_router(guide.router)
