@@ -5,7 +5,7 @@ deployment API, A2A or MCP reads them later, from any server, once the run's eve
 server that ran it. Both are new nullable columns: adding them rewrites nothing on Postgres.
 
 Revision ID: cdeb54ba6bf8
-Revises: 1ec6eb9f62ed
+Revises: 29547c665705
 Create Date: 2026-11-11 09:00:00
 """
 
@@ -18,7 +18,7 @@ from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
 
 revision: str = "cdeb54ba6bf8"
-down_revision: str | None = "1ec6eb9f62ed"
+down_revision: str | None = "29547c665705"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

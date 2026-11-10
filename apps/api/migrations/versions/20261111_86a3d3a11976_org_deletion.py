@@ -6,7 +6,7 @@ job on any replica deletes everything the organisation holds; `purge_lease_until
 it at once. The row stays as a tombstone (`deleted_at`) with the audit entries of the deletion.
 
 Revision ID: 86a3d3a11976
-Revises: 1ec6eb9f62ed
+Revises: a01bee975c80
 Create Date: 2026-11-11 09:00:00
 """
 
@@ -18,7 +18,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "86a3d3a11976"
-down_revision: str | None = "1ec6eb9f62ed"
+down_revision: str | None = "a01bee975c80"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

@@ -6,7 +6,7 @@ the workflow does not change who decides a pause that already waits. NULL: the s
 nullable column without a default changes no existing row and does not rewrite the table.
 
 Revision ID: 96b2a0098aeb
-Revises: 1ec6eb9f62ed
+Revises: 77fe2c6e6cec
 Create Date: 2026-11-10 20:00:00
 """
 
@@ -19,7 +19,7 @@ from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
 
 revision: str = "96b2a0098aeb"
-down_revision: str | None = "1ec6eb9f62ed"
+down_revision: str | None = "77fe2c6e6cec"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

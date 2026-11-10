@@ -8,7 +8,7 @@ deleted. On Postgres it gets the tenant policy like every organisation-owned tab
 condition is copied here so later changes to that module do not rewrite this migration).
 
 Revision ID: 7d5c15cdde99
-Revises: 1ec6eb9f62ed
+Revises: f80c7d9d9409
 Create Date: 2026-11-10 20:00:00
 """
 
@@ -20,7 +20,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "7d5c15cdde99"
-down_revision: str | None = "1ec6eb9f62ed"
+down_revision: str | None = "f80c7d9d9409"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

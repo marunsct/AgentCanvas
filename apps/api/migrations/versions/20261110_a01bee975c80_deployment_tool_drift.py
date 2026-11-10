@@ -5,7 +5,7 @@ since, the deployment keeps what was left out, per connector, so the editor can 
 The deployment table is small: a plain nullable column.
 
 Revision ID: a01bee975c80
-Revises: 1ec6eb9f62ed
+Revises: 7549afff4827
 Create Date: 2026-11-10 18:00:00
 """
 
@@ -18,7 +18,7 @@ from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
 
 revision: str = "a01bee975c80"
-down_revision: str | None = "1ec6eb9f62ed"
+down_revision: str | None = "7549afff4827"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
