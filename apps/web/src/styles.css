@@ -944,6 +944,11 @@ label.button:has(+ input:focus-visible) { outline: 2px solid var(--accent); outl
 .share-box code { display: block; overflow-wrap: anywhere; }
 .share-box label.share-toggle { font-weight: 400; display: flex; align-items: center; }
 .share-box code.inline { display: inline; }
+.record-notes { margin: 6px 0; padding-left: 18px; color: var(--warn); }
+.record-form { border: 0; padding: 0; margin: 0; min-width: 0; }
+.record-categories { border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 10px 8px; margin: 8px 0; }
+.record-categories legend { font-weight: 600; padding: 0 4px; }
+.share-box .record-categories label.row { font-weight: 400; display: flex; align-items: center; margin: 2px 0; }
 
 /* Knowledge Studio (S24) */
 .kb-create { margin: 8px 0 16px; }

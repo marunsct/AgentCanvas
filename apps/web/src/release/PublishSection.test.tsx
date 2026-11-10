@@ -21,6 +21,7 @@ vi.mock("../api/session", () => ({ can: () => true, useCan: () => true, ME: { ro
 vi.mock("./ConnectSection", () => ({ ConnectSection: () => null }));
 vi.mock("./ShareSection", () => ({ ShareSection: () => null }));
 vi.mock("./DeploymentOAuth", () => ({ DeploymentOAuth: () => null }));
+vi.mock("./SystemRecordSection", () => ({ SystemRecordSection: () => null }));
 const answer = vi.fn(async () => true);
 vi.mock("../ui/dialog", () => ({ confirmDialog: (...a: unknown[]) => answer(...(a as [])), promptDialog: vi.fn() }));
 

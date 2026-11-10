@@ -87,6 +87,10 @@ Each deployment keeps an **AI-system record**: the page an auditor, a risk owner
 | End-user facing | Whether its end users are the public (customers, visitors) or only your own staff; for staff only, the share link's AI notice defaults to wording for colleagues (it is still shown) |
 | Review date | When the record is next reviewed |
 
+In the Publish panel, open **System record** under a deployment: builders fill in the fields and press **Save
+record**; everyone sees its notes and a line summing up the evidence, and can **Download** it as Markdown or as an
+HTML page (open it in a browser and print it to get a PDF).
+
 Everything else is read from what the server keeps, at the moment you open the record, so it never falls out of
 date: the published version and what changed since the version before it; the models and their providers, and every
 other service its runs send data to (app connectors, web APIs, remote agents, judge models, the trace export); its
