@@ -388,3 +388,29 @@ def test_a_hostile_workflow_name_stays_text_in_the_generated_header(framework):
     tree = ast.parse(designs.generate(framework, design))
     calls = [n for n in ast.walk(tree) if isinstance(n, ast.Attribute) and n.attr == "system"]
     assert not calls and "pwned" in (ast.get_docstring(tree) or "")
+
+
+def test_an_export_writes_the_same_test_tools_wherever_it_is_made(tmp_path, monkeypatch):
+    """The server image has no pytest (dev packages are left out), CI and a developer's machine do: the export's own
+    test tools must not depend on which one made it."""
+    from importlib import metadata
+
+    wf = Workflow.model_validate(workflow())
+    (tmp_path / "tools").mkdir()
+    (tmp_path / "tools" / "orders.py").write_text("def lookup_order(order_id: str) -> str:\n    return order_id\n")
+
+    def dev_line() -> str:
+        files = export_files(wf, designs.design_for(wf, wf.nodes[0]), "agno", tmp_path)
+        text = str(files["helper-agno/pyproject.toml"])
+        return next(line for line in text.splitlines() if line.startswith("dev = "))
+
+    here = dev_line()
+    real = metadata.version
+
+    def without_dev_packages(dist: str) -> str:
+        if dist in ("pytest", "pyyaml"):
+            raise metadata.PackageNotFoundError(dist)
+        return real(dist)
+
+    monkeypatch.setattr(metadata, "version", without_dev_packages)
+    assert dev_line() == here == 'dev = ["pytest>=8"]'

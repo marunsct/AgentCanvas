@@ -61,3 +61,33 @@ groups:
         annotations:
           summary: Backup models are answering model calls; a model provider may be down
           runbook: docs/user-guide/operations.md#runbooks
+      - alert: AgentCanvasBackgroundJobFailing
+        # hand-over, cron triggers, retention, crawls, experiments, secrets sync, online metrics, Matura feed: a round
+        # that raised is only logged by the job, so the counter is what can page
+        expr: sum by (job) (increase(agentcanvas_job_failures_total[15m])) > 0
+        for: 15m
+        labels: { severity: ticket }
+        annotations:
+          summary: "Background job {{ $labels.job }} keeps failing (search the logs for its *_failed event)"
+          runbook: docs/user-guide/operations.md#runbooks
+      - alert: AgentCanvasBackgroundJobStale
+        # no pod finished a round for many intervals (hung, or failing everywhere); retention and the Matura feed run
+        # hourly, the others every minute or less (crawls: 5 min)
+        expr: |
+          (time() - max by (job) (agentcanvas_job_last_success_timestamp_seconds{job!~"retention|matura_feed"})) > 1800
+            or (time() - max by (job) (agentcanvas_job_last_success_timestamp_seconds{job=~"retention|matura_feed"})) > 4 * 3600
+        for: 5m
+        labels: { severity: ticket }
+        annotations:
+          summary: "Background job {{ $labels.job }} has not finished a round on any pod for a long time"
+      - alert: AgentCanvasRunQueueSlow
+        # runs wait for a slot (AGENTCANVAS_MAX_CONCURRENT_RUNS or an organisation's own limit): too low a limit, a
+        # busy project filling it, or runs that hold their slots too long
+        expr: |
+          histogram_quantile(0.95, sum by (le) (rate(agentcanvas_run_queue_wait_seconds_bucket[15m]))) > 120
+          or sum(increase(agentcanvas_run_queue_timeouts_total[15m])) > 0
+        for: 10m
+        labels: { severity: ticket }
+        annotations:
+          summary: Runs wait more than 2 minutes for a slot in the run queue, or give up waiting
+          runbook: docs/user-guide/operations.md#runbooks

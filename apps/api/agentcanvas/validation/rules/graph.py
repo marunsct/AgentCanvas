@@ -224,7 +224,9 @@ def subgraphs(ctx: ValidationContext) -> Iterator[Diagnostic]:
         except ValidationError as exc:
             yield error("E018", f"subgraph '{n.name}' is not a valid workflow: {exc.errors()[0]['msg']}", node_id=n.id)
             continue
-        for d in validate(inner, ctx.registry, edition=ctx.edition, allow_local_mcp=ctx.allow_local_mcp):
+        for d in validate(
+            inner, ctx.registry, edition=ctx.edition, allow_local_mcp=ctx.allow_local_mcp, isolated=ctx.isolated
+        ):
             if d.severity == "error":
                 yield error("E018", f"subgraph '{n.name}': {d.code} {d.message}", node_id=n.id, path="config.workflow")
             elif d.severity == "warning":

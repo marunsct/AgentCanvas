@@ -302,7 +302,7 @@ export function Canvas() {
     ev.preventDefault();
     const raw = ev.dataTransfer.getData(DND_MIME);
     const [type, presetJson] = raw.split("\n");
-    if (!wf || !manifests.has(type) || useEditor.getState().drill.length) return;
+    if (!wf || !manifests.has(type)) return;
     const preset = presetJson ? (JSON.parse(presetJson) as Preset) : undefined;
     addElement(type, rf.screenToFlowPosition({ x: ev.clientX, y: ev.clientY }), preset);
   }, [wf, manifests, rf]);
@@ -374,9 +374,14 @@ export interface Preset {
 export function addElement(
   type: string, position?: { x: number; y: number }, preset?: Preset, link?: (id: string) => Command[],
 ) {
-  const { wf, dispatch, setPositions, select } = useEditor.getState();
+  const { wf, dispatch, setPositions, select, drill, setNotice } = useEditor.getState();
   const m = manifestCache.get(type);
   if (!wf || !m) return;
+  // a subgraph or a Copilot proposal on show is read-only: the block went into the top level, out of sight
+  if (drill.length || useCopilot.getState().ghost) {
+    setNotice({ kind: "info", text: "Adding blocks works on the workflow itself: leave the subgraph or the Copilot preview first." });
+    return;
+  }
   const name = uniqueName(preset?.name ?? m.label, allNames(wf));
   const config = {
     ...defaultsFromSchema(m.config_schema as Record<string, unknown>),

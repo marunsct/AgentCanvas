@@ -19,20 +19,54 @@ from __future__ import annotations
 import asyncio
 import collections
 import concurrent.futures
+import contextlib
 import json
 import os
 import subprocess
 import threading
+import time
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 WORKER = Path(__file__).with_name("part_worker.py")
 MAX_LINE = 64 * 1024 * 1024
+READY_TIMEOUT_S = 60.0  # a worker that has not said it is ready by then is not going to
+IDLE_TIMEOUT_S = 600.0  # an ask whose part says nothing for this long (a hung framework call) is given up
+
+# what a framework worker may see of the server's environment (2026-10-18 review): it reaches the model through the
+# host's bridge and its tools through the host, so the database URL, encryption keys, provider keys and cloud
+# credentials stay with the server. Also the framework adapters' workers (`adapters.crewai.worker_env`).
+WORKER_ENV = {
+    "PATH", "HOME", "USER", "LANG", "LANGUAGE", "TZ", "TMPDIR", "TEMP", "TMP", "SSL_CERT_FILE", "SSL_CERT_DIR",
+    "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE", "NODE_EXTRA_CA_CERTS", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY",
+    "http_proxy", "https_proxy", "no_proxy", "UV_CACHE_DIR", "XDG_CACHE_HOME",
+}  # fmt: skip
+# whichever framework a part runs, its telemetry is off: a run's details stay on this machine
+TELEMETRY_OFF = {
+    "CREWAI_DISABLE_TELEMETRY": "true", "CREWAI_TRACING_ENABLED": "false", "AGNO_TELEMETRY": "false",
+    "ADK_DISABLE_TELEMETRY": "true", "OTEL_SDK_DISABLED": "true",
+}  # fmt: skip
+
+
+def worker_env(**extra: str) -> dict[str, str]:
+    """A framework worker's environment: an allowlist of the server's, plus `extra`."""
+    env = {k: v for k, v in os.environ.items() if k in WORKER_ENV or k.startswith("LC_")}
+    return {**env, **extra}
 
 
 class PartError(RuntimeError):
     pass
+
+
+@dataclass
+class _Ask:
+    loop: asyncio.AbstractEventLoop
+    future: asyncio.Future[Any]
+    on_call: Callable[..., Awaitable[Any]]
+    heard: float = field(default_factory=time.monotonic)  # when the part last said something about this ask
+    tools: int = 0  # tool calls of this ask running on the host (the part waits for them: not quiet)
 
 
 class PartProcess:
@@ -42,10 +76,10 @@ class PartProcess:
         args = [python, str(worker), *([str(agent_file)] if agent_file else [])]
         self.proc = subprocess.Popen(  # our own worker, with the part's Python
             args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8",
-            bufsize=1, env={**os.environ, "PYTHONUNBUFFERED": "1"},
+            bufsize=1, env=worker_env(PYTHONUNBUFFERED="1", **TELEMETRY_OFF),
         )  # fmt: skip
         self._lock = threading.Lock()
-        self._asks: dict[int, tuple[asyncio.AbstractEventLoop, asyncio.Future[Any], Callable[..., Awaitable[Any]]]] = {}
+        self._asks: dict[int, _Ask] = {}
         self._next = 0
         self.ready: concurrent.futures.Future[dict[str, Any]] = concurrent.futures.Future()
         self.stderr: collections.deque[str] = collections.deque(maxlen=40)
@@ -74,36 +108,47 @@ class PartProcess:
                 continue
             with self._lock:
                 entry = self._asks.get(msg.get("id"))
+                if entry is not None:
+                    entry.heard = time.monotonic()
             if entry is None:
+                if "call" in msg:  # its ask was stopped meanwhile: the part must not wait for this tool forever
+                    self._send({"reply": msg["call"], "error": "the step was stopped"})
                 continue
-            loop, future, on_call = entry
             if "call" in msg:
-                asyncio.run_coroutine_threadsafe(self._tool(msg, on_call), loop)
+                asyncio.run_coroutine_threadsafe(self._tool(msg, entry), entry.loop)
             elif "answer" in msg or "error" in msg:
                 with self._lock:
                     self._asks.pop(msg["id"], None)
                 if "error" in msg:
-                    loop.call_soon_threadsafe(_settle, future, PartError(str(msg["error"])), None)
+                    entry.loop.call_soon_threadsafe(_settle, entry.future, PartError(str(msg["error"])), None)
                 else:
-                    loop.call_soon_threadsafe(_settle, future, None, msg.get("answer"))
+                    entry.loop.call_soon_threadsafe(_settle, entry.future, None, msg.get("answer"))
         why = self.why_stopped()
         if not self.ready.done():
             self.ready.set_exception(PartError(why))
         with self._lock:
             pending, self._asks = list(self._asks.values()), {}
-        for loop, future, _ in pending:
-            loop.call_soon_threadsafe(_settle, future, PartError(why), None)
+        for entry in pending:
+            entry.loop.call_soon_threadsafe(_settle, entry.future, PartError(why), None)
 
     def why_stopped(self) -> str:
         tail = "\n".join(list(self.stderr)[-12:])
         return "the part's worker stopped" + (f":\n{tail}" if tail else "")
 
-    async def _tool(self, msg: dict[str, Any], on_call: Callable[..., Awaitable[Any]]) -> None:
+    async def _tool(self, msg: dict[str, Any], entry: _Ask) -> None:
+        entry.tools += 1
         try:
-            reply: dict[str, Any] = {"reply": msg["call"], "value": await on_call(msg["tool"], msg.get("args") or {})}
+            value = await entry.on_call(msg["tool"], msg.get("args") or {})
+            reply: dict[str, Any] = {"reply": msg["call"], "value": value}
         except Exception as exc:  # noqa: BLE001 - the framework sees it as the tool's error
             reply = {"reply": msg["call"], "error": f"{type(exc).__name__}: {exc}"}
-        self._send(reply)
+        finally:
+            entry.tools -= 1
+            entry.heard = time.monotonic()
+        try:
+            self._send(reply)
+        except OSError:  # the worker stopped meanwhile: `_read` fails the ask
+            pass
 
     def _send(self, msg: dict[str, Any]) -> None:
         assert self.proc.stdin is not None
@@ -112,24 +157,48 @@ class PartProcess:
             self.proc.stdin.flush()
 
     async def ask(self, request: dict[str, Any], on_call: Callable[[str, dict[str, Any]], Awaitable[Any]]) -> Any:
-        await asyncio.wrap_future(self.ready)
+        try:
+            await asyncio.wait_for(asyncio.shield(asyncio.wrap_future(self.ready)), READY_TIMEOUT_S)
+        except TimeoutError:
+            self.proc.kill()  # a fresh worker starts on next use
+            raise PartError(f"the part's worker did not start within {READY_TIMEOUT_S:g} s") from None
         loop = asyncio.get_running_loop()
-        future: asyncio.Future[Any] = loop.create_future()
+        entry = _Ask(loop, loop.create_future(), on_call)
         with self._lock:
             self._next += 1
             n = self._next
-            self._asks[n] = (loop, future, on_call)
+            self._asks[n] = entry
         try:
             self._send({"op": "ask", "id": n, **request})
         except OSError as exc:
             with self._lock:
                 self._asks.pop(n, None)
             raise PartError(self.why_stopped()) from exc
+        hung = False
         try:
-            return await future
+            while True:
+                quiet = 0.0 if entry.tools else time.monotonic() - entry.heard
+                if quiet >= IDLE_TIMEOUT_S:
+                    hung = True
+                    raise PartError(f"the part said nothing for {IDLE_TIMEOUT_S:g} s")
+                await asyncio.wait({entry.future}, timeout=max(IDLE_TIMEOUT_S - quiet, 0.05))
+                if entry.future.done():
+                    return entry.future.result()
         finally:
             with self._lock:
                 self._asks.pop(n, None)
+                alone = not self._asks
+            if not entry.future.done():  # stopped (a cancel, a time limit) or hung: the part stops the ask too
+                entry.future.cancel()
+                self._stop(n, kill=hung and alone)
+
+    def _stop(self, n: int, kill: bool) -> None:
+        """Tell the part to stop ask `n`. `kill`: the ask hung and nothing else is asking the part, which may be
+        blocked for good: it is ended, and a fresh one starts on next use."""
+        with contextlib.suppress(OSError):
+            self._send({"op": "cancel", "id": n})
+        if kill:
+            self.proc.kill()
 
 
 def _settle(future: asyncio.Future[Any], error: BaseException | None, value: Any) -> None:

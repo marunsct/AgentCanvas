@@ -3,12 +3,15 @@
 A conversation (thread) is deleted, with its checkpoints, runs and decisions, once it has been inactive for
 longer than its organisation keeps conversations: `Organization.retention_days`, or `AGENTCANVAS_RETENTION_DAYS`
 (default 90) when the organisation sets none; 0 keeps them forever. Conversations that are running or waiting
-for a person (interrupted) are kept whatever their age.
+for a person (interrupted) are kept whatever their age, but a decision nobody gives for
+`AGENTCANVAS_APPROVAL_EXPIRY_DAYS` (default 90) expires: the Inbox item is marked expired, the run that asked is
+cancelled, and the conversation becomes idle, so retention deletes it once it has been inactive long enough.
 
 The same job deletes audit-log rows older than `AGENTCANVAS_AUDIT_RETENTION_DAYS` (default 400) and, when
 `AGENTCANVAS_MEMORY_RETENTION_DAYS` is set (off by default), long-term memories not updated for that long (S12).
 Files people attached to runs (G-5) follow conversations: one no run has used for the organisation's conversation
-retention is deleted.
+retention is deleted. So does the event log, which holds what other systems sent (webhook bodies, customer records);
+an event handler's dedup values go after `AGENTCANVAS_EVENT_DEDUP_DAYS` (30), never later than the event log.
 
 Every API replica runs the job. Each conversation is claimed before it is deleted (its row locked, skipping one
 another replica holds, on Postgres) and the age and status are checked again under that lock, so replicas share the
@@ -24,10 +27,21 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
 from prometheus_client import Counter
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 
+from agentcanvas import observability
 from agentcanvas.adapters.spi import MemoryAbility, supports
-from agentcanvas.db.models import AuditLog, Organization, Project, Thread, WorkflowRow
+from agentcanvas.db.models import (
+    AuditLog,
+    EventDedup,
+    EventLog,
+    InterruptTask,
+    Organization,
+    Project,
+    Run,
+    Thread,
+    WorkflowRow,
+)
 from agentcanvas.db.repositories import delete_thread_rows
 from agentcanvas.log import get_logger
 from agentcanvas.services import org_settings
@@ -37,6 +51,8 @@ from agentcanvas.settings import Settings
 log = get_logger(__name__)
 
 DELETED = Counter("agentcanvas_threads_expired_total", "Conversations deleted by the retention job")
+EVENTS_DELETED = Counter("agentcanvas_events_expired_total", "Event-log rows deleted by the retention job")
+APPROVALS_EXPIRED = Counter("agentcanvas_approvals_expired_total", "Inbox items nobody decided in time")
 BATCH = 500
 BUDGET_S = 300.0  # the most a tick spends deleting conversations; the rest is the next tick's
 
@@ -63,6 +79,7 @@ class RetentionJob:
         self._task: asyncio.Task | None = None
 
     def start(self) -> None:
+        observability.job_started("retention")
         self._task = asyncio.create_task(self._loop(), name="retention")
 
     async def stop(self) -> None:
@@ -73,7 +90,8 @@ class RetentionJob:
     async def _loop(self) -> None:
         while True:
             try:
-                await self.tick(datetime.now(UTC))
+                with observability.job_round("retention"):
+                    await self.tick(datetime.now(UTC))
             except Exception:
                 log.exception("retention.tick_failed")
             await asyncio.sleep(self.interval_s)
@@ -112,6 +130,7 @@ class RetentionJob:
 
     async def tick(self, now: datetime) -> list[str]:
         """Delete the conversations that expired by `now`; returns their ids."""
+        await self.expire_approvals(now)
         deleted: list[str] = []
         until = time.monotonic() + BUDGET_S
         async with self.db.sessionmaker() as s:
@@ -140,9 +159,105 @@ class RetentionJob:
             if files:
                 log.info("retention.files_deleted", org_id=org_id, files=files, days=days)
         DELETED.inc(len(deleted))
+        await self.expire_events(now, [(org_id, self.default_days if own is None else own) for org_id, own in orgs])
         await self.expire_audit(now)
         await self.expire_memory(now, [org_id for org_id, _ in orgs])
         return deleted
+
+    async def expire_approvals(self, now: datetime) -> int:
+        """Mark the Inbox items nobody decided within the approval expiry as expired. A conversation left with
+        nothing to wait for is no longer waiting: the run that asked is cancelled and the conversation becomes idle,
+        so it follows conversation retention from now on. Returns the items expired."""
+        days = self.server.approval_expiry_days
+        if days <= 0:
+            return 0
+        cutoff, until, n = now - timedelta(days=days), time.monotonic() + BUDGET_S, 0
+        error = f"no one answered within {days} days: the approval expired"
+        while time.monotonic() < until:
+            busy = list(self.runner.active_by_thread)  # being answered here right now
+            async with self.db.sessionmaker() as s:
+                rows = (
+                    await s.execute(
+                        select(InterruptTask.id, InterruptTask.thread_id, InterruptTask.run_id)
+                        .where(
+                            InterruptTask.status == "pending",
+                            InterruptTask.created_at < cutoff,
+                            InterruptTask.thread_id.not_in(busy),
+                        )
+                        .order_by(InterruptTask.created_at)
+                        .limit(BATCH)
+                    )
+                ).all()
+                res = await s.execute(
+                    update(InterruptTask)  # a decision that won the race keeps its item
+                    .where(InterruptTask.id.in_([r.id for r in rows]), InterruptTask.status == "pending")
+                    .values(status="expired")
+                )
+                runs: dict[str, set[str]] = {}
+                for r in rows:
+                    runs.setdefault(r.thread_id, set()).add(r.run_id)
+                for thread_id, run_ids in runs.items():
+                    waiting = await s.scalar(
+                        select(InterruptTask.id)
+                        .where(InterruptTask.thread_id == thread_id, InterruptTask.status == "pending")
+                        .limit(1)
+                    )
+                    handed = await s.scalar(  # a run a restart paused continues on its own: not abandoned
+                        select(Run.id)
+                        .where(Run.thread_id == thread_id, Run.status == "interrupted", Run.handover.is_(True))
+                        .limit(1)
+                    )
+                    if waiting or handed:
+                        continue
+                    await s.execute(
+                        update(Run)
+                        .where(Run.id.in_(run_ids), Run.status == "interrupted")
+                        .values(status="cancelled", error=error, ended_at=now)
+                    )
+                    waits = (Thread.id == thread_id, Thread.status == "interrupted")
+                    await s.execute(update(Thread).where(*waits).values(status="idle"))  # updated now: retention
+                    # counts its inactivity from the expiry
+                await s.commit()
+            gone = res.rowcount or 0  # type: ignore[attr-defined]
+            n += gone
+            if gone:
+                log.info("retention.approvals_expired", items=gone, days=days)
+            if len(rows) < BATCH:
+                break
+        APPROVALS_EXPIRED.inc(n)
+        return n
+
+    async def expire_events(self, now: datetime, orgs: list[tuple[str, int]]) -> int:
+        """Each organisation's event log older than its conversation retention, and its handlers' dedup values older
+        than the dedup window or that retention, whichever is shorter. Returns the event-log rows deleted."""
+        until = time.monotonic() + BUDGET_S
+        dedup_days = self.server.event_dedup_days
+        n = 0
+        for org_id, days in orgs:
+            projects = select(Project.id).where(Project.org_id == org_id)
+            if days > 0:
+                gone = await self._delete_old(EventLog, projects, now - timedelta(days=days), until)
+                if gone:
+                    log.info("retention.events_deleted", org_id=org_id, rows=gone, days=days)
+                n += gone
+            if window := min((d for d in (days, dedup_days) if d > 0), default=0):
+                await self._delete_old(EventDedup, projects, now - timedelta(days=window), until)
+        EVENTS_DELETED.inc(n)
+        return n
+
+    async def _delete_old(self, table: Any, projects: Any, cutoff: datetime, until: float) -> int:
+        """Delete a project-owned table's rows created before `cutoff`, a batch at a time, within the time budget."""
+        gone = 0
+        while time.monotonic() < until:
+            batch = select(table.id).where(table.project_id.in_(projects), table.created_at < cutoff).limit(BATCH)
+            async with self.db.sessionmaker() as s:
+                res = await s.execute(delete(table).where(table.id.in_(batch)))
+                await s.commit()
+            rows = res.rowcount or 0  # type: ignore[attr-defined]
+            gone += rows
+            if rows < BATCH:
+                break
+        return gone
 
     async def _days(self, org_id: str | None, key: str) -> int:
         """The days for `key` that apply to an organisation: its own within the server's ceiling, else the server's."""

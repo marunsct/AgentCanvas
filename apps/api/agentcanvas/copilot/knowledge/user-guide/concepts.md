@@ -20,7 +20,7 @@ you declare on the Workflow panel (click the empty canvas). Each channel has:
 |---|---|
 | **type** | A JSON Schema type (`string`, `boolean`, `array`, an object…). |
 | **reducer** | How a write combines with the current value: `replace` (default), `append` (lists), `add_messages` (chat history), `sum`, or `merge` (objects). |
-| **io** | Whether it is part of the workflow's input and output (`inout`), input only, output only, or `private`. |
+| **io** | Whether it is part of the workflow's input and output (`inout`), input only (`in`: never returned in a run's output), output only (`out`), or `private`. The same on every framework and in exported code. |
 | **storage** | `full`, or `delta` for long histories that should be stored as changes. |
 
 Steps read channels (prompts use templates like `{{ state.ticket }}`) and write their results to channels. The

@@ -50,7 +50,9 @@ class UtcDateTime(TypeDecorator[datetime]):
         return value.replace(tzinfo=UTC) if value is not None and value.tzinfo is None else value
 
 
-Json = JSON().with_variant(JSONB(), "postgresql")
+# None is SQL NULL, not the JSON value null: else `column IS NOT NULL` matches rows that hold nothing (a resume's
+# recording, which a "the conversation's last fresh run" lookup then took for the run with the question)
+Json = JSON(none_as_null=True).with_variant(JSONB(none_as_null=True), "postgresql")
 BigId = BigInteger().with_variant(Integer(), "sqlite")  # SQLite autoincrement needs INTEGER
 
 
@@ -185,7 +187,10 @@ class TestCase(Base):
 
 class Deployment(Base):
     __tablename__ = "deployment"
-    __table_args__ = (UniqueConstraint("workflow_id", "environment", name="deployment_once"),)
+    __table_args__ = (
+        UniqueConstraint("workflow_id", "environment", name="deployment_once"),
+        Index("deployment_version_idx", "version_id"),  # deleting a version (cascade)
+    )
     id: Mapped[str] = mapped_column(String, primary_key=True)
     workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"))
     version_id: Mapped[str] = mapped_column(ForeignKey("workflow_version.id", ondelete="CASCADE"))
@@ -225,7 +230,10 @@ class StoredFile(Base):
     as the organisation keeps conversations."""
 
     __tablename__ = "stored_file"
-    __table_args__ = (Index("stored_file_project_idx", "project_id", "last_used_at"),)
+    __table_args__ = (
+        Index("stored_file_project_idx", "project_id", "last_used_at"),
+        Index("stored_file_deployment_idx", "deployment_id"),  # deleting a deployment (cascade)
+    )
     id: Mapped[str] = mapped_column(String, primary_key=True)  # fil_<ulid>
     project_id: Mapped[str] = mapped_column(ForeignKey("project.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(Text)  # the uploader's file name, without any folder
@@ -262,6 +270,9 @@ class Thread(Base):
         CheckConstraint("status IN ('idle','running','interrupted','error')", name="thread_status"),
         Index("thread_workflow_idx", "workflow_id", "updated_at"),
         Index("thread_updated_idx", "updated_at"),
+        Index("thread_created_idx", "created_at", "id"),  # the Conversations list, newest first
+        Index("thread_workflow_created_idx", "workflow_id", "created_at", "id"),
+        Index("thread_deployment_idx", "deployment_id"),  # deleting a deployment (SET NULL), the kill switch
     )
     id: Mapped[str] = mapped_column(String, primary_key=True)  # == LangGraph thread_id
     workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"))
@@ -283,7 +294,16 @@ class Run(Base):
         CheckConstraint("mode IN ('normal','debug')", name="run_mode"),
         CheckConstraint("status IN ('running','success','interrupted','error','cancelled')", name="run_status"),
         Index("run_thread_idx", "thread_id", "started_at"),
-        Index("run_status_queued_idx", "status", "queued"),
+        # the run queue and the heartbeat read only runs in flight
+        Index(
+            "run_live_idx",
+            "queued",
+            "priority",
+            postgresql_where=text("status = 'running'"),
+            sqlite_where=text("status = 'running'"),
+        ),
+        Index("run_started_idx", "started_at"),  # the spending report's period
+        Index("run_version_idx", "workflow_version_id"),  # deleting a version (SET NULL)
     )
     id: Mapped[str] = mapped_column(String, primary_key=True)
     thread_id: Mapped[str] = mapped_column(ForeignKey("thread.id", ondelete="CASCADE"))
@@ -308,11 +328,23 @@ class Run(Base):
     events: Mapped[list[Any] | None] = mapped_column(Json)
     # FR-X-10: stopped by a server shutdown before it finished; the next instance continues the thread
     handover: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
-    # F-5 kill switch: an admin asked to stop it; its instance stops it at the next heartbeat (never handed over)
+    # someone asked to stop it (Stop, Delete conversation, the F-5 kill switch), maybe on another instance: the one
+    # running it stops it at the next heartbeat, with `stop_reason` (NULL before it was kept: the kill switch's)
     stop_requested: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    stop_reason: Mapped[str | None] = mapped_column(Text)
     # the run queue (with a concurrent-run limit): 1 high, 0 normal, -1 low; `queued` while it waits for a slot
     priority: Mapped[int] = mapped_column(SmallInteger, server_default=text("0"), default=0)
     queued: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    # a waiting run's start arguments (its input, an answer, debug options): no checkpoint holds them before it takes
+    # a slot, so a hand-over starts it again with these; emptied when it takes its slot
+    pending: Mapped[dict[str, Any] | None] = mapped_column(Json)
+    # its place among runs of its priority (oldest first): the id of the run it continues, for a hand-over; else
+    # empty, and its own id counts
+    queue_key: Mapped[str | None] = mapped_column(Text)
+    # how many events led to it (an event handler's run): a hand-over continues it at the same depth
+    event_depth: Mapped[int] = mapped_column(SmallInteger, server_default=text("0"), default=0)
+    # how many times continuing it failed for a passing reason (the hand-over gives up after a few)
+    handover_attempts: Mapped[int] = mapped_column(SmallInteger, server_default=text("0"), default=0)
     # S12: refreshed while the run's instance is alive; a running run without a fresh heartbeat lost its instance
     heartbeat_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
     # S13: what the deployment API caller tagged the run with (online evaluator filters, annotation rules)
@@ -321,6 +353,25 @@ class Run(Base):
     origin: Mapped[str | None] = mapped_column(Text)
     started_at: Mapped[datetime] = _now()
     ended_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
+
+
+class SpendArchive(Base):
+    """What the runs of deleted conversations spent (retention, or deleted by hand), per workflow, UTC hour, deployment
+    and person, so day and month budgets and the spending report still count it. Written by `delete_thread_rows`;
+    it goes with its workflow. '' is no deployment or no person."""
+
+    __tablename__ = "spend_archive"
+    __table_args__ = (Index("spend_archive_hour_idx", "hour"),)
+    workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"), primary_key=True)
+    hour: Mapped[datetime] = mapped_column(UtcDateTime(), primary_key=True)  # when the runs started, to the hour
+    deployment_id: Mapped[str] = mapped_column(String, primary_key=True, default="")
+    person: Mapped[str] = mapped_column(String, primary_key=True, default="")  # who started the conversation
+    runs: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    tokens_in: Mapped[int] = mapped_column(BigInteger, server_default=text("0"), default=0)
+    tokens_out: Mapped[int] = mapped_column(BigInteger, server_default=text("0"), default=0)
+    cost_usd: Mapped[Decimal] = mapped_column(Numeric(14, 6), server_default=text("0"), default=Decimal(0))
+    cache_hits: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    fallbacks: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
 
 
 class RunSearch(Base):
@@ -362,6 +413,8 @@ class InterruptTask(Base):
         CheckConstraint("kind IN ('tool_approval','approval','input')", name="interrupt_kind"),
         CheckConstraint("status IN ('pending','decided','expired')", name="interrupt_status"),
         Index("interrupt_pending_idx", "status", "created_at"),
+        Index("interrupt_thread_idx", "thread_id"),  # deleting a conversation or a run (cascade, retention)
+        Index("interrupt_run_idx", "run_id"),
     )
     id: Mapped[str] = mapped_column(String, primary_key=True)  # LangGraph interrupt id
     thread_id: Mapped[str] = mapped_column(ForeignKey("thread.id", ondelete="CASCADE"))
@@ -371,6 +424,9 @@ class InterruptTask(Base):
     payload: Mapped[dict[str, Any]]
     status: Mapped[str] = mapped_column(Text, server_default=text("'pending'"), default="pending")
     assignee_role: Mapped[str | None] = mapped_column(Text)
+    # the person whose run asked (a resumed run keeps the first one): with self-approval off, not the one to decide.
+    # A plain id, not a foreign key: it is a record of who asked, kept as it was.
+    requested_by: Mapped[str | None] = mapped_column(Text)
     decision: Mapped[dict[str, Any] | None] = mapped_column(Json)
     decided_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
     created_at: Mapped[datetime] = _now()
@@ -449,6 +505,9 @@ class DatasetVersion(Base):
     message: Mapped[str] = mapped_column(Text, server_default=text("''"), default="")
     # [{id, input, context, reference, trajectory, split, metadata}] — the whole set, so a version never changes
     examples: Mapped[list[Any]]
+    # counted when the version is written, so lists and the version history never load the examples to count them
+    example_count: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    splits: Mapped[dict[str, Any]] = mapped_column(Json, server_default=text("'{}'"), default=dict)  # split -> count
     created_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))
     created_at: Mapped[datetime] = _now()
 
@@ -741,6 +800,7 @@ class AnnotationItem(Base):
     __table_args__ = (
         UniqueConstraint("queue_id", "run_id", name="annotation_item_once"),
         Index("annotation_item_queue_idx", "queue_id", "status", "created_at"),
+        Index("annotation_item_run_idx", "run_id"),  # deleting a run (cascade)
     )
     id: Mapped[str] = mapped_column(String, primary_key=True)
     queue_id: Mapped[str] = mapped_column(ForeignKey("annotation_queue.id", ondelete="CASCADE"))
@@ -776,7 +836,10 @@ class RateWindow(Base):
 
 class Trigger(Base):
     __tablename__ = "trigger"
-    __table_args__ = (CheckConstraint("kind IN ('webhook','cron')", name="trigger_kind"),)
+    __table_args__ = (
+        CheckConstraint("kind IN ('webhook','cron')", name="trigger_kind"),
+        Index("trigger_workflow_idx", "workflow_id"),
+    )
     id: Mapped[str] = mapped_column(String, primary_key=True)
     workflow_id: Mapped[str] = mapped_column(ForeignKey("workflow.id", ondelete="CASCADE"))
     deployment_id: Mapped[str | None] = mapped_column(ForeignKey("deployment.id", ondelete="SET NULL"))
@@ -785,6 +848,11 @@ class Trigger(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, server_default=text("true"), default=True)
     # cron: the UTC minute ("YYYY-mm-ddTHH:MM") it last fired for, claimed atomically so replicas fire it once
     last_fired: Mapped[str | None] = mapped_column(String(16))
+    # cron: the run it last started (no foreign key: retention deletes runs), and why its runs could not start, how
+    # many times in a row (cleared by the next run that starts)
+    last_run_id: Mapped[str | None] = mapped_column(String)
+    last_error: Mapped[str | None] = mapped_column(Text)
+    failures: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
     created_at: Mapped[datetime] = _now()
 
 

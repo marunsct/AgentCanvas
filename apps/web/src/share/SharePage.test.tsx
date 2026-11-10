@@ -181,3 +181,55 @@ describe("share page, a saved message still being answered", () => {
     }
   });
 });
+
+describe("share page, checking on a saved answer", () => {
+  it("leaves the messages and the reader's scroll alone while nothing changed", async () => {
+    const { AWAY_POLL_MS } = await import("./SharePage");
+    const scroll = vi.fn();
+    Element.prototype.scrollIntoView = scroll;
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      loadConversation.mockResolvedValue({
+        thread_id: "th_1", busy: true,
+        messages: [{ role: "user", text: "hi" }, { role: "assistant", text: "Hello!", run_id: "run_1" }],
+      });
+      render(<SharePage />);
+      const first = await screen.findByText("Hello!");
+      const before = scroll.mock.calls.length;
+      await act(async () => { vi.advanceTimersByTime(AWAY_POLL_MS * 2 + 10); });
+      expect(loadConversation.mock.calls.length).toBeGreaterThanOrEqual(3);
+      expect(screen.getByText("Hello!")).toBe(first); // the same element: not announced again by the log
+      expect(scroll.mock.calls.length).toBe(before); // not pulled back to the end every 2 seconds
+
+      loadConversation.mockResolvedValue({
+        thread_id: "th_1", busy: false,
+        messages: [{ role: "user", text: "hi" }, { role: "assistant", text: "Hello!", run_id: "run_1" },
+          { role: "user", text: "more" }, { role: "assistant", text: "Done.", run_id: "run_2" }],
+      });
+      await act(async () => { vi.advanceTimersByTime(AWAY_POLL_MS + 10); });
+      expect(await screen.findByText("Done.")).toBeTruthy();
+      expect(screen.getByText("Hello!")).toBe(first);
+    } finally {
+      vi.useRealTimers();
+      loadConversation.mockResolvedValue({ thread_id: null, busy: false, messages: [] });
+      delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    }
+  });
+});
+
+describe("share page, right-to-left text", () => {
+  it("lets each message, the greeting and the message box take the direction of their own text", async () => {
+    loadConversation.mockResolvedValueOnce({
+      thread_id: "th_1", busy: false,
+      messages: [{ role: "user", text: "שלום" }, { role: "assistant", text: "مرحبا! كيف يمكنني المساعدة؟", run_id: "run_1" }],
+    });
+    render(<SharePage />);
+    const answer = await screen.findByText("مرحبا! كيف يمكنني المساعدة؟");
+    // the hidden "Assistant:" label is English: the direction goes on the text alone, not the whole bubble
+    expect(answer.getAttribute("dir")).toBe("auto");
+    expect(answer.textContent).toBe("مرحبا! كيف يمكنني المساعدة؟");
+    expect(screen.getByText("שלום").getAttribute("dir")).toBe("auto");
+    expect(screen.getByText("Send a picture.").getAttribute("dir")).toBe("auto");
+    expect(screen.getByLabelText("Your message").getAttribute("dir")).toBe("auto");
+  });
+});

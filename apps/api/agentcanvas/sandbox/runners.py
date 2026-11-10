@@ -47,13 +47,43 @@ def _jsonable(v: Any) -> Any:
     return v if isinstance(v, str | int | float | bool) or v is None else str(v)
 
 
-def _limits(memory_bytes: int, cpu_s: int) -> Callable[[], None]:
+# processes and threads a call's code may start on top of what its user runs already: room for a thread per core
+# (OpenBLAS, say) on a big node, not for a fork loop
+PROCESSES = 256
+
+
+def _tasks_of_this_user() -> int | None:
+    """Processes and threads running as this user (what RLIMIT_NPROC counts); None where /proc cannot tell."""
+    uid, count = os.getuid(), 0
+    try:
+        entries = list(Path("/proc").iterdir())
+    except OSError:
+        return None
+    for entry in entries:
+        if not entry.name.isdigit():
+            continue
+        try:
+            if entry.stat().st_uid == uid:
+                count += len(os.listdir(entry / "task"))
+        except OSError:  # gone meanwhile
+            pass
+    return count or None
+
+
+def _limits(memory_bytes: int, cpu_s: int, processes: int | None = None) -> Callable[[], None]:
+    """The child's limits. `processes` caps what its user may run in all: a fork loop in the code stops there instead
+    of using up the host's (or pod's) process table, which nothing else limits in a Kubernetes pod by default."""
+
     def apply() -> None:  # pragma: no cover - runs in the child before exec
         import resource
 
         resource.setrlimit(resource.RLIMIT_AS, (memory_bytes * 2, memory_bytes * 2))
         resource.setrlimit(resource.RLIMIT_CPU, (cpu_s, cpu_s + 1))
         resource.setrlimit(resource.RLIMIT_NOFILE, (64, 64))
+        if processes is not None:
+            hard = resource.getrlimit(resource.RLIMIT_NPROC)[1]
+            cap = processes if hard == resource.RLIM_INFINITY else min(processes, hard)
+            resource.setrlimit(resource.RLIMIT_NPROC, (cap, cap))
 
     return apply
 
@@ -200,7 +230,8 @@ async def _attached(
     argv, env, cwd = command
     if proxy and mode != "docker":  # the child reads it from stdin; another process cannot read it from /proc
         payload = {**payload, "egress_proxy": proxy}
-    limits = _limits(memory_mb * 1024 * 1024, math.ceil(timeout))
+    running = await asyncio.to_thread(_tasks_of_this_user) if mode == "subprocess" and sys.platform == "linux" else None
+    limits = _limits(memory_mb * 1024 * 1024, math.ceil(timeout), running + PROCESSES if running else None)
     proc = await asyncio.create_subprocess_exec(
         *argv,
         stdin=asyncio.subprocess.PIPE,

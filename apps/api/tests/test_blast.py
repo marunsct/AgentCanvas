@@ -152,3 +152,15 @@ async def test_a_conversation_reads_while_its_mcp_server_is_down(app):
     state = await adapter.get_state(workflow, "th_never_ran", Resources())
     assert state.values == {} or isinstance(state.values, dict)
     assert await adapter.history(workflow, "th_never_ran", Resources()) == []
+
+
+def test_a_bypassed_path_step_still_counts():
+    """A bypassed Decide with AI step still runs (it picks the path) and calls its model, so its spending counts;
+    a bypassed plain step does not run and does not count."""
+    from test_decide import decide_wf
+
+    doc = decide_wf()
+    for n in doc["nodes"]:
+        n["disabled"] = True
+    radius = blast_radius(Workflow.model_validate(doc))
+    assert [n.node_id for n in radius.nodes] == ["n_d"] and radius.summary == {"spend": 1}

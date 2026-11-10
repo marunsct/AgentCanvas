@@ -122,7 +122,7 @@ def lower(wf: Workflow, registry: Registry | None = None) -> Plan:
     names = {n.id: n.name for n in wf.nodes}
     error_channel = ERROR_CHANNEL if wf.state.channel(ERROR_CHANNEL) else None
     router_ids = {n.id for n in wf.nodes if (m := registry.get(n.type)) and m.dynamic_outputs == "routes"}
-    map_ids = {n.id for n in wf.nodes if n.type == "core.map"}  # like routers, maps stay active when disabled
+    map_ids = {n.id for n in wf.nodes if n.type == "core.map"}
     join_ids = {n.id for n in wf.nodes if n.type == "core.join"}
 
     resources = []
@@ -157,7 +157,7 @@ def lower(wf: Workflow, registry: Registry | None = None) -> Plan:
             PlannedNode(
                 node=n,
                 router=n.id in router_ids,
-                bypass=n.disabled and n.id not in router_ids | map_ids,
+                bypass=registry.bypassed(n),
                 options=options,
                 wired=_wired(wf, n.id, [p.name for p in m.inputs] if m else []),
                 fan_out=n.id in map_ids,

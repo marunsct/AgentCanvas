@@ -90,4 +90,16 @@ describe("the run queue (F-5)", () => {
     step({ type: "STEP_STARTED", stepName: "first", canvas_node_id: "n1" });
     expect(st.warnings).toEqual([]);
   });
+
+  it.each([
+    ["stopped while it waits", { type: "RUN_ERROR", message: "cancelled by user" }],
+    ["finished without a step", { type: "RUN_FINISHED", threadId: "t", outcome: "success" }],
+  ] as const)("drops the waiting line when the run ends before its first step (%s)", (_, end) => {
+    let st = useRun.getState();
+    const step = (ev: Parameters<typeof reduce>[1]) => { st = { ...st, ...reduce(st, ev) }; };
+    step({ type: "CUSTOM", name: "ac.warning", value: { message: "kept" } });
+    step({ type: "CUSTOM", name: "ac.queued", value: { position: 3, limit: 2 } });
+    step(end);
+    expect(st.warnings).toEqual(["kept"]);
+  });
 });

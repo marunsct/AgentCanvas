@@ -183,7 +183,8 @@ async def open_persistence(
 
         conn = "postgresql://" + database_url.split("://", 1)[1]
         # a pool, not one shared connection: concurrent runs would queue behind each other's checkpoint writes
-        # (M8-T5). The same settings `from_conn_string` uses, which also keep transaction pooling (PgBouncer) safe.
+        # (M8-T5). The same settings `from_conn_string` uses; prepare_threshold=0 prepares every statement, so a
+        # PgBouncer in transaction pooling must be 1.21+ with max_prepared_statements (operations guide).
         kwargs = {"autocommit": True, "prepare_threshold": 0, "row_factory": dict_row}
         async with AsyncConnectionPool(conn, min_size=1, max_size=POOL_SIZE, kwargs=kwargs, open=False) as pool:
             saver = AsyncPostgresSaver(conn=pool, serde=checkpoint_serde())  # type: ignore[arg-type]

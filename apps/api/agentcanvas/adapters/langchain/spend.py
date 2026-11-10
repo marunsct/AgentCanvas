@@ -56,9 +56,11 @@ def call_price(model_id: str | None, usage: dict[str, int]) -> float | None:
 def _counts(meta: Any) -> dict[str, int]:
     meta = meta or {}
     details = meta.get("input_token_details") or {}
+    # langchain-anthropic reports cache writes by lifetime and sets the generic count to 0 then
+    by_ttl = int(details.get("ephemeral_5m_input_tokens") or 0) + int(details.get("ephemeral_1h_input_tokens") or 0)
     return {"input_tokens": int(meta.get("input_tokens") or 0), "output_tokens": int(meta.get("output_tokens") or 0),
             "cache_read_tokens": int(details.get("cache_read") or 0),
-            "cache_write_tokens": int(details.get("cache_creation") or 0)}  # fmt: skip
+            "cache_write_tokens": int(details.get("cache_creation") or 0) or by_ttl}  # fmt: skip
 
 
 class SpendLimit(AsyncCallbackHandler):

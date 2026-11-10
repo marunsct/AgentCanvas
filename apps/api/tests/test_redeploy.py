@@ -40,7 +40,7 @@ async def test_draining_hands_running_runs_to_another_instance(app, api_client):
     [resumed] = await app.state.handover.tick()
     assert await app.state.handover.tick() == []  # claimed once
     h = await runner.wait(resumed)
-    assert h.status == "success" and h.origin == "handover" and h.thread_id == thread_id
+    assert h.status == "success" and h.handed_over and h.origin == "user" and h.thread_id == thread_id
     assert (await run_row(app, run_id)).handover is False
     state = (await api_client.get(f"/v1/threads/{thread_id}")).json()
     assert state["status"] == "idle" and state["values"]["out"] == "slept"
@@ -137,7 +137,7 @@ async def test_runs_of_an_instance_that_died_are_handed_over(app, api_client):
     assert (await run_row(app, "run_alive")).status == "running"
     assert await job.sweep() == []  # swept once
     h = await app.state.runner.wait(resumed)
-    assert h.status == "success" and h.origin == "handover" and h.thread_id == thread_id
+    assert h.status == "success" and h.handed_over and h.thread_id == thread_id
 
     # an instance keeps its own runs alive, so a slow tick never sweeps them
     r = await api_client.post(f"/v1/workflows/{wf}/runs/stream", json={"input": {"seconds": 2}, "stream": False})
@@ -201,3 +201,128 @@ async def test_the_pinned_version_is_the_latest_run_even_within_one_second(app, 
         current = await s.get(WorkflowVersion, v2)
         assert current is not None
         assert (await thread_version(s, res["thread_id"], current)).id == v2  # the latest run's version
+
+
+async def _lost(app, api_client, **row) -> str:
+    """A thread whose last run lost its instance (killed, not drained); returns the thread's id."""
+    from datetime import UTC, datetime, timedelta
+
+    from agentcanvas.db.models import Thread
+
+    wf = await make(api_client, linear(script("n_slow", "examples.scripts:slow"), channels=("out", "seconds")))
+    first = await api_client.post(f"/v1/workflows/{wf}/runs/stream", json={"input": {"seconds": 0}, "stream": False})
+    thread_id = first.json()["thread_id"]
+    await app.state.runner.wait(first.json()["run_id"])
+    long_ago = datetime.now(UTC) - timedelta(minutes=5)
+    async with app.state.db.sessionmaker() as s:
+        s.add(Run(id="run_lost", thread_id=thread_id, ir_hash="x", status="running", started_at=long_ago, **row))
+        thread = await s.get(Thread, thread_id)
+        assert thread is not None
+        thread.status = "running"
+        await s.commit()
+    return thread_id
+
+
+async def test_a_lost_test_run_is_not_continued(app, api_client):
+    """Experiments run their examples again themselves, and a test case's caller is gone: a test run whose server
+    died is stopped, not continued as a person's run (it fired event handlers and spent the model calls twice)."""
+    thread_id = await _lost(app, api_client, origin="test")
+    assert await app.state.handover.tick() == []
+    lost = await run_row(app, "run_lost")
+    assert lost.status == "cancelled" and lost.handover is False and "not continued" in (lost.error or "")
+    assert (await api_client.get(f"/v1/threads/{thread_id}")).json()["status"] == "idle"
+
+
+async def test_a_continued_run_keeps_its_origin_and_event_depth(app, api_client):
+    """An event handler's run continued on another server is still an event handler's run: its lifecycle events stay
+    undelivered (the loop guard) and the events it emits keep their depth."""
+    thread_id = await _lost(app, api_client, origin="event", event_depth=2)
+    [resumed] = await app.state.handover.tick()
+    h = await app.state.runner.wait(resumed)
+    assert h.origin == "event" and h.event_depth == 2 and h.handed_over and h.thread_id == thread_id
+    assert (await run_row(app, resumed)).origin == "event"
+
+
+async def test_a_hand_over_that_fails_is_tried_again(app, api_client):
+    """A passing failure (the database did not answer) leaves the run to the next tick, not 'interrupted' for good
+    with a message saying it continues."""
+    thread_id = await _lost(app, api_client)
+    job, target, calls = app.state.handover, app.state.handover.target, []
+
+    async def flaky(s, thread_id, version_id):
+        calls.append(thread_id)
+        if len(calls) == 1:
+            raise ConnectionError("database restarting")
+        return await target(s, thread_id, version_id)
+
+    job.target = flaky
+    assert await job.tick() == []
+    lost = await run_row(app, "run_lost")
+    assert lost.handover is True and lost.handover_attempts == 1
+    [resumed] = await job.tick()
+    assert (await app.state.runner.wait(resumed)).status == "success"
+    assert (await api_client.get(f"/v1/threads/{thread_id}")).json()["status"] == "idle"
+
+
+async def test_a_hand_over_that_cannot_work_ends_the_run_with_the_reason(app, api_client):
+    from agentcanvas.errors import WorkflowHasErrors
+
+    thread_id = await _lost(app, api_client)
+    job = app.state.handover
+
+    async def broken(s, thread_id, version_id):
+        raise WorkflowHasErrors("workflow has 1 error(s); fix them before running")
+
+    job.target = broken
+    assert await job.tick() == []
+    lost = await run_row(app, "run_lost")
+    assert lost.status == "error" and lost.handover is False
+    assert lost.error == (
+        "its server stopped and it could not continue: workflow has 1 error(s); fix them before running; "
+        "start the run again"
+    )
+    assert (await api_client.get(f"/v1/threads/{thread_id}")).json()["status"] == "error"
+
+
+async def test_a_hand_over_that_keeps_failing_ends_after_a_few_tries(app, api_client):
+    from agentcanvas.services.redeploy import HANDOVER_ATTEMPTS
+
+    await _lost(app, api_client)
+    job = app.state.handover
+
+    async def down(s, thread_id, version_id):
+        raise ConnectionError("database restarting")
+
+    job.target = down
+    for _ in range(HANDOVER_ATTEMPTS):
+        assert await job.tick() == []
+    lost = await run_row(app, "run_lost")
+    assert lost.status == "error" and lost.handover is False
+    assert "ConnectionError (see the server log)" in (lost.error or "")
+    assert await job.tick() == []
+
+
+async def test_runs_keep_their_heartbeat_while_the_server_drains(settings, monkeypatch):
+    """The hand-over job is what refreshes this server's runs' heartbeats: it stops after the drain, not before, or
+    another server would take a run still finishing in the grace period for orphaned and run it a second time."""
+    from agentcanvas.api.main import create_app
+    from agentcanvas.runtime.runner import Runner
+    from agentcanvas.services.redeploy import HandoverJob
+
+    order: list[str] = []
+    drain, stop = Runner.drain, HandoverJob.stop
+
+    async def drained(self, grace_s):
+        order.append("drain")
+        return await drain(self, grace_s)
+
+    async def stopped(self):
+        order.append("handover.stop")
+        await stop(self)
+
+    monkeypatch.setattr(Runner, "drain", drained)
+    monkeypatch.setattr(HandoverJob, "stop", stopped)
+    application = create_app(settings)
+    async with application.router.lifespan_context(application):
+        pass
+    assert order == ["drain", "handover.stop"]

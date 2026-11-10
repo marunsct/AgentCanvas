@@ -1,6 +1,6 @@
 /** Keep a growing log scrolled to its end while the reader is at the end, and leave it alone once they scroll up
  * to read something earlier (a streaming answer used to pull them back down on every word). */
-import { type UIEvent, useEffect, useRef } from "react";
+import { type UIEvent, useCallback, useEffect, useRef } from "react";
 
 /** Whether a scrolled box shows (about) its end. */
 export function nearBottom(el: { scrollHeight: number; scrollTop: number; clientHeight: number }, slack = 48): boolean {
@@ -18,5 +18,6 @@ export function useFollowBottom(deps: readonly unknown[]) {
     if (following.current) end.current?.scrollIntoView?.({ block: "end" });
   }, deps);
   /* oxlint-enable react-hooks/exhaustive-deps */
-  return { end, onScroll, follow: () => { following.current = true; } };
+  const follow = useCallback(() => { following.current = true; }, []);
+  return { end, onScroll, follow };
 }

@@ -12,6 +12,9 @@ Spans carry the OpenTelemetry GenAI conventions (`gen_ai.*`) and the OpenInferen
 and inputs. Secrets are already masked in run events; `include_content: false` sends timings, models and tokens
 only. Export runs in the background (batched) and never slows or fails a run.
 
+The hosted edition sends traces to public addresses only (S-5): the destination is checked when it is saved and
+tested, and every connection the exporter makes goes to an address checked as it connects.
+
 Run events have one timestamp each (when they happened), so a step span is exact and model and tool calls are
 points inside their step.
 """
@@ -21,6 +24,7 @@ from __future__ import annotations
 import base64
 import json
 import threading
+import time
 from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
@@ -37,6 +41,7 @@ log = get_logger(__name__)
 Kind = Literal["langfuse", "phoenix", "datadog", "otlp"]
 SecretRef = dict[str, str]  # {"$secret": NAME}
 MAX_VALUE = 8_000  # characters per input/output attribute
+MAX_CONFIGS = 256  # projects whose trace settings the hook keeps in memory
 
 DEFAULTS: dict[str, str] = {
     "langfuse": "https://cloud.langfuse.com",
@@ -235,12 +240,46 @@ def spans(h: RunHandle, status: str, error: str | None, content: bool) -> list[d
     return out
 
 
+async def internal_address(url: str) -> str | None:
+    """Why `url` is not a public destination (its host resolves to a private, loopback or metadata address, or not
+    at all), or None when it is. The hosted edition refuses such a destination."""
+    from urllib.parse import urlsplit
+
+    from agentcanvas.adapters.langchain.pinned import RefusedAddress, public_address
+
+    parts = urlsplit(url)
+    if not parts.hostname:
+        return f"'{url}' has no host"
+    try:
+        await public_address(parts.hostname, parts.port or (443 if parts.scheme == "https" else 80))
+    except RefusedAddress as exc:
+        return str(exc)
+    except OSError:
+        return f"'{parts.hostname}' does not resolve"
+    return None
+
+
+def _session(public_only: bool) -> Any:
+    if not public_only:
+        return None
+    from agentcanvas.adapters.langchain.pinned import public_requests_session
+
+    return public_requests_session()
+
+
 class Exporter:
     """One OpenTelemetry pipeline per project (batched, background thread), reused across runs. A project whose
-    destination or credentials change gets a new pipeline; the old one is flushed and shut down."""
+    destination or credentials change gets a new pipeline; the old one is flushed and shut down. So is the pipeline
+    of a project with no run for `idle_s`, and the least recently used one past `max_pipelines`: each holds a
+    thread, so they must not pile up with every project a server has ever exported for. `public_only` (the hosted
+    edition): every connection goes to a public address, checked as it connects."""
 
-    def __init__(self) -> None:
-        self._providers: dict[str, tuple[str, TracerProvider]] = {}
+    def __init__(
+        self, max_pipelines: int = 256, idle_s: float = 900.0, clock: Any = time.monotonic, public_only: bool = False
+    ) -> None:
+        self.max_pipelines, self.idle_s, self.clock, self.public_only = max_pipelines, idle_s, clock, public_only
+        # project id -> (destination key, pipeline, last used), least recently used first
+        self._providers: dict[str, tuple[str, TracerProvider, float]] = {}
         self._lock = threading.Lock()
 
     def _provider(self, project_id: str, url: str, headers: dict[str, str]) -> TracerProvider:
@@ -251,17 +290,24 @@ class Exporter:
 
         from agentcanvas.runtime.masking import MaskingExporter
 
-        key = json.dumps([url, sorted(headers.items())])
+        key, now = json.dumps([url, sorted(headers.items())]), self.clock()
         with self._lock:
-            current = self._providers.get(project_id)
-            if current is not None and current[0] == key:
-                return current[1]
-            provider = TracerProvider(resource=Resource.create({"service.name": "agentcanvas"}))
-            exporter = MaskingExporter(OTLPSpanExporter(endpoint=url, headers=headers))
-            provider.add_span_processor(BatchSpanProcessor(exporter))
-            self._providers[project_id] = (key, provider)
-        if current is not None:  # flush the old pipeline off the event loop, then drop it (and its credentials)
-            threading.Thread(target=current[1].shutdown, daemon=True).start()
+            current = self._providers.pop(project_id, None)
+            stale = [current[1]] if current is not None and current[0] != key else []
+            if current is not None and not stale:
+                provider = current[1]
+            else:
+                provider = TracerProvider(resource=Resource.create({"service.name": "agentcanvas"}))
+                otlp = OTLPSpanExporter(endpoint=url, headers=headers, session=_session(self.public_only))
+                exporter = MaskingExporter(otlp)
+                provider.add_span_processor(BatchSpanProcessor(exporter))
+            for other, (_, p, used) in list(self._providers.items()):  # oldest first
+                if now - used > self.idle_s or len(self._providers) >= self.max_pipelines:
+                    del self._providers[other]
+                    stale.append(p)
+            self._providers[project_id] = (key, provider, now)
+        for p in stale:  # flush off the event loop, then drop it (and its credentials)
+            threading.Thread(target=p.shutdown, daemon=True).start()
         return provider
 
     def send(self, project_id: str, url: str, headers: dict[str, str], records: list[dict[str, Any]]) -> None:
@@ -276,7 +322,7 @@ class Exporter:
 
     def shutdown(self) -> None:
         with self._lock:
-            providers = [p for _, p in self._providers.values()]
+            providers = [p for _, p, _ in self._providers.values()]
             self._providers.clear()
         for p in providers:
             p.shutdown()
@@ -299,7 +345,7 @@ def emit(provider: Any, records: list[dict[str, Any]]) -> None:
         span.end(end_time=max(r["end"], r["start"]))
 
 
-def test_send(url: str, headers: dict[str, str]) -> str | None:
+def test_send(url: str, headers: dict[str, str], public_only: bool = False, timeout: float = 10) -> str | None:
     """Send one test span right now; None when the destination accepted it, else what went wrong."""
     from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
     from opentelemetry.sdk.resources import Resource
@@ -310,7 +356,7 @@ def test_send(url: str, headers: dict[str, str]) -> str | None:
 
     class Recording(SpanExporter):
         def __init__(self) -> None:
-            self.inner = OTLPSpanExporter(endpoint=url, headers=headers, timeout=10)
+            self.inner = OTLPSpanExporter(endpoint=url, headers=headers, timeout=timeout, session=_session(public_only))
 
         def export(self, spans: Any) -> SpanExportResult:
             result.append(self.inner.export(spans))
@@ -344,8 +390,6 @@ class TraceExportHook:
         self.exporter.forget(project_id)
 
     async def config(self, project_id: str) -> TraceExport | None:
-        import time
-
         from agentcanvas.db.models import Project
 
         cached = self._config.get(project_id)
@@ -354,7 +398,10 @@ class TraceExportHook:
         async with self.db.sessionmaker() as s:
             project = await s.get(Project, project_id)
         cfg = load(project.settings if project else None)
+        self._config.pop(project_id, None)
         self._config[project_id] = (time.monotonic(), cfg)
+        while len(self._config) > MAX_CONFIGS:  # the projects not seen for longest are read again when they run
+            del self._config[next(iter(self._config))]
         return cfg
 
     async def on_run_finished(self, h: RunHandle, status: str, error: str | None, _interrupts: Any) -> None:

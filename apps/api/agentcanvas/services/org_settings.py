@@ -4,8 +4,10 @@ capacity is at stake it is also the ceiling, applied every time a value is read 
 server later tightens every organisation too):
 
 - `allow_local_mcp`: an organisation may switch local (stdio) MCP servers off, never on when the server forbids them;
-- the four rate limits and the concurrent-run limit: an organisation may lower them, never raise them above the
-  server's (when the server's is 0, unlimited, any limit is lower);
+- `approve_own_runs`: likewise, an organisation may forbid approving a run you started, never allow it when the
+  server forbids it;
+- the four rate limits, the concurrent-run limit and the longest API token lifetime: an organisation may lower them,
+  never raise them above the server's (when the server's is 0, unlimited, any limit is lower);
 - `audit_retention_days`: an organisation may keep its audit log longer than the server does (0, forever, included),
   never shorter: the log is how the operator and the organisation answer for changes;
 - `memory_retention_days`: any number of days (0, forever, included): deleting sooner is the privacy-friendly way.
@@ -32,15 +34,20 @@ RATE_LIMITS = (
     "rate_limit_per_project",
     "rate_limit_per_share_client",
 )
-CEILINGS = (*RATE_LIMITS, "max_concurrent_runs")  # the organisation's may be lower than the server's, not higher
+# the organisation's may be lower than the server's, not higher
+CEILINGS = (*RATE_LIMITS, "max_concurrent_runs", "max_token_days")
 RETENTIONS = ("audit_retention_days", "memory_retention_days")
-FIELDS = ("allow_local_mcp", *CEILINGS, *RETENTIONS)
+SWITCHES = ("allow_local_mcp", "approve_own_runs")  # the organisation may switch them off, never on
+FIELDS = (*SWITCHES, *CEILINGS, *RETENTIONS)
 
 
 class OrgLimits(BaseModel):
     """What an organisation sets for itself; a field left out keeps its value, null returns it to the server's."""
 
     allow_local_mcp: bool | None = Field(None, description="false: no local MCP servers, even if the server allows")
+    approve_own_runs: bool | None = Field(
+        None, description="false: nobody approves or answers an Inbox item of a run they started"
+    )
     rate_limit_per_deployment: int | None = Field(
         None, ge=1, le=1_000_000, description="calls a minute, each deployment"
     )
@@ -51,6 +58,9 @@ class OrgLimits(BaseModel):
     )
     max_concurrent_runs: int | None = Field(
         None, ge=1, le=100_000, description="runs in flight at once; past it runs wait in a queue by priority"
+    )
+    max_token_days: int | None = Field(
+        None, ge=1, le=3650, description="the longest an API token may live, in days; none may never expire"
     )
     audit_retention_days: int | None = Field(None, ge=0, le=3650, description="not below the server's; 0 = forever")
     memory_retention_days: int | None = Field(None, ge=0, le=3650, description="0 = forever")
@@ -66,8 +76,9 @@ def effective(server: Settings, org_settings: dict[str, Any] | None) -> dict[str
     """What applies to the organisation: its own value within the server's ceilings, else the server's."""
     own = stored(org_settings)
     out: dict[str, Any] = {k: getattr(server, k) for k in FIELDS}
-    if own.get("allow_local_mcp") is False:
-        out["allow_local_mcp"] = False
+    for key in SWITCHES:
+        if own.get(key) is False:
+            out[key] = False
     for key in CEILINGS:
         if key in own:
             ceiling = getattr(server, key)
@@ -88,10 +99,15 @@ def check(server: Settings, changes: dict[str, Any]) -> None:
             "local MCP servers are off on this server (AGENTCANVAS_ALLOW_LOCAL_MCP): an organisation cannot switch "
             "them on, only the operator can"
         )
+    if changes.get("approve_own_runs") is True and not server.approve_own_runs:
+        raise InvalidInput(
+            "approving your own runs is off on this server (AGENTCANVAS_APPROVE_OWN_RUNS): an organisation cannot "
+            "switch it on, only the operator can"
+        )
     for key in CEILINGS:
         value, ceiling = changes.get(key), getattr(server, key)
         if value is not None and ceiling > 0 and value > ceiling:
-            unit = " runs at once" if key == "max_concurrent_runs" else " a minute"
+            unit = {"max_concurrent_runs": " runs at once", "max_token_days": " days"}.get(key, " a minute")
             raise InvalidInput(
                 f"the server limits this to {ceiling}{unit} (AGENTCANVAS_{key.upper()}): lower it, not higher"
             )

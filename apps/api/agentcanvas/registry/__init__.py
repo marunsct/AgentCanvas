@@ -14,11 +14,14 @@ from datetime import date
 from functools import cache
 from importlib.util import find_spec
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from agentcanvas.sampling import SAMPLING, without_sampling  # noqa: F401 - part of the registry's API
+
+if TYPE_CHECKING:
+    from agentcanvas.ir.models import Node
 
 HERE = Path(__file__).parent
 
@@ -112,8 +115,15 @@ def token_counts(meta: Any) -> dict[str, int]:
         "input_tokens": int(meta.get("input_tokens") or 0),
         "output_tokens": int(meta.get("output_tokens") or 0),
         "cache_read_tokens": int(details.get("cache_read") or 0),
-        "cache_write_tokens": int(details.get("cache_creation") or 0),
+        "cache_write_tokens": cache_writes(details),
     }
+
+
+def cache_writes(details: dict[str, Any]) -> int:
+    """Input tokens written to the prompt cache. langchain-anthropic reports them by lifetime (5 minutes, 1 hour)
+    and sets the generic `cache_creation` to 0 then, so both shapes are read."""
+    by_ttl = int(details.get("ephemeral_5m_input_tokens") or 0) + int(details.get("ephemeral_1h_input_tokens") or 0)
+    return int(details.get("cache_creation") or 0) or by_ttl
 
 
 def billed_tokens(usage: dict[str, Any]) -> int:
@@ -153,6 +163,13 @@ class Registry:
 
     def get(self, type_: str) -> NodeManifest | None:
         return self._by_type.get(type_)
+
+    def bypassed(self, node: Node) -> bool:
+        """Whether a run skips `node` and passes the data through: it is bypassed, and it does not pick a path
+        ("Choose a path", "Decide with AI") or fan out (a map). Those still run when bypassed, or the run could not
+        go on past them. LangGraph's plan and every generated framework use this one rule."""
+        m = self.get(node.type)
+        return bool(node.disabled) and node.type != "core.map" and not (m and m.dynamic_outputs == "routes")
 
     def all(self) -> list[NodeManifest]:
         return sorted(self._by_type.values(), key=lambda m: (m.category, m.label))

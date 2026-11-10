@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -105,12 +105,9 @@ class ImportIn(BaseModel):
 
 
 def _out(ds: Dataset, v: DatasetVersion) -> DatasetOut:
-    splits: dict[str, int] = {}
-    for e in v.examples:
-        splits[e.get("split", "")] = splits.get(e.get("split", ""), 0) + 1
     return DatasetOut(
         id=ds.id, workflow_id=ds.workflow_id, name=ds.name, description=ds.description, version=v.number,
-        examples=len(v.examples), splits=splits, created_at=ds.created_at, updated_at=v.created_at,
+        examples=v.example_count, splits=v.splits, created_at=ds.created_at, updated_at=v.created_at,
         langsmith=LangSmithLink.model_validate(ds.langsmith) if ds.langsmith else None,
     )  # fmt: skip
 
@@ -153,18 +150,24 @@ async def delete_dataset(ds_id: str, s: DatasetService = Depends(svc)) -> Respon
 
 
 @router.get("/datasets/{ds_id}/versions", response_model=list[DatasetVersionOut])
-async def list_dataset_versions(ds_id: str, s: DatasetService = Depends(svc)) -> list[DatasetVersionOut]:
+async def list_dataset_versions(
+    ds_id: str,
+    limit: int = Query(100, ge=1, le=500),
+    before: int | None = Query(None, description="only versions numbered below this one (the next page)"),
+    s: DatasetService = Depends(svc),
+) -> list[DatasetVersionOut]:
+    """The dataset's versions, newest first."""
     await s.get(ds_id)
     return [
         DatasetVersionOut(
             id=v.id,
             number=v.number,
             message=v.message,
-            examples=len(v.examples),
+            examples=v.example_count,
             created_by=v.created_by,
             created_at=v.created_at,
         )
-        for v in await s.versions(ds_id)
+        for v in await s.versions(ds_id, limit, before)
     ]
 
 
@@ -239,7 +242,8 @@ async def _langsmith(request: Request, s: DatasetService, ds_id: str) -> tuple[D
     row = await s.s.get(WorkflowRow, ds.workflow_id)
     project_id = row.project_id if row else ""
     secrets = request.app.state.projects.secrets.get(project_id, {})
-    return ds, langsmith_sync.client_for(secrets), row.name if row else ds.workflow_id
+    server_key = request.app.state.settings.edition != "hosted"  # the operator's key is not a tenant's
+    return ds, langsmith_sync.client_for(secrets, server_key), row.name if row else ds.workflow_id
 
 
 @router.post("/datasets/{ds_id}/langsmith/push", response_model=DatasetOut)

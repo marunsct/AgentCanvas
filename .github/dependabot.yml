@@ -1,24 +1,30 @@
 # Weekly dependency updates (M8-T6), grouped so each ecosystem opens at most one pull request a week;
-# security updates are opened as soon as an advisory is published.
+# security updates are opened as soon as an advisory is published. A version update waits until the release is 7 days
+# old (14 for a major version): hijacked releases are usually found and pulled within days. Security updates do not wait.
 version: 2
 updates:
   - package-ecosystem: uv
     directory: /apps/api
     schedule: { interval: weekly }
+    cooldown: { default-days: 7, semver-major-days: 14 }
     groups: { python: { patterns: ["*"] } }
   - package-ecosystem: npm
     directory: /apps/web
     schedule: { interval: weekly }
+    cooldown: { default-days: 7, semver-major-days: 14 }
     groups: { web: { patterns: ["*"] } }
   - package-ecosystem: docker
     directories: [/infra]
     schedule: { interval: weekly }
+    cooldown: { default-days: 7, semver-major-days: 14 }
   - package-ecosystem: docker-compose   # the Postgres image digest in the compose files
     directories: [/infra]
     schedule: { interval: weekly }
+    cooldown: { default-days: 7, semver-major-days: 14 }
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: weekly }
+    cooldown: { default-days: 7, semver-major-days: 14 }
     groups: { actions: { patterns: ["*"] } }
   # Agent frameworks: their pins live in our code (exports, CI, the image); this file mirrors them so Dependabot can
   # see new releases. One pull request per framework, so each is upgraded and tested on its own
@@ -26,6 +32,7 @@ updates:
   - package-ecosystem: pip
     directory: /infra/frameworks
     schedule: { interval: weekly }
+    cooldown: { default-days: 7, semver-major-days: 14 }
     open-pull-requests-limit: 20
     ignore:
       - dependency-name: litellm      # held at 1.105.7: 1.106+ broke Google ADK tool calls (see docs/developer/decisions.md)
@@ -35,3 +42,4 @@ updates:
   - package-ecosystem: npm            # Mastra, run by the server and written into Mastra exports
     directory: /apps/api/agentcanvas/adapters/mastra
     schedule: { interval: weekly }
+    cooldown: { default-days: 7, semver-major-days: 14 }

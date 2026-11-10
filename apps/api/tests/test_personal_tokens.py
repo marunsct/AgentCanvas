@@ -173,3 +173,41 @@ async def test_tokens_are_audited_and_admins_see_and_revoke_everyones(client):
     log = (await client.get("/v1/org/audit", headers=ALICE)).json()
     revoked = next(e for e in log if e["action"] == "revoke_org_token")
     assert revoked["detail"]["owner"] == bobs["user_id"]
+
+
+async def test_a_token_cannot_hand_out_lasting_access(client):
+    """The organisation's SCIM token, invitations and the groups-to-roles table outlive a revoked API token: changing
+    them needs a real sign-in, as making another token does."""
+    tok = bearer((await _make(client))["token"])
+    groups = {"sso_groups": {"claim": "groups", "roles": {"ops": "admin"}}}
+    r = await client.post("/v1/org/scim/token", headers=tok)
+    assert r.status_code == 403 and "sign in" in r.json()["detail"], r.text
+    r = await client.put("/v1/org/members", json={"email": "mallory@example.com", "role": "admin"}, headers=tok)
+    assert r.status_code == 403, r.text
+    assert (await client.put("/v1/org/settings", json=groups, headers=tok)).status_code == 403
+    await _member(client, "bob@example.com", "viewer")
+    members = (await client.get("/v1/org/members", headers=ALICE)).json()
+    bob_id = next(m["user_id"] for m in members if m["email"] == "bob@example.com")
+    assert (await client.delete(f"/v1/org/members/{bob_id}", headers=tok)).status_code == 403
+    # other settings stay open to scripts, and the signed-in admin can do all of it
+    assert (await client.put("/v1/org/settings", json={"retention_days": 30}, headers=tok)).status_code == 200
+    assert (await client.post("/v1/org/scim/token", headers=ALICE)).status_code == 201
+    assert (await client.put("/v1/org/settings", json=groups, headers=ALICE)).status_code == 200
+    assert (await client.delete(f"/v1/org/members/{bob_id}", headers=ALICE)).status_code == 204
+
+
+async def test_an_admin_or_the_operator_caps_token_lifetimes(app, client, monkeypatch):
+    """Tokens that never expire, or live for years, stay valid until someone notices: the server
+    (AGENTCANVAS_MAX_TOKEN_DAYS) and an organisation (lower only) may cap their lifetime."""
+    assert (await _make(client, expires_in_days=None))["expires_at"] is None  # no cap: as before
+    r = await client.put("/v1/org/settings", json={"limits": {"max_token_days": 30}}, headers=ALICE)
+    assert r.status_code == 200 and r.json()["limits"]["effective"]["max_token_days"] == 30, r.text
+    for days in (None, 31):
+        r = await client.post("/v1/me/tokens", json={"name": "CI", "expires_in_days": days}, headers=ALICE)
+        assert r.status_code == 422 and "at most 30 days" in r.json()["detail"], r.text
+    assert (await _make(client, expires_in_days=30))["expires_at"] is not None
+    monkeypatch.setattr(app.state.settings, "max_token_days", 7)  # the operator's: an organisation may only go lower
+    r = await client.post("/v1/me/tokens", json={"name": "CI", "expires_in_days": 30}, headers=ALICE)
+    assert r.status_code == 422 and "at most 7 days" in r.json()["detail"], r.text
+    r = await client.put("/v1/org/settings", json={"limits": {"max_token_days": 60}}, headers=ALICE)
+    assert r.status_code == 422, r.text

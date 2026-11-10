@@ -31,6 +31,7 @@ from agentcanvas.copilot.service import MAX_ERROR, MAX_STEPS, ROLE, CopilotTurn,
 from agentcanvas.copilot.skillbook import skills
 from agentcanvas.copilot.tools import MAX_CALLS_PER_REPLY, READ_ONLY, TOOLS, compact_workflow, result_text, run_tool
 from agentcanvas.registry import token_counts
+from agentcanvas.runtime.runner import add_call
 
 SHELL = "execute"  # the harness's shell tool: the Copilot has no shell
 STEPS_PER_TURN = MAX_STEPS * 8  # graph steps (model, tools and middleware nodes): a backstop behind the call limit
@@ -186,7 +187,7 @@ class DeepAgentTurn(CopilotTurn):
         )
         messages = [*self._history(), HumanMessage(content=text)]
         self.history.append({"role": "user", "content": text, "at": _now(), "mode": mode})
-        meter = _Meter()
+        meter = _Meter(self.model.model)
         counted = dict(self.usage)
         said: list[str] = []
         streamed = ""
@@ -272,13 +273,13 @@ class _Meter(BaseCallbackHandler):
     their model in `response_metadata["model_name"]`, which some providers (Ollama, OpenAI-compatible servers) and
     test models leave out: their tokens went uncounted, so the token cap and the cost under-read."""
 
-    def __init__(self) -> None:
+    def __init__(self, model: str | None = None) -> None:
         super().__init__()
+        self.model = model  # each reply is priced on its own (a long-context price is per request)
         self.totals = {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0}
 
     def on_llm_end(self, response: LLMResult, **kwargs: Any) -> None:
         for generations in response.generations:
             for g in generations:
                 usage = getattr(getattr(g, "message", None), "usage_metadata", None)
-                for k, n in token_counts(usage).items():
-                    self.totals[k] += n
+                add_call(self.totals, self.model, token_counts(usage))

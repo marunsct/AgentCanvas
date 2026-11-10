@@ -22,6 +22,23 @@ async def test_health_ready_and_request_id(api_client):
     assert (await api_client.get("/healthz")).headers["x-request-id"].startswith("req_")
 
 
+async def test_the_running_version_and_commit_can_be_read(app, api_client, monkeypatch):
+    """Support must know exactly what runs: the package version (one source, pyproject.toml) and the image's commit,
+    for a signed-in user (Settings > About), in the API description and as agentcanvas_build_info."""
+    from importlib import metadata
+
+    from prometheus_client import REGISTRY
+
+    from agentcanvas import version
+
+    installed = metadata.version("agentcanvas")
+    monkeypatch.setattr(version, "COMMIT", "0123abc")
+    assert (await api_client.get("/v1/version")).json() == {"version": installed, "commit": "0123abc"}
+    assert app.openapi()["info"]["version"] == installed
+    labels = {"version": installed, "commit": version.COMMIT_LABEL}
+    assert REGISTRY.get_sample_value("agentcanvas_build_info", labels) == 1
+
+
 async def test_not_ready_when_the_run_store_does_not_answer(app, api_client, monkeypatch):
     """S11 M8-T2: load balancers stop sending traffic to a replica whose store is down; liveness stays up."""
 

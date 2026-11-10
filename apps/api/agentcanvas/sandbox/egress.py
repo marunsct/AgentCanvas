@@ -33,7 +33,7 @@ import time
 from collections.abc import Awaitable, Callable
 from urllib.parse import quote, urlsplit
 
-from agentcanvas.security.addresses import effective, is_public
+from agentcanvas.security.addresses import effective, is_metadata, is_public
 
 HEAD_LIMIT = 16 * 1024
 DEFAULT_PORTS = (443, 80)
@@ -123,14 +123,10 @@ def _private(address: str) -> bool:
     return not is_public(address)
 
 
-METADATA = (ipaddress.ip_network("fd00:ec2::254/128"),)  # AWS's IPv6 metadata address (IPv4's is link-local)
-
-
 def _never(address: str) -> bool:
     """Link-local (cloud metadata services: 169.254.169.254), unspecified and the metadata addresses: no sandbox
     reaches these, whatever the list says or the proxy allows."""
-    ip = _ip(address)
-    return ip.is_link_local or ip.is_unspecified or any(ip in net for net in METADATA)
+    return is_metadata(address)
 
 
 async def _resolve(host: str, port: int) -> list[str]:

@@ -25,6 +25,10 @@ secrets:
 
 config:
   env: prod                       # AGENTCANVAS_ENV; staging and prod refuse AUTH_MODE=dev
+  # AGENTCANVAS_EDITION: dev = one company's own server, whose builders may reach its private network (a step with
+  # "allow private network"); hosted = shared by organisations that do not trust each other: every outbound
+  # connection goes to public addresses only, no host code or local servers. Set hosted for any server shared that way.
+  edition: dev
   # oidc = any OpenID Connect provider; matura = sign-in, organisations, members and roles from Matura (set
   # config.oidc.issuer to Matura's realm and audience/clientId to "agentcanvas"; put AGENTCANVAS_MATURA_CLIENT_SECRET
   # and AGENTCANVAS_MATURA_WEBHOOK_SECRET in the Secret, and connect the API as an ordinary database role)
@@ -66,8 +70,12 @@ api:
   resources:
     requests: { cpu: 500m, memory: 1Gi }
     limits: { memory: 2Gi }
-  # long enough for open streams to finish (uvicorn waits up to 30 s after SIGTERM)
-  terminationGracePeriodSeconds: 60
+  # preStop 5 s + max(uvicorn's 30 s wait for open streams, the runs' drain grace, both from SIGTERM) + about 25 s
+  # of work after the drain (online scores, search index, trace exports), with room to spare (api/shutdown.py)
+  terminationGracePeriodSeconds: 90
+  # only /tmp, /home/app and the workspaces are writable (as compose prod's API_READ_ONLY); false if a framework
+  # needs to write elsewhere
+  readOnlyRootFilesystem: true
   podAnnotations: {}
   nodeSelector: {}
   tolerations: []
@@ -82,6 +90,8 @@ sandbox:
   nodeSelector: {}
   tolerations: []
   affinity: {}
+  # Kubernetes has no per-pod process limit: each call's code may start about 256 processes, and the kubelet's
+  # podPidsLimit on the sandbox nodes bounds the whole pod (see docs/user-guide/deploy.md)
   resources:
     requests: { cpu: 250m, memory: 512Mi }
     limits: { memory: 2Gi }
@@ -111,7 +121,7 @@ web:
   podAnnotations: {}
 
 migrations:
-  enabled: true                   # `alembic upgrade head` as a pre-install / pre-upgrade hook Job
+  enabled: true                   # migrations (`python -m agentcanvas.db.migrate`) as a pre-install / pre-upgrade hook Job
 
 workspaces:
   # project workspaces (git repositories) are shared by every API replica: a ReadWriteMany volume

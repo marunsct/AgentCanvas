@@ -49,11 +49,17 @@ which shows what will be sent on an approval card; a rejection skips the agent.
   never share an agent's memory.
 - The agent's tools run inside its framework, so AgentCanvas cannot see or gate them one by one. Tick what they can
   do under **Side effects** (writes, messages, code, spending) so the blast-radius view and dry runs know, and use
-  **Ask a person before it runs** where that matters. The hosted edition does not offer this block, because the
-  agent's code runs inside the server.
+  **Ask a person before it runs** where that matters.
+- The agent's code runs inside the server itself, not in the sandbox. So a server that runs workspace code in a
+  sandbox (a production server, or any server whose `AGENTCANVAS_SCRIPT_EXECUTION` is not `inprocess`) and the
+  hosted edition refuse this block with E041 and leave its templates out of the gallery. There, design the agent on
+  an **AI agent** block **Designed for** its framework, or call your code from a **Script** step. Only an operator
+  who trusts every builder with the server's own keys turns it on (`AGENTCANVAS_ALLOW_UNISOLATED_SCRIPTS=true` with
+  `inprocess`, see [deploy.md](deploy.md)).
 - **Remote agents (A2A)**: when the remote agent asks for more information (`input-required`), the run pauses and
   the question appears in the Inbox; the answer goes back to the same task. Addresses on private networks are
-  refused unless you turn on **Allow private network**. Put keys in **Headers** as secrets. What the remote agent
+  refused unless you turn on **Allow private network**; a link-local or cloud metadata address (`169.254.169.254`)
+  is refused even then, for remote agents, web API tools and app connectors alike. Put keys in **Headers** as secrets. What the remote agent
   said so far is kept in the database, so the answer can reach any server, after a restart too. (An exported project
   keeps it in its own process: if that restarts while a remote agent waits, the step stops with a message instead of
   sending the first message again; start the run again.)
@@ -71,7 +77,8 @@ which shows what will be sent on an approval card; a rejection skips the agent.
 - **Import**: on the home page, **Import an Agent Spec file** reads a flow, or a single agent, as a new workflow and
   lists what it approximated before you open it. Steps AgentCanvas cannot run become placeholders to replace.
 - A file AgentCanvas exported carries the whole workflow, so importing it back gives exactly the same workflow,
-  layout included.
+  layout included. Importing a file never adds code to your project's workspace: a template's extra files (event
+  handlers, custom blocks) come only from the gallery, not from a file someone shared.
 
 ## Call a workflow from other agents
 
@@ -208,3 +215,6 @@ use the OpenTelemetry GenAI conventions and the OpenInference ones, which all th
 - Export runs in the background and never slows a run down. If the destination is down, traces are dropped and
   the server logs a warning.
 - A model or tool call is shown as a point in time inside its step: the step's duration is exact.
+- The hosted service sends traces to public addresses only. An address that is private, internal or the server's
+  own (including the Phoenix and Datadog defaults on `localhost`) is refused when you save or test it, and every
+  connection is checked again as it is made.

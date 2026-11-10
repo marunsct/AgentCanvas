@@ -70,6 +70,8 @@ but lacks a required key fails the release instead of pods that crash-loop or ne
 {{- define "agentcanvas.apiEnv" -}}
 - name: AGENTCANVAS_ENV
   value: {{ .Values.config.env | quote }}
+- name: AGENTCANVAS_EDITION
+  value: {{ required "config.edition is required (dev or hosted)" .Values.config.edition | quote }}
 - name: AGENTCANVAS_AUTO_MIGRATE
   value: "false"
 - name: AGENTCANVAS_AUTH_MODE

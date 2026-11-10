@@ -13,7 +13,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", env_prefix="AGENTCANVAS_")
 
     env: Literal["dev", "test", "staging", "prod"] = "dev"  # staging and prod refuse development defaults
-    edition: Literal["dev", "hosted"] = "dev"  # hosted = multi-tenant service (E041 etc.)
+    # hosted = a multi-tenant service: blocks that reach the server or private networks are refused
+    edition: Literal["dev", "hosted"] = "dev"
     # SQLAlchemy URL of the control DB. postgresql://… (production) or sqlite+aiosqlite:///… (local edition).
     database_url: str = Field(default="sqlite+aiosqlite:///./agentcanvas.db", validation_alias="DATABASE_URL")
     # LangGraph checkpointer/store location; defaults to the control DB ("memory" = ephemeral, tests only)
@@ -25,10 +26,10 @@ class Settings(BaseSettings):
     # secret_key (development), or file:<path>, aws:<key ARN>, gcp:<key name>; previous keys still unwrap
     kms_key: str = ""
     kms_previous_keys: list[str] = []  # earlier master keys, still used to unwrap data keys after a rotation
-    # Authentication (M7-T1). dev = every request is the seeded development admin (refused in staging/prod);
+    # Authentication. dev = every request is the seeded development admin (refused in staging/prod);
     # oidc = bearer JWTs from the identity provider, checked against its JWKS.
     # matura = bearer JWTs from Matura (oidc_issuer = its realm, oidc_audience = this app's client id): the token
-    # names the organisation (`tid`) and its permissions (`perms`); members and roles are managed in Matura (TS9a).
+    # names the organisation (`tid`) and its permissions (`perms`); members and roles are managed in Matura.
     auth_mode: Literal["dev", "oidc", "matura"] = "dev"
     oidc_issuer: str | None = None  # e.g. https://login.example.com/realms/acme (the token's `iss`)
     oidc_audience: str | None = None  # the token's `aud` the API accepts
@@ -49,19 +50,23 @@ class Settings(BaseSettings):
     matura_webhook_secret: str | None = None
     matura_portal_url: str | None = None  # overrides the portal's address; default <matura_public_url>/portal/
     matura_public_url: str | None = None  # where people reach Matura (its MATURA_PUBLIC_URL), for portal links
-    # TS26: where security-relevant audit entries are POSTed, signed with the webhook secret (placeholder until
+    # where security-relevant audit entries are POSTed, signed with the webhook secret (placeholder until
     # Matura has an audit ingest API); unset = kept in AgentCanvas's own audit log only
     matura_audit_url: str | None = None
+    # security-relevant audit entries, also POSTed here as signed CloudEvents (any sign-in mode); each one is also
+    # always logged as `audit.event`. The secret signs them (AgentCanvas-Signature) and is needed with the URL.
+    audit_sink_url: str | None = None
+    audit_sink_secret: str | None = None
     matura_sync_interval_s: int = 3600  # how often the change feed is read (webhooks bring changes in between)
     # emails that become admins of the default organisation on first sign-in (bootstraps an empty install)
     bootstrap_admin_emails: list[str] = []
     allow_local_mcp: bool = False  # app connectors that start a local process (stdio MCP servers); local edition
-    workspaces_dir: str = "./workspaces"  # one git repository per project (M5-T1)
-    # how workspace code runs (M5-T4): in the API process (dev), a child process, a Docker container or a LangSmith
-    # Sandbox (spike SP-2; credentials from LANGSMITH_API_KEY)
+    workspaces_dir: str = "./workspaces"  # one git repository per project
+    # how workspace code runs: in the API process (dev), a child process, a Docker container or a LangSmith
+    # Sandbox (credentials from LANGSMITH_API_KEY)
     script_execution: Literal["inprocess", "subprocess", "docker", "langsmith", "remote"] = "inprocess"
     # staging and prod refuse to run workspace code as the API's own user (inprocess, subprocess) unless this says so:
-    # for a server only trusted people edit (S-8)
+    # for a server only trusted people edit
     allow_unisolated_scripts: bool = False
     sandbox_url: str | None = (
         None  # "remote": the sandbox service (`agentcanvas.sandbox.service`), e.g. http://sandbox:8090
@@ -95,19 +100,25 @@ class Settings(BaseSettings):
     # workspace code there cannot call the API from inside
     refuse_clients: list[str] = []
     log_json: bool = False  # one JSON object per log line (for a log collector) instead of readable text
-    metrics_enabled: bool = True  # Prometheus at GET /metrics (M8-T3)
+    metrics_enabled: bool = True  # Prometheus at GET /metrics
     # conversations (threads, their checkpoints and runs) are deleted this many days after their last activity
-    # unless the organisation sets its own (M8-T4); 0 keeps them forever
+    # unless the organisation sets its own; 0 keeps them forever
     retention_days: int = 90
-    audit_retention_days: int = 400  # audit-log rows older than this are deleted; 0 keeps them forever (S12)
+    audit_retention_days: int = 400  # audit-log rows older than this are deleted; 0 keeps them forever
     memory_retention_days: int = 0  # long-term memories not updated for this long are deleted; 0 (default): kept
-    # long-term memory's semantic index (F-7): "builtin" or "<provider>:<model>"; empty (default): by words.
+    # an event handler's dedup values (`@on(dedup_key=...)`) are kept this many days: the same value delivered again
+    # later runs the handler again. Never longer than the organisation's conversation retention; 0 = only that
+    event_dedup_days: int = Field(default=30, ge=0)
+    # a decision nobody gave for this many days expires: its run is cancelled and the conversation then follows the
+    # conversation retention like any other. 0 = approvals wait forever (and keep their conversations forever)
+    approval_expiry_days: int = Field(default=90, ge=0)
+    # long-term memory's semantic index: "builtin" or "<provider>:<model>"; empty (default): by words.
     # One size of vector per server (the pgvector column), so one model for every project; a model other than the
     # built-in or a well-known hosted one needs its size in `memory_embedding_dims` (0: measured at startup)
     memory_embedding: str = ""
     memory_embedding_dims: int = 0
     memory_embedding_base_url: str = ""  # a local server's address (LM Studio, Ollama) for `memory_embedding`
-    # whether an organisation's groups-to-roles table may add people who are not its members (CP-2); unset: only
+    # whether an organisation's groups-to-roles table may add people who are not its members; unset: only
     # when the server has one organisation, so one tenant's admin cannot enrol every person of another
     sso_groups_add_members: bool | None = None
     # OCR for scanned PDFs and pictures added to a knowledge base: "auto" (default) uses Tesseract when it is installed
@@ -119,29 +130,50 @@ class Settings(BaseSettings):
     # control-database connections per API process (Postgres): pool_size kept open, up to max_overflow more
     db_pool_size: int = 10
     db_max_overflow: int = 20
-    # S12 (S30): requests per minute to the public API, counted across instances; 0 = no limit. Per deployment
+    # requests per minute to the public API, counted across instances; 0 = no limit. Per deployment
     # (its API key) and per webhook trigger, and per project over all its deployments and webhooks together.
     # `rate_limit_by_environment` overrides the per-deployment limit for a deployment environment, e.g. {"dev": 30}.
     rate_limit_per_deployment: int = 120
     rate_limit_per_webhook: int = 120
     rate_limit_per_project: int = 600
     rate_limit_by_environment: dict[str, int] = {}
-    # share links (S23): requests per minute from one client address to one link, on top of the deployment's and
+    # share links: requests per minute from one client address to one link, on top of the deployment's and
     # project's limits, so one anonymous visitor cannot use up a deployment's whole budget
     rate_limit_per_share_client: int = 30
     # runs in flight at once in one organisation, across every server; past it a run waits in the organisation's
     # queue (highest priority, then oldest, first). 0 = no limit. An organisation may set a lower one.
     max_concurrent_runs: int = Field(default=0, ge=0)
+    # the longest an API token may live, in days; 0 = no limit (a token may also never expire). An organisation may set
+    # a shorter one.
+    max_token_days: int = Field(default=0, ge=0, le=3650)
+    # false: nobody may approve or answer an Inbox item raised by a run they started (four-eyes approvals). An
+    # organisation may switch it off for itself, never on when the server has it off.
+    approve_own_runs: bool = True
+    # how long a run may wait in that queue before it gives up with an error (seconds); 0 = as long as it takes
+    max_queue_wait_s: float = Field(default=3600, ge=0)
     retention_interval_s: int = 3600  # how often the retention job looks for expired conversations
-    # G-5: the largest file a person may attach to a run (Run tab, share links, inline in API calls), in MB
-    max_upload_mb: float = Field(default=10, gt=0, le=20)  # the web server accepts 20 MB bodies (infra/nginx.conf)
+    # a cron occurrence no scheduler ticked in (a restart, an outage) fires once when ticking resumes, if it is no
+    # older than this; 0 = only the minute a scheduler ticks in
+    cron_catchup_s: int = Field(default=3600, ge=0)
+    # the largest file a person may attach to a run (Run tab, share links, inline in API calls), in MB; at most 20,
+    # the largest request body the web server accepts (infra/nginx.conf)
+    max_upload_mb: float = Field(default=10, gt=0, le=20)
     max_project_files_mb: float = Field(default=1024, ge=0)  # all of a project's attached files; 0 = no limit
-    # FR-X-10 safe redeploy: on shutdown, how long running runs get to finish before they are handed over (keep it
-    # below the pod's terminationGracePeriodSeconds), and how often instances look for runs to continue
+    # safe redeploys: from SIGTERM, how long running runs get to finish before they are handed over (keep
+    # 5 + max(30, it) + 25 below the pod's terminationGracePeriodSeconds), and how often instances look for runs
+    # to continue
     drain_grace_s: float = 20.0
     handover_interval_s: float = 10.0
     # a running run whose instance has not refreshed it for this long lost its instance and is handed over
     orphan_after_s: float = 60.0
+
+    @property
+    def isolates_workspace_code(self) -> bool:
+        """Workspace code runs outside the API process (a sandbox), so blocks that would import it into the API are
+        refused (E041). Staging and prod count as isolating unless the operator trusts every builder (S-8)."""
+        if self.script_execution != "inprocess":
+            return True
+        return self.env in ("staging", "prod") and not self.allow_unisolated_scripts
 
     @field_validator("refuse_clients")
     @classmethod

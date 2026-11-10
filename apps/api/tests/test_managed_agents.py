@@ -305,3 +305,24 @@ def test_a_block_designed_for_the_platform_is_not_a_validation_error():
     notes = [d for d in found if d.code == "P004"]
     assert [d.severity for d in notes] == ["info"] and "ant apply" in notes[0].message
     assert not [d for d in found if d.severity == "error"]
+
+
+def test_a_bundle_writes_the_same_test_tools_wherever_it_is_made(tmp_path, monkeypatch):
+    """The server image has no pytest (dev packages are left out), CI and a developer's machine do: the bundle's own
+    test tools must not depend on which one made it."""
+    from importlib import metadata
+
+    def dev_line(where: Path) -> str:
+        text = str(export(where)["helper-managed-agents/pyproject.toml"])
+        return next(line for line in text.splitlines() if line.startswith("dev = "))
+
+    here = dev_line(tmp_path / "a")
+    real = metadata.version
+
+    def without_dev_packages(dist: str) -> str:
+        if dist in ("pytest", "pyyaml"):
+            raise metadata.PackageNotFoundError(dist)
+        return real(dist)
+
+    monkeypatch.setattr(metadata, "version", without_dev_packages)
+    assert dev_line(tmp_path / "b") == here == 'dev = ["pytest>=8", "pyyaml>=6"]'

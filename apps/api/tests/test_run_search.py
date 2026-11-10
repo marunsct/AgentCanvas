@@ -5,7 +5,9 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select, update
+from test_efficiency import statements
 from test_org_scope import act_as_b, org_b  # noqa: F401 - fixture
+from test_runs_v1 import triage_api  # noqa: F401 - fixture
 from test_simulation import make_chat
 
 from agentcanvas.db.models import Run, RunSearch, Thread
@@ -135,6 +137,93 @@ async def test_the_index_follows_retention_and_deleting_a_conversation(app, api_
         assert await s.scalar(select(func.count()).select_from(Run)) == 1
     out = await search(api_client, "hotel in Rome")
     assert {h["thread_id"] for h in out["hits"]} <= {"th_refund"}  # the hotel and password conversations are gone
+
+
+async def test_a_resumed_run_is_indexed_with_the_question_that_started_it(app, triage_api):  # noqa: F811
+    """A resume keeps no recording of its own (SQL NULL, not a JSON null that a "has a recording" lookup took for
+    the conversation's first run): its index text starts with what was asked."""
+    api, wf = triage_api, triage_api.wf_id
+    r = await api.post(
+        f"/v1/workflows/{wf}/runs/stream", json={"input": {"ticket": "Printer on fire"}, "thread_id": "th_p"}
+    )
+    assert "RUN_FINISHED" in r.text
+    r = await api.post("/v1/threads/th_p/resume", json={"value": {"decisions": [{"type": "approve"}]}})
+    assert '"success"' in r.text
+    await app.state.run_search.drain()
+    async with app.state.db.sessionmaker() as s:
+        texts = (await s.scalars(select(RunSearch.text).where(RunSearch.thread_id == "th_p"))).all()
+        recorded = (await s.scalars(select(Run.id).where(Run.thread_id == "th_p", Run.recording.is_not(None)))).all()
+    assert len(texts) == 2 and all(t.startswith("User: Printer on fire") for t in texts), texts
+    assert len(recorded) == 1  # the first run's; the resume's is NULL
+
+
+async def test_indexing_holds_no_database_connection_while_it_embeds(app, api_client):
+    """A hosted embedding model takes a while: a burst of finished runs must not pin the connection pool."""
+    import asyncio
+
+    from sqlalchemy import event
+
+    entered, release, held = asyncio.Event(), asyncio.Event(), [0]
+
+    def factory(spec, secrets):
+        async def embed(texts):
+            entered.set()
+            await release.wait()
+            return [[1.0] for _ in texts]
+
+        return embed
+
+    pool = app.state.db.engine.sync_engine.pool
+    out = lambda *_: held.__setitem__(0, held[0] + 1)  # noqa: E731
+    back = lambda *_: held.__setitem__(0, held[0] - 1)  # noqa: E731
+    app.state.run_search.embedder = factory
+    wf = await make_chat(api_client)
+    app.state.resources_factory = lambda thread_id, w: DemoResources().with_mocks({"model": ["Five days."]})
+    event.listen(pool, "checkout", out)
+    event.listen(pool, "checkin", back)
+    try:
+        body = {"input": {"messages": [{"role": "user", "content": "refund?"}]}, "thread_id": "th_slow"}
+        assert "RUN_FINISHED" in (await api_client.post(f"/v1/workflows/{wf}/runs/stream", json=body)).text
+        await asyncio.wait_for(entered.wait(), 5)
+        await asyncio.sleep(0.05)
+        assert held[0] == 0  # the embedding call is made with no connection checked out
+        release.set()
+        await app.state.run_search.drain()
+    finally:
+        release.set()
+        event.remove(pool, "checkout", out)
+        event.remove(pool, "checkin", back)
+    async with app.state.db.sessionmaker() as s:
+        assert await s.scalar(select(func.count()).select_from(RunSearch).where(RunSearch.thread_id == "th_slow")) == 1
+
+
+def test_json_nulls_written_before_become_sql_null(tmp_path):
+    import sqlite3
+
+    from agentcanvas.db.session import run_alembic
+
+    db = tmp_path / "m.db"
+    run_alembic(f"sqlite+aiosqlite:///{db}", "upgrade", "b8e2f6a0c4d7")
+    con = sqlite3.connect(db)
+    con.execute("INSERT INTO organization (id, name, settings, sso_groups) VALUES ('org_x', 'X', 'null', '{}')")
+    con.commit()
+    con.close()
+    run_alembic(f"sqlite+aiosqlite:///{db}", "upgrade", "head")
+    con = sqlite3.connect(db)
+    assert con.execute("SELECT settings, sso_groups FROM organization WHERE id = 'org_x'").fetchone() == (None, "{}")
+    con.close()
+
+
+async def test_search_reads_only_the_names_of_the_workflows_it_found(app, api_client):
+    """Not every workflow of the installation, on every search."""
+    wf = await make_chat(api_client)
+    await converse(app, api_client, wf)
+    await api_client.post(f"{P}/workflows", json={"name": "Unrelated"})
+    with statements(app) as seen:
+        out = await search(api_client, "kettle refund")
+    assert out["hits"][0]["workflow_name"] == "Chat"
+    names = [q for q in seen if "workflow.name" in q and "FROM workflow" in q]
+    assert names and all("WHERE" in q for q in names), names
 
 
 async def test_search_stays_in_the_organisation(app, api_client, org_b):  # noqa: F811

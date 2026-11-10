@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import json
 import re
 from collections import OrderedDict
@@ -44,7 +45,7 @@ from agentcanvas.ir.commands import CommandError, apply_batch, parse_commands
 from agentcanvas.ir.models import Workflow
 from agentcanvas.observability import counted_stream
 from agentcanvas.registry import Registry, billed_tokens, default_registry
-from agentcanvas.runtime.runner import usage_price
+from agentcanvas.runtime.runner import tokens_of, usage_cost
 from agentcanvas.services.knowledge import KnowledgeService
 from agentcanvas.services.testcases import Expect, TestCaseService
 from agentcanvas.services.workflows import WorkflowService, WorkflowView, list_templates
@@ -129,7 +130,10 @@ def _service(request: Request, session: AsyncSession, settings: Settings) -> Wor
 
 
 def _pack(registry: Registry, templates: dict[str, dict[str, Any]]) -> Pack:
-    key = json.dumps([[m.type, m.version, m.provenance] for m in registry.all()] + sorted(templates))
+    # a built-in block is known by its version; a project's own block by everything the pack says about it, so two
+    # projects' blocks of the same name never share a pack, and an edited block shows at once
+    shape = [[m.type, m.version] if m.provenance == "builtin" else m.model_dump(mode="json") for m in registry.all()]
+    key = hashlib.sha256(json.dumps([shape, sorted(templates)], sort_keys=True, default=str).encode()).hexdigest()
     if key in _packs:
         _packs.move_to_end(key)
         return _packs[key]
@@ -206,7 +210,7 @@ async def get_conversation(
         brief=conv.brief if conv else None,
         proposals=[_listed(p) for p in (conv.proposals if conv else [])],
         pending=_pending(conv, view),
-        usage=conv.usage if conv else {},
+        usage=tokens_of(conv.usage or {}) if conv else {},
         chosen_model=conv.model if conv else None,
         cost_usd=_spent(conv.messages if conv else []),
         token_cap=cs.token_cap,
@@ -393,8 +397,8 @@ async def _start_turn(
             spent = {k: v - usage_before.get(k, 0) for k, v in turn.usage.items() if v > usage_before.get(k, 0)}
             answer = next((m for m in reversed(new) if m.get("role") == "assistant"), None)
             if answer is not None and spent:  # what this answer cost, shown under it and summed for the conversation
-                cost = usage_price(model.model, spent)
-                answer.update(usage=spent, model=model.model, cost_usd=cost)
+                cost = usage_cost(model.model, spent)  # each model call priced on its own
+                answer.update(usage=tokens_of(spent), model=model.model, cost_usd=cost)
             row.messages = [*(row.messages or []), *new]
             row.busy_until = None
             if not row.title:  # the first question names the conversation in the thread list
@@ -412,9 +416,9 @@ async def _start_turn(
         if event["type"] in ("usage", "done"):  # what the conversation has cost so far, when the price is known
             used = event["usage"]
             turn_used = {k: v - usage_before.get(k, 0) for k, v in used.items() if isinstance(v, int)}
-            now = usage_price(model.model, turn_used)  # this turn, on top of the earlier answers (as a reload)
+            now = usage_cost(model.model, turn_used)  # this turn, on top of the earlier answers (as a reload)
             total = None if now is None and spent_before is None else (spent_before or 0) + (now or 0)
-            return {**event, "cost_usd": total}
+            return {**event, "usage": tokens_of(used), "cost_usd": total}
         return event
 
     async def pump(queue: asyncio.Queue[Any]) -> None:
@@ -909,4 +913,4 @@ async def code_help(
     except Exception as exc:
         raise InvalidInput(f"the model call failed: {type(exc).__name__}: {exc}"[:500]) from exc
     text, code = split_reply(str(reply.get("content") or ""), body.action)
-    return CodeHelpOut(text=text, code=code, model=model.model, usage=usage)
+    return CodeHelpOut(text=text, code=code, model=model.model, usage=tokens_of(usage))

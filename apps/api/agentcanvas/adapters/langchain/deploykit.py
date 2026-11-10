@@ -22,6 +22,7 @@ from urllib.parse import urlparse
 from agentcanvas import designs
 from agentcanvas.adapters.langchain.codegen import one_line
 from agentcanvas.errors import InvalidInput
+from agentcanvas.ir.contract import output_names
 from agentcanvas.ir.models import SECRET_NAME, Workflow
 
 KIT_DIR = Path(__file__).with_name("kit")
@@ -345,7 +346,7 @@ def facts(wf: Workflow, pkg: str, version: str, cases: list[dict[str, Any]] | No
 
 def kit_json(wf: Workflow, f: Facts, target: Target) -> str:
     s = wf.settings
-    outputs = list(s.output_channels or [c.name for c in wf.state.channels if c.io in ("inout", "out")])
+    outputs = output_names(wf)
     tools = [{"name": t.name, "command": t.command, "why": t.why, "optional": t.optional} for t in target.tools]
     env = [*f.env, *({"name": n, "kind": "deploy", "required": not w.startswith("optional"), "where": w}
                      for n, w in target.deploy_env)]  # fmt: skip

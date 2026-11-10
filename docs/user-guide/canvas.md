@@ -22,8 +22,14 @@
   example `model*` takes a *ChatModel*, `tools` takes a list of *Tool*s; `*` means required). A connection that
   doesn't fit is refused with the reason.
 - **Configure:** click a card. The Inspector shows its name (used in code and the API), label (shown on the
-  card) and a settings form. Prompts and many fields are templates over the state: `{{ state.ticket }}`.
+  card) and a settings form. Prompts and many fields are templates over the state: `{{ state.ticket }}`. A
+  template that takes longer than a second to fill in, or builds a text longer than 10 million characters (or a
+  list of over a million items), stops its step with an error.
   Conditions (routers, policies, filters) are written in [CEL](https://cel.dev), e.g. `state.urgency == "high"`.
+- **Bypass:** **Bypass this node** (under Runtime policies) skips a step and passes the state on unchanged; the
+  card shows *· bypassed*. A step that picks the path (**Choose a path**, **Decide with AI**) or a **Repeat for
+  each item** still runs when bypassed, or the run could not go on past it, so the blast radius and organisation
+  policies still count it. This is the same on every framework and in exported code.
 - **Select several:** drag a selection box or shift-click. Copy and paste with ⌘C / ⌘V (Ctrl on Windows/Linux).
 - **Undo / redo:** ⌘Z and ⇧⌘Z, or the ↶ ↷ buttons.
 - **Tidy** lays the graph out automatically.
@@ -79,7 +85,8 @@ Prometheus rules in `infra/observability/alerts.yaml` turn it into a ticket).
 the number of runs, model answers taken from the cache and calls a backup model answered (see
 [Models](models.md#backup-models-and-reusing-answers)). Runs still going count what they have spent so far, on
 every server, and each run looks at the others' spending after every model call: runs going together can pass a day
-or month budget by no more than one model call each.
+or month budget by no more than one model call each. Conversations deleted since, by hand or by the retention
+period, still count: deleting them does not reset a budget.
 
 ## Structure: subgraphs and frames
 
@@ -99,7 +106,8 @@ top, as before. When another person's tab reports a newer version than yours, a 
 version (v7; you have v6)* with an **Update** button, so you see their change before you make a conflicting one.
 
 Presence needs no setup: each open editor sends a heartbeat every ten seconds and listens on a small event stream,
-and a tab that closes or stops beating disappears after 30 seconds. It works across several API servers because the
+and a tab that closes or stops beating disappears after 30 seconds. A tab in the background keeps its heartbeat but
+closes the stream (browsers share a few connections per site among all tabs), and catches up as soon as it is shown. It works across several API servers because the
 state is kept in the database.
 
 ## Problems

@@ -394,9 +394,11 @@ def a2a_agent_node(
         if approve and not _approve(node_id, name, "a2a", text):
             _trace(node=name, framework="a2a", input=text, skipped=True)
             return {}
-        sent = {k: str(resolve(v)) for k, v in (headers or {}).items()}
+        from agentcanvas.adapters.langchain.nodes import RUN_HEADERS
+
+        sent = {**(RUN_HEADERS() if RUN_HEADERS else {}), **{k: str(resolve(v)) for k, v in (headers or {}).items()}}
         async with httpx.AsyncClient(timeout=timeout, transport=transport) as client:
-            endpoint = await _a2a_endpoint(client, url, sent, allow_private_network or transport is not None)
+            endpoint = await _a2a_endpoint(client, url, sent, allow_private_network, checked=transport is None)
             task_id = context_id = None
             message_text = text
             key = _step_key(node_id)
@@ -441,25 +443,26 @@ def a2a_agent_node(
 
 @dataclass(frozen=True)
 class _Target:
-    url: str  # with the checked IP in place of the host name unless private addresses are allowed
+    url: str  # with the checked IP in place of the host name
     headers: dict[str, str]
     extensions: dict[str, Any] | None  # TLS still checks the certificate of the name
 
 
-async def _pinned(url: str, headers: dict[str, str], private_ok: bool) -> _Target:
-    """`url`, checked to be public and pinned to the address that was checked, so a second DNS answer cannot send
-    the request to a private network (as the HTTP tool does)."""
+async def _pinned(url: str, headers: dict[str, str], private_ok: bool, checked: bool = True) -> _Target:
+    """`url`, checked to be public (with `private_ok`: not a link-local or cloud metadata address) and pinned to the
+    address that was checked, so a second DNS answer cannot send the request elsewhere (as the HTTP tool does).
+    `checked=False`: tests that serve the agent in-process."""
     from urllib.parse import urlsplit
 
     parts = urlsplit(url)
     if parts.scheme not in ("http", "https") or not parts.hostname:
         raise AgentError(f"'{url}' is not an http(s) address")
-    if private_ok:
+    if not checked:
         return _Target(url, headers, None)
-    from agentcanvas.adapters.langchain.nodes import _public_address
+    from agentcanvas.adapters.langchain.nodes import _reachable_address
 
     port = parts.port or (443 if parts.scheme == "https" else 80)
-    ip = await _public_address(parts.hostname, port)
+    ip = await _reachable_address(parts.hostname, port, private_ok)
     netloc = f"[{ip}]:{port}" if ":" in ip else f"{ip}:{port}"
     return _Target(
         parts._replace(netloc=netloc).geturl(),
@@ -468,9 +471,11 @@ async def _pinned(url: str, headers: dict[str, str], private_ok: bool) -> _Targe
     )
 
 
-async def _a2a_endpoint(client: Any, url: str, headers: dict[str, str], private_ok: bool) -> _Target:
+async def _a2a_endpoint(
+    client: Any, url: str, headers: dict[str, str], private_ok: bool, checked: bool = True
+) -> _Target:
     """The JSON-RPC address: `url` itself, or the `url` its Agent Card names when `url` is a card."""
-    card = await _pinned(url, headers, private_ok)
+    card = await _pinned(url, headers, private_ok, checked)
     if not url.split("?", 1)[0].endswith(".json"):
         return card
     r = await client.get(card.url, headers=card.headers, extensions=card.extensions)
@@ -479,7 +484,7 @@ async def _a2a_endpoint(client: Any, url: str, headers: dict[str, str], private_
     endpoint = str((r.json() or {}).get("url") or "")
     if not endpoint:
         raise AgentError(f"the agent card at {url} names no address")
-    return await _pinned(endpoint, headers, private_ok)
+    return await _pinned(endpoint, headers, private_ok, checked)
 
 
 def dry_run_node(*, name: str, framework: str, output: str, sent: Callable[[Any], Any]) -> Callable:

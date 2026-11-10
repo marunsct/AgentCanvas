@@ -101,3 +101,37 @@ describe("PlaygroundPage stream", () => {
     expect(signal?.aborted).toBe(true);
   });
 });
+
+describe("PlaygroundPage conversation kept in the tab", () => {
+  it("is shown again to the same person, never to another person or in another organisation", async () => {
+    const { useMe } = await import("../api/session");
+    const before = useMe.getState().me;
+    try {
+      useMe.setState({ me: { ...before, id: "usr_a", org_id: "org_1" } });
+      renderPage();
+      await say("customer 4411 asked for a refund");
+      expect(screen.getByText("customer 4411 asked for a refund")).toBeTruthy();
+      cleanup();
+      renderPage(); // moving to another page and back keeps it
+      expect(screen.getByText("customer 4411 asked for a refund")).toBeTruthy();
+      cleanup();
+      useMe.setState({ me: { ...before, id: "usr_b", org_id: "org_1" } });
+      renderPage();
+      expect(screen.queryByText("customer 4411 asked for a refund")).toBeNull();
+      cleanup();
+      useMe.setState({ me: { ...before, id: "usr_a", org_id: "org_2" } });
+      renderPage();
+      expect(screen.queryByText("customer 4411 asked for a refund")).toBeNull();
+      expect(Object.values(sessionStorage).join(" ")).not.toContain("4411"); // dropped, not just hidden
+    } finally {
+      useMe.setState({ me: before });
+    }
+  });
+
+  it("drops a conversation kept under the old, unscoped key", () => {
+    sessionStorage.setItem("agentcanvas.playground", JSON.stringify([{ role: "user", content: "from before" }]));
+    renderPage();
+    expect(screen.queryByText("from before")).toBeNull();
+    expect(sessionStorage.getItem("agentcanvas.playground")).toBeNull();
+  });
+});

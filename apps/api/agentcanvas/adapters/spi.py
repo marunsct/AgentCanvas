@@ -72,7 +72,11 @@ class FrameworkAdapter(Protocol):
 class ThreadStateAbility(Protocol):
     """`thread_state` (read, edit, copy and delete a conversation) and `time_travel` (history, replay)."""
 
-    async def get_state(self, wf: Workflow, thread_id: str, resources: Any) -> ThreadState: ...
+    async def get_state(
+        self, wf: Workflow, thread_id: str, resources: Any, checkpoint_id: str | None = None
+    ) -> ThreadState:
+        """The latest state, or the one saved at `checkpoint_id` (`checkpoint_id` is None when there is none)."""
+        ...
 
     async def history(
         self, wf: Workflow, thread_id: str, resources: Any, limit: int, include_values: bool = False

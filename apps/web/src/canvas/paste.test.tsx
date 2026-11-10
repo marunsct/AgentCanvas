@@ -11,7 +11,8 @@ vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect()
 
 const { useEditor } = await import("../editor/store");
 const { useCopilot } = await import("../copilot/copilot");
-const { Canvas } = await import("./Canvas");
+const { Canvas, addElement, manifestCache } = await import("./Canvas");
+const { manifests } = await import("../test/fixtures");
 
 const dispatch = vi.fn();
 const key = (k: string) => fireEvent.keyDown(document.body, { key: k, ctrlKey: true });
@@ -46,5 +47,28 @@ describe("paste (W-11)", () => {
     key("v");
     expect(dispatch).not.toHaveBeenCalled(); // it pasted into the top level, out of sight
     expect(useEditor.getState().notice?.text).toMatch(/Paste/);
+  });
+});
+
+describe("adding a block (palette, command palette, drop)", () => {
+  beforeEach(() => { manifestCache.clear(); for (const [t, m] of manifests) manifestCache.set(t, m); });
+
+  it("adds to the workflow shown at the top level", () => {
+    act(() => addElement("core.agent"));
+    expect(dispatch).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not add to the hidden top level while a subgraph or a Copilot proposal is shown", () => {
+    act(() => useCopilot.setState({ ghost: { workflow: triage(), diff: { added: [], changed: [], removed: [] } } as never }));
+    act(() => addElement("core.agent"));
+    expect(useEditor.getState().notice?.text).toMatch(/Adding blocks/);
+    const wf = triage();
+    const inner = { id: "inner", name: "inner", state: { channels: [] }, nodes: [], edges: [] };
+    wf.nodes.push({ id: "n_sub", type: "core.subgraph", name: "sub", config: { workflow: inner } });
+    act(() => { useCopilot.setState({ ghost: null }); useEditor.setState({ wf, drill: ["n_sub"], notice: null }); });
+    expect(useEditor.getState().drill).toEqual(["n_sub"]);
+    act(() => addElement("core.agent"));
+    expect(dispatch).not.toHaveBeenCalled(); // it went into the top level, out of sight
+    expect(useEditor.getState().notice?.kind).toBe("info");
   });
 });

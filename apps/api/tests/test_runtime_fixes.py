@@ -193,7 +193,7 @@ async def test_usage_of_a_cancelled_run_is_recorded(app, api_client, monkeypatch
     r = await api_client.post(f"/v1/workflows/{wf}/runs/stream", json={"input": {"who": "Ada"}, "stream": False})
     run_id = r.json()["run_id"]
     await asyncio.sleep(0.1)
-    assert (await api_client.post(f"/v1/runs/{run_id}/cancel")).json() == {"cancelled": True}
+    assert (await api_client.post(f"/v1/runs/{run_id}/cancel")).json() == {"cancelled": True, "pending": False}
     await app.state.runner.wait(run_id)
     run = (await api_client.get(f"/v1/runs/{run_id}")).json()
     assert run["status"] == "cancelled" and run["tokens_in"] == 120 and run["tokens_out"] == 30
@@ -308,3 +308,86 @@ def test_nat64_of_the_metadata_address_is_never_reachable_from_a_sandbox():
     from agentcanvas.sandbox import egress
 
     assert egress._never("64:ff9b::a9fe:a9fe")
+
+
+# ------------------------------------------------- RT-4 on the other adapters ----
+def _spend(usage: Any, tokens: int = 120) -> None:
+    from uuid import uuid4
+
+    from langchain_core.messages import AIMessage
+    from langchain_core.outputs import ChatGeneration, LLMResult
+
+    run_id = uuid4()
+    usage.on_chat_model_start({}, [], run_id=run_id, metadata={"ac_model": "openai:gpt-5.5"})
+    reply = AIMessage("x", usage_metadata={"input_tokens": tokens, "output_tokens": 30, "total_tokens": tokens + 30})
+    usage.on_llm_end(LLMResult(generations=[[ChatGeneration(message=reply)]]), run_id=run_id)
+
+
+async def test_openai_agents_usage_of_a_stopped_run_still_counts(monkeypatch):
+    """A cancelled or timed-out OpenAI Agents run lost the usage of the model call it was in when it stopped."""
+    from agentcanvas.adapters import create_adapter
+    from agentcanvas.adapters.openai_agents import runtime as rt
+
+    adapter = create_adapter("openai_agents")
+
+    async def run(flow, host, **kw):
+        yield {"type": "RUN_STARTED"}
+        _spend(host.usage)
+        await asyncio.sleep(30)  # stopped here
+        yield {"type": "RUN_FINISHED"}
+
+    monkeypatch.setattr(rt, "run", run)
+    late: list[dict[str, Any]] = []
+    spec = _spec(on_usage=late.append, mocks={"model": ["x"]})
+    spec.workflow = Workflow.model_validate({**llm_wf().model_dump(mode="json"), "framework": "openai_agents"})
+    events = adapter.execute(spec, adapter.default_resources())
+    assert (await anext(events))["type"] == "RUN_STARTED"
+    pending = asyncio.ensure_future(anext(events))
+    await asyncio.sleep(0.05)
+    pending.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await pending
+    await events.aclose()
+    assert [r["input_tokens"] for r in late] == [120]
+
+
+async def test_worker_frameworks_usage_of_a_stopped_run_still_counts(monkeypatch):
+    """The same for CrewAI, ADK and the flow frameworks: usage the worker's model calls reported before the stop."""
+    from agentcanvas.adapters.crewai import CrewAIAdapter
+
+    adapter = CrewAIAdapter()
+    hosts: list[Any] = []
+
+    class Worker:
+        async def run(self, run_id, request, handle):
+            yield {"type": "RUN_STARTED"}
+            _spend(hosts[0].usage)
+            _spend(hosts[0].usage, 7)
+            await asyncio.sleep(30)
+            yield {"type": "RUN_FINISHED"}
+
+    import agentcanvas.adapters.crewai as crew
+
+    real_host = crew.ServerHost
+
+    def host(*a, **kw):
+        hosts.append(real_host(*a, **kw))
+        return hosts[-1]
+
+    monkeypatch.setattr(crew, "ServerHost", host)
+    monkeypatch.setattr(adapter, "python", lambda: "python")
+    monkeypatch.setattr(adapter, "worker", lambda python: Worker())
+    monkeypatch.setattr(adapter, "source", lambda wf: "")
+    monkeypatch.setattr(adapter, "_blocked", lambda wf: [])
+    late: list[dict[str, Any]] = []
+    spec = _spec(on_usage=late.append, mocks={"model": ["x"]})
+    spec.workflow = Workflow.model_validate({**llm_wf().model_dump(mode="json"), "framework": "crewai"})
+    events = adapter.execute(spec, adapter.default_resources())
+    assert (await anext(events))["type"] == "RUN_STARTED"
+    pending = asyncio.ensure_future(anext(events))
+    await asyncio.sleep(0.05)
+    pending.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await pending
+    await events.aclose()
+    assert [r["input_tokens"] for r in late] == [120, 7]

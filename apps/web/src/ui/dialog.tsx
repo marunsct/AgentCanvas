@@ -65,13 +65,15 @@ function DialogView({ d }: { d: Open }) {
   const box = useRef<HTMLFormElement>(null);
   const before = useRef<Element | null>(null);
   const cancel = () => d.resolve(d.input ? null : false);
+  // a destructive confirm starts on Cancel (WAI-ARIA dialog pattern): a stray or repeated Enter must not delete
+  const start = d.danger && !d.input ? "button.cancel" : "input, button.confirm";
   useEffect(() => {
     before.current = document.activeElement;
-    const first = box.current?.querySelector<HTMLElement>("input, button.confirm");
+    const first = box.current?.querySelector<HTMLElement>(start);
     first?.focus();
     if (first instanceof HTMLInputElement) first.select();
     return () => { if (before.current instanceof HTMLElement) before.current.focus(); };
-  }, []);
+  }, [start]); // the view is keyed by the dialog: this runs once
   const onKey = (e: React.KeyboardEvent) => {
     if (e.key === "Escape") { e.stopPropagation(); cancel(); }
     if (e.key !== "Tab" || !box.current) return; // keep focus inside the dialog
@@ -95,7 +97,7 @@ function DialogView({ d }: { d: Open }) {
           </label>
         )}
         <div className="dialog-actions">
-          <button type="button" onClick={cancel}>{d.cancel ?? "Cancel"}</button>
+          <button type="button" className="cancel" onClick={cancel}>{d.cancel ?? "Cancel"}</button>
           <button type="submit" className={`confirm ${d.danger ? "danger-solid" : "primary"}`} disabled={blocked}>{d.confirm ?? "OK"}</button>
         </div>
       </form>

@@ -15,7 +15,9 @@ from typing import Any
 
 from agentcanvas import designs
 from agentcanvas.adapters.langchain.codegen import doc_line, one_line
+from agentcanvas.ir.contract import output_names
 from agentcanvas.ir.models import Node, Resource, Workflow
+from agentcanvas.registry import default_registry
 from agentcanvas.sampling import without_sampling
 
 SDK_VERSION = "0.24.0"
@@ -227,7 +229,7 @@ def _flow(wf: Workflow, fns: dict[str, str]) -> str:
                 kw.append(f"min_confidence={_py(n.config['min_confidence'])}")
         if n.type in ("core.router", "core.decide") and n.config.get("default", "default") != "default":
             kw.append(f"default={_py(n.config['default'])}")
-        if n.disabled:
+        if default_registry().bypassed(n):
             kw.append("disabled=True")
         marker = f"  # @canvas-node {one_line(n.id)} ({n.type})" if n.id not in fns else ""
         steps.append(f"        {_py(n.id)}: rt.Step({', '.join(kw)}),{marker}")
@@ -244,9 +246,7 @@ def _flow(wf: Workflow, fns: dict[str, str]) -> str:
             nexts.append(f"        {_py(n.id)}: {_py([e.target.node for e in edges])},")
     start = [e.target.node for e in wf.flow_edges() if e.source.node == "START" and e.target.node != "END"]
     channels = [f"        {_py(ch.name)}: ({_py(ch.reducer)}, {_py(ch.default)})," for ch in wf.state.channels]
-    wanted = wf.settings.output_channels
-    if wanted is None:
-        wanted = [ch.name for ch in wf.state.channels if ch.io != "private"]
+    wanted = output_names(wf)
     return "\n".join(
         [
             "FLOW = rt.Flow(",

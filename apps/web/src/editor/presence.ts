@@ -100,16 +100,34 @@ export function usePresenceChannel(workflowId: string | undefined): void {
     void beat();
     const interval = setInterval(() => void beat(), HEARTBEAT_MS);
     const unsubscribe = useEditor.subscribe((s, prev) => { if (s.selected !== prev.selected || s.version !== prev.version) soon(); });
-    void (async () => { // the stream; reconnect after a drop, unless the editor moved on
-      while (!abort.signal.aborted) {
-        try {
-          await getStream<{ peers: Peer[] }>(`/workflows/${workflowId}/presence/stream`, (m) => set(m.peers), abort.signal);
-        } catch { /* reconnect below */ }
-        if (!abort.signal.aborted) await new Promise((r) => setTimeout(r, 3000));
-      }
-    })();
+    // The stream is open only while the tab is shown. Over HTTP/1.1 a browser has 6 connections per site for all
+    // its tabs, and a stream holds one for as long as it is open: a few editor tabs in the background used them
+    // all, and every other request of every tab then waited. A hidden tab keeps its heartbeat (short requests, so
+    // the others still see it here) and hears who is here again when it is shown.
+    let stream: AbortController | null = null;
+    const open = () => {
+      if (stream || abort.signal.aborted) return;
+      const mine = (stream = new AbortController());
+      void (async () => { // reconnect after a drop, unless the tab was hidden or the editor moved on
+        while (!mine.signal.aborted) {
+          try {
+            await getStream<{ peers: Peer[] }>(`/workflows/${workflowId}/presence/stream`, (m) => set(m.peers), mine.signal);
+          } catch { /* reconnect below */ }
+          if (!mine.signal.aborted) await new Promise((r) => setTimeout(r, 3000));
+        }
+      })();
+    };
+    const close = () => { stream?.abort(); stream = null; };
+    const onVisibility = () => {
+      if (document.hidden) close();
+      else { open(); void beat(); }
+    };
+    if (!document.hidden) open();
+    document.addEventListener("visibilitychange", onVisibility);
     return () => {
       abort.abort();
+      close();
+      document.removeEventListener("visibilitychange", onVisibility);
       clearInterval(interval);
       if (timer) clearTimeout(timer);
       unsubscribe();

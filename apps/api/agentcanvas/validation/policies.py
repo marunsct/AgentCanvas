@@ -111,7 +111,7 @@ def _elements(
             "category": m.category if m else "", "used_by": used_by.get(r.id, []),
         }  # fmt: skip
 
-    nodes = [_Element(anchor or n.id, path + n.name, node_view(n)) for n in wf.nodes if not n.disabled]
+    nodes = [_Element(anchor or n.id, path + n.name, node_view(n)) for n in wf.nodes if not registry.bypassed(n)]
     res = [_Element(anchor or r.id, path + r.name, resource_view(r)) for r in wf.resources]
     for n in wf.nodes:
         if n.type != "core.subgraph" or n.disabled:

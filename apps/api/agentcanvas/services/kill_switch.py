@@ -53,14 +53,16 @@ async def stop_runs(
     running = [r for r, _, status in rows if status == "running"]
     waiting = [(r, t) for r, t, status in rows if status != "running"]
     if running:
-        await session.execute(update(Run).where(Run.id.in_(running)).values(stop_requested=True))
+        await session.execute(
+            update(Run).where(Run.id.in_(running)).values(stop_requested=True, stop_reason=STOPPED_BY_ADMIN)
+        )
     handed: list[str] = []
     for run_id, thread_id in waiting:  # not running anywhere: nothing else would stop it
         res = await session.execute(
             update(Run)
             .where(Run.id == run_id, Run.handover.is_(True), Run.status != "running")
             .values(status="cancelled", error=STOPPED_BY_ADMIN, handover=False, stop_requested=True,
-                    ended_at=datetime.now(UTC))
+                    stop_reason=STOPPED_BY_ADMIN, ended_at=datetime.now(UTC))
         )  # fmt: skip
         if res.rowcount == 1:  # type: ignore[attr-defined]
             await session.execute(update(Thread).where(Thread.id == thread_id).values(status="idle"))

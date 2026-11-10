@@ -4,8 +4,11 @@ form it is written, without touching another package or the history."""
 from __future__ import annotations
 
 import importlib.util
+import re
 import sys
 from pathlib import Path
+
+import pytest
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "framework_versions.py"
 spec = importlib.util.spec_from_file_location("framework_versions", SCRIPT)
@@ -59,3 +62,46 @@ def test_the_file_dependabot_watches_lists_every_pin():
         "infra/frameworks/requirements.txt differs from the pins: to take a Dependabot update run "
         "`scripts/framework_versions.py bump <package> <version>`; otherwise `framework_versions.py requirements`"
     )
+
+
+ENTRY = re.compile(r"^([A-Za-z0-9_.-]+)==(\S+)")
+
+
+def _locked(text: str) -> dict[str, str]:
+    return {m.group(1).lower().replace("_", "-"): m.group(2) for m in map(ENTRY.match, text.splitlines()) if m}
+
+
+@pytest.mark.parametrize("fid", sorted(fv.ENVIRONMENTS))
+def test_each_framework_environment_has_a_hashed_lock_of_its_pins(fid):
+    """The image and `make framework` install a framework environment from its lock: every transitive package pinned
+    and hashed. With only the top-level pins, two builds a week apart shipped different trees, and a hijacked
+    transitive release went into the next image unreviewed."""
+    path = fv.LOCKS / f"{fid}.txt"
+    assert path.is_file(), f"no lock for {fid}: uv run python scripts/framework_versions.py lock {fid}"
+    text = path.read_text()
+    locked = _locked(text)
+    wanted = fv.pins(" ".join(fv.environment_requirements(fid)))
+    stale = {name: (version, locked.get(name)) for name, version in wanted.items() if locked.get(name) != version}
+    assert not stale, f"{path.name} is stale (pin, locked): {stale}; run framework_versions.py lock {fid}"
+    entries = [i for i, line in enumerate(text.splitlines()) if ENTRY.match(line)]
+    lines = text.splitlines()
+    assert all(i + 1 < len(lines) and "--hash=sha256:" in lines[i + 1] for i in entries), "every entry needs hashes"
+
+
+def test_the_image_and_the_makefile_install_framework_environments_only_from_their_locks():
+    dockerfile = re.sub(r"\s*\\\n\s*", " ", (fv.ROOT / "infra" / "Dockerfile.api").read_text())  # one line per RUN
+    makefile = (fv.ROOT / "Makefile").read_text()
+    assert "uv pip install" not in dockerfile and "uv pip install" not in makefile
+    for fid in fv.ENVIRONMENTS:
+        sync = f"uv pip sync --require-hashes --python .frameworks/{fid}/bin/python framework-locks/{fid}.txt"
+        assert sync in dockerfile, f"Dockerfile.api must install {fid} with: {sync}"
+    assert "framework-locks/$(FW).txt" in makefile and "framework-locks/crewai.txt" in makefile
+    assert "--python 3.13 .frameworks/crewai" in dockerfile and fv.ENVIRONMENTS["crewai"] == "3.13"
+
+
+def test_bump_leaves_the_locks_alone(tmp_path):
+    """A lock's hashes belong to its versions: `bump` must not rewrite a pin in it (`lock` regenerates it)."""
+    locks = tmp_path / "framework-locks"
+    locks.mkdir()
+    (locks / "crewai.txt").write_text("crewai==1.15.33 \\\n    --hash=sha256:00\n")
+    assert fv.bump("crewai", "1.15.33", "1.15.39", root=tmp_path) == []

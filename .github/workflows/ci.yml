@@ -118,8 +118,8 @@ jobs:
     defaults: { run: { working-directory: apps/web } }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115  # v6.1.1
-        with: { version: 10 }
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115  # v6.1.1 (pnpm's version: package.json packageManager)
+        with: { package_json_file: apps/web/package.json }
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
         with: { node-version: 22, cache: pnpm, cache-dependency-path: apps/web/pnpm-lock.yaml }
       - run: pnpm install --frozen-lockfile
@@ -136,23 +136,17 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
-        with:  # downloads cached across runs, keyed on the lock and the framework pins in the Makefile
+        with:  # downloads cached across runs, keyed on the API lock and the framework environments' locks
           enable-cache: true
           cache-dependency-glob: |
             apps/api/uv.lock
-            Makefile
-      - name: Python (pip-audit)
-        working-directory: apps/api
-        run: |
-          uv export --frozen --no-dev --no-emit-project --no-hashes -o "$RUNNER_TEMP/requirements.txt"
-          uvx pip-audit==2.10.1 -r "$RUNNER_TEMP/requirements.txt" --disable-pip --no-deps
-      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115  # v6.1.1
-        with: { version: 10 }
+            apps/api/framework-locks/*.txt
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115  # v6.1.1 (pnpm's version: package.json packageManager)
+        with: { package_json_file: apps/web/package.json }
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
         with: { node-version: 22 }
-      - name: JavaScript (pnpm audit)
-        working-directory: apps/web
-        run: pnpm audit --prod --audit-level high
+      - name: The API, every framework environment, Mastra and the web app (pip-audit, npm and pnpm audit)
+        run: scripts/audit-deps.sh
 
   images:
     # M8-T1/T2: build both images, start the production compose stack and check it answers; render the Helm chart
@@ -178,6 +172,10 @@ jobs:
         with:
           context: apps/api
           file: infra/Dockerfile.api
+          build-args: |  # the Docker app's image, so the scan sees every framework environment and Mastra
+            FRAMEWORKS=all
+            WITH_MASTRA=true
+            GIT_SHA=${{ github.sha }}
           load: true
           tags: agentcanvas-api:ci
           cache-from: type=gha,scope=api
@@ -187,6 +185,7 @@ jobs:
         with:
           context: .
           file: infra/Dockerfile.web
+          build-args: GIT_SHA=${{ github.sha }}
           load: true
           tags: agentcanvas-web:ci
           cache-from: type=gha,scope=web
@@ -202,6 +201,17 @@ jobs:
               "$TRIVY_IMAGE" image --quiet --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed \
               --ignorefile /.trivyignore --exit-code 1 "$image"
           done
+      - name: A bill of materials for each image (CycloneDX)
+        env:
+          TRIVY_IMAGE: aquasec/trivy:0.58.1@sha256:ab70a02200597efa04748f210f793936eb647cbcdb0ea69cc30b226d6f5a22c7
+        run: |
+          mkdir -p sbom
+          for image in agentcanvas-api agentcanvas-web; do
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock "$TRIVY_IMAGE" image --quiet \
+              --format cyclonedx "$image:ci" > "sbom/$image.cdx.json"
+          done
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with: { name: sbom, path: sbom/ }
       - name: Start the production compose stack
         run: docker compose -f infra/compose.prod.yml up -d --wait --wait-timeout 180
       - name: Check it answers through nginx
@@ -219,6 +229,7 @@ jobs:
           test -z "$(curl -fsSI http://localhost:8080/s/sh_ci | grep -i x-frame-options)"
           curl -fsS http://localhost:8080/s/sh_ci | grep -qi "<!doctype html>"
           curl -fsSI http://localhost:8080/widget.js | grep -qi "content-type: application/javascript"
+          curl -fsS http://localhost:8080/third-party-licenses.txt | grep -q '^## react - '
           curl -fsS http://localhost:8080/api/v1/auth/config | grep -q '"mode":"oidc"'
           test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/api/v1/projects)" = 401
           docker compose -f infra/compose.prod.yml exec -T api id -u | grep -qx 10001
@@ -297,7 +308,7 @@ jobs:
         run: |
           for d in "$EXPORTS"/local/*/*; do [ -f "$d/Makefile" ] || continue; (cd "$d" && make -s test) || exit 1; done  # S28: make install sets up parts
           for d in "$EXPORTS"/openai_agents/*/* "$EXPORTS"/crewai/*/* "$EXPORTS"/google_adk/*/* "$EXPORTS"/pydantic_ai/*/* "$EXPORTS"/agno/*/* "$EXPORTS"/microsoft_agent_framework/*/* "$EXPORTS"/strands/*/* "$EXPORTS"/llamaindex/*/*; do (cd "$d" && uv sync -q && uv run pytest -q) || exit 1; done
-          for d in "$EXPORTS"/mastra/*/*; do (cd "$d" && npm install -s --no-audit --no-fund && npm test) || exit 1; done  # S36: TypeScript
+          for d in "$EXPORTS"/mastra/*/*; do (cd "$d" && npm ci -s --no-audit --no-fund && npm test) || exit 1; done  # S36: TypeScript
       - name: Docker Compose, for real (support triage; DEMO_MODE, no model keys)
         working-directory: exports/local/ticket_triage/support-triage
         run: |
@@ -342,8 +353,8 @@ jobs:
           cache-dependency-glob: |
             apps/api/uv.lock
             Makefile
-      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115  # v6.1.1
-        with: { version: 10 }
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115  # v6.1.1 (pnpm's version: package.json packageManager)
+        with: { package_json_file: apps/web/package.json }
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
         with: { node-version: 22, cache: pnpm, cache-dependency-path: apps/web/pnpm-lock.yaml }
       - run: cd apps/api && uv sync --frozen

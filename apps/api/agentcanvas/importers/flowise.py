@@ -18,9 +18,11 @@ from agentcanvas.importers import (
     CHAT_INPUT,
     Builder,
     ImportError_,
+    Text,
     brace_template,
     compare,
     model_id,
+    number,
     obj,
     position,
     route_name,
@@ -183,7 +185,7 @@ def _prompt(b: Builder, n: dict[str, Any], chat: str) -> str:
         if m and m.group(1) in b.steps and b.steps[m.group(1)].type == "core.llm":
             return "{{ state." + b.steps[m.group(1)].config["output"] + " }}"
         if given and "{{" not in given:
-            return given
+            return Text(given)
         return "{{ state." + b.channel(name, io="in") + " }}"
 
     if str(n["data"].get("name")) == "chatPromptTemplate":
@@ -191,20 +193,17 @@ def _prompt(b: Builder, n: dict[str, Any], chat: str) -> str:
         text = "\n\n".join(p for p in parts if p.strip())
     else:
         text = str(inputs.get("template") or "")
-    return brace_template(text, var) or chat
+    return brace_template(text, var, b) or chat
 
 
 def _number(v: Any) -> float | None:
-    try:
-        return float(v) if v not in (None, "") else None
-    except (TypeError, ValueError):
-        return None
+    return number(v) if v not in (None, "") else None
 
 
 def _int(v: Any) -> int | None:
     try:
         return int(v) if v not in (None, "") else None
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):  # int(inf) overflows
         return None
 
 

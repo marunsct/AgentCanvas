@@ -77,9 +77,10 @@ def block_types(doc: Any) -> set[str]:
     return out
 
 
-def runs_in(edition: str, doc: dict[str, Any]) -> bool:
-    """A template the edition can run: the hosted service refuses blocks that execute on the host (E041)."""
-    if edition != "hosted":
+def runs_in(settings: Settings, doc: dict[str, Any]) -> bool:
+    """A template the server can run: the hosted service, and a server that keeps workspace code in a sandbox, refuse
+    blocks that execute workspace code on the host (E041)."""
+    if settings.edition != "hosted" and not settings.isolates_workspace_code:
         return True
     from agentcanvas.registry import default_registry
 
@@ -138,6 +139,7 @@ class WorkflowService:
         settings = self._org.get(project_id or "", self.settings)
         return validate(
             wf, registry, edition=settings.edition, allow_local_mcp=settings.allow_local_mcp,
+            isolated=settings.isolates_workspace_code,
             policies=await self.policies(project_id) if project_id else None, environment=environment,
         )  # fmt: skip
 

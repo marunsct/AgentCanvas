@@ -3,7 +3,9 @@ helm is installed) and the compose files read as YAML. Static checks only: nothi
 
 from __future__ import annotations
 
+import json
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -269,6 +271,13 @@ def test_the_alerts_watch_series_the_api_exports_and_link_to_runbooks_that_exist
         if link := rule["annotations"].get("runbook"):
             assert link.split("#", 1)[1] in slugs, (rule["alert"], link)
     assert "| API pods crash-loop at startup" in guide and "JWKS outage" in guide
+    exported = set(re.findall(r"^# TYPE (\w+) ", observability.generate_latest().decode(), re.M))
+    for rule in rules:  # a renamed metric would leave an alert that never fires
+        for name in re.findall(r"\b(agentcanvas_\w+)", rule["expr"]):
+            base = re.sub(r"_(total|bucket|count|sum)$", "", name)
+            assert base in exported or name in exported, (rule["alert"], name)
+    jobs = " ".join(r["expr"] for r in rules if r["alert"].startswith("AgentCanvasBackgroundJob"))
+    assert "agentcanvas_job_failures_total" in jobs and "agentcanvas_job_last_success_timestamp_seconds" in jobs
 
 
 def test_postgres_accepts_every_connection_the_default_api_replicas_may_open():
@@ -318,6 +327,28 @@ printf 'OK=%s|SKIP=%s|BAD=%s' "${OK[*]}" "${SKIP[*]}" "${BAD[*]}"
     out = done.stdout.rsplit("\n", 1)[-1]
     assert out == "OK=whole|SKIP=part (passed in part: charts not linted)|BAD=broken", done.stdout + done.stderr
     assert 'partial "SQLite only, no Postgres"' in script and script.count('partial "') >= 4
+
+
+@pytest.mark.skipif(shutil.which("bash") is None, reason="no bash")
+def test_local_ci_fails_a_stage_when_any_of_its_commands_fails_not_only_the_last():
+    """bash ignores `set -e` inside an `if` condition: a stage of two commands used to pass when the first failed
+    (pip-audit's findings, `helm lint --strict`), because only the last one's status counted."""
+    script = (ROOT / "scripts" / "ci-local.sh").read_text()
+    head = script[script.index("declare -a OK") : script.index("\nskip()")]
+    probe = (
+        head
+        + """
+first_fails() { ( false ); ( true ); }
+func_fails() { f() { false; echo after; true; }; f; }
+fine() { ( true ); ( true ); }
+stage first first_fails; stage func func_fails; stage fine fine
+printf 'OK=%s|BAD=%s' "${OK[*]}" "${BAD[*]}"
+"""
+    )
+    done = subprocess.run(["bash", "-c", probe], capture_output=True, text=True, timeout=30, check=False)
+    out = done.stdout.rsplit("\n", 1)[-1]
+    assert out == "OK=fine|BAD=first func", done.stdout + done.stderr
+    assert "after" not in done.stdout  # the stage stops at its first failure
 
 
 def test_ci_runs_actions_by_commit_and_the_docs_build_with_pinned_versions():
@@ -383,3 +414,174 @@ def test_the_reference_schema_names_the_folder_the_migrations_are_in():
     for path in ["infra/schema.sql", "scripts/export_schema_sql.sh"]:
         (folder,) = re.findall(r"Alembic migrations \((apps/api/[\w/]+)\)", (ROOT / path).read_text())
         assert (ROOT / folder).is_dir() and any((ROOT / folder).glob("*.py")), (path, folder)
+
+
+def test_the_audit_covers_every_dependency_tree_the_images_ship_and_the_scan_sees_them():
+    """The audit read only uv.lock and the web app, and the scanned API image was built without FRAMEWORKS or Mastra,
+    so the framework environments and the Mastra npm tree the Docker app ships were never checked by either gate."""
+    audit = (ROOT / "scripts" / "audit-deps.sh").read_text()
+    assert "apps/api/framework-locks/*.txt" in audit and "--require-hashes" in audit
+    assert "adapters/mastra && npm audit --omit=dev --audit-level moderate" in audit
+    assert "pnpm audit --prod --audit-level moderate" in audit  # fast-uri's moderate advisories passed at high
+    assert "scripts/audit-deps.sh" in (ROOT / "scripts" / "ci-local.sh").read_text()
+    assert "scripts/audit-deps.sh" in (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    images = re.sub(r"\\\n\s*", "", (ROOT / "scripts" / "ci-images.sh").read_text())  # one line per command
+    build = next(line for line in images.splitlines() if "Dockerfile.api" in line and "docker build" in line)
+    assert "--build-arg FRAMEWORKS=all" in build and "--build-arg WITH_MASTRA=true" in build
+
+
+def test_the_web_image_installs_with_the_web_apps_pnpm_settings():
+    """pnpm-workspace.yaml holds the web app's overrides (fast-uri past its advisories): an image that installed without
+    it would fail the frozen install, or with a looser lock ship the vulnerable release."""
+    copy = next(
+        line for line in (ROOT / "infra" / "Dockerfile.web").read_text().splitlines() if "pnpm-lock.yaml" in line
+    )
+    assert "apps/web/pnpm-workspace.yaml" in copy
+    settings = yaml.safe_load((ROOT / "apps" / "web" / "pnpm-workspace.yaml").read_text())
+    assert settings["overrides"]["fast-uri@>=3.0.0 <3.1.9"] == "3.1.9"
+
+
+def test_the_web_image_ci_and_developers_run_the_pnpm_package_json_names():
+    """The web image took whatever pnpm 10.x was newest on the day of the build (`corepack prepare pnpm@10`), CI took
+    `version: 10`, and nothing checked what was downloaded: the same commit could install differently a week later."""
+    manager = json.loads((ROOT / "apps" / "web" / "package.json").read_text()).get("packageManager", "")
+    assert re.fullmatch(r"pnpm@\d+\.\d+\.\d+\+sha512\.[0-9a-f]{128}", manager), manager
+    web = (ROOT / "infra" / "Dockerfile.web").read_text()
+    assert "corepack install" in web and "pnpm@" not in web and "PNPM_VERSION" not in web
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    assert "version: 10" not in workflow and workflow.count("package_json_file: apps/web/package.json") == 3
+
+
+def test_dependency_updates_wait_for_a_new_release_to_age_before_taking_it():
+    """A hijacked release is usually found and pulled within days. Without a cooldown, that week's Dependabot pull
+    request could carry it, and local CI cannot know a release is malicious before an advisory exists. Security
+    updates are not delayed by a cooldown."""
+    updates = yaml.safe_load((ROOT / ".github" / "dependabot.yml").read_text())["updates"]
+    late = [
+        u["directory" if "directory" in u else "directories"]
+        for u in updates
+        if u.get("cooldown", {}).get("default-days", 0) < 7
+    ]
+    assert not late, f"no 7-day cooldown: {late}"
+    pnpm = yaml.safe_load((ROOT / "apps" / "web" / "pnpm-workspace.yaml").read_text())
+    assert pnpm.get("minimumReleaseAge", 0) >= 7 * 24 * 60  # minutes; resolving anew locally (pnpm add, pnpm update)
+
+
+@needs_helm
+def test_every_pod_runs_without_a_service_account_token_and_on_a_read_only_root():
+    """The API, web and migrate pods mounted a Kubernetes API token and could write anywhere in the image, while
+    compose prod ran the API read-only and the chart's sandbox and egress pods already had both: a code-execution
+    bug in the API (it parses imports, PDFs and OCR input) could plant files in the image or call the cluster's API."""
+    docs = render()
+    pods = [(d["metadata"]["name"], d["spec"]["template"]["spec"]) for d in docs if d["kind"] in ("Deployment", "Job")]
+    assert {name.rsplit("-", 1)[-1] for name, _ in pods} >= {"api", "web", "sandbox", "egress"}
+    for name, spec in pods:
+        assert spec.get("automountServiceAccountToken") is False, name
+        assert spec["securityContext"]["seccompProfile"] == {"type": "RuntimeDefault"}, name
+        for c in spec["containers"]:
+            security = c["securityContext"]
+            assert security.get("readOnlyRootFilesystem") is True, f"{name}/{c['name']}"
+            assert security["capabilities"]["drop"] == ["ALL"] and security["allowPrivilegeEscalation"] is False
+    mounts = {m["mountPath"]: m["name"] for m in pod_spec(docs, "-api")["containers"][0]["volumeMounts"]}
+    assert {"/tmp", "/home/app"} <= set(mounts)  # what compose prod gives it as tmpfs
+    assert {"/tmp", "/etc/nginx/conf.d"} <= {
+        m["mountPath"] for m in pod_spec(docs, "-web")["containers"][0]["volumeMounts"]
+    }
+    # no recursive chown of every workspace's git objects on each API pod start
+    assert pod_spec(docs, "-api")["securityContext"]["fsGroupChangePolicy"] == "OnRootMismatch"
+    off = render("api.readOnlyRootFilesystem=false")
+    assert pod_spec(off, "-api")["containers"][0]["securityContext"]["readOnlyRootFilesystem"] is False
+
+
+def test_the_web_bundle_ships_its_licence_notices_and_each_image_gets_an_sbom():
+    """The minified bundle dropped every licence comment, so React, xyflow and CodeMirror (MIT) and elkjs (EPL-2.0)
+    shipped without the notices their licences require, and no image had a bill of materials for a customer's review."""
+    vite = (ROOT / "apps" / "web" / "vite.config.ts").read_text()
+    assert 'license: { fileName: "third-party-licenses.txt" }' in vite
+    images = (ROOT / "scripts" / "ci-images.sh").read_text()
+    assert "/third-party-licenses.txt" in images  # probed on the running web image
+    assert "--format cyclonedx" in images and ".cdx.json" in images
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    assert "--format cyclonedx" in workflow and "/third-party-licenses.txt" in workflow
+
+
+def test_the_gates_run_the_python_the_api_image_ships():
+    """With no .python-version, `uv sync` and `uv run` (and so the suite, ruff and pyright, locally and in CI) used
+    uv's default Python, 3.13, while the image runs 3.14: a change could pass every gate and fail only in the image."""
+    image = re.search(r"^FROM python:(\d+\.\d+)-slim", (ROOT / "infra" / "Dockerfile.api").read_text(), re.M)
+    pinned = ROOT / "apps" / "api" / ".python-version"
+    assert image and pinned.is_file() and pinned.read_text().strip() == image.group(1)
+
+
+def test_the_pooler_runbook_fits_the_driver_and_the_row_level_security_the_api_uses():
+    """The runbook advised asyncpg settings (the API uses psycopg) and said transaction pooling just works, while
+    PgBouncer refuses the startup option that lets background work see every organisation."""
+    row = next(
+        line
+        for line in (ROOT / "docs" / "user-guide" / "operations.md").read_text().splitlines()
+        if line.startswith("| DB connection exhaustion")
+    )
+    assert "asyncpg" not in row and "statement_cache_size" not in row
+    for needed in ("max_prepared_statements", "ignore_startup_parameters = options", "agentcanvas.all_tenants"):
+        assert needed in row, needed
+    assert "AGENTCANVAS_PERSISTENCE_URL" in row  # its startup holds a session lock, which transaction pooling breaks
+
+
+def test_the_documented_production_builds_include_every_framework_like_the_docker_app():
+    """The Docker app builds with every framework; the production commands built without the arguments, so the image
+    held only LangGraph and the OpenAI Agents SDK and CrewAI, ADK, Mastra... workflows failed at run time."""
+    local = yaml.safe_load((ROOT / "infra" / "compose.local.yml").read_text())["services"]["api"]["build"]["args"]
+    assert local["FRAMEWORKS"] == "${FRAMEWORKS:-all}" and local["WITH_MASTRA"] == "${WITH_MASTRA:-true}"
+    for path in ["docs/user-guide/deploy.md", "infra/compose.prod.yml"]:
+        builds = [
+            line for line in (ROOT / path).read_text().splitlines() if "docker build -f infra/Dockerfile.api" in line
+        ]
+        assert builds, path
+        for line in builds:
+            assert "--build-arg FRAMEWORKS=all" in line and "--build-arg WITH_MASTRA=true" in line, (path, line)
+
+
+def test_the_grace_period_covers_the_stream_wait_the_drain_and_the_work_after_it():
+    """api/shutdown.py: the pod must not be killed before what the drain left is saved (scores, index, traces)."""
+    from agentcanvas.api.shutdown import AFTER_DRAIN_S, PRESTOP_S, STREAM_WAIT_S
+    from agentcanvas.settings import Settings
+
+    dockerfile = (ROOT / "infra" / "Dockerfile.api").read_text()
+    assert f'"--timeout-graceful-shutdown", "{STREAM_WAIT_S}"' in dockerfile
+    template = (CHART / "templates" / "api.yaml").read_text()
+    assert f'command: ["sleep", "{PRESTOP_S}"]' in template
+    drain = Settings.model_fields["drain_grace_s"].default
+    needed = PRESTOP_S + max(STREAM_WAIT_S, drain) + AFTER_DRAIN_S + 15  # room for a slow database or exporter
+    values = yaml.safe_load((CHART / "values.yaml").read_text())
+    assert values["api"]["terminationGracePeriodSeconds"] >= needed
+    compose = yaml.safe_load((ROOT / "infra" / "compose.prod.yml").read_text())
+    assert int(compose["services"]["api"]["stop_grace_period"].rstrip("s")) >= needed
+
+
+def test_the_version_is_the_same_everywhere_and_the_image_carries_its_commit():
+    """One release number: the package (pyproject.toml, what the API reports), the web app, the Helm chart's appVersion
+    and the published API description. The API image records the commit it was built from (GIT_SHA build argument)."""
+    import json
+    import tomllib
+
+    version = tomllib.loads((ROOT / "apps" / "api" / "pyproject.toml").read_text())["project"]["version"]
+    web = json.loads((ROOT / "apps" / "web" / "package.json").read_text())["version"]
+    chart = yaml.safe_load((ROOT / "infra" / "helm" / "agentcanvas" / "Chart.yaml").read_text())["appVersion"]
+    spec = json.loads((ROOT / "packages" / "ir-schema" / "openapi.json").read_text())["info"]["version"]
+    assert web == chart == spec == version
+    for image in ("api", "web"):
+        runtime = (ROOT / "infra" / f"Dockerfile.{image}").read_text().split("AS runtime", 1)[1]
+        assert 'ARG GIT_SHA=""' in runtime and 'org.opencontainers.image.revision="${GIT_SHA}"' in runtime
+        assert f'ARG VERSION="{version}"' in runtime and 'org.opencontainers.image.version="${VERSION}"' in runtime
+    assert "AGENTCANVAS_GIT_SHA=${GIT_SHA}" in (ROOT / "infra" / "Dockerfile.api").read_text()  # GET /v1/version
+    assert 'GIT_SHA="${GIT_SHA}" pnpm build' in (ROOT / "infra" / "Dockerfile.web").read_text()  # Settings > About
+
+
+def test_the_migration_step_lets_a_rolled_back_api_start():
+    """compose's `migrate` service and the Helm hook Job run `python -m agentcanvas.db.migrate`, which leaves a database
+    a later release migrated alone: a bare `alembic upgrade head` fails there, and the API waits for this step."""
+    migrate = " ".join(compose("compose.prod.yml")["services"]["migrate"]["command"])
+    job = (ROOT / "infra" / "helm" / "agentcanvas" / "templates" / "migrate-job.yaml").read_text()
+    for command in (migrate, job):
+        assert "python -m agentcanvas.db.migrate && python -m agentcanvas.db.app_role" in command
+        assert "alembic upgrade head" not in command

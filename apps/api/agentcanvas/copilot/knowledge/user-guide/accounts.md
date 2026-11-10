@@ -2,10 +2,14 @@
 
 ## Signing in
 
-In production AgentCanvas signs people in through your identity provider (any OpenID Connect provider: Keycloak,
-Okta, Entra ID, Auth0, Google…). The administrator configures it once (see [Deploy and operate](deploy.md#sign-in));
+In production AgentCanvas signs people in through your identity provider: any OpenID Connect provider that issues
+signed JWT access tokens for the AgentCanvas API (Keycloak, Okta, Entra ID, Auth0, Dex…). Google's own sign-in issues
+opaque access tokens and cannot be used directly: put a broker in front (Keycloak, Auth0 or Dex with Google as its
+upstream). The administrator configures it once (see [Deploy and operate](deploy.md#sign-in));
 people then click through to their usual login page. Sessions renew silently. The top bar shows who you are and
-your role, with **Sign out** (sign in again to use a different account).
+your role, with **Sign out** (sign in again to use a different account). Signing out, switching account or switching
+organisation also clears what the app kept in that browser tab, such as the Playground conversation, so the next
+person or organisation does not see it (and it is not sent to their model).
 
 In local mode (`make dev-fake` / `make dev-api` without OIDC) there is no sign-in: you are the built-in admin
 `dev@localhost`.
@@ -55,7 +59,13 @@ curl -H "Authorization: Bearer act_…" https://<your AgentCanvas>/api/v1/projec
   stops them.
 - Only a fingerprint (SHA-256) of the token is stored. Revoke a token there and it stops working at once; admins see
   everyone's tokens in the same place and can revoke any of them.
-- A token cannot make another token: that needs a real sign-in.
+- A token cannot make another token, the organisation's SCIM token, invite or remove members, or change which groups
+  give which roles: those need a real sign-in, so a leaked token cannot leave access behind that outlives revoking
+  it.
+- An admin can cap how long tokens live (**Settings › Organisation › General › Limits and policies › Longest API
+  token lifetime**), and the operator can set a ceiling for every organisation (`AGENTCANVAS_MAX_TOKEN_DAYS`). With a
+  cap, a new token must expire within it (**Never** is not offered); tokens made before keep their expiry, so revoke
+  any that live longer.
 - Every change made with a token is in the audit log under your name, with the token's id (`personal token tok_…`);
   making and revoking tokens are recorded too.
 

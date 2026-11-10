@@ -7,8 +7,8 @@ file needs only the standard library and the framework, so an export copies it i
     python worker.py [agent.py]
 
 Host -> worker: `{"op": "ask", "id": n, "text": ..., "tools": [{"name", "description", "parameters"}], "model",
-"base_url", "api_key", "source"?}` (`source`: the agent module's code, when no file was given) and
-`{"reply": k, "value"|"error": ...}`.
+"base_url", "api_key", "source"?}` (`source`: the agent module's code, when no file was given),
+`{"reply": k, "value"|"error": ...}` and `{"op": "cancel", "id": n}` (the step was stopped: so is the ask).
 Worker -> host: `{"ready": true, "python": ...}`, then `{"id": n, "call": k, "tool": name, "args": {...}}` for each
 tool call (the host runs the tool, so it is traced, approved and recorded there) and `{"id": n, "answer": ...}` or
 `{"id": n, "error": ...}`. A typed answer travels as its JSON; the host checks it against the part's contract.
@@ -58,8 +58,12 @@ class Worker:
             self._next += 1
             n = self._next
             self._calls[n] = future
-        self.send({"id": ask_id, "call": n, "tool": tool, "args": args})
-        return await asyncio.wrap_future(future)
+        try:
+            self.send({"id": ask_id, "call": n, "tool": tool, "args": args})
+            return await asyncio.wrap_future(future)
+        finally:
+            with self._lock:
+                self._calls.pop(n, None)
 
     def reply(self, msg: dict[str, Any]) -> None:
         with self._lock:
@@ -161,16 +165,18 @@ async def main() -> None:
 
     threading.Thread(target=read, daemon=True).start()
     worker.send({"ready": True, "python": sys.version.split()[0]})
-    tasks: set[asyncio.Task[None]] = set()
+    tasks: dict[int, asyncio.Task[None]] = {}
     while (line := await lines.get()) is not None:
         msg = json.loads(line)
         if "reply" in msg:
             worker.reply(msg)
         elif msg.get("op") == "ask":
-            task = asyncio.create_task(worker.ask(msg))
-            tasks.add(task)
-            task.add_done_callback(tasks.discard)
-    for task in tasks:  # the host went away
+            ask_id = msg["id"]
+            tasks[ask_id] = asyncio.create_task(worker.ask(msg))
+            tasks[ask_id].add_done_callback(lambda _, n=ask_id: tasks.pop(n, None))
+        elif msg.get("op") == "cancel" and msg.get("id") in tasks:
+            tasks[msg["id"]].cancel()
+    for task in list(tasks.values()):  # the host went away
         task.cancel()
 
 

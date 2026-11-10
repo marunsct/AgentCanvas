@@ -25,10 +25,13 @@ kubeconform_run() {   # the Kubernetes API schemas check on rendered manifests (
 PARTIAL=$(mktemp); trap 'rm -f "$PARTIAL"' EXIT
 partial() { echo "$1" >> "$PARTIAL"; }   # a stage that passed but left a check out: it counts as skipped, not passed
 stage() {  # stage <name> <command...>: run, record, keep going so one report shows every failure
-  local name=$1; shift
+  local name=$1 rc=0; shift
   printf '\n\033[1m== %s ==\033[0m\n' "$name"
   : > "$PARTIAL"
-  if ( set -e; "$@" ); then
+  # a plain statement, never an `if`/`&&`/`||` condition: bash ignores `set -e` in those (and in everything they
+  # call), so a stage would pass whenever its last command did. Call `stage` (and `run`) only as a plain statement too.
+  ( set -e; "$@" ); rc=$?
+  if [ $rc -eq 0 ]; then
     if [ -s "$PARTIAL" ]; then SKIP+=("$name (passed in part: $(paste -sd ';' "$PARTIAL"))"); else OK+=("$name"); fi
   else BAD+=("$name"); fi
 }
@@ -38,9 +41,9 @@ s_fast() {   # lint, schema/type drift, web typecheck/tests/build: what `make ch
   make -C "$ROOT" check
 }
 s_api_envs() {   # every framework in its own environment, as the conformance kit and the export tests need
-  make -C "$ROOT" crewai
-  for fw in $FRAMEWORKS; do make -C "$ROOT" framework FW="$fw"; done
-  if need node; then make -C "$ROOT" mastra; fi
+  make -C "$ROOT" crewai || return 1
+  for fw in $FRAMEWORKS; do make -C "$ROOT" framework FW="$fw" || return 1; done
+  if need node; then make -C "$ROOT" mastra || return 1; fi
 }
 PG_NAME=ac-ci-pg
 pg_stop() { docker rm -f "$PG_NAME" >/dev/null 2>&1 || true; }
@@ -61,7 +64,7 @@ s_api() {
   local url=""
   if need docker && url=$(pg_start); then
     echo "API tests on Postgres ($url)"; export TEST_DATABASE_URL=$url AGENTCANVAS_ENV=test
-    trap pg_stop RETURN
+    trap pg_stop RETURN EXIT   # EXIT too: a failing command ends the stage's subshell without returning
   else
     echo "WARNING: no Docker, or Postgres did not start: the API tests run on SQLite only (row-level security and the Postgres dialect are not tested)"
     partial "SQLite only, no Postgres"
@@ -95,7 +98,7 @@ deploy_export() {   # deploy one export with Docker Compose on a free port, call
 }
 s_export() {   # every template exports to every target; the deploy files lint; each export passes its own tests (ci.yml `export`)
   local ex d c t rc
-  mkdir -p "$ROOT/.ci-tmp"; ex=$(mktemp -d -p "$ROOT/.ci-tmp"); trap 'rm -rf "$ex"' RETURN   # inside the repo: Docker shares it
+  mkdir -p "$ROOT/.ci-tmp"; ex=$(mktemp -d -p "$ROOT/.ci-tmp"); trap 'rm -rf "$ex"' RETURN EXIT   # inside the repo: Docker shares it
   ( cd apps/api && uv sync --frozen -q && uv run python scripts/export_templates.py "$ex" ) || return 1
   for t in "$ex"/*/*/*/deploy/*/deploy.sh; do bash -n "$t" || return 1; done
   if have_helm; then
@@ -119,7 +122,7 @@ s_export() {   # every template exports to every target; the deploy files lint; 
   # (the cloud runners had a disk for this; a laptop fills up)
   for d in "$ex"/local/*/*; do
     [ -f "$d/Makefile" ] || continue   # the framework projects are tested in their own loop below
-    ( cd "$d" && make -s test ); rc=$?; rm -rf "$d/.venv" "$d"/*/.venv
+    rc=0; ( cd "$d" && make -s test ) || rc=$?; rm -rf "$d/.venv" "$d"/*/.venv
     [ $rc -eq 0 ] || { echo "export tests failed in $d"; return 1; }
   done
   if need docker; then   # two exports deployed for real, as the workflow does (a plain service, and a mixed-framework flow)
@@ -129,12 +132,12 @@ s_export() {   # every template exports to every target; the deploy files lint; 
   else partial "no export deployed"; fi
   for d in "$ex"/openai_agents/*/* "$ex"/crewai/*/* "$ex"/google_adk/*/* "$ex"/pydantic_ai/*/* "$ex"/agno/*/* \
            "$ex"/microsoft_agent_framework/*/* "$ex"/strands/*/* "$ex"/llamaindex/*/*; do
-    ( cd "$d" && uv sync -q && uv run pytest -q ); rc=$?; rm -rf "$d/.venv"
+    rc=0; ( cd "$d" && uv sync -q && uv run pytest -q ) || rc=$?; rm -rf "$d/.venv"
     [ $rc -eq 0 ] || { echo "export tests failed in $d"; return 1; }
   done
   if need node; then
     for d in "$ex"/mastra/*/*; do
-      ( cd "$d" && npm install -s --no-audit --no-fund && npm test ); rc=$?; rm -rf "$d/node_modules"
+      rc=0; ( cd "$d" && npm install -s --no-audit --no-fund && npm test ) || rc=$?; rm -rf "$d/node_modules"
       [ $rc -eq 0 ] || { echo "export tests failed in $d"; return 1; }
     done
   else partial "Mastra exports not tested (node missing)"; fi
@@ -142,7 +145,7 @@ s_export() {   # every template exports to every target; the deploy files lint; 
 s_mastra_types() {   # the Mastra runtime is TypeScript that Node runs with its types stripped: check them with tsc, strictly
   local d tsc="$ROOT/apps/web/node_modules/.bin/tsc" src="$ROOT/apps/api/agentcanvas/adapters/mastra"
   [ -x "$tsc" ] || { echo "mastra-types: run pnpm install in apps/web first (tsc lives there)"; return 1; }
-  mkdir -p "$ROOT/.ci-tmp"; d=$(mktemp -d -p "$ROOT/.ci-tmp"); trap 'rm -rf "$d"' RETURN
+  mkdir -p "$ROOT/.ci-tmp"; d=$(mktemp -d -p "$ROOT/.ci-tmp"); trap 'rm -rf "$d"' RETURN EXIT
   cp "$src"/package.json "$src"/package-lock.json "$src"/runtime.ts "$src"/flow.ts "$src"/worker.ts "$d"/
   cat > "$d/tsconfig.json" <<'JSON'
 { "compilerOptions": { "target": "ES2023", "module": "NodeNext", "moduleResolution": "NodeNext", "strict": true,
@@ -153,13 +156,9 @@ JSON
       && "$tsc" -p . )
 }
 s_docs() { uvx --from mkdocs==1.6.1 --with mkdocs-material==9.8.1 mkdocs build --strict -d "$(mktemp -d)"; }  # pins as ci.yml
-s_audit() {
-  ( cd apps/api && uv export --frozen --no-dev --no-emit-project --no-hashes -o "${TMPDIR:-/tmp}/ac-req.txt" \
-      && uvx pip-audit==2.10.1 -r "${TMPDIR:-/tmp}/ac-req.txt" --disable-pip --no-deps )
-  ( cd apps/web && pnpm audit --prod --audit-level high )
-}
+s_audit() { scripts/audit-deps.sh; }   # the API, every framework environment, Mastra and the web app
 s_helm() {
-  helm_run lint infra/helm/agentcanvas -f infra/helm/agentcanvas/ci/test-values.yaml --strict
+  helm_run lint infra/helm/agentcanvas -f infra/helm/agentcanvas/ci/test-values.yaml --strict || return 1
   helm_run template agentcanvas infra/helm/agentcanvas -f infra/helm/agentcanvas/ci/test-values.yaml | kubeconform_run
 }
 s_images() {   # build and scan both images, probe the production and local compose stacks (own projects and ports)
@@ -172,13 +171,13 @@ run() {
     fast) stage fast s_fast ;;
     api-envs) stage api-envs s_api_envs ;;
     api) stage api s_api ;;
-    mastra-types) need node && stage mastra-types s_mastra_types || skip mastra-types "node missing" ;;
-    docs) need uvx && stage docs s_docs || skip docs "uvx missing" ;;
-    audit) need uvx && stage audit s_audit || skip audit "uvx missing" ;;
-    helm) have_helm && stage helm s_helm || skip helm "helm and docker missing" ;;
+    mastra-types) if need node; then stage mastra-types s_mastra_types; else skip mastra-types "node missing"; fi ;;
+    docs) if need uvx; then stage docs s_docs; else skip docs "uvx missing"; fi ;;
+    audit) if need uvx && need npm; then stage audit s_audit; else skip audit "uvx or npm missing"; fi ;;
+    helm) if have_helm; then stage helm s_helm; else skip helm "helm and docker missing"; fi ;;
     frameworks) stage frameworks s_frameworks ;;
     export) stage export s_export ;;
-    images) need docker && stage images s_images || skip images "docker missing" ;;
+    images) if need docker; then stage images s_images; else skip images "docker missing"; fi ;;
     e2e) stage e2e s_e2e ;;
     default) for s in fast docs audit helm; do run "$s"; done ;;
     full) for s in api-envs api mastra-types fast docs audit helm frameworks export images e2e; do run "$s"; done ;;

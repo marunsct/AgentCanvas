@@ -8,13 +8,13 @@ setup:      ## install Python and web dependencies
 	cd apps/api && uv sync
 	cd apps/web && pnpm install
 
-crewai:     ## CrewAI flows (S27): CrewAI in its own Python environment, apps/api/.frameworks/crewai
-	cd apps/api && uv venv --allow-existing --python 3.13 .frameworks/crewai && uv pip install --python .frameworks/crewai/bin/python crewai==1.15.39
+crewai:     ## CrewAI flows (S27): CrewAI in its own Python environment, apps/api/.frameworks/crewai, from its lock as in the image
+	cd apps/api && uv venv --allow-existing --python 3.13 .frameworks/crewai \
+	  && uv pip sync --require-hashes --python .frameworks/crewai/bin/python framework-locks/crewai.txt
 
 framework:  ## mixed flows (S28), ADK (S29), Pydantic AI and Agno (S32), Agent Framework (S33), Strands and LlamaIndex (S35) workflows: a framework in its own environment, e.g. make framework FW=agno
-	cd apps/api && uv venv --allow-existing .frameworks/$(FW) && uv pip install --python .frameworks/$(FW)/bin/python \
-	  $$(uv run python -c "from agentcanvas.designs import AGENT_FRAMEWORKS as A; print(' '.join(A['$(FW)'].packages))") \
-	  cel-python==0.5.0 jinja2==3.1.6 jsonschema==4.26.0
+	cd apps/api && uv venv --allow-existing --python $(if $(filter crewai,$(FW)),3.13,3.14) .frameworks/$(FW) \
+	  && uv pip sync --require-hashes --python .frameworks/$(FW)/bin/python framework-locks/$(FW).txt
 
 mastra:     ## Mastra workflows (S36): Mastra and its flow runtime from npm, as pinned by package-lock.json, in apps/api/.frameworks/mastra (needs Node.js 22.18+)
 	cd apps/api && mkdir -p .frameworks/mastra && cp agentcanvas/adapters/mastra/package.json agentcanvas/adapters/mastra/package-lock.json .frameworks/mastra/ \
@@ -34,7 +34,7 @@ dev-web:    ## web app on http://localhost:5173
 
 comma := ,
 docker-up:  ## the whole app in Docker on http://localhost:7777 (builds the images) with every framework; FRAMEWORKS=none (or ids) for fewer
-	FRAMEWORKS="$(or $(FRAMEWORKS),all)" WITH_MASTRA=$(if $(filter all mastra,$(subst $(comma), ,$(or $(FRAMEWORKS),all))),true,false) \
+	GIT_SHA="$$(git rev-parse HEAD 2>/dev/null)" FRAMEWORKS="$(or $(FRAMEWORKS),all)" WITH_MASTRA=$(if $(filter all mastra,$(subst $(comma), ,$(or $(FRAMEWORKS),all))),true,false) \
 	  docker compose -f infra/compose.local.yml $(if $(wildcard infra/.env.local),--env-file infra/.env.local) up -d --build --wait
 	@echo "AgentCanvas is running on http://localhost:$${WEB_PORT:-7777}"
 
@@ -66,6 +66,7 @@ framework-versions: ## which agent framework pins are behind their latest releas
 
 framework-bump: ## move one framework pin everywhere it is written: make framework-bump PKG=crewai VERSION=1.15.39
 	cd apps/api && uv run python scripts/framework_versions.py bump "$(PKG)" "$(VERSION)"
+	cd apps/api && uv run python scripts/framework_versions.py lock
 	cd apps/api && uv run pytest -q -p no:cacheprovider tests/test_framework_pins.py tests/test_framework_versions.py
 
 screenshots: ## retake the pictures in docs/user-guide/img (fake-model server, made-up data)
@@ -85,11 +86,15 @@ schema:     ## export IR JSON Schema + node manifests to packages/ir-schema
 migrate:    ## apply database migrations (DATABASE_URL)
 	cd apps/api && uv run alembic upgrade head
 
+# what `make schema` and `pnpm gen` write from a source (tests/test_generated_copies.py compares two of them too)
+GENERATED := packages/ir-schema apps/web/src/api/generated.ts apps/web/src/ir/generated.ts \
+  apps/web/src/help/diagnostics.generated.json apps/api/agentcanvas/copilot/knowledge/user-guide
 check:      ## every CI gate except e2e and the docs build (lint, formats, types, contracts, schema/type drift, tests, build)
 	$(MAKE) lint
 	$(MAKE) schema
 	cd apps/web && pnpm gen
-	git diff --exit-code -- packages/ir-schema apps/web/src/api/generated.ts apps/web/src/ir/generated.ts
+	git diff --exit-code -- $(GENERATED)
+	@test -z "$$(git status --porcelain -- $(GENERATED))" || { git status --short -- $(GENERATED); echo "generated but not committed"; exit 1; }
 	$(MAKE) test
 	cd apps/web && pnpm build
 

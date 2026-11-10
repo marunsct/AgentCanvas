@@ -100,6 +100,30 @@ async def test_unverified_bootstrap_email_is_not_trusted(client):
     assert r.status_code == 403
 
 
+async def test_a_first_sign_in_without_a_verified_email_does_not_lose_the_admin_bootstrap(app, client):
+    """Entra ID sends no `email_verified`: the operator's first sign-in is refused, saying why. Once they set
+    AGENTCANVAS_OIDC_TRUST_EMAIL, the same person becomes admin; before, the user row from the first try meant the
+    bootstrap never ran again and only SQL could recover the installation."""
+    first = await client.get("/v1/me", headers=bearer(token(email_verified=None)))
+    assert first.status_code == 403 and "AGENTCANVAS_OIDC_TRUST_EMAIL" in first.json()["detail"], first.text
+    app.state.authenticator = Authenticator(
+        app.state.settings.model_copy(update={"oidc_trust_email": True}), jwks={"keys": [SIGNING_JWK]}
+    )
+    r = await client.get("/v1/me", headers=bearer(token(email_verified=None)))
+    assert r.status_code == 200 and r.json()["role"] == "admin", r.text
+
+
+async def test_a_removed_bootstrap_admin_stays_removed(client):
+    me = (await client.get("/v1/me", headers=bearer(token()))).json()
+    bob = bearer(token(sub="bob-sub", email="bob@example.com"))
+    assert (await client.put("/v1/org/members", json={"email": "bob@example.com", "role": "admin"},
+                             headers=bearer(token()))).status_code == 200  # fmt: skip
+    assert (await client.get("/v1/me", headers=bob)).status_code == 200
+    assert (await client.delete(f"/v1/org/members/{me['id']}", headers=bob)).status_code == 204
+    r = await client.get("/v1/me", headers=bearer(token()))
+    assert r.status_code == 403 and "TRUST_EMAIL" not in r.json()["detail"]  # verified: no hint
+
+
 async def test_org_header_must_name_a_membership(client):
     r = await client.get("/v1/me", headers={**bearer(token()), "X-Org-Id": "org_other"})
     assert r.status_code == 403
@@ -165,6 +189,30 @@ def test_dev_mode_is_refused_in_production():
         check_auth_settings(Settings(edition="hosted", secret_key=strong, **oidc))
     check_auth_settings(Settings(edition="hosted", secret_key=strong, script_execution="docker", **oidc))
     check_auth_settings(Settings(env="dev"))
+
+
+async def test_what_the_sign_in_guide_says_about_entra_id_and_google(settings):
+    """deploy.md#sign-in: Entra ID works with v2 access tokens for an exposed API and AGENTCANVAS_OIDC_TRUST_EMAIL;
+    a v1 token's issuer does not match the v2 one in discovery, and Google's opaque access tokens are not JWTs."""
+    from agentcanvas.errors import Unauthorized
+
+    tid = "72f988bf-86f1-41af-91ab-2d7cd011db47"
+    entra = settings.model_copy(update={"oidc_issuer": f"https://login.microsoftonline.com/{tid}/v2.0",
+                                        "oidc_audience": "api://agentcanvas", "oidc_trust_email": True})  # fmt: skip
+    auth = Authenticator(entra, jwks={"keys": [SIGNING_JWK]})
+    now = int(time.time())
+    claims = {"iss": entra.oidc_issuer, "aud": "api://agentcanvas", "sub": "AAAA-entra-sub", "iat": now,
+              "exp": now + 300, "ver": "2.0", "email": "alice@example.com",
+              "preferred_username": "alice@example.com"}  # fmt: skip
+    v2 = jwt.encode(claims, SIGNING_KEY, algorithm="RS256", headers={"kid": "k1"})  # no email_verified: Entra's way
+    who = await auth.verify(v2)
+    assert who.email == "alice@example.com" and who.email_verified is True and who.name == "alice@example.com"
+    v1 = jwt.encode({**claims, "iss": f"https://sts.windows.net/{tid}/", "ver": "1.0"}, SIGNING_KEY,
+                    algorithm="RS256", headers={"kid": "k1"})  # fmt: skip
+    with pytest.raises(Unauthorized, match=r"[Ii]ssuer"):
+        await auth.verify(v1)
+    with pytest.raises(Unauthorized):
+        await Authenticator(settings, jwks={"keys": [SIGNING_JWK]}).verify("ya29.a0AfH6SMBopaqueGoogleAccessToken")
 
 
 async def test_email_trust_override_only_covers_a_missing_claim(settings):
@@ -239,6 +287,24 @@ async def test_api_docs_are_off_in_production(settings):
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=prod), base_url="http://test") as c:
         for path in ("/docs", "/redoc", "/openapi.json"):
             assert (await c.get(path)).status_code == 404, path
+
+
+async def test_the_api_description_is_there_for_signed_in_callers_in_production(settings):
+    """/docs and /openapi.json stay off for anonymous callers in production (S15); a signed-in caller (a person or an
+    API token) reads the running server's own OpenAPI document at /v1/openapi.json, for clients and generators."""
+    from agentcanvas.api.main import create_app
+
+    prod = create_app(
+        settings.model_copy(update={"env": "prod", "secret_key": "k" * 64, "allow_unisolated_scripts": True})
+    )
+    async with prod.router.lifespan_context(prod):
+        prod.state.authenticator = Authenticator(prod.state.settings, jwks={"keys": [SIGNING_JWK]})
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=prod), base_url="http://test") as c:
+            assert (await c.get("/openapi.json")).status_code == 404
+            assert (await c.get("/v1/openapi.json")).status_code == 401
+            r = await c.get("/v1/openapi.json", headers=bearer(token()))
+            assert r.status_code == 200 and r.json() == prod.openapi()
+            assert "/v1/version" in r.json()["paths"] and "/v1/openapi.json" not in r.json()["paths"]
 
 
 async def test_cors_refuses_other_origins(client):

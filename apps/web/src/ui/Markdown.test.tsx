@@ -34,6 +34,12 @@ describe("Markdown", () => {
     expect(links.map((a) => a.getAttribute("href"))).toEqual(["/help"]); // javascript: becomes plain text
     expect(container.textContent).toContain("bad");
   });
+  it("keeps an in-app-looking link in the app: `/\\host` leaves the site, so it is plain text", () => {
+    const { container } = render(<Markdown text={"[settings](/settings) [x](/\\evil.example/login) [y](/%5Cok) [z](https://example.com/a)"} />);
+    const links = [...container.querySelectorAll("a")].map((a) => [a.getAttribute("href"), a.getAttribute("target")]);
+    expect(links).toEqual([["/settings", null], ["/%5Cok", null], ["https://example.com/a", "_blank"]]);
+    expect(container.textContent).toContain("x");
+  });
   it("gives code blocks a Copy button", () => {
     const { getByRole } = render(<Markdown text={"```json\n{}\n```"} />);
     expect(getByRole("button", { name: "Copy" })).toBeTruthy();

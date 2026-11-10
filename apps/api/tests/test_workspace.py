@@ -94,6 +94,30 @@ async def test_file_api(api_client):
     assert (await api_client.post(f"{P}/scripts", json={"name": "score"})).status_code == 409
 
 
+async def test_a_save_based_on_an_older_copy_of_a_file_is_refused(api_client):
+    """Two editors opened the same file: the second save, made from the text both started with, must not silently
+    undo the first (If-Match with the `version` the editor read)."""
+    url = f"{P}/files/tools/crm.py"
+    assert (await api_client.put(url, json={"content": "A = 1\n"})).status_code == 200
+    got = (await api_client.get(url)).json()
+    base = got["version"]
+    first = await api_client.put(url, json={"content": "A = 2\n"}, headers={"If-Match": f'"{base}"'})
+    assert first.status_code == 200, first.text
+    assert first.json()["version"] == (await api_client.get(url)).json()["version"] != base
+    second = await api_client.put(url, json={"content": "A = 3\n"}, headers={"If-Match": f'"{base}"'})
+    assert second.status_code == 409, second.text
+    assert second.json()["version"] == first.json()["version"]
+    assert (await api_client.get(url)).json()["content"] == "A = 2\n"
+    # a save from the current copy goes through; one without If-Match (a new file, the API) is unconditional
+    now = await api_client.put(url, json={"content": "A = 4\n"}, headers={"If-Match": first.json()["version"]})
+    assert now.status_code == 200, now.text
+    crlf = await api_client.put(url, json={"content": "A = 5\r\n"})  # the version is the text a read gives back
+    assert crlf.json()["version"] == (await api_client.get(url)).json()["version"]
+    # a file deleted meanwhile is a conflict too, not a quiet re-creation
+    assert (await api_client.delete(url)).status_code == 204
+    assert (await api_client.put(url, json={"content": "A = 6\n"}, headers={"If-Match": base})).status_code == 409
+
+
 def script_workflow(import_path: str = "scripts.shout:run") -> dict:
     return {
         "name": "script wf",

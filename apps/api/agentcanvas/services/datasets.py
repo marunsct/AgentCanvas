@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import defer
 
 from agentcanvas.db.models import Dataset, DatasetVersion, Run, TestCase, Thread, WorkflowRow
 from agentcanvas.errors import Conflict, InvalidInput, NotFound
@@ -44,6 +45,14 @@ class Example(BaseModel):
     )
     split: str = ""
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+def splits_of(examples: list[Example]) -> dict[str, int]:
+    """Examples per split ('' = none)."""
+    out: dict[str, int] = {}
+    for e in examples:
+        out[e.split] = out.get(e.split, 0) + 1
+    return out
 
 
 class ExamplePatch(BaseModel):
@@ -175,9 +184,12 @@ class DatasetService:
             raise NotFound(f"dataset '{ds_id}' has no version {number}")
         return v
 
-    async def versions(self, ds_id: str) -> list[DatasetVersion]:
-        q = select(DatasetVersion).where(DatasetVersion.dataset_id == ds_id).order_by(DatasetVersion.number.desc())
-        return list((await self.s.scalars(q)).all())
+    async def versions(self, ds_id: str, limit: int = 100, before: int | None = None) -> list[DatasetVersion]:
+        """Newest first, without their examples (`example_count` says how many)."""
+        q = select(DatasetVersion).options(defer(DatasetVersion.examples)).where(DatasetVersion.dataset_id == ds_id)
+        if before is not None:
+            q = q.where(DatasetVersion.number < before)
+        return list((await self.s.scalars(q.order_by(DatasetVersion.number.desc()).limit(limit))).all())
 
     async def list(self, wf_id: str) -> list[tuple[Dataset, DatasetVersion]]:
         latest = (
@@ -187,6 +199,7 @@ class DatasetService:
         )
         q = (
             select(Dataset, DatasetVersion)
+            .options(defer(DatasetVersion.examples))  # counted on the version
             .join(latest, latest.c.dataset_id == Dataset.id)
             .join(DatasetVersion, (DatasetVersion.dataset_id == Dataset.id) & (DatasetVersion.number == latest.c.n))
             .where(Dataset.workflow_id == wf_id)
@@ -200,8 +213,9 @@ class DatasetService:
         self.s.add(ds)
         await self.s.flush()
         v = DatasetVersion(
-            id=new_id("dsv"), dataset_id=ds.id, number=1, message="created", examples=[], created_by=user_id
-        )
+            id=new_id("dsv"), dataset_id=ds.id, number=1, message="created", examples=[], example_count=0, splits={},
+            created_by=user_id,
+        )  # fmt: skip
         self.s.add(v)
         await self.s.commit()
         return v
@@ -245,6 +259,8 @@ class DatasetService:
             number=latest.number + 1,
             message=message,
             examples=[e.model_dump() for e in examples],
+            example_count=len(examples),
+            splits=splits_of(examples),
             created_by=user_id,
         )
         self.s.add(v)

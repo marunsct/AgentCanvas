@@ -150,19 +150,24 @@ class OpenAIAgentsAdapter:
             yield {"type": "RUN_ERROR", "code": "error", "message": f"{type(exc).__name__}: {exc}"}
             return
         with host:
-            async for ev in rt.run(flow, host, input=spec.input, resume=resume, run_id=spec.run_id):
-                for record in usage.drain():
-                    yield {"type": "CUSTOM", "name": "ac.usage", "value": record}
-                for reply in usage.drain_replies():
-                    yield {"type": "CUSTOM", "name": "ac.model_reply", "value": reply}
-                for io in usage.drain_tool_io():
-                    yield {"type": "CUSTOM", "name": "ac.tool_io", "value": io}
-                paused = ev.pop("paused", None)
-                if paused is not None:
-                    await paused_runs.save(spec.thread_id, paused.to_json())
-                elif ev.get("type") == "RUN_FINISHED" and resume is not None:
-                    await paused_runs.store().drop(spec.thread_id)
-                yield _jsonable(ev)
+            try:
+                async for ev in rt.run(flow, host, input=spec.input, resume=resume, run_id=spec.run_id):
+                    for record in usage.records():  # one at a time: a stop keeps the rest
+                        yield {"type": "CUSTOM", "name": "ac.usage", "value": record}
+                    for reply in usage.drain_replies():
+                        yield {"type": "CUSTOM", "name": "ac.model_reply", "value": reply}
+                    for io in usage.drain_tool_io():
+                        yield {"type": "CUSTOM", "name": "ac.tool_io", "value": io}
+                    paused = ev.pop("paused", None)
+                    if paused is not None:
+                        await paused_runs.save(spec.thread_id, paused.to_json())
+                    elif ev.get("type") == "RUN_FINISHED" and resume is not None:
+                        await paused_runs.store().drop(spec.thread_id)
+                    yield _jsonable(ev)
+            finally:  # stopped, cancelled or timed out: what its model calls spent still counts (RT-4)
+                if spec.on_usage is not None:
+                    for record in usage.drain():
+                        spec.on_usage(record)
 
 
 class ServerHost:

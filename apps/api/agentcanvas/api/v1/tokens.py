@@ -1,7 +1,8 @@
 """Personal API tokens (G-13): Settings > You > API tokens, and the organisation's list for admins.
 
 A token is shown once, when it is made; afterwards only its first characters are. Making a token needs a real
-sign-in: a token cannot make another one (that would let a leaked token outlive its revocation).
+sign-in: a token cannot make another one (that would let a leaked token outlive its revocation). For the same reason a
+token cannot make the SCIM token, invite or remove members, or change the groups-to-roles table (`refuse_token`).
 """
 
 from __future__ import annotations
@@ -14,9 +15,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.audit import note
-from agentcanvas.api.deps import CurrentUser, current_user, get_session
+from agentcanvas.api.deps import CurrentUser, current_user, get_session, refuse_token
 from agentcanvas.db.models import PersonalToken
-from agentcanvas.errors import Forbidden
+from agentcanvas.errors import InvalidInput
+from agentcanvas.services import org_settings
 from agentcanvas.services.tokens import TokenService
 
 router = APIRouter(tags=["tokens"])
@@ -69,8 +71,10 @@ async def create_token(
     session: AsyncSession = Depends(get_session),
 ) -> TokenCreated:
     """Make an API token that acts as you in this organisation (`Authorization: Bearer act_…`)."""
-    if user.token_id:
-        raise Forbidden("sign in to make an API token: a token cannot make another one")
+    refuse_token(user, "make an API token")
+    cap = (await org_settings.of_org(session, request.app.state.settings, user.org_id)).max_token_days
+    if cap and (body.expires_in_days is None or body.expires_in_days > cap):
+        raise InvalidInput(f"your organisation allows API tokens of at most {cap} days: choose a shorter lifetime")
     row, value = await TokenService(session).create(
         user.org_id, user.id, name=body.name.strip() or "API token", role=body.role or user.role,
         holder_role=user.role, expires_in_days=body.expires_in_days,

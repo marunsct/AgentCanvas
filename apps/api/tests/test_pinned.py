@@ -66,3 +66,29 @@ def test_the_mcp_client_may_ask_for_redirects_and_does_not_get_them():
     """The MCP client calls its factory with `follow_redirects=True`, which the hosted factory did not accept."""
     client = pinned.public_mcp_client_factory(headers={"X": "y"}, auth=None, follow_redirects=True)
     assert client.follow_redirects is False and client.headers["X"] == "y"
+
+
+def test_the_trace_exporters_session_connects_to_public_addresses_only(monkeypatch):
+    """The OpenTelemetry exporter uses requests: its session checks each connection, a redirect's too, and connects to
+    the address it checked (no second lookup)."""
+    import requests
+    import urllib3.connection
+
+    monkeypatch.setattr(socket, "getaddrinfo", lambda host, port, *a, **k: [
+        (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("169.254.169.254" if host == "rebinding.example"
+                                                     else "93.184.215.14", port))])  # fmt: skip
+    connected: list[tuple[str, int]] = []
+
+    def create_connection(address, *a, **k):
+        connected.append(address)
+        raise OSError("stop here")
+
+    monkeypatch.setattr(urllib3.connection.connection, "create_connection", create_connection)
+    session = pinned.public_requests_session()
+    for url in ("http://rebinding.example/v1/traces", "http://127.0.0.1:9/v1/traces", "https://[::1]/v1/traces"):
+        with pytest.raises(requests.ConnectionError, match="private or internal address"):
+            session.post(url, data=b"x", timeout=2)
+    assert connected == []
+    with pytest.raises(requests.ConnectionError, match="stop here"):
+        session.post("https://collector.example.com/v1/traces", data=b"x", timeout=2)
+    assert connected == [("93.184.215.14", 443)]

@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import PlainTextResponse
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, ValidationError, model_validator
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,7 +16,7 @@ from agentcanvas import agentspec, importers
 from agentcanvas.adapters import framework_adapter
 from agentcanvas.api.deps import CurrentUser, current_user, get_session, get_settings_dep, if_match
 from agentcanvas.api.v1.workspace import _off_loop
-from agentcanvas.db.models import CostAlert, Run, Thread, WorkflowRow
+from agentcanvas.db.models import CostAlert, Run, SpendArchive, Thread, WorkflowRow
 from agentcanvas.errors import InvalidInput
 from agentcanvas.ids import new_id
 from agentcanvas.ir.commands import Command
@@ -218,7 +218,10 @@ async def duplicate_workflow(
 
 
 @router.delete("/workflows/{wf_id}", status_code=204)
-async def delete_workflow(wf_id: str, svc: WorkflowService = Depends(service)) -> Response:
+async def delete_workflow(wf_id: str, request: Request, svc: WorkflowService = Depends(service)) -> Response:
+    """Delete a workflow with its versions, deployments and conversations, the conversations' saved state too."""
+    await svc.repo.require(wf_id)
+    await request.app.state.runner.forget_conversations(svc.repo.s, Thread.workflow_id == wf_id)
     await svc.delete(wf_id)
     return Response(status_code=204)
 
@@ -302,9 +305,19 @@ async def get_spend(
                 func.coalesce(func.sum(Run.fallbacks), 0),
             )
             .join(Thread, Thread.id == Run.thread_id)
-            .where(Thread.workflow_id == wf_id, Run.started_at >= start)
+            .where(Thread.workflow_id == wf_id, Thread.updated_at >= start - timedelta(days=1))  # as workflow_spend
+            .where(Run.started_at >= start)
         )  # fmt: skip
         runs, tokens, cost, hits, fallbacks = (await session.execute(q)).one()
+        gone = select(  # what conversations deleted since spent (as workflow_spend)
+            func.coalesce(func.sum(SpendArchive.runs), 0),
+            func.coalesce(func.sum(SpendArchive.tokens_in + SpendArchive.tokens_out), 0),
+            func.coalesce(func.sum(SpendArchive.cost_usd), 0), func.coalesce(func.sum(SpendArchive.cache_hits), 0),
+            func.coalesce(func.sum(SpendArchive.fallbacks), 0),
+        ).where(SpendArchive.workflow_id == wf_id, SpendArchive.hour >= start)  # fmt: skip
+        g_runs, g_tokens, g_cost, g_hits, g_fallbacks = (await session.execute(gone)).one()
+        runs, tokens, hits, fallbacks = runs + g_runs, tokens + g_tokens, hits + g_hits, fallbacks + g_fallbacks
+        cost = float(cost) + float(g_cost)
         out[period] = SpendPeriod(
             period=period, period_start=label, spent_usd=round(float(cost), 6), limit_usd=limits[period],
             runs=int(runs), tokens=int(tokens), cache_hits=int(hits), fallbacks=int(fallbacks),
@@ -348,9 +361,11 @@ async def import_agent_spec(
     user: CurrentUser = Depends(current_user),
 ) -> AgentSpecImported:
     """A new workflow from an Open Agent Spec flow or agent."""
-    try:
-        ir, report, layout = agentspec.import_flow(body.spec, wf_id=new_id("wf"), name=body.name)
-    except agentspec.AgentSpecError as exc:
+    try:  # off the event loop, as the import route: a large or strange file must not stop the server answering
+        ir, report, layout = await asyncio.to_thread(
+            importers.import_agentspec, body.spec, wf_id=new_id("wf"), name=body.name
+        )
+    except importers.ImportError_ as exc:
         raise InvalidInput(str(exc)) from exc
     view = await svc.create_from_ir(project_id, ir, layout, user.id)
     response.headers["Location"] = f"/v1/workflows/{view.row.id}"
@@ -399,15 +414,29 @@ async def import_file(
         raise InvalidInput(str(exc)) from exc
     except RecursionError as exc:
         raise InvalidInput("the file is nested too deeply to import") from exc
-    kit = template_kit.kit_of(ir)
+    kit = template_kit.Kit()
+    if kind == "openai_agents":  # the one importer that brings code, read from the code itself; never a file's kit
+        try:
+            kit = template_kit.kit_of(ir)
+        except ValidationError as exc:
+            raise InvalidInput(f"the imported code's workspace files are not valid: {exc}") from exc
+    if isinstance(ir.get("metadata"), dict):
+        ir["metadata"].pop(template_kit.KIT, None)
+    written: list[str] = []
     if kit.files:  # code the workflow calls (an Agents SDK file's function tools): into the workspace first
         await svc.projects.require(project_id)
         ws = request.app.state.projects.workspace(project_id)
         added = await _off_loop(ws, lambda: template_kit.write_files(ws, kit, wf_id, f"import of {kind}"))
+        written = added.files_written
         report = [*report, *(f"Added {p} to the workspace." for p in added.files_written)]
         report += [f"Kept your own {p}; the imported code needs its functions." for p in added.files_kept]
-        ir["metadata"].pop(template_kit.KIT, None)
-    view = await svc.create_from_ir(project_id, ir, layout, user.id)
+    try:
+        view = await svc.create_from_ir(project_id, ir, layout, user.id)
+    except Exception:  # a refused import leaves nothing behind in the workspace either
+        if written:
+            here = request.app.state.projects.workspace(project_id)
+            await _off_loop(here, lambda: [here.delete(rel) for rel in written])
+        raise
     response.headers["Location"] = f"/v1/workflows/{view.row.id}"
     return Imported(**_out(view, response).model_dump(), format=kind, report=report)
 

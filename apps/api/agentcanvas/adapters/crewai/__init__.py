@@ -35,6 +35,8 @@ from agentcanvas.adapters.crewai import codegen
 from agentcanvas.adapters.langchain import nodes as ac
 from agentcanvas.adapters.langchain.bridge import model_bridge
 from agentcanvas.adapters.langchain.events import UsageTracker, node_index
+from agentcanvas.adapters.langchain.parts import WORKER_ENV as WORKER_ENV  # one allowlist for every worker
+from agentcanvas.adapters.langchain.parts import worker_env as worker_env
 from agentcanvas.adapters.setup import setup_hint
 from agentcanvas.errors import WorkflowHasErrors
 from agentcanvas.ir.models import Workflow
@@ -175,19 +177,24 @@ class CrewAIAdapter:
             return
         with host:
             request["models"], request["tools"] = host.models(), host.tool_specs()
-            async for ev in worker.run(spec.run_id, request, host.handle):
-                for record in usage.drain():
-                    yield {"type": "CUSTOM", "name": "ac.usage", "value": record}
-                for reply in usage.drain_replies():
-                    yield {"type": "CUSTOM", "name": "ac.model_reply", "value": reply}
-                for io in usage.drain_tool_io():
-                    yield {"type": "CUSTOM", "name": "ac.tool_io", "value": io}
-                paused = ev.pop("paused", None)
-                if paused is not None:
-                    await paused_runs.save(spec.thread_id, paused)
-                elif ev.get("type") == "RUN_FINISHED" and spec.resume is not None:
-                    await paused_runs.store().drop(spec.thread_id)
-                yield run_scoped_interrupts(ev, spec.run_id)
+            try:
+                async for ev in worker.run(spec.run_id, request, host.handle):
+                    for record in usage.records():  # one at a time: a stop keeps the rest
+                        yield {"type": "CUSTOM", "name": "ac.usage", "value": record}
+                    for reply in usage.drain_replies():
+                        yield {"type": "CUSTOM", "name": "ac.model_reply", "value": reply}
+                    for io in usage.drain_tool_io():
+                        yield {"type": "CUSTOM", "name": "ac.tool_io", "value": io}
+                    paused = ev.pop("paused", None)
+                    if paused is not None:
+                        await paused_runs.save(spec.thread_id, paused)
+                    elif ev.get("type") == "RUN_FINISHED" and spec.resume is not None:
+                        await paused_runs.store().drop(spec.thread_id)
+                    yield run_scoped_interrupts(ev, spec.run_id)
+            finally:  # stopped, cancelled or timed out: what its model calls spent still counts (RT-4)
+                if spec.on_usage is not None:
+                    for record in usage.drain():
+                        spec.on_usage(record)
 
 
 def run_scoped_interrupts(ev: dict[str, Any], run_id: str) -> dict[str, Any]:
@@ -275,21 +282,8 @@ class ServerHost:
 
 
 # ------------------------------------------------------------------ the worker ----
-# what a framework worker may see of the server's environment: models come through the model bridge with a key per
-# run, so the database URL, encryption keys, provider keys and cloud credentials stay with the server
-WORKER_ENV = {
-    "PATH", "HOME", "USER", "LANG", "LANGUAGE", "TZ", "TMPDIR", "TEMP", "TMP", "SSL_CERT_FILE", "SSL_CERT_DIR",
-    "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE", "NODE_EXTRA_CA_CERTS", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY",
-    "http_proxy", "https_proxy", "no_proxy", "UV_CACHE_DIR", "XDG_CACHE_HOME",
-}  # fmt: skip
 MAX_WORKER_LINE = 64 * 1024 * 1024  # longest message line read from a worker
 IDLE_TIMEOUT_S = 600.0  # a run whose worker says nothing for this long is ended (a hung framework call)
-
-
-def worker_env(**extra: str) -> dict[str, str]:
-    """A framework worker's environment: an allowlist of the server's (2026-10-18 review), plus `extra`."""
-    env = {k: v for k, v in os.environ.items() if k in WORKER_ENV or k.startswith("LC_")}
-    return {**env, **extra}
 
 
 _DIR = re.compile(r"^agentcanvas-[a-z_]+-(\d+)-")

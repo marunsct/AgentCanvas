@@ -13,7 +13,8 @@ Two settings decide what a connection sees:
 | not `on`                  | an organisation id | that organisation's only                                       |
 | not `on`                  | unset or empty     | none (fails closed)                                            |
 
-The API's own connections start with `agentcanvas.all_tenants=on` (a startup option, see `Database`), so jobs that
+The API's own connections start with `agentcanvas.all_tenants=on` (a startup option, see `Database`, and the API
+role's own default, see `app_role`, which survives a pooler that drops startup options), so jobs that
 work across organisations (runs handed over, retention, triggers, the public run API) and the `dev` and `oidc` modes
 behave as before. In `matura` mode a signed-in request narrows its database session to the token's organisation for
 every transaction (`scope`), and so does every other session opened while serving it or by work it started
@@ -80,6 +81,7 @@ TENANT_TABLES: dict[str, tuple[str, str | None]] = {
     "online_evaluator": ("deployment_id", "deployment"),
     "run": ("thread_id", "thread"),
     "run_search": ("workflow_id", "workflow"),
+    "spend_archive": ("workflow_id", "workflow"),
     "presence": ("workflow_id", "workflow"),
     "interrupt_task": ("thread_id", "thread"),
     "a2a_reply": ("thread_id", "thread"),
@@ -150,6 +152,22 @@ async def scope(session: AsyncSession, org_id: str) -> None:
 
     if session.in_transaction():
         await session.execute(sql, {"org": org_id})
+
+
+async def sees_no_rows(engine: Any) -> bool:
+    """True when the API's connections would find every table empty: an ordinary role whose connections do not start
+    in all-tenants mode, as when a pooler (PgBouncer) drops the startup option and the role has no default of its
+    own. Always False outside Postgres."""
+    if engine.dialect.name != "postgresql":
+        return False
+    async with engine.connect() as conn:
+        found = await conn.execute(
+            text(
+                f"SELECT current_setting('{ALL_TENANTS}', true) IS DISTINCT FROM 'on'"
+                " AND NOT (rolsuper OR rolbypassrls) FROM pg_roles WHERE rolname = current_user"
+            )
+        )
+        return bool(found.scalar())
 
 
 async def bypasses_policies(engine: Any) -> bool:

@@ -28,17 +28,36 @@ def import_paths(ctx: ValidationContext) -> Iterator[Diagnostic]:
 
 
 @rule
+def host_code(ctx: ValidationContext) -> Iterator[Diagnostic]:
+    """E041: a block that imports workspace code into the server's own process, where the database password, the
+    keys and every organisation's secrets are in reach. Only a server that runs workspace code in-process anyway
+    (the local edition, or an operator who trusts every builder) allows it."""
+    if ctx.edition != "hosted" and not ctx.isolated:
+        return
+    for el in [*ctx.wf.nodes, *ctx.wf.resources]:
+        m = ctx.manifest(el)
+        if not (m and m.hosted_forbidden):
+            continue
+        if ctx.edition == "hosted":
+            message = f"'{el.name}' ({m.type}) executes on the host and is only allowed in the local edition"
+        else:
+            message = (
+                f"'{el.name}' ({m.type}) would run workspace code inside the server, and this server runs workspace "
+                "code in a sandbox"
+            )
+        yield error(
+            "E041",
+            message,
+            node_id=el.id,
+            hint="design the agent on an AI agent block for its framework, or call your code from a Script step",
+        )
+
+
+@rule
 def hosted_edition(ctx: ValidationContext) -> Iterator[Diagnostic]:
     if ctx.edition != "hosted":
         return
     for el in [*ctx.wf.nodes, *ctx.wf.resources]:
-        m = ctx.manifest(el)
-        if m and m.hosted_forbidden:
-            yield error(
-                "E041",
-                f"'{el.name}' ({m.type}) executes on the host and is only allowed in the local edition",
-                node_id=el.id,
-            )
         if el.config.get("allow_private_network"):
             yield error(
                 "E043",

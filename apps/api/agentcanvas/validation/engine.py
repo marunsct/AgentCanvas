@@ -43,6 +43,7 @@ class ValidationContext:
     registry: Registry
     edition: Edition = "dev"
     allow_local_mcp: bool = False
+    isolated: bool = False  # workspace code stays out of the server process (`Settings.isolates_workspace_code`)
     _cache: dict = field(default_factory=dict)
 
     def manifest(self, element: Node | Resource) -> NodeManifest | None:
@@ -114,6 +115,7 @@ def validate(
     *,
     edition: Edition = "dev",
     allow_local_mcp: bool = False,
+    isolated: bool = False,
     policies: list[Policy] | None = None,
     environment: str | None = None,
 ) -> list[Diagnostic]:
@@ -122,7 +124,7 @@ def validate(
     from agentcanvas.validation import rules  # noqa: F401  (registers the rules)
     from agentcanvas.validation.policies import check_policies
 
-    ctx = ValidationContext(wf, registry or default_registry(), edition, allow_local_mcp)
+    ctx = ValidationContext(wf, registry or default_registry(), edition, allow_local_mcp, isolated)
     out: list[Diagnostic] = []
     for fn in RULES:
         try:

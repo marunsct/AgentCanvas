@@ -32,9 +32,19 @@ export function portalUrl(): string | null {
   return maturaMode() ? config.portal_url ?? null : null;
 }
 
+/** Forget what the app kept in this tab for the person signed in (the Playground conversation, canvas views, the
+ * tour), before the tab signs in as someone else or in another organisation: a same-tab redirect keeps
+ * sessionStorage. The sign-in redirect guard stays, it stops a sign-in loop; oidc-client-ts manages its own keys. */
+export function forgetSessionData(): void {
+  try {
+    for (const k of Object.keys(sessionStorage)) if (k.startsWith("agentcanvas.") && k !== LAST_REDIRECT) sessionStorage.removeItem(k);
+  } catch { /* storage blocked: nothing was kept */ }
+}
+
 /** Matura mode: sign in again to act in another organisation (the token names one). */
 export async function switchOrganisation(orgId: string): Promise<void> {
   if (!manager || !maturaMode()) return;
+  forgetSessionData();
   await manager.signinRedirect({
     state: "/",
     extraQueryParams: { ...(config.audience ? { audience: config.audience } : {}), [config.tenant_param ?? "matura_tenant"]: orgId },
@@ -101,6 +111,7 @@ export function signInAgain(): boolean {
 /** Sign out at the identity provider; providers without an end-session endpoint just forget the local session. */
 export async function signOut(): Promise<void> {
   if (!manager) return;
+  forgetSessionData();
   try {
     await manager.signoutRedirect();
   } catch {
@@ -112,6 +123,7 @@ export async function signOut(): Promise<void> {
 /** Forget this account and let the user pick another at the identity provider. */
 export async function switchAccount(): Promise<void> {
   if (!manager) return;
+  forgetSessionData();
   await manager.removeUser();
   await manager.signinRedirect({ state: "/", prompt: "select_account" });
 }

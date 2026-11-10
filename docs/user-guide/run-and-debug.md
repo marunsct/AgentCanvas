@@ -27,9 +27,19 @@ and the Run tab shows **Approval needed** with the value under review.
 ![A run waiting for approval](img/approval.png)
 
 - **Approve** or **Reject**. Approvals can also edit the value before approving.
-- Paused runs are durable: you can close the browser or restart the server and resume later.
+- Paused runs are durable: you can close the browser or restart the server and resume later. A decision nobody
+  gives within 90 days (the operator's `AGENTCANVAS_APPROVAL_EXPIRY_DAYS`) expires: the run is cancelled with
+  *the approval expired*, the item leaves the Inbox, and the conversation is then deleted with the others once the
+  organisation's retention has passed.
 - The **Inbox** (top bar) lists every pending decision across all workflows you can see, so reviewers don't need
   to open the editor. Reviewers (and above) can answer.
+- By default you may approve a run you started yourself. For a four-eyes control (payments, outbound email,
+  destructive tools), an admin turns **Approving your own runs** off under **Settings › Organisation › General ›
+  Limits and policies** (the operator can turn it off for every organisation with
+  `AGENTCANVAS_APPROVE_OWN_RUNS=false`). Then the person who started a run cannot
+  approve or answer what it asks, in the Run tab, the Inbox or through the API: another reviewer must. An answer
+  continues the request of the person who asked, so the approver of one step may approve the next one too. Runs of
+  a published deployment (API keys, share links) are answered by their callers as before.
 
 ## Breakpoints
 
@@ -44,8 +54,10 @@ click one to open it in the **Timeline**. The project's conversations of every w
 
 ## Timeline: time travel and fork
 
-The **Timeline** tab in the bottom dock lists every checkpoint of the run's thread. Select one to see the state
-at that moment, including **lineage** (which step or input last wrote each channel). Edit the state and click
+The **Timeline** tab in the bottom dock lists every checkpoint of the run's thread, numbered by step (the most recent
+200; older ones are kept but not listed). Select one to see the state at that moment, including **lineage** (which
+step or input last wrote each channel); the state is loaded when you select the checkpoint
+(`GET /v1/threads/{id}/checkpoints/{checkpoint_id}`). Edit the state and click
 **⑂ Fork from here** to re-run from that point with the change, without touching the original run. This is the
 quickest way to try "what if the classifier had said *high*?".
 

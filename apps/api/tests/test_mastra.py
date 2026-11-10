@@ -495,6 +495,12 @@ def test_export_is_a_typescript_project_of_its_own(tmp_path):
     manifest = json.loads((project / "package.json").read_text())
     assert manifest["dependencies"]["@mastra/core"] == codegen.MASTRA_VERSION
     assert manifest["scripts"]["test"] == "node --test tests/workflow.test.ts"
+    # the tested set of every package, not today's newest: `npm ci` installs exactly what the server runs
+    lock = json.loads((project / "package-lock.json").read_text())
+    assert (lock["name"], lock["version"]) == (manifest["name"], "1.2.0")
+    assert lock["packages"][""]["dependencies"] == manifest["dependencies"] == codegen.PACKAGES
+    assert lock["packages"]["node_modules/@mastra/core"]["version"] == codegen.MASTRA_VERSION
+    assert "npm ci" in (project / "README.md").read_text()
     assert (project / ".env.example").read_text() == "OPENAI_API_KEY=\n"
     for py in project.rglob("*.py"):
         compile(py.read_text(), str(py), "exec")

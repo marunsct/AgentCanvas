@@ -32,9 +32,11 @@ spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets: {{ toYaml . | nindent 8 }}
       {{- end }}
+      automountServiceAccountToken: false   # the API never calls the Kubernetes API
       securityContext:
         {{- include "agentcanvas.podSecurity" . | nindent 8 }}
         fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch   # not a recursive chown of every workspace on each start
       terminationGracePeriodSeconds: {{ .Values.api.terminationGracePeriodSeconds }}
       {{- include "agentcanvas.spread" (dict "root" . "component" "api") | nindent 6 }}
       containers:
@@ -50,6 +52,8 @@ spec:
                 name: {{ include "agentcanvas.secret" . }}
           volumeMounts:
             - { name: workspaces, mountPath: /data/workspaces }
+            - { name: tmp, mountPath: /tmp }        # exports, uploads, framework workers
+            - { name: home, mountPath: /home/app }  # caches some frameworks keep
           startupProbe:
             httpGet: { path: /healthz, port: http }
             periodSeconds: 3
@@ -69,7 +73,13 @@ spec:
             {{- toYaml .Values.api.resources | nindent 12 }}
           securityContext:
             {{- include "agentcanvas.containerSecurity" . | nindent 12 }}
+            # nothing but the volumes above is writable, as in compose prod (API_READ_ONLY); false if a framework needs more
+            readOnlyRootFilesystem: {{ .Values.api.readOnlyRootFilesystem }}
       volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 1Gi }
+        - name: home
+          emptyDir: { sizeLimit: 256Mi }
         - name: workspaces
           {{- if .Values.workspaces.persistence.enabled }}
           persistentVolumeClaim:

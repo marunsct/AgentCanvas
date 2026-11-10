@@ -66,6 +66,15 @@ async def _run(api, wf_id: str, reply: str) -> dict:
         ('{"choice": "billing", "confidence": 7}', ("billing", 1.0)),  # clipped to 0-1
         ("billing, I think", (None, None)),  # no JSON
         ('{"choice": "billing", "confidence": "very"}', ("billing", None)),
+        ('```json\n{"choice": "Billing", "confidence": 0.9}\n```', ("billing", 0.9)),  # any case: the option's name
+        ('{"choice": " TECH "}', ("tech", None)),
+        ('The ticket mentions {order 123}. {"choice": "billing", "confidence": 0.8}', ("billing", 0.8)),
+        ('```json\n{"choice": "tech"}\n``` note: {x}', ("tech", None)),  # braces before or after the JSON
+        ('{"choice": "billing"} :}', ("billing", None)),
+        ('Thinking {"step": 1}. {"choice": "tech", "confidence": 0.7}', ("tech", 0.7)),  # the object with a choice
+        ('{"choice": null, "confidence": 0.5}', (None, 0.5)),
+        ('{"choice": "tech", "confidence": "1_0"}', ("tech", None)),  # numbers as JSON writes them, as in TypeScript
+        ('{"choice": "tech", "confidence": NaN}', (None, None)),  # not JSON (TypeScript cannot read it either)
     ],
 )
 def test_the_decision_in_a_model_answer(text, made):
@@ -156,6 +165,29 @@ async def test_flow_frameworks_decide_as_langgraph_does(framework, reply, minimu
     assert events[-1]["output"]["decided"]["choice"] == ("tech" if "tech" in reply else None)
 
 
+@pytest.mark.parametrize(
+    "framework",
+    ["langchain", *(pytest.param(f, marks=MARKS[f] if f in MARKS else installed(f)) for f in [*FLOWS, "mastra"])],
+)
+async def test_a_bypassed_decide_still_decides_on_every_framework(framework):
+    """Bypassing a path step passes the data through but keeps the step choosing the path, as LangGraph does: a
+    bypassed Decide with AI step still asks its model, instead of ending the run or taking the default path."""
+    from test_flow_frameworks import _run as run_flow
+
+    from agentcanvas.adapters import create_adapter
+
+    doc = decide_wf()
+    doc["nodes"][0]["disabled"] = True
+    wf = Workflow.model_validate({**doc, "framework": framework})
+    adapter = create_adapter(framework)
+    async with adapter.persistence(None):
+        reply = '{"choice": "tech", "confidence": 0.9, "reason": "an outage"}'
+        (events,) = await run_flow(adapter, wf, {"ticket": "the site is down"}, {"model": [reply]})
+    assert events[-1].get("outcome") == "success", events[-3:]
+    assert events[-1]["output"]["team"] == "tech"
+    assert events[-1]["output"]["decided"]["choice"] == "tech"
+
+
 def test_the_generated_flow_reads_like_the_canvas():
     from agentcanvas.adapters.pydantic_ai import codegen
 
@@ -170,7 +202,10 @@ def test_the_generated_flow_reads_like_the_canvas():
     "text",
     ['{"choice": "tech", "confidence": "0.4"}', "no", '{"choice": "x", "confidence": 2, "reason": 1}',
      '{"choice": null, "confidence": true}', '{"choice": " billing ", "confidence": "nan", "reason": "r"}',
-     'ok {"confidence": ".5e0", "choice": "tech"} done', '{"choice": "tech", "confidence": "very"}', "[1, 2]"],
+     'ok {"confidence": ".5e0", "choice": "tech"} done', '{"choice": "tech", "confidence": "very"}', "[1, 2]",
+     '```json\n{"choice": "Billing", "confidence": 0.9}\n```', 'It mentions {order 123}. {"choice": "tech"} :}',
+     'Thinking {"step": 1}. {"choice": "TECH", "reason": {"a": [1, 2]}}', '{"choice": "tech", "confidence": "1_0"}',
+     '{"choice": "tech", "confidence": NaN}', '{"choice": 1, "reason": 0}', '{"a": "}{", "choice": "billing"}'],
 )  # fmt: skip
 async def test_mastra_reads_an_answer_as_python_does(text, tmp_path):
     """The TypeScript twin asks the same words and reads each answer the same way."""
@@ -188,13 +223,14 @@ async def test_mastra_reads_an_answer_as_python_does(text, tmp_path):
     shutil.copy(Path(mastra_adapter.__file__).parent / "flow.ts", tmp_path / "flow.ts")
     (tmp_path / "node_modules").symlink_to(Path(here) / "node_modules")  # what flow.ts imports
     script = tmp_path / "check.ts"
+    paths = {"billing": "a", "tech": "b", "vip": "big spenders ($$$ accounts), $& / $` / $' tags"}  # $ as is
     script.write_text(
         'import { aiDecision, decidePrompt, DECIDE_INSTRUCTIONS } from "./flow.ts";\n'
         f"console.log(JSON.stringify([aiDecision({json.dumps(text)}, {{billing: 'a', tech: 'b'}}), "
-        "decidePrompt('Q', {billing: 'a', tech: 'b'}), DECIDE_INSTRUCTIONS]));\n"
+        f"decidePrompt('Q', {json.dumps(paths)}), DECIDE_INSTRUCTIONS]));\n"
     )
     out = subprocess.run([node, str(script)], cwd=tmp_path, capture_output=True, text=True, timeout=60, check=True)
     made, prompt, words = json.loads(out.stdout)
     assert made == decision(text, ["billing", "tech"])
-    assert prompt == decide_prompt("Q", {"billing": "a", "tech": "b"})
+    assert prompt == decide_prompt("Q", paths)
     assert words == DECIDE_INSTRUCTIONS.replace("{{", "{").replace("}}", "}")

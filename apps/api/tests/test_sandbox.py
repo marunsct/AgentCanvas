@@ -533,3 +533,38 @@ async def test_the_run_gate_is_not_fooled_by_a_reused_object_id(monkeypatch):
     revisions.append("r2")
     await gate(wf)
     assert len(checked) == 4
+
+
+FORKER = """import os
+import time
+
+
+def run(state):
+    children = []
+    try:
+        for _ in range(state["forks"]):
+            pid = os.fork()
+            if pid == 0:
+                time.sleep(30)
+                os._exit(0)
+            children.append(pid)
+    except OSError:  # BlockingIOError: the call's process limit
+        pass
+    finally:
+        for pid in children:
+            os.kill(pid, 9)
+            os.waitpid(pid, 0)
+    return {"started": len(children)}
+"""
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="the process count comes from /proc")
+async def test_code_that_forks_in_a_loop_hits_a_process_limit(tmp_path):
+    """Launch review: the child had memory, CPU-time and file limits but none on processes, and a Kubernetes pod has
+    no PID limit unless the kubelet sets one, so a fork loop in workspace code could use up the node's PIDs."""
+    from agentcanvas.sandbox.runners import PROCESSES, _exchange
+
+    (tmp_path / "scripts").mkdir()
+    (tmp_path / "scripts" / "forker.py").write_text(FORKER)
+    out = await _exchange("subprocess", tmp_path, "scripts.forker:run", {"state": {"forks": 3 * PROCESSES}}, "", 20)
+    assert 0 < out["update"]["started"] < 2 * PROCESSES  # about PROCESSES: other processes of the user come and go

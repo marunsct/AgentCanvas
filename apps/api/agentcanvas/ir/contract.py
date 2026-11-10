@@ -31,10 +31,18 @@ class ContractChange(BaseModel):
     message: str
 
 
+def output_names(wf: Workflow) -> list[str]:
+    """The fields a run returns: the chosen output fields, else every output and input-output field.
+
+    Every framework and every export uses this one definition, so an input-only field never comes back.
+    """
+    return list(wf.settings.output_channels or [c.name for c in wf.state.channels if c.io in ("inout", "out")])
+
+
 def contract(wf: Workflow) -> Contract:
     public = [c for c in wf.state.channels if c.io != "private"]
     names_in = wf.settings.input_channels or [c.name for c in public if c.io in ("inout", "in")]
-    names_out = wf.settings.output_channels or [c.name for c in public if c.io in ("inout", "out")]
+    names_out = output_names(wf)
     by_name = {c.name: c for c in wf.state.channels}
     out = Contract(
         input={n: by_name[n].type for n in names_in if n in by_name},

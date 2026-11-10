@@ -1,8 +1,9 @@
 """Metrics and traces (M8-T3).
 
 - **Prometheus** at `GET /metrics` (`AGENTCANVAS_METRICS_ENABLED`, on by default): runs started and finished by
-  status, run duration, tokens and cost, active runs, open event streams, HTTP requests by route and status, and
-  online evaluation (mean score per deployment and evaluator, open drift alerts).
+  status, run duration, tokens and cost, active runs, the run queue (runs waiting, how long they waited, runs that
+  gave up), open event streams, HTTP requests by route and status, and online evaluation (mean score per deployment
+  and evaluator, open drift alerts).
   The web image's nginx does not proxy it; scrape the API pods directly.
 - **OpenTelemetry** traces for FastAPI, SQLAlchemy and httpx when `OTEL_EXPORTER_OTLP_ENDPOINT` is set (the
   standard OTel environment variables configure the exporter). Each request span carries the request id, and log
@@ -14,12 +15,14 @@ from __future__ import annotations
 import asyncio
 import os
 import time
-from collections.abc import AsyncIterator, MutableMapping
+from collections.abc import AsyncIterator, Iterator, MutableMapping
+from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
 
 from agentcanvas.log import get_logger
+from agentcanvas.version import COMMIT_LABEL, VERSION
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
@@ -32,11 +35,21 @@ RUNS_STARTED = Counter("agentcanvas_runs_started_total", "Runs started", ["origi
 RUNS_FINISHED = Counter("agentcanvas_runs_finished_total", "Runs finished", ["origin", "status"])
 RUN_DURATION = Histogram(
     "agentcanvas_run_duration_seconds",
-    "Run duration until it finishes or pauses",
+    "Run duration until it finishes or pauses, from when it took its slot in the run queue",
     ["status"],
     buckets=(0.1, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300, 900),
 )
-RUNS_ACTIVE = Gauge("agentcanvas_runs_active", "Runs in progress in this process")
+RUNS_ACTIVE = Gauge("agentcanvas_runs_active", "Runs in progress in this process (waiting in the run queue too)")
+# the run queue (runtime/admission.py), per process: no organisation label, so the series stay few
+RUNS_QUEUED = Gauge("agentcanvas_runs_queued", "Runs of this process waiting for a slot in the run queue")
+RUN_QUEUE_WAIT = Histogram(
+    "agentcanvas_run_queue_wait_seconds",
+    "How long a run waited in the run queue before it took its slot",
+    buckets=(0.5, 1, 5, 15, 30, 60, 120, 300, 600, 1800, 3600),
+)
+RUN_QUEUE_TIMEOUTS = Counter(
+    "agentcanvas_run_queue_timeouts_total", "Runs that gave up waiting for a slot (AGENTCANVAS_MAX_QUEUE_WAIT_S)"
+)
 TOKENS = Counter("agentcanvas_tokens_total", "Model tokens", ["direction"])
 COST = Counter("agentcanvas_cost_usd_total", "Model cost in US dollars (priced models only)")
 MODEL_CACHE_HITS = Counter("agentcanvas_model_cache_hits_total", "Model answers taken from the answer cache")
@@ -61,22 +74,41 @@ EVAL_ALERT_OPEN = Gauge(
     ["deployment", "evaluator", "kind"],
 )
 EVAL_ALERTS = Counter("agentcanvas_eval_alerts_total", "Drift alerts opened by online evaluators", ["kind"])
+ONLINE_SCORING_DROPPED = Counter(
+    "agentcanvas_online_scoring_dropped_total", "Deployment runs left unscored: the instance's scoring queue was full"
+)
 
-_started: dict[str, float] = {}
+# background jobs (hand-over, cron, retention, ...): a round that raised is only logged by the job, so count it here
+JOB_FAILURES = Counter("agentcanvas_job_failures_total", "Background job rounds that failed", ["job"])
+JOB_LAST_SUCCESS = Gauge(
+    "agentcanvas_job_last_success_timestamp_seconds",
+    "Unix time the background job's last round finished (the pod's start until the first one does)",
+    ["job"],
+)
+# what runs: which pods run which release, during an upgrade or after a rollback
+BUILD_INFO = Gauge("agentcanvas_build_info", "The release and commit this process runs (1)", ["version", "commit"])
+BUILD_INFO.labels(version=VERSION, commit=COMMIT_LABEL).set(1)
 
 
 def run_started(h: RunHandle) -> None:
-    _started[h.run_id] = time.monotonic()
     RUNS_STARTED.labels(origin=h.origin).inc()
     RUNS_ACTIVE.inc()
+
+
+def queue_left(waited_s: float, outcome: str) -> None:
+    """Admission hook: a run left the run queue ("slot", "gave_up" or "stopped") after `waited_s`."""
+    if outcome == "slot":
+        RUN_QUEUE_WAIT.observe(waited_s)
+    elif outcome == "gave_up":
+        RUN_QUEUE_TIMEOUTS.inc()
 
 
 async def run_finished(h: RunHandle, status: str, _error: str | None, _interrupts: list[dict[str, Any]]) -> None:
     """Runner finish hook."""
     RUNS_ACTIVE.dec()
     RUNS_FINISHED.labels(origin=h.origin, status=status).inc()
-    if (began := _started.pop(h.run_id, None)) is not None:
-        RUN_DURATION.labels(status=status).observe(time.monotonic() - began)
+    # from when it took its slot: time waiting in the run queue is not the run's (it never began: 0)
+    RUN_DURATION.labels(status=status).observe(time.perf_counter() - (h.admitted_at or time.perf_counter()))
     TOKENS.labels(direction="input").inc(h.usage.get("input_tokens", 0))
     TOKENS.labels(direction="output").inc(h.usage.get("output_tokens", 0))
     COST.inc(h.usage.get("cost_usd", 0.0))
@@ -130,6 +162,25 @@ def route_label(scope: MutableMapping[str, Any]) -> str:
 def observe_request(method: str, route: str, status: int, seconds: float) -> None:
     HTTP_REQUESTS.labels(method=method, route=route, status=str(status)).inc()
     HTTP_DURATION.labels(method=method, route=route).observe(seconds)
+
+
+def job_started(job: str) -> None:
+    """A background job's loop started: its series exist from now on (a job that never finishes a round still has
+    a last-success time to grow old, and the first failure counts in `increase()`)."""
+    JOB_FAILURES.labels(job=job).inc(0)
+    JOB_LAST_SUCCESS.labels(job=job).set_to_current_time()
+
+
+@contextmanager
+def job_round(job: str) -> Iterator[None]:
+    """One round of a background job: counted as a failure when it raises (the exception goes on to the job's own
+    log line), its time kept when it finishes."""
+    try:
+        yield
+    except Exception:
+        JOB_FAILURES.labels(job=job).inc()
+        raise
+    JOB_LAST_SUCCESS.labels(job=job).set_to_current_time()
 
 
 def metrics_response() -> tuple[bytes, str]:

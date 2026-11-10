@@ -123,3 +123,34 @@ async def test_spending_by_deployment_names_the_deployments_and_the_runs_outside
     assert outside["runs"] == 5 and outside["cost_usd"] == 4.25
     assert [d["id"] for d in rep["by_deployment"]] == [None, dep]  # biggest spender first (4.25, then 3)
     assert round(sum(d["cost_usd"] for d in rep["by_deployment"]), 6) == rep["total"]["cost_usd"]
+
+
+async def test_deleting_conversations_keeps_what_they_spent(app, api_client):
+    """Budgets and this report count the runs of conversations deleted since, by retention or by hand: a short
+    retention, or deleting the conversations that used a budget, must not reset the month's spending."""
+    from sqlalchemy import update
+
+    from agentcanvas.runtime.runner import workflow_spend
+
+    ids = await _seed(app, api_client)
+    wf1 = ids["wf1"]
+    async with app.state.db.sessionmaker() as s:
+        before = await workflow_spend(s, wf1)
+    report = (await api_client.get("/v1/org/spending")).json()
+    spend = (await api_client.get(f"/v1/workflows/{wf1}/spend")).json()
+
+    async with app.state.db.sessionmaker() as s:  # t_ana1 expires; t_ben is deleted by hand
+        await s.execute(update(Organization).where(Organization.id == "org_default").values(retention_days=1))
+        await s.execute(update(Thread).where(Thread.id == "t_ana1").values(updated_at=NOW - timedelta(days=3)))
+        await s.commit()
+    assert "t_ana1" in await app.state.retention.tick(datetime.now(UTC))
+    assert (await api_client.delete("/v1/threads/t_ben")).status_code == 204
+
+    async with app.state.db.sessionmaker() as s:
+        assert await workflow_spend(s, wf1) == before
+        assert await s.get(Thread, "t_ana1") is None
+    after = (await api_client.get("/v1/org/spending")).json()
+    assert {k: v for k, v in after.items() if k not in ("since", "until")} == {
+        k: v for k, v in report.items() if k not in ("since", "until")
+    }
+    assert (await api_client.get(f"/v1/workflows/{wf1}/spend")).json() == spend

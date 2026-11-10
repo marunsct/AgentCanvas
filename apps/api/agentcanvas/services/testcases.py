@@ -22,6 +22,7 @@ from agentcanvas.db.repositories import WorkflowRepo
 from agentcanvas.errors import NotFound
 from agentcanvas.ids import new_id
 from agentcanvas.ir.models import Workflow
+from agentcanvas.runtime.admission import Priority
 
 CASE_TIMEOUT_S = 120.0
 CONCURRENCY = 4
@@ -122,10 +123,12 @@ class TestCaseService:
         *,
         user_id: str | None = None,
         record: bool = True,
+        priority: Priority | None = None,
     ) -> list[CaseResult]:
         """Run the cases against `wf` (the draft or a version); stores each result on its case when `record`.
 
-        `context_for(case.context)` builds the run context (identity fields come from the caller, not the case)."""
+        `context_for(case.context)` builds the run context (identity fields come from the caller, not the case).
+        `priority`: in the run queue (default low: test runs wait behind people's)."""
         gate = asyncio.Semaphore(CONCURRENCY)
 
         async def one(case: TestCase) -> CaseResult:
@@ -134,7 +137,7 @@ class TestCaseService:
             except Exception as exc:  # noqa: BLE001 - e.g. a required context field the case lacks
                 return CaseResult(id=case.id, name=case.name, passed=False, failures=[f"context: {exc}"])
             async with gate:
-                return await run_case(runner, wf, case, context, user_id)
+                return await run_case(runner, wf, case, context, user_id, priority)
 
         await self.s.commit()  # a case can run for minutes: hold no connection meanwhile (the next query reopens one)
         results = list(await asyncio.gather(*(one(c) for c in cases)))
@@ -146,7 +149,12 @@ class TestCaseService:
 
 
 async def run_case(
-    runner: Any, wf: Workflow, case: TestCase, context: dict[str, Any], user_id: str | None
+    runner: Any,
+    wf: Workflow,
+    case: TestCase,
+    context: dict[str, Any],
+    user_id: str | None,
+    priority: Priority | None = None,
 ) -> CaseResult:
     res = CaseResult(id=case.id, name=case.name, passed=False)
     started = time.perf_counter()
@@ -162,18 +170,17 @@ async def run_case(
             mocks=case.mocks or None,
             user_id=user_id,
             origin="test",
+            priority=priority,
         )
     except Exception as exc:  # noqa: BLE001 - reported on the case
         res.failures = [f"could not start: {exc}"]
         return res
     res.run_id, res.thread_id = handle.run_id, handle.thread_id
-    try:
-        await asyncio.wait_for(handle.done.wait(), CASE_TIMEOUT_S)
-    except TimeoutError:
+    if await handle.done_within(CASE_TIMEOUT_S) is not None:  # counted from when it took its slot in the run queue
         await runner.cancel(handle.run_id)
         res.failures = [f"timed out after {CASE_TIMEOUT_S:g} s"]
         return res
-    res.duration_ms = round((time.perf_counter() - started) * 1000)
+    res.duration_ms = round((time.perf_counter() - started - handle.queued_s) * 1000)
     status, error, output = "error", None, {}
     for ev in handle.events:
         if ev["type"] == "STEP_STARTED" and ev.get("canvas_node_id") and ev["canvas_node_id"] not in res.route:

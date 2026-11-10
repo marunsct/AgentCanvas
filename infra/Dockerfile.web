@@ -5,18 +5,26 @@
 # Base images are pinned by digest (Dependabot proposes updates weekly). To pull one from a mirror, replace the
 # exact reference: --build-context 'node:22-slim@sha256:<digest>=docker-image://mirror.gcr.io/library/node@sha256:<digest>'
 FROM node:22-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c AS build
-ARG PNPM_VERSION=10
-RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
 WORKDIR /repo/apps/web
-COPY apps/web/package.json apps/web/pnpm-lock.yaml ./
+COPY apps/web/package.json apps/web/pnpm-lock.yaml apps/web/pnpm-workspace.yaml ./
+# pnpm at exactly package.json's packageManager version, checked against its hash, as on a developer's machine and in CI
+RUN corepack enable && corepack install
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store pnpm install --frozen-lockfile
 # the type check also covers test fixtures that read the IR schema package and an example workflow
 COPY packages/ir-schema/ /repo/packages/ir-schema/
 COPY apps/api/examples/ /repo/apps/api/examples/
 COPY apps/web/ ./
-RUN pnpm build
+# the commit Settings › About shows for the web app: --build-arg GIT_SHA=$(git rev-parse HEAD)
+ARG GIT_SHA=""
+RUN GIT_SHA="${GIT_SHA}" pnpm build
 
 FROM nginxinc/nginx-unprivileged:1.31-alpine@sha256:b5047b9b76845eac124358373c6852377c52e4b05834a47647e955dd91cb8f1e AS runtime
+# the release (kept equal to apps/web/package.json by a test) and the commit, for `docker inspect`
+ARG VERSION="0.32.3"
+ARG GIT_SHA=""
+LABEL org.opencontainers.image.title="AgentCanvas web" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${GIT_SHA}"
 # OS security fixes newer than the base image (M8-T6); the image's nginx user (101) runs the server
 USER root
 RUN apk upgrade --no-cache

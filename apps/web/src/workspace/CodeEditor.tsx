@@ -2,7 +2,7 @@
 import { json } from "@codemirror/lang-json";
 import { python } from "@codemirror/lang-python";
 import { type Diagnostic, lintGutter, setDiagnostics } from "@codemirror/lint";
-import { Compartment, EditorState, type Text } from "@codemirror/state";
+import { Compartment, EditorState, type Text, Transaction } from "@codemirror/state";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { keymap } from "@codemirror/view";
 import { basicSetup, EditorView } from "codemirror";
@@ -48,12 +48,14 @@ export function CodeEditor({ path, value, diagnostics, onChange, onSave, api }: 
   const view = useRef<EditorView | null>(null);
   const handlers = useRef({ onChange, onSave });
   const theme = useRef(new Compartment());
+  const shown = useRef(value); // the last `value` the page gave
   const dark = resolved(useTheme((s) => s.theme)) !== "light";
   handlers.current = { onChange, onSave };
 
   /* oxlint-disable react-hooks/exhaustive-deps -- the editor is built once per file; value, theme and handle follow in their own effects */
   useEffect(() => {
     if (!host.current) return;
+    shown.current = value;
     const lang = path.endsWith(".py") ? [python()] : path.endsWith(".json") ? [json()] : [];
     view.current = new EditorView({
       parent: host.current,
@@ -79,9 +81,19 @@ export function CodeEditor({ path, value, diagnostics, onChange, onSave, api }: 
       };
     }
     return () => { view.current?.destroy(); if (api) api.current = null; };
-    // a new editor per file; `value` is only the initial text
+    // a new editor per file; `value` is its initial text, and a later one is followed below
   }, [path]);
   /* oxlint-enable react-hooks/exhaustive-deps */
+
+  // a newer `value` (the file changed on the server) replaces the text only when nothing was typed since the last one:
+  // typed text is never overwritten here (the page offers the choice). Not undoable: undo would bring back the old copy
+  useEffect(() => {
+    const v = view.current;
+    const before = shown.current;
+    shown.current = value;
+    if (!v || value === before || v.state.doc.toString() !== before) return;
+    v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: value }, annotations: Transaction.addToHistory.of(false) });
+  }, [value]);
 
   useEffect(() => {
     view.current?.dispatch({ effects: theme.current.reconfigure(look(dark)) });

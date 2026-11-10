@@ -276,7 +276,7 @@ def export_files(
         "]",
         "",
         "[dependency-groups]",
-        f'dev = ["{_pin("pytest")}"]',
+        'dev = ["pytest>=8"]',  # as every export: not the server's own copy, which the image does not install
         "",
         "[tool.uv]",
         "package = false",

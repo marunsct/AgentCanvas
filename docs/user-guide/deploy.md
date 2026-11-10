@@ -18,8 +18,9 @@ the images and the chart contain, metrics, retention, restore, and a runbook for
 ## Option 1: Docker Compose on one host
 
 ```bash
-docker build -f infra/Dockerfile.api -t agentcanvas-api apps/api
-docker build -f infra/Dockerfile.web -t agentcanvas-web .
+docker build -f infra/Dockerfile.api --build-arg FRAMEWORKS=all --build-arg WITH_MASTRA=true \
+  --build-arg GIT_SHA=$(git rev-parse HEAD) -t agentcanvas-api apps/api
+docker build -f infra/Dockerfile.web --build-arg GIT_SHA=$(git rev-parse HEAD) -t agentcanvas-web .
 cp infra/.env.prod.example infra/.env.prod      # fill it in (never commit it)
 docker compose -f infra/compose.prod.yml --env-file infra/.env.prod up -d --wait
 ```
@@ -27,9 +28,20 @@ docker compose -f infra/compose.prod.yml --env-file infra/.env.prod up -d --wait
 This starts Postgres, a one-shot migration, two API replicas and the web server on port 8080 (`WEB_PORT`) of
 `127.0.0.1`: it speaks plain HTTP, so put a TLS-terminating proxy in front on the same host (or set `WEB_BIND=0.0.0.0`
 when the proxy runs elsewhere and the port is firewalled) and keep response buffering **off** for `/api/` (runs stream
-Server-Sent Events). The API containers run with a read-only root (writable: the workspaces volume, `/tmp` and the
+Server-Sent Events). Have the proxy speak HTTP/2 to browsers (Caddy, Traefik and cloud load balancers do by default;
+nginx needs `http2 on;` next to `listen 443 ssl;`): over HTTP/1.1 a browser opens at most six connections to a site
+for all its tabs, and each open editor, run or Copilot answer holds one, so with several tabs open other requests
+wait. The API containers run with a read-only root (writable: the workspaces volume, `/tmp` and the
 app user's home, both in memory), no capabilities and a 2 GB memory limit (`API_MEM_LIMIT`); `API_READ_ONLY=false`
 turns the read-only root off should a framework need to write elsewhere.
+
+**Which frameworks the image runs.** Like the Docker app, these commands build every framework into the API image
+(about 4.5 GB instead of 1.1 GB), so workflows designed for CrewAI, Google ADK, Pydantic AI, Agno, the Microsoft Agent
+Framework, Strands, LlamaIndex or Mastra run on this server too. For a smaller image, list only the ones you use,
+for example `--build-arg FRAMEWORKS="crewai google_adk" --build-arg WITH_MASTRA=false`, or `FRAMEWORKS=none` (and
+`WITH_MASTRA=false`) for LangGraph and the OpenAI Agents SDK only, which every image has. A workflow whose framework is
+missing can still be designed and exported, but its runs stop with *… is not installed on this server*, and the
+workflow's **Framework** setting marks it *not set up*. The ids are in [Choosing a framework](frameworks.md).
 
 **Database connections.** Each API replica opens up to `AGENTCANVAS_DB_POOL_SIZE` + `AGENTCANVAS_DB_MAX_OVERFLOW` +
 `AGENTCANVAS_PERSISTENCE_POOL_SIZE` connections (10 + 20 + 20 = 50 by default). Postgres's `max_connections` must be
@@ -52,8 +64,9 @@ registry your cluster can pull from.
 ```bash
 REGISTRY=registry.example.com/acme   # yours
 TAG=$(git rev-parse --short HEAD)
-docker build -f infra/Dockerfile.api -t $REGISTRY/agentcanvas-api:$TAG apps/api
-docker build -f infra/Dockerfile.web -t $REGISTRY/agentcanvas-web:$TAG .
+docker build -f infra/Dockerfile.api --build-arg FRAMEWORKS=all --build-arg WITH_MASTRA=true \
+  --build-arg GIT_SHA=$(git rev-parse HEAD) -t $REGISTRY/agentcanvas-api:$TAG apps/api
+docker build -f infra/Dockerfile.web --build-arg GIT_SHA=$(git rev-parse HEAD) -t $REGISTRY/agentcanvas-web:$TAG .
 docker push $REGISTRY/agentcanvas-api:$TAG && docker push $REGISTRY/agentcanvas-web:$TAG
 ```
 
@@ -87,6 +100,11 @@ lists everything else. The chart refuses to render without the image repositorie
 issuer and audience, and `helm install` / `helm upgrade` fail when the Secret lacks a required key. Migrations run as
 a Helm hook Job before the API starts.
 
+Kubernetes puts no limit on the processes a pod starts unless the kubelet's `podPidsLimit` is set (the compose files
+set `pids_limit` on the sandbox containers). Each sandbox call's code may start about 256 processes or threads, so a
+fork loop stops there; still set `podPidsLimit` (e.g. 1024) on the nodes the sandbox pods run on
+(`sandbox.nodeSelector`), so that no pod can use up a node's process table.
+
 ## Essential settings
 
 Every setting, with its default, is listed in [Server settings](server-settings.md); these are the ones to decide first.
@@ -96,17 +114,19 @@ Every setting, with its default, is listed in [Server settings](server-settings.
 | `DATABASE_URL` | `postgresql://user:pass@host:5432/agentcanvas` |
 | `AGENTCANVAS_SECRET_KEY` | 64+ random characters. Production refuses the development default. |
 | `AGENTCANVAS_ENV` | `prod` (default in compose prod and Helm), `staging` or `dev` |
+| `AGENTCANVAS_EDITION` (Helm: `config.edition`) | `dev` (the default): one company's own server. Builders may let a step reach its private network (**Allow private network** on a web API tool or a remote agent, app connectors at internal addresses), from the API's own network; never a link-local or cloud metadata address. `hosted`: a server shared by organisations that do not trust each other. Every outbound connection (models, tools, remote agents, app connectors, knowledge, trace export) goes to public addresses only, whatever a step allows: the editor flags steps that run code in the server process (E041) or allow private networks (E043). Set `hosted` for any server whose organisations must be kept from your internal network. |
 | `LANGGRAPH_AES_KEY` | 16, 24 or 32 characters (32 for AES-256: `openssl rand -hex 16`): encrypts conversation checkpoints at rest |
 | `AGENTCANVAS_KMS_KEY` | Master key for project secrets: `file:<path>`, `aws:<key ARN>` or `gcp:<key name>` |
 | `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`, `MISTRAL_API_KEY`, `GROQ_API_KEY`, `DEEPSEEK_API_KEY`, `XAI_API_KEY`, `AZURE_OPENAI_API_KEY` | Model provider keys for the whole server; a project secret of the same name takes precedence ([Models and API keys](models.md)) |
 | `AGENTCANVAS_LOCAL_MODELS_HOST` | Host that local model servers (Ollama, LM Studio, vLLM, llama.cpp) are reached on when their address isn't set, e.g. `host.docker.internal` or a GPU machine's name |
 | `AGENTCANVAS_MODEL_PRICES` | Prices for models whose list price the catalog does not carry (it prices the Claude and OpenAI models), so costs, cost budgets and alerts count them: JSON, USD per million tokens, e.g. `{"openai:gpt-5.5": [5, 30]}`, or `[in, out, cache read, cache write]` to price prompt caching too (without them, cached input is charged as ordinary input). A model not in the catalog or a malformed value stops the server from starting |
 | `AGENTCANVAS_SCRIPT_EXECUTION` | Where workspace code runs: `remote` (default in the production compose file and Helm chart: the sandbox service, below), `subprocess` (limits only, not isolation), `docker`, `langsmith`, `inprocess`. A staging or production server refuses `inprocess` and `subprocess`, which run the code as the API's own user |
-| `AGENTCANVAS_ALLOW_UNISOLATED_SCRIPTS` | `true` lets a staging or production server run workspace code in `inprocess` or `subprocess` mode anyway, when only people you trust edit workspaces |
+| `AGENTCANVAS_ALLOW_UNISOLATED_SCRIPTS` | `true` lets a staging or production server run workspace code in `inprocess` or `subprocess` mode anyway, when only people you trust edit workspaces. With `inprocess` it also allows the **Agent from another framework** block, which runs workspace code inside the API itself; every other server refuses it (E041) |
 | `AGENTCANVAS_SANDBOX_URL`, `AGENTCANVAS_SANDBOX_TOKEN` | With `remote`: where the sandbox service is, and the secret (32+ random characters) the API presents to it. The compose file and chart set the URL; you provide the token |
 | `SANDBOX_REPLICAS` (compose), `sandbox.replicas` (Helm) | How many sandbox containers run (4 by default). Each runs one call at a time and, after it, stops anything the code left running and removes what it wrote (`AGENTCANVAS_SANDBOX_SWEEP=1`), so code of different projects never shares a container at the same moment; more replicas, more calls at once |
 | `AGENTCANVAS_EGRESS_PROXY`, `AGENTCANVAS_EGRESS_SECRET` | The egress proxy the sandbox reaches the hosts of a project's `sandbox.json` through (`egress:3128` in the compose files, the `-egress` Service in the chart), and the secret (32+ random characters) it checks each call's list with. You provide the secret; with `docker` and no proxy set, the API starts an `agentcanvas-egress` container itself. `AGENTCANVAS_EGRESS_PROXY_RESOLVE=true` (set by the chart) hands the sandbox the proxy's address instead of its name, so the sandbox pods need no DNS |
 | `AGENTCANVAS_CORS_ORIGINS` | The web app's origin, as a JSON list |
+| `AGENTCANVAS_AUDIT_SINK_URL`, `AGENTCANVAS_AUDIT_SINK_SECRET` | Optional: where security events are also POSTed as signed CloudEvents, and the secret that signs them ([Security events](#security-events-and-audit-forwarding)) |
 | `AGENTCANVAS_PUBLIC_URL` | Where people reach the web app, e.g. `https://canvas.example.com`. Signing in to app connectors ([App connectors](agents-and-connectors.md#sign-in-per-person)) returns the browser to `<this>/oauth/callback`, and servers that support Client ID Metadata Documents fetch ours from `<this>/api/v1/oauth/client-metadata.json` (it must be https and public for that). Unset: the first CORS origin, which is right for the development server only |
 | `AGENTCANVAS_RETENTION_DAYS` | Delete conversations idle this long (default 90; 0 keeps them). Files people attached to runs go when no conversation has used them for as long |
 | `AGENTCANVAS_MAX_UPLOAD_MB`, `AGENTCANVAS_MAX_PROJECT_FILES_MB` | The largest file a person may attach to a run (default 10, at most 20: the web server accepts 20 MB bodies) and the most attached files a project keeps (default 1024; 0 = no limit) |
@@ -123,6 +143,23 @@ Every setting, with its default, is listed in [Server settings](server-settings.
 
 The API checks every token against the provider's keys. `AGENTCANVAS_AUTH_MODE=dev` (no sign-in) is refused in
 `staging` and `prod`.
+
+The first admins, and everyone you invite, are matched by a **verified** email in the access token (the
+`AGENTCANVAS_OIDC_EMAIL_CLAIM` claim, `email` by default, with `email_verified: true`). A provider that never sends
+`email_verified` (Entra ID) needs `AGENTCANVAS_OIDC_TRUST_EMAIL=true`. Without it the sign-in is refused with a
+message that says so, and the server logs `oidc.email_unverified`; set it, and the next sign-in of a bootstrap
+email still makes that person admin.
+
+The web app sends the provider's **access token**, and the API reads it as a signed JWT whose `iss` is the issuer
+and whose `aud` is the audience you set. What that takes, provider by provider:
+
+| Provider | Setup |
+|---|---|
+| Keycloak | A public client with PKCE; an "audience" mapper that adds `AGENTCANVAS_OIDC_AUDIENCE` to the access token. Issuer `https://<host>/realms/<realm>`. Keycloak sends `email_verified`. |
+| Okta | A custom authorization server (the org server's access tokens are not for your API): its audience is `AGENTCANVAS_OIDC_AUDIENCE`, its issuer `https://<org>.okta.com/oauth2/<server id>`. Add `email` (and `groups`) as access-token claims. |
+| Auth0 | An API whose identifier is `AGENTCANVAS_OIDC_AUDIENCE` (the web app asks for it as `audience`), and a single-page application. Auth0 puts no email in access tokens: add `email` and `email_verified` with a post-login Action, and set `AGENTCANVAS_OIDC_EMAIL_CLAIM` to the claim name it uses. Issuer `https://<tenant>.auth0.com/`. |
+| Entra ID | An app registration with a single-page-application redirect URI. **Expose an API**: its Application ID URI (e.g. `api://agentcanvas`) is `AGENTCANVAS_OIDC_AUDIENCE`; add a scope (e.g. `access`) and ask for it in `AGENTCANVAS_OIDC_SCOPES` (`openid profile email offline_access api://agentcanvas/access`), or the access token is for Microsoft Graph, not AgentCanvas. In the manifest set `accessTokenAcceptedVersion` (`requestedAccessTokenVersion`) to `2`: otherwise access tokens carry the v1 issuer `https://sts.windows.net/<tenant>/`, which does not match the v2 issuer `https://login.microsoftonline.com/<tenant>/v2.0` and every request is refused with "Invalid issuer". Add `email` (and `groups`) as optional claims of the access token, and set `AGENTCANVAS_OIDC_TRUST_EMAIL=true`: Entra ID sends no `email_verified`. |
+| Google | Not directly: Google's access tokens are opaque, not JWTs. Use a broker with Google as its upstream (Keycloak, Auth0, Dex). |
 
 To give roles by group (see [Roles from groups](accounts.md#roles-from-groups)), add
 the groups to the **access token** the SPA sends, as a claim in your provider (a "groups" mapper in Keycloak, a
@@ -193,27 +230,48 @@ neither sees no rows.
   `MIGRATE_DATABASE_URL` (the owner), `APP_DB_USER` and `APP_DB_PASSWORD`. Elsewhere, run migrations as the owner
   (`make migrate` with the owner's `DATABASE_URL`) and set `AGENTCANVAS_AUTO_MIGRATE=false` on the API. With it off, the
   API refuses to start on a database the migrations have not reached and says which command to run.
-- The API sets `agentcanvas.all_tenants=on` as a connection startup option. Behind PgBouncer in transaction pooling
-  mode, startup options are not passed on: use session pooling, or add the setting to the database role
-  (`ALTER ROLE <api role> SET agentcanvas.all_tenants = 'on'`).
+- The API asks for `agentcanvas.all_tenants=on` as a connection startup option, and `app_role` also makes it the
+  role's own default when it runs as a superuser (on a managed Postgres, whose owner is not one, it prints a notice
+  instead). PgBouncer refuses or drops startup options, so behind it the role needs that default (a superuser runs
+  `ALTER ROLE <api role> SET agentcanvas.all_tenants = 'on'`); the API refuses to start when its connections would
+  see no rows. The rest of the PgBouncer setup is in the [runbook](operations.md#runbooks) (DB connection exhaustion).
 - SQLite has no row-level security; there the API's own organisation filters are the only isolation.
 - AgentCanvas supports Matura's **shared** data mode only (one database for every organisation), as its manifest
   declares. A token whose placement mode (`pmode`) is `schema` or `database` is refused with 503.
 - LangGraph's own tables (checkpoints, long-term memory) are not covered by the policies; their rows are reached only
   through the conversations and namespaces of the organisation's own rows.
 
-#### Audit forwarding
+### Security events and audit forwarding
 
 AgentCanvas keeps every change in its own audit log (**Settings › Audit log**). Security-relevant ones (publishing and
 unpublishing, deployment keys, secrets, approvals, members, organisation settings and policies, release gates, trace
-export, project workspaces) also go to an audit sink. Matura has no audit ingest API yet, so by default the sink does
-nothing. With `AGENTCANVAS_MATURA_AUDIT_URL` set, each entry is POSTed there as a CloudEvent
-(`agentcanvas.audit.<action>`) signed like Matura's webhooks (`Matura-Signature`, with the webhook secret), once and
-best effort.
+export, project workspaces, API and SCIM tokens, and every change SCIM or the sign-in token's groups make to members
+and roles) also leave the server, in every sign-in mode:
+
+- **Always**, as a JSON log line `audit.event` (logger `agentcanvas.audit`, level info) with `org_id`, `actor_id`,
+  `action`, `target`, `detail`, `ip` and `at`. Ship the API's logs to your SIEM and filter on it.
+- **With `AGENTCANVAS_AUDIT_SINK_URL`** (and `AGENTCANVAS_AUDIT_SINK_SECRET`, which the server refuses to start
+  without), each entry is POSTed there as a CloudEvent (`agentcanvas.audit.<action>`, `tenantid` = the
+  organisation) signed in the `AgentCanvas-Signature` header: `t=<unix time>,v1=<hex HMAC-SHA256 of "<t>.<body>">`
+  with the secret. Check the signature and refuse a `t` older than five minutes.
+- **In Matura mode with `AGENTCANVAS_MATURA_AUDIT_URL`**, the same CloudEvents go to Matura, signed like its webhooks
+  (`Matura-Signature`, with the webhook secret). Matura has no audit ingest API yet: this is for later.
+
+Deliveries happen once, in the background and best effort: a failed one is logged (`audit.forward_failed`) and the
+entry stays in the audit log.
+
+Refused requests are logged too: a 401 (an unknown, revoked or expired API token, SCIM token or deployment key, a
+missing or invalid sign-in) as a warning `auth.refused`, a 403 (a role or organisation refusal) as `auth.forbidden`,
+each with the method, path, route, client address, the organisation and person when known, the request id and the
+credential's kind and first characters (`personal token act_AbCdEf`, as the app shows them); never the credential.
 
 ## Observability
 
 - **Health:** `/healthz` (process up) and `/readyz` (database and run store reachable).
+- **Version:** which release and commit a server runs: `GET /v1/version` (signed in; Settings › You › About shows
+  it), the `agentcanvas_build_info{version,commit}` metric, the `api.started` log line, and the images' labels
+  (`docker inspect --format '{{json .Config.Labels}}' <image>`). The commit is known when the image was built with
+  `--build-arg GIT_SHA=...`, as in the commands above.
 - **Metrics:** Prometheus on `/metrics`. A Grafana dashboard and alert rules (including evaluation drift) are in
   `infra/observability/`.
 - **Traces:** set `OTEL_EXPORTER_OTLP_ENDPOINT` for OpenTelemetry; `LANGSMITH_TRACING` / `LANGSMITH_API_KEY` for
@@ -257,6 +315,31 @@ workflow version only when it is resume-compatible. Take a backup first.
   before the API starts. Compose recreates **every API replica at once**: open streams end and requests fail for the
   half minute or so until the new replicas are ready, and runs that were going resume on them (each replica takes over
   handed-over runs at startup). Upgrade in a quiet hour, or use Kubernetes for rolling upgrades.
+
+Afterwards, Settings › You › About (or `GET /v1/version`) shows the new release, and `agentcanvas_build_info` which
+release each pod runs.
+
+### Rolling back
+
+When an upgrade goes wrong, run the previous images on the same database. A release's migrations are written so that
+the release before it still runs on the migrated database (new tables and columns that the older code ignores), so
+the schema stays where it is: the migration step of the older image sees a database a later release migrated, logs
+`db.newer_than_code` and leaves it alone, and the API starts.
+
+- **Helm:** `helm rollback agentcanvas` returns to the previous revision (`helm history agentcanvas` lists them;
+  `helm rollback agentcanvas <revision>` picks one), or `helm upgrade` with the previous `image.api.tag` and
+  `image.web.tag`.
+- **Compose:** set `API_IMAGE` and `WEB_IMAGE` to the previous tags (or build the previous commit), then
+  `docker compose -f infra/compose.prod.yml --env-file infra/.env.prod up -d --wait`. Images older than the release
+  that added this section run a bare `alembic upgrade head` as their migration step, which fails on the newer
+  database; start those with `up -d --wait --no-deps api web`, which skips it. (`helm rollback` runs no migration Job.)
+- **Check** that Settings › You › About shows the previous release, then upgrade again once the fix is out.
+- **Downgrading the schema** is rarely needed, and only when a release's notes say its migrations do not work with
+  the release before. It can drop data the newer columns hold, so take a backup first, and run it with the **newer**
+  image (only it has those migrations' downgrade steps), down to the revision the previous image reports with
+  `alembic heads`: for example `docker compose -f infra/compose.prod.yml --env-file infra/.env.prod run --rm migrate
+  alembic downgrade <revision>`, then roll back the images.
+- **When data is damaged**, restore the backup taken before the upgrade ([Backups](#backups)).
 
 ## Scaling
 

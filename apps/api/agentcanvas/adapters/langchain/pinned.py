@@ -4,7 +4,8 @@ Checking a host name and then letting the client resolve it again leaves a gap: 
 address to the check and the cloud metadata address (or the cluster's) to the connection ("DNS rebinding"). The
 network backend here resolves the name itself, refuses it if any answer is not a global address, and connects to the
 address it checked. TLS still verifies the certificate against the name. It plugs into httpx (model clients) and
-httpx2 (the MCP client) through their connection pools' `network_backend`.
+httpx2 (the MCP client) through their connection pools' `network_backend`, and into requests (the OpenTelemetry trace
+exporter) through urllib3's connection class.
 """
 
 from __future__ import annotations
@@ -21,13 +22,30 @@ class RefusedAddress(OSError):
     """The host resolves to a private, loopback, link-local (cloud metadata), reserved or multicast address."""
 
 
-async def public_address(host: str, port: int) -> str:
+def _literal(host: str) -> list[str] | None:
     try:
-        ip = ipaddress.ip_address(host.strip("[]"))
-        answers = [str(ip)]
+        return [str(ipaddress.ip_address(host.strip("[]")))]
     except ValueError:
+        return None
+
+
+async def public_address(host: str, port: int) -> str:
+    answers = _literal(host)
+    if answers is None:
         infos = await asyncio.get_running_loop().getaddrinfo(host, port, type=socket.SOCK_STREAM)
         answers = [str(info[4][0]) for info in infos]
+    return _checked(host, answers)
+
+
+def public_address_sync(host: str, port: int) -> str:
+    """`public_address` for blocking clients (requests, in a worker thread)."""
+    answers = _literal(host)
+    if answers is None:
+        answers = [str(info[4][0]) for info in socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)]
+    return _checked(host, answers)
+
+
+def _checked(host: str, answers: list[str]) -> str:
     for a in answers:
         if not is_public(a):  # NAT64 and other IPv6 forms of a private IPv4 address too (RT-15)
             raise RefusedAddress(f"'{host}' resolves to a private or internal address ({a}); refused")
@@ -84,3 +102,51 @@ def public_mcp_client_factory(
     timeout = timeout or httpx2.Timeout(30.0, read=300.0)  # the MCP client's own defaults (long-lived streams)
     return httpx2.AsyncClient(headers=headers, timeout=timeout, auth=auth, follow_redirects=False,
                               transport=_transport(httpx2, httpcore2))  # fmt: skip
+
+
+def public_requests_session() -> Any:
+    """A `requests.Session` (the OpenTelemetry trace exporter's) that connects to public addresses only. Every new
+    connection, a redirect's too, is checked and made to the address checked; the Host header and TLS keep the name.
+    Proxy variables are ignored: the proxy would be the address connected to."""
+    import requests
+    from requests.adapters import HTTPAdapter
+    from urllib3.connection import HTTPConnection, HTTPSConnection
+    from urllib3.connectionpool import HTTPConnectionPool, HTTPSConnectionPool
+    from urllib3.exceptions import NewConnectionError
+
+    def pinned(conn: Any, connect: Any) -> Any:
+        name = conn._dns_host
+        try:
+            ip = public_address_sync(name, conn.port)
+        except OSError as exc:
+            raise NewConnectionError(conn, str(exc)) from exc
+        conn._dns_host = ip  # only for opening the socket: the request and TLS are made with the name
+        try:
+            return connect()
+        finally:
+            conn._dns_host = name
+
+    class PinnedHTTP(HTTPConnection):
+        def _new_conn(self) -> Any:
+            return pinned(self, super()._new_conn)
+
+    class PinnedHTTPS(HTTPSConnection):
+        def _new_conn(self) -> Any:
+            return pinned(self, super()._new_conn)
+
+    class HTTPPool(HTTPConnectionPool):
+        ConnectionCls = PinnedHTTP  # pyright: ignore[reportAssignmentType] - its stubs refuse urllib3's own class too
+
+    class HTTPSPool(HTTPSConnectionPool):
+        ConnectionCls = PinnedHTTPS  # pyright: ignore[reportAssignmentType]
+
+    class PublicOnly(HTTPAdapter):
+        def init_poolmanager(self, *args: Any, **kwargs: Any) -> None:
+            super().init_poolmanager(*args, **kwargs)
+            self.poolmanager.pool_classes_by_scheme = {"http": HTTPPool, "https": HTTPSPool}
+
+    session = requests.Session()
+    session.trust_env = False
+    session.mount("http://", PublicOnly())
+    session.mount("https://", PublicOnly())
+    return session

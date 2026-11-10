@@ -917,6 +917,7 @@ label.button:has(+ input:focus-visible) { outline: 2px solid var(--accent); outl
 .share-msg.error { border-color: var(--err); color: var(--err); }
 .share-msg.question { border-color: var(--wait); }
 .share-greeting { margin: 0; }
+.share-text { display: block; } /* a block, so right-to-left text also lines up on the right */
 .share-typing { color: var(--muted); }
 .share-rate { display: flex; gap: 4px; margin-top: 6px; }
 .share-rate button { padding: 2px 8px; font-size: 13px; }

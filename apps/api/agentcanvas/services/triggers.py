@@ -6,9 +6,14 @@
   (replays) — and mapped to the workflow
   input with templates over `body` (e.g. `{"ticket": "{{ body.issue.title }}"}`); without a mapping the body
   itself is the input.
-- **Cron**: a 5-field schedule (`*/5 9-17 * * 1-5`, UTC) checked by one scheduler task per API process. Each
+- **Cron**: a 5-field schedule (`*/5 9-17 * * 1-5`, day and month names and `@daily`-style shorthands too) in the
+  trigger's IANA time zone (UTC by default), checked by one scheduler task per API process. Across a daylight
+  saving change, a time that does not happen that day does not fire, and a set time in the hour that happens twice
+  fires on its first pass only (a schedule that runs every hour runs through both). Each
   minute fires at most once across every replica: a scheduler claims it by moving the trigger's `last_fired`
-  forward in one conditional UPDATE, and only the replica whose update matched starts the run.
+  forward in one conditional UPDATE, and only the replica whose update matched starts the run. An occurrence no
+  scheduler ticked in (a restart, an outage, a slow tick) is caught up: the latest one missed within
+  `AGENTCANVAS_CRON_CATCHUP_S` fires once, never one before the trigger existed or while it was switched off.
 
 A trigger runs its deployment's pinned version when it has one, otherwise the draft.
 """
@@ -19,8 +24,9 @@ import asyncio
 import hashlib
 import hmac
 import secrets
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, tzinfo
 from typing import Any, Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import structlog
 from pydantic import BaseModel, Field, ValidationError, field_validator
@@ -28,6 +34,7 @@ from sqlalchemy import delete, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from agentcanvas import observability
 from agentcanvas.db.models import Deployment, EventDedup, Project, Trigger, WorkflowRow, WorkflowVersion
 from agentcanvas.errors import Conflict, InvalidInput, NotFound, Unauthorized
 from agentcanvas.expr import render_template
@@ -39,12 +46,32 @@ log = structlog.get_logger()
 SIGNATURE_HEADER = "X-AgentCanvas-Signature"
 TIMESTAMP_HEADER = "X-AgentCanvas-Timestamp"
 TOLERANCE_S = 300  # how old a signed delivery may be
+MINUTE = "%Y-%m-%dT%H:%M"  # a cron trigger's `last_fired`: the UTC minute, comparable as text
 _ORG_KEY = "v2:"  # webhook secrets encrypted with the organisation's data key; unprefixed = legacy key
 _RANGES = [(0, 59), (0, 23), (1, 31), (1, 12), (0, 7)]  # day of week: 0 and 7 are Sunday
+_NAMES = [
+    {},
+    {},
+    {},
+    {m: i for i, m in enumerate("JAN FEB MAR APR MAY JUN JUL AUG SEP OCT NOV DEC".split(), 1)},
+    {d: i for i, d in enumerate("SUN MON TUE WED THU FRI SAT".split())},
+]
+_MACROS = {
+    "@yearly": "0 0 1 1 *",
+    "@annually": "0 0 1 1 *",
+    "@monthly": "0 0 1 * *",
+    "@weekly": "0 0 * * 0",
+    "@daily": "0 0 * * *",
+    "@midnight": "0 0 * * *",
+    "@hourly": "0 * * * *",
+}
 
 
 # ------------------------------------------------------------------------------------------------- cron ----
-def _field(spec: str, lo: int, hi: int) -> set[int]:
+def _field(spec: str, lo: int, hi: int, names: dict[str, int]) -> set[int]:
+    def num(x: str) -> int:
+        return names[x.upper()] if x.upper() in names else int(x)
+
     out: set[int] = set()
     for part in spec.split(","):
         rng, _, step_s = part.partition("/")
@@ -54,9 +81,9 @@ def _field(spec: str, lo: int, hi: int) -> set[int]:
         if rng == "*":
             a, b = lo, hi
         elif "-" in rng:
-            a, b = (int(x) for x in rng.split("-", 1))
+            a, b = (num(x) for x in rng.split("-", 1))
         else:
-            a = int(rng)
+            a = num(rng)
             b = hi if step_s else a
         if not (lo <= a <= b <= hi):
             raise ValueError(f"'{part}' is outside {lo}-{hi}")
@@ -65,18 +92,30 @@ def _field(spec: str, lo: int, hi: int) -> set[int]:
 
 
 class Cron:
-    """A standard 5-field cron expression (minute hour day-of-month month day-of-week), UTC."""
+    """A standard 5-field cron expression (minute hour day-of-month month day-of-week), or a shorthand such as
+    `@daily`; `matches` reads the fields off the time it is given, `fires_at` off a UTC minute in a time zone."""
 
     def __init__(self, expr: str):
+        if expr.strip().startswith("@"):
+            if expr.strip().lower() not in _MACROS:
+                raise ValueError(f"invalid schedule '{expr}': use one of {', '.join(_MACROS)} or 5 fields")
+            expr = _MACROS[expr.strip().lower()]
         parts = expr.split()
         if len(parts) != 5:
             raise ValueError("a schedule has 5 fields: minute hour day-of-month month day-of-week")
         try:
-            self.fields = [_field(p, lo, hi) for p, (lo, hi) in zip(parts, _RANGES, strict=True)]
+            self.fields = [_field(p, lo, hi, names) for p, (lo, hi), names in zip(parts, _RANGES, _NAMES, strict=True)]
         except ValueError as exc:
             raise ValueError(f"invalid schedule '{expr}': {exc}") from None
         self.fields[4] = {d % 7 for d in self.fields[4]}
         self.dom_any, self.dow_any = parts[2] == "*", parts[4] == "*"
+        self.hourly = parts[1].startswith("*")  # runs every hour (or every few): not a set time of day
+
+    def fires_at(self, t: datetime, tz: tzinfo) -> bool:
+        """Whether the schedule, read in `tz`, fires at the UTC minute `t`. When clocks go back, the hour that
+        happens twice fires on its first pass only, unless the schedule runs every hour."""
+        local = t.astimezone(tz)
+        return self.matches(local) and (not local.fold or self.hourly)
 
     def matches(self, t: datetime) -> bool:
         minute, hour, dom, month, dow = self.fields
@@ -98,12 +137,27 @@ class WebhookConfig(BaseModel):
 class CronConfig(BaseModel):
     schedule: str
     input: dict[str, Any] = Field(default_factory=dict)
+    timezone: str = Field(default="UTC", description="IANA time zone the schedule is read in, e.g. Europe/Berlin")
 
     @field_validator("schedule")
     @classmethod
     def _valid(cls, v: str) -> str:
         Cron(v)
         return v
+
+    @field_validator("timezone")
+    @classmethod
+    def _zone(cls, v: str) -> str:
+        zone(v)
+        return v
+
+
+def zone(name: str | None) -> ZoneInfo:
+    """A schedule's time zone; ValueError for a name that is not an IANA time zone."""
+    try:
+        return ZoneInfo(name or "UTC")
+    except (ValueError, ZoneInfoNotFoundError):
+        raise ValueError(f"'{name}' is not a time zone: use an IANA name such as Europe/Berlin or UTC") from None
 
 
 class TriggerIn(BaseModel):
@@ -202,6 +256,9 @@ class TriggerService:
 
     async def set_enabled(self, trigger_id: str, enabled: bool) -> Trigger:
         trig = await self.require(trigger_id)
+        if enabled and not trig.enabled and trig.kind == "cron":  # what it missed while off is not caught up
+            before = (datetime.now(UTC) - timedelta(minutes=1)).strftime(MINUTE)
+            trig.last_fired = max(trig.last_fired or before, before)
         trig.enabled = enabled
         await self.s.commit()
         return trig
@@ -283,14 +340,21 @@ class TriggerService:
 
 
 # ------------------------------------------------------------------------------------------- scheduler ----
+def _rule(trig: Trigger) -> str:
+    return f"{trig.config['schedule']} {trig.config.get('timezone') or 'UTC'}"
+
+
 class CronScheduler:
     """Fires due cron triggers once per minute, across replicas (see module docstring)."""
 
-    def __init__(self, db: Any, runner: Any, keyring: Keyring, tick_s: float = 15.0):
-        self.db, self.runner, self.keyring, self.tick_s = db, runner, keyring, tick_s
+    def __init__(self, db: Any, runner: Any, keyring: Keyring, tick_s: float = 15.0, catchup_s: int = 3600):
+        self.db, self.runner, self.keyring, self.tick_s, self.catchup_s = db, runner, keyring, tick_s, catchup_s
         self._task: asyncio.Task | None = None
+        # trigger -> (schedule and zone, the last minute this replica looked at): a tick checks the minutes since
+        self._seen: dict[str, tuple[str, datetime]] = {}
 
     def start(self) -> None:
+        observability.job_started("cron")
         self._task = asyncio.create_task(self._loop(), name="cron-scheduler")
 
     async def stop(self) -> None:
@@ -301,25 +365,50 @@ class CronScheduler:
     async def _loop(self) -> None:
         while True:
             try:
-                await self.tick(datetime.now(UTC))
+                with observability.job_round("cron"):
+                    await self.tick(datetime.now(UTC))
             except Exception:
                 log.exception("cron.tick_failed")
             await asyncio.sleep(self.tick_s)
 
+    def _due(self, trig: Trigger, now: datetime) -> datetime | None:
+        """The minute `trig` fires for at `now`: the current one when the schedule matches it, else the latest it
+        missed since it last fired, within the catch-up window and not before the trigger existed."""
+        cron, tz = Cron(trig.config["schedule"]), zone(trig.config.get("timezone"))
+        current = now.replace(second=0, microsecond=0)
+        if cron.fires_at(current, tz):
+            return current
+        since = current - timedelta(seconds=self.catchup_s)
+        created = trig.created_at.replace(second=0, microsecond=0) - timedelta(minutes=1)
+        last = datetime.strptime(trig.last_fired, MINUTE).replace(tzinfo=UTC) if trig.last_fired else None
+        seen = self._seen.get(trig.id)
+        for floor in (created, last, seen[1] if seen and seen[0] == _rule(trig) else None):
+            if floor is not None and floor > since:
+                since = floor
+        t = current - timedelta(minutes=1)
+        while t > since:  # a minute at a time, but only since this replica last looked
+            if cron.fires_at(t, tz):
+                return t
+            t -= timedelta(minutes=1)
+        return None
+
     async def tick(self, now: datetime) -> list[str]:
         """Start the runs due at `now`; returns their run ids."""
-        minute = now.strftime("%Y-%m-%dT%H:%M")
         started = []
         async with self.db.sessionmaker() as s:
             rows = (await s.scalars(select(Trigger).where(Trigger.kind == "cron", Trigger.enabled))).all()
+            self._seen = {t.id: self._seen[t.id] for t in rows if t.id in self._seen}  # deleted ones are dropped
             svc = TriggerService(s, self.keyring)
             for trig in rows:
                 try:  # one schedule that no longer parses must not stop every other trigger
-                    due = Cron(trig.config["schedule"]).matches(now)
-                except Exception as exc:  # noqa: BLE001 - also a missing or non-text schedule
+                    due = self._due(trig, now)
+                except Exception as exc:  # noqa: BLE001 - also a missing or non-text schedule or time zone
                     log.warning("cron.bad_schedule", trigger=trig.id, error=str(exc))
                     continue
-                if not due or not await self._claim(s, trig.id, minute):
+                minute = due.strftime(MINUTE) if due else None
+                claimed = minute is not None and await self._claim(s, trig.id, minute)
+                self._seen[trig.id] = (_rule(trig), now.replace(second=0, microsecond=0))
+                if not claimed:
                     continue
                 try:
                     wf, kw = await svc.target(trig)
@@ -327,10 +416,23 @@ class CronScheduler:
                         wf, input=dict(trig.config.get("input") or {}), origin="trigger", project_files=True, **kw
                     )
                     started.append(h.run_id)
-                    log.info("cron.fired", trigger=trig.id, run=h.run_id)
+                    log.info("cron.fired", trigger=trig.id, run=h.run_id, minute=minute)
+                    outcome: dict[str, Any] = {"last_run_id": h.run_id, "last_error": None, "failures": 0}
                 except Exception as exc:  # noqa: BLE001
                     log.warning("cron.failed", trigger=trig.id, error=str(exc))
+                    outcome = {"last_error": str(exc)[:500] or type(exc).__name__, "failures": Trigger.failures + 1}
+                await self._outcome(trig.id, outcome)
         return started
+
+    async def _outcome(self, trigger_id: str, values: dict[str, Any]) -> None:
+        """Keep how the trigger's last start went, for the trigger list: a schedule that keeps failing is seen, not
+        only logged. Its own session: the scheduler's may hold a failed transaction."""
+        try:
+            async with self.db.sessionmaker() as s:
+                await s.execute(update(Trigger).where(Trigger.id == trigger_id).values(**values))
+                await s.commit()
+        except Exception:  # the run started (or not) whatever this says
+            log.warning("cron.outcome_not_saved", trigger=trigger_id, exc_info=True)
 
     @staticmethod
     async def _claim(s: AsyncSession, trigger_id: str, minute: str) -> bool:

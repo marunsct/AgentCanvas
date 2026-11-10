@@ -17,6 +17,7 @@ from agentcanvas.importers import (
     AGENT_REPLY,
     Builder,
     ImportError_,
+    Text,
     brace_template,
     compare,
     model_id,
@@ -221,10 +222,10 @@ class _Flow:
                 return self.expr(wired[0][0])
             typed = self.value(nid, name)
             if isinstance(typed, str) and typed:
-                return typed
+                return Text(typed)
             return "{{ state." + self.b.channel(name, io="in") + " }}"
 
-        return brace_template(self.value(nid, "template") or "", var)
+        return brace_template(self.value(nid, "template") or "", var, self.b)
 
     def build(self, nid: str) -> None:
         """Make the step for `nid` now, when it is not made yet: a step may read one that comes later in the file."""

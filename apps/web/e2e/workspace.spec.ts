@@ -148,6 +148,12 @@ test("switching files with unsaved changes asks first, and Keep editing keeps th
   await dialog.getByRole("button", { name: "Keep editing" }).click();
   await expect(page).toHaveURL(new RegExp(`guard_${stamp}_a\\.py`));
   await expect(page.locator(".cm-content")).toContainText("# unsaved");
+  // another page (here a link on this one) and Back ask the same way
+  await page.getByTestId("secrets-link").click();
+  await expect(dialog).toContainText("Discard your changes");
+  await dialog.getByRole("button", { name: "Keep editing" }).click();
+  await expect(page).toHaveURL(new RegExp(`/workspace\\?file=.*guard_${stamp}_a\\.py`));
+  await expect(page.locator(".cm-content")).toContainText("# unsaved");
   await page.getByRole("button", { name: `scripts/guard_${stamp}_b.py` }).click();
   await dialog.getByRole("button", { name: "Discard changes" }).click();
   await expect(page).toHaveURL(new RegExp(`guard_${stamp}_b\\.py`));

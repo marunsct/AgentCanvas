@@ -10,6 +10,97 @@ Merging, deleting branches and anything outward-facing stay with you: work is de
 - No version bump or tag (yours to decide); `CHANGELOG.md` "Unreleased" and `HARDENING.md` are kept current.
 - Prefer checks that grow with the product (driven by the OpenAPI document or the template list) over lists to maintain.
 
+## 2026-11-10 (launch review)
+
+### A third deep review, aimed at launch
+Eleven reviewers read the code, security, operations, data, web app, adapters and docs, and every finding went to a
+second agent told to refute it; 104 of 107 survived and were fixed on `claude/hardening-7`, one concern per commit,
+each with a test that fails without it. Two researchers checked the product against OWASP ASVS 5.0, the OWASP LLM and
+Agentic Top 10s, NIST AI 600-1, ISO 42001, the EU AI Act and CRA, SOC 2 and EnterpriseReady, and against what
+changed in MCP, A2A, AG-UI and the competing products; their recommendations re-shaped the roadmap in
+`hardening.md` (the enterprise controls E-1 to E-9 now come before F-8 onward). The run queue's design changed in
+the process: instead of each waiting run locking the organisation's row every second, one admission pass per server
+and organisation takes the free slots, and a run waits at most `AGENTCANVAS_MAX_QUEUE_WAIT_S` (1 h); this replaces
+the row-lock design described in the entry below.
+
+### No licence was chosen
+The repository has no LICENSE, so customers have no written right to run AgentCanvas or ship exported code. That is
+a commercial decision for you; the user guide now says the terms are not set yet instead of promising rights
+(`docs/user-guide/faq.md`, `security.md`). *Reverse:* add a LICENSE and replace those two passages.
+
+### Judgment calls inside the fixes
+Each was written in its commit as a `Decision:` line; collected here with how to reverse it.
+
+- No retention sweep of checkpoints without a conversation row; the clear-on-first-run backstop covers reuse, and a
+  sweep would need every framework to list its saved threads.
+- Migrations hold a session-level advisory lock polled every 0.5 s instead of a transaction-level one, so a migration
+  may commit midway (CREATE INDEX CONCURRENTLY); to reverse, build indexes inside the transaction and go back to
+  pg_advisory_xact_lock.
+- The archive keeps hourly totals for as long as the workflow exists, with no retention of its own; to cap it, delete
+  rows older than the audit retention in the retention job.
+- Chromadb's four advisories (no fix released) are accepted for CrewAI's environment because they concern chromadb's
+  server, which AgentCanvas never runs; remove the --ignore-vuln lines in scripts/audit-deps.sh to fail on them again.
+- The API's uv.lock gets no `exclude-newer`: every install is `uv sync --frozen` and updates come only through
+  Dependabot (now with a cooldown), while an exclude-newer window would also block an urgent security fix from
+  resolving. Add `[tool.uv] exclude-newer = "7 days"` to apps/api/pyproject.toml to change this.
+- The supported versions (latest release and main only) and the response targets (acknowledge in 3 business days, assess
+  in 10, fix critical/high in 30 days and the rest in 90) are proposals for the owner; change them in
+  .github/SECURITY.md. GitHub's private vulnerability reporting must be switched on in the repository's settings (Code
+  security) for the link to work.
+- The licence is left to the owner; when one is added, replace the FAQ answer and the Compliance paragraph in
+  docs/user-guide/security.md with its terms (the test then stops checking).
+- Refused rather than run through the sandbox, because the framework object (an agent, a crew, options) cannot cross the
+  sandbox's JSON boundary; designed agents (AI agent block "Designed for" a framework) are the isolated way. To reverse,
+  run the step through SandboxRunner.exchange with a callable-only contract.
+- 256 rather than Docker mode's 64, so libraries that start a thread per core keep working on large nodes; lower
+  PROCESSES in sandbox/runners.py to tighten it.
+- The same environment allowlist applies to parts in exported projects, since their model and tools also come from the
+  host; widen WORKER_ENV in parts.py if an export's part needs more.
+- A floor (pytest>=8) like every other export rather than an exact pin, since no export ships a lockfile for its Python
+  test tools; to pin exactly, keep one static version table (scripts/framework_versions.py) and write it in every
+  packager.
+- Running runs now get AGENTCANVAS_DRAIN_GRACE_S counted from SIGTERM rather than after uvicorn's 30 s wait, so a long
+  run is handed over sooner; raise the drain grace (and the grace period with it) to give runs longer, or move `await
+  app.state.wind_down.begin()` back to only the lifespan's shutdown to restore the old timing.
+- The version is behind sign-in (GET /v1/version), not on the public /healthz, so an anonymous caller cannot fingerprint
+  the release; operators also have the metric, the log line and the labels. Add it to /healthz if a monitor needs it
+  unauthenticated.
+- The document is behind sign-in rather than public, which keeps S15's reason (no map for anonymous callers); the type
+  URIs stay https://agentcanvas.dev/errors/* because clients match on them: moving them to a domain the project owns (or
+  to URNs) is the owner's call and a breaking change. Operations without a description (about 110) are left for a
+  separate pass.
+- Limits are 1 s per render, 10 million characters of text and a million list items; they are constants at the top of
+  the bounded-templates section of expr.py.
+- A dedup value older than the window runs its handler again if the same value is delivered later; set
+  AGENTCANVAS_EVENT_DEDUP_DAYS=0 to keep dedup values for the whole conversation retention instead.
+- One server-wide expiry with a generous default rather than per organisation or per interrupt node; set
+  AGENTCANVAS_APPROVAL_EXPIRY_DAYS=0 to restore approvals that wait forever.
+- At most one late run per gap (the latest missed occurrence), like Kubernetes CronJob's startingDeadlineSeconds; set
+  AGENTCANVAS_CRON_CATCHUP_S=0 for the old behaviour, or raise it for longer outages.
+- In the repeated hour when clocks go back, a set time fires once (first pass) and an every-hour schedule fires in both
+  passes, like Vixie cron; a skipped time does not fire (Kubernetes CronJob behaviour). Changing either is in
+  Cron.fires_at.
+- Scoring still waiting when a server stops is not resumed (no durable scoring queue); a durable queue would need a
+  table and a worker, worth it only if dropped or lost scores show up in practice.
+- Tokens made before a cap keep their expiry (they are listed for admins to revoke); shortening them silently could
+  break running scripts. Clamp existing expiries in TokenService.authenticate to reverse.
+- No new setting; the hosted edition alone stops the fallback. Add an operator flag in langsmith_sync.api_key to
+  reverse.
+- Allowed by default, so existing installations keep working; the dead `assignee_role` column is left for per-step
+  approver roles later. Set the default to false in settings.py to make four-eyes the default.
+- The log line is always on (no setting): it is the cheapest path into a SIEM, at one line per security change. Drop
+  LogSink from sink_for to reverse.
+- Loopback stays reachable with private networks allowed (local services on a desktop install); only link-local,
+  unspecified and metadata addresses are refused. Add `ip.is_loopback` to is_metadata's callers to refuse it too.
+- The maximum wait defaults to an hour; set AGENTCANVAS_MAX_QUEUE_WAIT_S=0 to wait without limit. No cap on the queue's
+  length was added: a waiting run now costs no database work of its own.
+- The `agentcanvas_runs_started_total` metric no longer has an `origin="handover"` value; a continued run counts under
+  its own origin.
+- Low-priority runs do not age into higher priority; the maximum queue wait (AGENTCANVAS_MAX_QUEUE_WAIT_S) bounds their
+  wait instead. A release gate's overall 600 s limit still includes queue time.
+- The header goes on every A2A and MCP call a run makes, also to servers outside AgentCanvas; it carries only the run id
+  and a signature only this server can check. Remove `nesting.install` in api/main.py to stop sending it.
+
 ## 2026-11-10
 
 ### Run priority comes with a runs-at-once limit; nothing queues by default

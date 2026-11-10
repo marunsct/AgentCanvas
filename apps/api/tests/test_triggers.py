@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from test_publish import make_greeter, set_greeting
@@ -174,3 +174,142 @@ async def test_a_trigger_warns_when_a_connector_signs_in_as_the_person_who_start
     cur = (await api_client.get(f"/v1/workflows/{wf}")).json()
     await api_client.put(f"/v1/workflows/{wf}", json={"ir": ir}, headers={"If-Match": str(cur["version"])})
     assert (await api_client.get(f"/v1/workflows/{wf}/triggers")).json()[0]["warnings"] == []
+
+
+async def _cron(app, api_client, schedule: str, **config) -> str:
+    wf = await make_greeter(api_client)
+    r = await api_client.post(
+        f"/v1/workflows/{wf}/triggers", json={"kind": "cron", "config": {"schedule": schedule, **config}}
+    )
+    assert r.status_code == 201, r.text
+    return r.json()["id"]
+
+
+async def _finish(app, run_ids: list[str]) -> None:
+    for rid in run_ids:
+        await asyncio.wait_for(app.state.runner.handles[rid].done.wait(), 10)
+
+
+async def test_a_schedule_missed_while_no_server_was_ticking_fires_once_when_one_comes_back(app, api_client):
+    """A restart, an outage or a slow tick at the scheduled minute used to lose that occurrence: the scheduler only
+    looked at the minute it ticked in. The latest occurrence missed within AGENTCANVAS_CRON_CATCHUP_S (1 h) fires
+    once, on one replica, when ticking resumes; an older one is not run late."""
+    from sqlalchemy import select
+
+    from agentcanvas.db.models import Trigger
+    from agentcanvas.services.triggers import CronScheduler
+
+    due = datetime.now(UTC).replace(second=0, microsecond=0) + timedelta(days=1)  # after the trigger was made
+    nightly = await _cron(app, api_client, f"{due.minute} {due.hour} * * *")
+    replicas = [app.state.cron, CronScheduler(app.state.db, app.state.runner, app.state.keyring)]
+    assert app.state.cron.catchup_s == 3600
+
+    back = due + timedelta(minutes=2, seconds=5)  # the server was down at `due`
+    fired = await asyncio.gather(*(c.tick(back) for c in replicas))
+    assert sorted(len(f) for f in fired) == [0, 1]  # once, not once per replica
+    await _finish(app, [*fired[0], *fired[1]])
+    async with app.state.db.sessionmaker() as s:
+        assert (await s.get(Trigger, nightly)).last_fired == due.strftime("%Y-%m-%dT%H:%M")  # type: ignore[union-attr]
+    assert [await c.tick(back + timedelta(minutes=1)) for c in replicas] == [[], []]  # and only once
+
+    late = due + timedelta(days=1, hours=1, minutes=1)  # the next night's occurrence is over an hour old
+    assert [await c.tick(late) for c in replicas] == [[], []]
+    async with app.state.db.sessionmaker() as s:
+        assert (await s.scalar(select(Trigger.last_fired).where(Trigger.id == nightly))) == due.strftime(
+            "%Y-%m-%dT%H:%M"
+        )
+
+
+async def test_a_schedule_does_not_fire_for_a_time_before_it_existed_or_while_it_was_off(app, api_client):
+    from sqlalchemy import update
+
+    from agentcanvas.db.models import Trigger
+
+    now = datetime.now(UTC)
+    missed = now - timedelta(minutes=10)
+    trig = await _cron(app, api_client, f"{missed.minute} * * * *")
+    assert await app.state.cron.tick(now) == []  # its minute this hour came before it was made
+
+    async with app.state.db.sessionmaker() as s:  # it last fired long ago and was then switched off
+        await s.execute(update(Trigger).where(Trigger.id == trig).values(last_fired="2026-01-01T00:00"))
+        await s.commit()
+    assert (await api_client.patch(f"/v1/triggers/{trig}", json={"enabled": False})).status_code == 200
+    assert (await api_client.patch(f"/v1/triggers/{trig}", json={"enabled": True})).status_code == 200
+    assert await app.state.cron.tick(now) == []  # what it missed while off is not run when it is switched back on
+
+
+def test_a_schedule_runs_in_its_time_zone_through_daylight_saving():
+    """A schedule written for local business hours used to run in UTC only, an hour off for half the year."""
+    from zoneinfo import ZoneInfo
+
+    berlin = ZoneInfo("Europe/Berlin")
+    eight = Cron("0 8 * * *")
+    assert eight.fires_at(at("2027-01-15T07:00"), berlin) and eight.fires_at(at("2027-07-15T06:00"), berlin)
+    assert not eight.fires_at(at("2027-07-15T07:00"), berlin)
+    assert eight.fires_at(at("2027-07-15T08:00"), ZoneInfo("UTC"))
+    # 2026-10-25: 02:00-03:00 happens twice in Berlin. A set time fires on the first pass only; a schedule that
+    # runs every hour keeps running through the second pass too
+    half_two = Cron("30 2 * * *")
+    assert half_two.fires_at(at("2026-10-25T00:30"), berlin) and not half_two.fires_at(at("2026-10-25T01:30"), berlin)
+    every = Cron("*/30 * * * *")
+    assert every.fires_at(at("2026-10-25T00:30"), berlin) and every.fires_at(at("2026-10-25T01:30"), berlin)
+    # 2027-03-28: 02:00-03:00 does not happen in Berlin, so a schedule set in it does not fire that day
+    assert not any(half_two.fires_at(at(f"2027-03-28T{h:02}:30"), berlin) for h in range(24))
+
+
+def test_a_schedule_may_name_days_and_months_and_use_the_usual_shorthands():
+    weekdays = Cron("0 9 * * MON-FRI")
+    assert weekdays.matches(at("2026-09-29T09:00")) and not weekdays.matches(at("2026-10-04T09:00"))  # Tue, Sun
+    assert Cron("0 0 1 jan,Jul *").matches(at("2027-07-01T00:00")) and not Cron("0 0 1 JAN *").matches(
+        at("2027-07-01T00:00")
+    )
+    assert Cron("0 0 * * sun").matches(at("2026-10-04T00:00"))
+    assert Cron("@daily").matches(at("2027-07-01T00:00")) and not Cron("@daily").matches(at("2027-07-01T01:00"))
+    assert Cron("@hourly").matches(at("2027-07-01T05:00")) and Cron("@weekly").matches(at("2026-10-04T00:00"))
+    assert Cron("@monthly").matches(at("2027-07-01T00:00")) and Cron("@yearly").matches(at("2027-01-01T00:00"))
+    for bad in ("0 9 * * MON-FRY", "@sometimes", "0 9 * FEBR *"):
+        with pytest.raises(ValueError):
+            Cron(bad)
+
+
+async def test_a_cron_trigger_keeps_its_time_zone(app, api_client):
+    wf = await make_greeter(api_client)
+    made = await api_client.post(
+        f"/v1/workflows/{wf}/triggers",
+        json={"kind": "cron", "config": {"schedule": "0 8 * * *", "timezone": "Mars/Base"}},
+    )
+    assert made.status_code == 422 and "time zone" in made.json()["detail"]
+    made = await api_client.post(
+        f"/v1/workflows/{wf}/triggers",
+        json={"kind": "cron", "config": {"schedule": "0 8 * * *", "timezone": "Europe/Berlin"}},
+    )
+    assert made.status_code == 201, made.text
+    [listed] = (await api_client.get(f"/v1/workflows/{wf}/triggers")).json()
+    assert listed["config"]["timezone"] == "Europe/Berlin"
+    assert await app.state.cron.tick(at("2027-07-15T08:00")) == []  # 10:00 in Berlin
+    fired = await app.state.cron.tick(at("2027-07-16T06:00"))  # 08:00 in Berlin
+    assert len(fired) == 1
+    await _finish(app, fired)
+
+
+async def test_a_schedule_that_cannot_start_its_run_says_why_in_the_trigger_list(app, api_client):
+    """A failed start (the deployment unpublished, a security gate) was only a warning in the server log: a nightly
+    job could fail for weeks without anyone seeing it."""
+    wf = await make_greeter(api_client)
+    pub = (await api_client.post(f"/v1/workflows/{wf}/publish", json={})).json()
+    r = await api_client.post(
+        f"/v1/workflows/{wf}/triggers",
+        json={"kind": "cron", "deployment_id": pub["deployment"]["id"], "config": {"schedule": "* * * * *"}},
+    )
+    assert r.status_code == 201, r.text
+    assert (r.json()["last_run_id"], r.json()["last_error"], r.json()["failures"]) == (None, None, 0)
+    fired = await app.state.cron.tick(at("2026-10-06T09:00"))
+    await _finish(app, fired)
+    [trig] = (await api_client.get(f"/v1/workflows/{wf}/triggers")).json()
+    assert (trig["last_run_id"], trig["last_error"], trig["failures"]) == (fired[0], None, 0)
+
+    await api_client.delete(f"/v1/deployments/{pub['deployment']['id']}")
+    for minute in ("09:01", "09:02"):
+        assert await app.state.cron.tick(at(f"2026-10-06T{minute}")) == []
+    [trig] = (await api_client.get(f"/v1/workflows/{wf}/triggers")).json()
+    assert "unpublished" in trig["last_error"] and trig["failures"] == 2 and trig["last_run_id"] == fired[0]

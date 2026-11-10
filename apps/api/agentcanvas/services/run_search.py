@@ -36,6 +36,7 @@ MAX_TEXT = 4000  # characters kept (and embedded) per run
 CANDIDATES = 5000  # newest rows of a project a search ranks
 PEOPLES = or_(Run.origin.is_(None), Run.origin != "test")  # experiment and test runs are not conversations
 BATCH = 64
+INDEXING = 4  # finished runs indexed at once per process; the rest wait their turn
 SNIPPET = 220
 REINDEX_LIMIT = 2000  # runs one reindex fills in
 
@@ -101,6 +102,7 @@ class RunSearchService:
     ):
         self.db, self.embedder, self.secrets = db, embedder, secrets
         self.tasks: set[asyncio.Task] = set()
+        self._indexing = asyncio.Semaphore(INDEXING)
 
     # --------------------------------------------------------------- model ----
     async def _model(self, s: Any, project_id: str) -> tuple[str, dict[str, Any]]:
@@ -131,65 +133,78 @@ class RunSearchService:
 
     async def _index(self, h: Any) -> None:
         try:
-            async with self.db.sessionmaker() as s:
-                row = await s.get(WorkflowRow, h.workflow_id)
-                if row is None:
-                    return
-                input = h.input
-                if input is None:  # a resume continues the thread's last fresh run: it has the input
-                    input = await s.scalar(
-                        select(Run.recording["input"]).where(Run.thread_id == h.thread_id, Run.recording.is_not(None))
-                        .order_by(Run.started_at.desc()).limit(1)
-                    )  # fmt: skip
-                await self.index_run(s, row.project_id, h.run_id, h.thread_id, h.workflow_id, input,
-                                     final_output(h.events + h.held))  # fmt: skip
+            async with self._indexing:  # a burst of finished runs indexes a few at a time
+                async with self.db.sessionmaker() as s:  # what to index, read in a short session
+                    project_id = await s.scalar(select(WorkflowRow.project_id).where(WorkflowRow.id == h.workflow_id))
+                    if project_id is None:
+                        return
+                    input = h.input
+                    if input is None:  # a resume continues the thread's last fresh run: it has the input
+                        input = await s.scalar(
+                            select(Run.recording["input"])
+                            .where(Run.thread_id == h.thread_id, Run.id != h.run_id, Run.recording.is_not(None))
+                            .order_by(Run.started_at.desc()).limit(1)
+                        )  # fmt: skip
+                    model, spec = await self._model(s, project_id)
+                output = final_output(h.events + h.held)
+                await self.index_runs(project_id, model, spec, [(h.run_id, h.thread_id, h.workflow_id, input, output)])
         except Exception:
             log.exception("run_search.index_failed", run_id=h.run_id)
 
-    async def index_run(
-        self, s: Any, project_id: str, run_id: str, thread_id: str, workflow_id: str, input: Any, output: Any
-    ) -> bool:
-        text = text_of(input, output, self.secrets(project_id))
-        if not text:
-            await s.execute(delete(RunSearch).where(RunSearch.run_id == run_id))
+    async def index_runs(
+        self, project_id: str, model: str, spec: dict[str, Any], runs: list[tuple[str, str, str, Any, Any]]
+    ) -> int:
+        """Index runs given as (run id, thread id, workflow id, input, output); returns how many had text. Embedded
+        with no database connection held (a hosted model takes a while), then written in one short transaction."""
+        secrets = self.secrets(project_id)
+        texts = {run_id: text_of(input, output, secrets) for run_id, _, _, input, output in runs}
+        kept = [r for r in runs if texts[r[0]]]
+        vectors = await self._embed(project_id, spec, [texts[r[0]] for r in kept]) if kept else []
+        async with self.db.sessionmaker() as s:
+            await s.execute(delete(RunSearch).where(RunSearch.run_id.in_(list(texts))))
+            for (run_id, thread_id, workflow_id, _, _), vector in zip(kept, vectors, strict=True):
+                s.add(
+                    RunSearch(
+                        id=new_id("rs"), run_id=run_id, thread_id=thread_id, workflow_id=workflow_id,
+                        project_id=project_id, text=texts[run_id], vector=pack(vector), model=model,
+                    )
+                )  # fmt: skip
             await s.commit()
-            return False
-        model, spec = await self._model(s, project_id)
-        [vector] = await self._embed(project_id, spec, [text])
-        await s.execute(delete(RunSearch).where(RunSearch.run_id == run_id))
-        s.add(
-            RunSearch(
-                id=new_id("rs"), run_id=run_id, thread_id=thread_id, workflow_id=workflow_id, project_id=project_id,
-                text=text, vector=pack(vector), model=model,
-            )
-        )  # fmt: skip
-        await s.commit()
-        return True
+        return len(kept)
 
     async def reindex(self, project_id: str, limit: int = REINDEX_LIMIT) -> dict[str, int]:
         """Index the project's newest runs that are not indexed (or were with another model), from their recording
         (runs from before the index) or kept events. Returns {indexed, skipped}."""
-        indexed = skipped = 0
         async with self.db.sessionmaker() as s:
-            model, _ = await self._model(s, project_id)
+            model, spec = await self._model(s, project_id)
             done = select(RunSearch.run_id).where(RunSearch.project_id == project_id, RunSearch.model == model)
             q = (
-                select(Run.id, Run.thread_id, Thread.workflow_id, Run.recording, Run.events)
+                select(Run.id)
                 .join(Thread, Thread.id == Run.thread_id)
                 .join(WorkflowRow, WorkflowRow.id == Thread.workflow_id)
                 .where(WorkflowRow.project_id == project_id, Run.status != "running", Run.id.not_in(done), PEOPLES)
                 .order_by(Run.started_at.desc())
                 .limit(limit)
             )
-            rows = (await s.execute(q)).all()
+            ids = list((await s.scalars(q)).all())
+        indexed = 0
+        for i in range(0, len(ids), BATCH):  # a batch read, embedded with no session open, then written
+            async with self.db.sessionmaker() as s:
+                rows = (
+                    await s.execute(
+                        select(Run.id, Run.thread_id, Thread.workflow_id, Run.recording, Run.events)
+                        .join(Thread, Thread.id == Run.thread_id)
+                        .where(Run.id.in_(ids[i : i + BATCH]))
+                    )
+                ).all()
+            runs = []
             for run_id, thread_id, workflow_id, recording, events in rows:
                 rec = recording or {}
-                out = rec.get("output") or final_output(events)
-                if await self.index_run(s, project_id, run_id, thread_id, workflow_id, rec.get("input"), out):
-                    indexed += 1
-                else:
-                    skipped += 1
-        return {"indexed": indexed, "skipped": skipped}
+                runs.append(
+                    (run_id, thread_id, workflow_id, rec.get("input"), rec.get("output") or final_output(events))
+                )
+            indexed += await self.index_runs(project_id, model, spec, runs)
+        return {"indexed": indexed, "skipped": len(ids) - indexed}
 
     # -------------------------------------------------------------- search ----
     async def search(
@@ -212,9 +227,13 @@ class RunSearchService:
             total = int(await s.scalar(total_q) or 0)
             # every row with this model, not only the CANDIDATES ranked: else a big project is "stale" for good
             in_index = int(await s.scalar(rows_q.with_only_columns(func.count()).order_by(None)) or 0)
-            names = dict((await s.execute(select(WorkflowRow.id, WorkflowRow.name))).all())
+            names: dict[str, str] = {}
             started: dict[str, Any] = {}
-            if rows:
+            if rows:  # the names of the workflows found only, not every workflow of the installation
+                found_wfs = select(WorkflowRow.id, WorkflowRow.name).where(
+                    WorkflowRow.id.in_({r.workflow_id for r in rows})
+                )
+                names = dict((await s.execute(found_wfs)).tuples().all())
                 found = await s.execute(select(Run.id, Run.started_at).where(Run.id.in_([r.run_id for r in rows])))
                 started = dict(found.all())
         chunks = [

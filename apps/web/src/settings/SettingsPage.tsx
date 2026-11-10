@@ -10,6 +10,7 @@ import { useUi } from "../editor/ui";
 import { TraceExportSettings } from "../observability/TraceExportSettings";
 import { ThemeSwitcher } from "../theme/ThemeSwitcher";
 import { PageHeader } from "../ui/PageHeader";
+import { About } from "./About";
 import { ApiTokens } from "./ApiTokens";
 import { ConnectionsSettings } from "./ConnectionsSettings";
 import { ModelDefaults } from "./ModelDefaults";
@@ -48,6 +49,7 @@ export const SECTIONS: Section[] = [
   { id: "shortcuts", group: "You", label: "Keyboard shortcuts", render: () => <Shortcuts /> },
   { id: "connections", group: "You", label: "Connections", render: () => <ConnectionsSettings /> },
   { id: "tokens", group: "You", label: "API tokens", render: () => <ApiTokens /> },
+  { id: "about", group: "You", label: "About", render: () => <About /> },
 ];
 
 export function SettingsPage() {

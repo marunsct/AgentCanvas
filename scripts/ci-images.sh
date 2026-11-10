@@ -19,6 +19,7 @@ export AGENTCANVAS_EGRESS_SECRET=ci-only-egress-secret-0123456789abcdef0123
 export AGENTCANVAS_OIDC_ISSUER=https://login.example.com/realms/ci AGENTCANVAS_OIDC_AUDIENCE=agentcanvas-api
 export AGENTCANVAS_OIDC_CLIENT_ID=agentcanvas-web
 TRIVY_IMAGE=aquasec/trivy:0.58.1@sha256:ab70a02200597efa04748f210f793936eb647cbcdb0ea69cc30b226d6f5a22c7
+SBOM_DIR=${SBOM_DIR:-.ci-tmp/sbom}   # kept after the run: attach them to a release
 
 # The compose files pin their two internal networks to fixed subnets (the API trusts forwarded addresses from one of
 # them), so a second stack on this machine, such as a running `make docker-up`, needs subnets of its own
@@ -35,8 +36,10 @@ trap cleanup EXIT
 fail() { echo "images: $*" >&2; prod logs --no-color --tail 80 2>&1 | tail -80 >&2 || true; exit 1; }
 
 echo "== build the images"
-# the runtime stage is rebuilt every time: its `apt-get upgrade` layer must not come from a cache older than the scan
-docker build -q --no-cache-filter runtime -f infra/Dockerfile.api -t "$API_IMAGE" apps/api >/dev/null
+# the runtime stage is rebuilt every time: its `apt-get upgrade` layer must not come from a cache older than the scan.
+# The API image is the Docker app's (every framework environment and Mastra), so the scan sees all that ships.
+docker build -q --no-cache-filter runtime --build-arg FRAMEWORKS=all --build-arg WITH_MASTRA=true \
+  -f infra/Dockerfile.api -t "$API_IMAGE" apps/api >/dev/null
 docker build -q --no-cache-filter runtime -f infra/Dockerfile.web -t "$WEB_IMAGE" . >/dev/null
 
 echo "== scan them (Trivy: high and critical, with a fix; accepted ones are in infra/.trivyignore)"
@@ -44,6 +47,14 @@ for image in "$API_IMAGE" "$WEB_IMAGE"; do
   docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD/infra/.trivyignore:/.trivyignore:ro" \
     "$TRIVY_IMAGE" image --quiet --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed \
     --ignorefile /.trivyignore --exit-code 1 "$image" || fail "Trivy found fixable high or critical vulnerabilities in $image"
+done
+
+echo "== a bill of materials for each image (CycloneDX, every OS and language package with its licence): $SBOM_DIR"
+mkdir -p "$SBOM_DIR"
+for image in "$API_IMAGE" "$WEB_IMAGE"; do
+  name=${image%%:*}
+  docker run --rm -v /var/run/docker.sock:/var/run/docker.sock "$TRIVY_IMAGE" image --quiet --format cyclonedx \
+    "$image" > "$SBOM_DIR/$name.cdx.json" || fail "no bill of materials for $image"
 done
 
 echo "== start the production stack on port $PROD_PORT"
@@ -64,6 +75,7 @@ check "plain http is not pinned to https (no HSTS)" sh_ "test -z \"\$(curl -fsSI
 check "an untrusted client claiming https gets no HSTS" sh_ "test -z \"\$(curl -fsSI -H 'X-Forwarded-Proto: https' $B/ | grep -i strict-transport-security)\""
 check "the share page is served"               sh_ "curl -fsS $B/s/sh_ci | grep -qi '<!doctype html>'"
 check "the chat widget script is served"       sh_ "curl -fsSI $B/widget.js | grep -qi 'content-type: application/javascript'"
+check "the bundle's licence notices are served" sh_ "curl -fsS $B/third-party-licenses.txt | grep -q '^## react - '"
 check "sign-in is on"                          sh_ "curl -fsS $B/api/v1/auth/config | grep -q '\"mode\":\"oidc\"'"
 check "a stranger is refused (401)"            sh_ "test \"\$(curl -s -o /dev/null -w '%{http_code}' $B/api/v1/projects)\" = 401"
 check "the API runs as uid 10001"              sh_ "docker compose -p ac-ci-prod -f infra/compose.prod.yml exec -T api id -u | grep -qx 10001"

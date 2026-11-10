@@ -181,6 +181,25 @@ async def test_fork_copy_leaves_original_thread_untouched(triage_api):
     assert (await api.get(f"/v1/threads/{new_thread}")).json()["next"] == ["n_ok"]
 
 
+async def test_one_checkpoint_state_is_read_on_its_own(triage_api):
+    """The Timeline lists checkpoints without their state and reads the one picked (a long chat's full history was
+    every checkpoint's whole state at once)."""
+    api, wf = triage_api, triage_api.wf_id
+    await api.post(f"/v1/workflows/{wf}/runs/stream", json={"input": {"ticket": "Hi"}, "thread_id": "th_one"})
+    history = (await api.get("/v1/threads/th_one/history")).json()
+    first, last = history[-1], history[0]
+    r = await api.get(f"/v1/threads/th_one/checkpoints/{last['checkpoint_id']}")
+    assert r.status_code == 200, r.text
+    assert r.json()["checkpoint_id"] == last["checkpoint_id"] and r.json()["values"]["ticket"] == "Hi"
+    assert r.json()["next"] == last["next"] and r.json()["step"] == last["step"]
+    early = (await api.get(f"/v1/threads/th_one/checkpoints/{first['checkpoint_id']}")).json()
+    assert early["checkpoint_id"] == first["checkpoint_id"] and "summary" not in early["values"]
+    assert (await api.get("/v1/threads/th_one/checkpoints/nope")).status_code == 404
+    await api.post(f"/v1/workflows/{wf}/runs/stream", json={"input": {"ticket": "Other"}, "thread_id": "th_two"})
+    # another thread's checkpoint is not this thread's
+    assert (await api.get(f"/v1/threads/th_two/checkpoints/{last['checkpoint_id']}")).status_code == 404
+
+
 async def test_state_edit_creates_checkpoint(triage_api):
     api, wf = triage_api, triage_api.wf_id
     await api.post(f"/v1/workflows/{wf}/runs/stream", json={"input": {"ticket": "Q"}, "thread_id": "th_edit"})
@@ -218,7 +237,7 @@ async def test_cancel_reattach_and_double_texting(api_client):
     busy = await api_client.post(f"/v1/workflows/{wf}/runs/stream", json={"thread_id": thread_id, "stream": False})
     assert busy.status_code == 409 and busy.json()["run_id"] == run_id
     await asyncio.sleep(0.2)
-    assert (await api_client.post(f"/v1/runs/{run_id}/cancel")).json() == {"cancelled": True}
+    assert (await api_client.post(f"/v1/runs/{run_id}/cancel")).json() == {"cancelled": True, "pending": False}
     evs = events((await api_client.get(f"/v1/runs/{run_id}/events")).text)  # re-attach replays the buffer
     assert evs[0]["type"] == "RUN_STARTED" and evs[-1] == evs[-1] | {"type": "RUN_ERROR", "code": "cancelled"}
     assert (await api_client.get(f"/v1/runs/{run_id}")).json()["status"] == "cancelled"
@@ -740,7 +759,7 @@ async def test_an_answer_stopped_before_it_took_goes_back_to_the_inbox(triage_ap
     assert r.status_code == 202, r.text
     await asyncio.sleep(0.05)
     if stop == "cancel":
-        assert (await api.post(f"/v1/runs/{r.json()['run_id']}/cancel")).json() == {"cancelled": True}
+        assert (await api.post(f"/v1/runs/{r.json()['run_id']}/cancel")).json() == {"cancelled": True, "pending": False}
         await runner.wait(r.json()["run_id"])
     else:
         await runner.drain(0)

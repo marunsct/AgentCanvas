@@ -1,11 +1,14 @@
 """The server's own settings as Settings > Server shows them (admins, read-only): what this server does and which
-environment variable changes it. Values that are secrets, or addresses that carry credentials, are never shown."""
+environment variable changes it. Values that are secrets, or addresses that carry credentials, are never shown.
+Also the release it runs (Settings > About) and its OpenAPI document, for every signed-in user."""
 
 from __future__ import annotations
 
 from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from agentcanvas import version
 from agentcanvas.adapters import installed_adapters
 
 router = APIRouter(tags=["server"])
@@ -16,6 +19,25 @@ class ServerSetting(BaseModel):
     label: str
     value: str
     env: str = Field(description="the environment variable an operator sets it with")
+
+
+class ReleaseOut(BaseModel):
+    version: str = Field(description="the release, e.g. 0.33.0")
+    commit: str | None = Field(description="the git commit the server's image was built from, when it was given")
+
+
+@router.get("/version", response_model=ReleaseOut)
+async def server_version() -> ReleaseOut:
+    """The release and commit this server runs (Settings > About), for any signed-in user: what support asks for."""
+    return ReleaseOut(version=version.VERSION, commit=version.COMMIT)
+
+
+@router.get("/openapi.json", include_in_schema=False)
+async def api_description(request: Request) -> JSONResponse:
+    """This server's OpenAPI document, for signed-in callers (people and API tokens): in production `/openapi.json`
+    and `/docs` are off for anonymous callers, since they map the attack surface (S15), but integrators and client
+    generators still need the reference of the release they talk to."""
+    return JSONResponse(request.app.openapi())
 
 
 def _days(n: int) -> str:
@@ -78,6 +100,18 @@ async def server_settings(request: Request) -> list[ServerSetting]:
             f"{s.rate_limit_per_share_client} a minute",
             "AGENTCANVAS_RATE_LIMIT_PER_SHARE_CLIENT",
         ),
+        (
+            "Limits",
+            "Runs at once per organisation (unless it sets a lower limit)",
+            str(s.max_concurrent_runs) if s.max_concurrent_runs else "no limit",
+            "AGENTCANVAS_MAX_CONCURRENT_RUNS",
+        ),
+        (
+            "Limits",
+            "Longest wait for a run slot",
+            f"{s.max_queue_wait_s:g} seconds" if s.max_queue_wait_s else "no limit",
+            "AGENTCANVAS_MAX_QUEUE_WAIT_S",
+        ),
         ("Limits", "Steps per run", str(s.recursion_limit), "AGENTCANVAS_RECURSION_LIMIT"),
         ("Limits", "Largest attached file", _mb(s.max_upload_mb), "AGENTCANVAS_MAX_UPLOAD_MB"),
         ("Limits", "Attached files kept per project", _mb(s.max_project_files_mb), "AGENTCANVAS_MAX_PROJECT_FILES_MB"),
@@ -89,6 +123,7 @@ async def server_settings(request: Request) -> list[ServerSetting]:
         ),
         ("Retention", "Audit log", _days(s.audit_retention_days), "AGENTCANVAS_AUDIT_RETENTION_DAYS"),
         ("Retention", "Long-term memories", _days(s.memory_retention_days), "AGENTCANVAS_MEMORY_RETENTION_DAYS"),
+        ("Retention", "Undecided approvals", _days(s.approval_expiry_days), "AGENTCANVAS_APPROVAL_EXPIRY_DAYS"),
         ("Observability", "Prometheus metrics", "on" if s.metrics_enabled else "off", "AGENTCANVAS_METRICS_ENABLED"),
     ]
     return [ServerSetting(group=g, label=label, value=v, env=e) for g, label, v, e in rows]

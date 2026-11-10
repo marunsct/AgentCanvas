@@ -38,7 +38,7 @@ into them.
 |---|---|
 | Chat Input, Chat Trigger, a chatflow's question | The workflow is a chatbot: it reads the chat (`messages`), and prompts use `{{ state.messages[-1].content }}` for the latest message |
 | Text Input, form inputs, `$json.<name>` from a webhook or manual trigger | An input field `<name>` |
-| Prompt / Prompt Template | The instructions of the AI step it feeds; `{variables}` become `{{ state.<field> }}` |
+| Prompt / Prompt Template | The instructions of the AI step it feeds; `{variables}` become `{{ state.<field> }}`, and a doubled brace (`{{` in a JSON example) is one plain brace, as in the builder. Text that would read as a template tag is kept as plain text (wrapped in `{% raw %}`), and the report says so |
 | A model component that answers (OpenAI, Anthropic, Gemini, Ollama, Groq…), LLM Chain, Basic LLM Chain, Flowise LLM node | **Ask AI** step with its own model block; its answer is in `<name>_reply` |
 | Agent, Tool Agent, AI Agent, Flowise Agent node | **AI agent** step; the chat model plugged into it becomes its model block |
 | API Request, Requests Get/Post, HTTP Request tool | **HTTP tool** block (only the URL's host is allowed) |

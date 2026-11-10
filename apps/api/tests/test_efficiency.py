@@ -285,6 +285,23 @@ def test_knowledge_packs_of_several_projects_stay_cached(monkeypatch):
     assert len(built) == 2  # once each, not on every alternate request
 
 
+def test_knowledge_packs_follow_what_a_projects_own_blocks_say():
+    """Two projects' own blocks of the same name (or one block whose description changed) are different packs: one
+    project's block descriptions never reach another project's Copilot, and an edited block is seen at once."""
+    from agentcanvas.api.v1 import copilot
+    from agentcanvas.registry import NodeManifest, default_registry
+
+    def own(description: str):
+        block = NodeManifest(type="acme.my_node", kind="runtime", label="My node", category="Custom",
+                             description=description, provenance="workspace")  # fmt: skip
+        return default_registry().with_manifests([block])
+
+    copilot._packs.clear()
+    a, b = copilot._pack(own("ORG-A SECRET block"), {}), copilot._pack(own("Org B's harmless block"), {})
+    assert a is not b and "Org B's harmless block" in b.text and "ORG-A SECRET" not in b.text
+    assert copilot._pack(own("ORG-A SECRET block"), {}) is a  # the same blocks: still cached
+
+
 async def test_a_document_is_embedded_before_the_base_is_locked(app, api_client, monkeypatch):
     """F-5: adding a document held the knowledge base's lock while the embedding provider answered, so every other
     add to that base waited behind the network. It embeds first, then locks to check and write; a base whose

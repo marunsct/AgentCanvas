@@ -3,16 +3,16 @@
  * S17: opened from a workflow (`/workflows/:id/workspace`) it shows that workflow's own code folder and the shared
  * code, offers a way back to the workflow, starter code for new files and the Copilot's help with code. */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router";
-import { apiFetch } from "../api/client";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type BlockerFunction, Link, useBlocker, useParams, useSearchParams } from "react-router";
+import { ApiError, apiFetch } from "../api/client";
 import { PROJECT_ID } from "../api/queries";
 import { CodeEditor, type EditorApi, type LintItem } from "./CodeEditor";
 import { CodeHelp } from "./CodeHelp";
 import { FileTree } from "./FileTree";
 import { KIND_LABEL, starter } from "./starters";
 import { QueryStatus } from "../ui/QueryStatus";
-import type { FileOut, FileContent, FilesOut } from "../api/generated";
+import type { FileOut, FileContent, FilesOut, SavedFile } from "../api/generated";
 import { confirmDialog, promptDialog, toast } from "../ui/dialog";
 import { PageHeader } from "../ui/PageHeader";
 
@@ -24,6 +24,10 @@ const POLICY = "sandbox.json";
 // FR-X-08: egress allow-list, header injection by the LangSmith auth proxy ({{ secret.NAME }}), limits
 const POLICY_TEMPLATE = `${JSON.stringify({ egress: [], inject: [], timeout_s: 30, memory_mb: 512 }, null, 2)}\n`;
 const enc = (path: string) => path.split("/").map(encodeURIComponent).join("/");
+/** A file as read; `version` (a hash of its text) goes back as If-Match on save so a newer copy is not overwritten. */
+type Opened = FileContent;
+/** The server copy the editor's text started from. */
+interface Base { path: string; version?: string; content: string }
 
 
 export function WorkspacePage() {
@@ -49,25 +53,62 @@ export function WorkspacePage() {
   const editorApi = useRef<EditorApi | null>(null);
   const file = useQuery({
     queryKey: ["file", PROJECT_ID, selected], enabled: Boolean(selected),
-    queryFn: () => apiFetch<FileContent>(`${base()}/files/${enc(selected!)}`),
+    queryFn: () => apiFetch<Opened>(`${base()}/files/${enc(selected!)}`),
   });
-  const [draft, setDraft] = useState<string | null>(null);
+  // the editor's text once it was typed in, for the file it was typed in; a save does not clear it: text typed while
+  // the save was on its way would then count as saved (dirty compares it with what the server has)
+  const [edit, setEdit] = useState<{ path: string; text: string } | null>(null);
+  const draft = edit && edit.path === selected ? edit.text : null;
+  const [origin, setOrigin] = useState<Base | null>(null);
+  // a file opened again starts from what the server has
+  useEffect(() => { setEdit(null); setOrigin(null); }, [selected]);
   const [diagnostics, setDiagnostics] = useState<LintItem[]>([]);
   const [newPath, setNewPath] = useState("");
-  useEffect(() => { setDraft(null); setDiagnostics(file.data?.diagnostics ?? []); }, [file.data]);
+  useEffect(() => {
+    const d = file.data;
+    setDiagnostics(d?.diagnostics ?? []);
+    if (!d) return;
+    // a newer copy (reopened from the cache, then refetched; or changed by the Copilot, a teammate, a Git pull) is
+    // shown when nothing was typed; otherwise the typed text stays and the page says the file changed
+    setOrigin((o) => {
+      const next = { path: d.path, version: d.version, content: d.content };
+      if (!o || o.path !== d.path) return next;
+      if (o.version === d.version && o.content === d.content) return o;
+      return (draft ?? o.content) === o.content || draft === d.content ? next : o;
+    });
+    // oxlint-disable-next-line react-hooks/exhaustive-deps -- only a new copy of the file decides; draft is read then
+  }, [file.data]);
+  const stale = Boolean(file.data && origin && origin.path === selected && origin.version !== file.data.version);
 
   const save = useMutation({
-    mutationFn: ({ path, content }: { path: string; content: string }) =>
-      apiFetch<{ diagnostics: LintItem[] }>(`${base()}/files/${enc(path)}`, { method: "PUT", json: { content } }),
+    mutationFn: ({ path, content, version }: { path: string; content: string; version?: string }) =>
+      apiFetch<SavedFile>(`${base()}/files/${enc(path)}`, {
+        method: "PUT", json: { content }, headers: version ? { "If-Match": `"${version}"` } : undefined,
+      }),
     onSuccess: (out, { path, content }) => {
+      if (path === selected) { setOrigin({ path, version: out.version, content }); setDiagnostics(out.diagnostics ?? []); }
       // the cached copy is what reopening the file shows: keep it in step with what was saved
-      qc.setQueryData<FileContent>(["file", PROJECT_ID, path], (old) => ({ ...old, path, content, diagnostics: out.diagnostics }));
-      if (path === selected) { setDiagnostics(out.diagnostics); setDraft(null); }
+      qc.setQueryData<Opened>(["file", PROJECT_ID, path], (old) => ({ ...old, path, content, diagnostics: out.diagnostics ?? [], version: out.version }));
       void qc.invalidateQueries({ queryKey: ["files", PROJECT_ID] });
       void qc.invalidateQueries({ queryKey: ["workspace-catalog"] }); // new tools / custom nodes
       void qc.invalidateQueries({ queryKey: ["node-types"] });
     },
+    // changed elsewhere since it was opened: fetch the newer copy, which brings up the choice below
+    onError: (e, { path }) => { if (e instanceof ApiError && e.status === 409) void qc.invalidateQueries({ queryKey: ["file", PROJECT_ID, path] }); },
   });
+  /** Show the server's newer copy in place of the typed text (an undoable edit). */
+  const takeTheirs = () => {
+    if (!file.data) return;
+    editorApi.current?.setText(file.data.content);
+    setOrigin({ path: file.data.path, version: file.data.version, content: file.data.content });
+    save.reset();
+  };
+  /** Keep the typed text: the next Save replaces the newer copy. */
+  const keepMine = () => {
+    if (!file.data) return;
+    setOrigin({ path: file.data.path, version: file.data.version, content: file.data.content });
+    save.reset();
+  };
   const create = useMutation({
     mutationFn: ({ path, content = "" }: { path: string; content?: string }) =>
       apiFetch(`${base()}/files/${enc(path)}`, { method: "PUT", json: { content } }),
@@ -107,7 +148,7 @@ export function WorkspacePage() {
     onSuccess: () => { setParams({}); void qc.invalidateQueries({ queryKey: ["files", PROJECT_ID] }); },
   });
   const dirty = draft !== null && draft !== file.data?.content;
-  // leaving a file with unsaved changes (another file, a new one, or closing the tab) asks first
+  // leaving a file with unsaved changes (another file, a new one, another page, Back, or closing the tab) asks first
   useEffect(() => {
     if (!dirty) return;
     const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); };
@@ -118,8 +159,24 @@ export function WorkspacePage() {
     title: `Discard your changes to ${selected}?`, body: "They are not saved yet.", confirm: "Discard changes",
     cancel: "Keep editing", danger: true,
   });
+  // another page (a link, the crumb, Cmd+K) or Back/Forward; this page's own file switches asked already (`leave`)
+  const shouldBlock = useCallback<BlockerFunction>(
+    ({ currentLocation, nextLocation, historyAction }) =>
+      dirty && (currentLocation.pathname !== nextLocation.pathname || historyAction === "POP"),
+    [dirty],
+  );
+  const blocker = useBlocker(shouldBlock);
+  useEffect(() => {
+    if (blocker.state !== "blocked") return;
+    void leave().then((ok) => (ok ? blocker.proceed() : blocker.reset()));
+    // oxlint-disable-next-line react-hooks/exhaustive-deps -- once per blocked navigation
+  }, [blocker.state]);
   const open = async (path: string) => { if (path !== selected && await leave()) setParams({ file: path }); };
-  const doSave = () => { if (selected && draft !== null) save.mutate({ path: selected, content: draft }); };
+  const doSave = () => {
+    if (selected && draft !== null && dirty && !save.isPending && origin?.path === selected) {
+      save.mutate({ path: selected, content: draft, version: origin.version });
+    }
+  };
   const newFile = async (path: string) => { if (await leave()) create.mutate({ path, content: starter(path) }); };
   const prefix = folder ? `${folder}/` : "";
 
@@ -156,7 +213,7 @@ export function WorkspacePage() {
         </aside>
         <section aria-label="editor">
           {selected && !file.data && <QueryStatus q={file} what={selected} />}
-          {selected && file.data ? (
+          {selected && file.data && origin?.path === selected ? (
             <>
               <div className="row gap">
                 <code>{selected}</code>{dirty && <span className="badge warn">unsaved</span>}
@@ -167,7 +224,14 @@ export function WorkspacePage() {
                   Delete
                 </button>
               </div>
-              <CodeEditor path={selected} value={file.data.content} diagnostics={diagnostics} onChange={setDraft} onSave={doSave} api={editorApi} />
+              {stale && (
+                <div className="callout warn row gap wrap" role="alert" data-testid="file-changed">
+                  <span>{selected} was changed elsewhere since you opened it.</span>
+                  <button type="button" onClick={takeTheirs} title="Your unsaved changes are replaced (Undo brings them back)">Load the new version</button>
+                  <button type="button" onClick={keepMine} title="Save then replaces the new version with yours">Keep mine</button>
+                </div>
+              )}
+              <CodeEditor path={selected} value={origin.content} diagnostics={diagnostics} onChange={(text) => setEdit({ path: selected, text })} onSave={doSave} api={editorApi} />
               <ul className="lint-list" data-testid="lint">
                 {diagnostics.map((d, i) => <li key={i}><b>{d.code}</b> line {d.line}: {d.message}</li>)}
                 {diagnostics.length === 0 && <li className="muted">{selected.endsWith(".py") ? "ruff: no problems" : "no problems"}</li>}
@@ -176,7 +240,7 @@ export function WorkspacePage() {
               {remove.error && <p className="error-text" role="alert">Could not delete {selected}: {(remove.error as Error).message}</p>}
               {move.error && <p className="error-text" role="alert">Could not move {selected}: {(move.error as Error).message}</p>}
               {selected.endsWith(".py") && (
-                <CodeHelp workflowId={workflowId} path={selected} content={draft ?? file.data.content} diagnostics={diagnostics}
+                <CodeHelp workflowId={workflowId} path={selected} content={draft ?? origin.content} diagnostics={diagnostics}
                   selection={() => editorApi.current?.selection() ?? ""} onAccept={(code) => editorApi.current?.setText(code)} />
               )}
             </>

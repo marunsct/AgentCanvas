@@ -12,8 +12,18 @@ Each project has a **workspace**: a git repository of Python code used by its wo
 | `nodes/` | Custom widgets declared with `@canvas_node(...)` | New widgets in the palette, in the category you choose |
 | `events/` | Event handlers declared with `@on("type")`; JSON schemas in `events/schemas/` | The **Events** page |
 
-Click a file to edit it (with lint markers), **New file** to add one. Every save is a git commit, and a workflow
+Click a file to edit it (with lint markers), **New file** to add one. Changes are kept only when you press **Save**
+(or Ctrl/Cmd+S): leaving a file with unsaved changes (opening another file, going to another page, **Back to
+workflow**, the browser's Back, or closing the tab) asks first. Every save is a git commit, and a workflow
 **version** pins the workspace commit it was made with.
+
+If the file changes elsewhere while it is open (a teammate saves it, you accept a Copilot proposal that edits it, or a
+Git pull updates it), the editor shows the new version as long as you have not typed anything. With unsaved changes,
+your text stays and the page says the file changed: **Load the new version** replaces your text (Undo brings it
+back), and **Keep mine** lets the next **Save** replace the new version. A save never silently overwrites a newer
+copy. Over the API, send the `version` from `GET /v1/projects/{id}/files/{path}` as `If-Match` on the `PUT`: a file
+changed or deleted since then is refused with 409 and its current `version`. A `PUT` without `If-Match` saves
+unconditionally.
 
 ## Each workflow's own code, and shared code
 
@@ -102,7 +112,8 @@ edits the project's `sandbox.json`: time and memory limits, and the hosts code m
 
 Outside the API process, every piece of workspace code runs there: Script steps, custom widgets, event handlers and
 Python tools (each tool call is one sandbox run; the tool's name and arguments are read from its source). A child
-process gets time, memory and file limits and no network, but runs as the server's user and is not an isolation
+process gets time, memory, file and process limits (its code may start about 256 processes or threads; a fork
+loop stops there) and no network, but runs as the server's user and is not an isolation
 boundary. The sandbox service is: each call sends it only the project's files, it runs them with the same limits,
 and it holds no database credentials, keys or other projects' files. Use it, or Docker, for code you do not trust.
 
@@ -132,6 +143,10 @@ def qualify(event, act):
 
 Handlers only *describe* actions (`act.start_workflow`, `act.resume`, `act.emit`); the platform performs them, so
 handler code never holds credentials. Steps can emit events during a run with `agentcanvas.sdk.emit(type, data)`.
+
+`dedup_key` runs the handler once per value: the same lead delivered again is skipped. Values are remembered for 30
+days (the operator's `AGENTCANVAS_EVENT_DEDUP_DAYS`), or the organisation's conversation retention when that is
+shorter; after that the same value runs the handler again.
 
 The **Events** page shows the **event map** (which events start or resume which workflows), lets you **Send a
 test event** (or **Dry run** it to see what would happen), and keeps an **event log**. Other systems send events

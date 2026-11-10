@@ -298,8 +298,8 @@ class WorkflowSettings(_Base):
     recursion_limit: int = Field(default=50, ge=1, le=10_000)
     durability: Literal["exit", "async", "sync"] = "async"
     node_defaults: NodePolicies | None = None  # compiles to StateGraph.set_node_defaults(...)
-    input_channels: list[str] | None = None  # None = all non-private channels
-    output_channels: list[str] | None = None  # None = all non-private channels
+    input_channels: list[str] | None = None  # None (or empty) = every in and inout channel
+    output_channels: list[str] | None = None  # None (or empty) = every out and inout channel
     budget: Budget | None = None  # FR-X-15
     # S12: fields (keys at any depth of a step's input or output) whose values never reach a trace
     trace_redact: list[str] = Field(default_factory=list)

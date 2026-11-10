@@ -23,6 +23,7 @@ from agentcanvas.db.repositories import ProjectRepo
 from agentcanvas.errors import InvalidInput
 from agentcanvas.ids import new_id
 from agentcanvas.observability import counted_stream
+from agentcanvas.runtime.runner import tokens_of
 from agentcanvas.sampling import without_sampling
 from agentcanvas.services.secrets import redact
 from agentcanvas.services.workflows import WorkflowService
@@ -179,7 +180,7 @@ async def chat(
         raise InvalidInput(f"the model did not answer within {TIMEOUT_S} s") from exc
     except Exception as exc:
         raise InvalidInput(_failure(exc, secrets)) from exc
-    return ChatOut(reply=reply, model=model, usage=usage, tools=used)
+    return ChatOut(reply=reply, model=model, usage=tokens_of(usage), tools=used)
 
 
 @router.post("/chat/stream", response_class=StreamingResponse)
@@ -215,7 +216,7 @@ async def chat_stream(
         except Exception as exc:  # noqa: BLE001 - the stream has started: the failure is an event, keys redacted
             yield f"data: {json.dumps({'type': 'error', 'message': _failure(exc, secrets)})}\n\n"
             return
-        yield f"data: {json.dumps({'type': 'done', 'reply': reply, 'model': model, 'usage': usage})}\n\n"
+        yield f"data: {json.dumps({'type': 'done', 'reply': reply, 'model': model, 'usage': tokens_of(usage)})}\n\n"
 
     return StreamingResponse(
         counted_stream(events()),

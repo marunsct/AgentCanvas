@@ -62,7 +62,7 @@ async def scim_service(request: Request, session: AsyncSession = Depends(get_ses
     if scheme.lower() != "bearer" or not token.strip():
         raise ScimError(401, "send Authorization: Bearer scim_...")
     org = await scim.organisation_of(session, token.strip())
-    return ScimService(session, org.id)
+    return ScimService(session, org.id, getattr(request.app.state, "audit_sink", None))
 
 
 async def _body(request: Request) -> dict[str, Any]:

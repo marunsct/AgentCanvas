@@ -605,28 +605,66 @@ export const DECIDE_INSTRUCTIONS =
 
 export function decidePrompt(prompt: string, choices: Record<string, string>): string {
   const options = Object.entries(choices).map(([route, when]) => `- ${route}: ${when}`).join("\n");
-  return `${prompt}\n\n` + DECIDE_INSTRUCTIONS.replace("{options}", options);
+  // a function, not a string: `$&`, `$$` and the like in a path's description stay as written, as in Python
+  return `${prompt}\n\n` + DECIDE_INSTRUCTIONS.replace("{options}", () => options);
 }
 
 const NUMBER = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
+const MAX_OBJECTS = 100; // `{` the answer is read from at most, as in Python
 
-/** The decision in a model's answer: {choice, confidence, reason}; `choice` is null when the answer names no
- * option (no JSON, or a name that is not one of `choices`). */
-export function aiDecision(text: string, choices: Record<string, string> | string[]): Record<string, any> {
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  let found: any = {};
-  if (start >= 0 && start < end) {
-    try {
-      found = JSON.parse(text.slice(start, end + 1));
-    } catch {
-      found = {};
+/** Where the JSON value that starts with `{` at `start` ends (its matching `}`, strings skipped), or -1. */
+function objectEnd(text: string, start: number): number {
+  let depth = 0;
+  let inString = false;
+  for (let i = start; i < text.length; i++) {
+    const c = text[i];
+    if (inString) {
+      if (c === "\\") i++;
+      else if (c === '"') inString = false;
+    } else if (c === '"') inString = true;
+    else if (c === "{" || c === "[") depth++;
+    else if (c === "}" || c === "]") {
+      depth--;
+      if (depth === 0) return c === "}" ? i : -1;
     }
   }
-  if (!isObject(found)) found = {};
+  return -1;
+}
+
+/** The JSON object in a model's answer that holds a `choice` (else the first object): read at each `{` in turn, as
+ * Python's raw_decode does, so reasoning, a code fence or braces around the JSON do not hide it. */
+function decisionObject(text: string): Record<string, any> {
+  let first: Record<string, any> | null = null;
+  let start = text.indexOf("{");
+  for (let n = 0; n < MAX_OBJECTS && start >= 0; n++) {
+    const end = objectEnd(text, start);
+    let found: any = null;
+    if (end > start) {
+      try {
+        found = JSON.parse(text.slice(start, end + 1));
+      } catch {
+        found = null;
+      }
+    }
+    if (isObject(found)) {
+      if (Object.hasOwn(found, "choice")) return found;
+      if (first === null) first = found;
+    }
+    start = text.indexOf("{", start + 1);
+  }
+  return first ?? {};
+}
+
+/** The decision in a model's answer: {choice, confidence, reason}; `choice` is null when the answer names no
+ * option (no JSON, or a name that is none of `choices`, in any case). */
+export function aiDecision(text: string, choices: Record<string, string> | string[]): Record<string, any> {
+  const found = decisionObject(text);
   const names = Array.isArray(choices) ? choices : Object.keys(choices);
   const raw = found.choice;
-  const choice = (raw === undefined || raw === null ? "" : String(raw)).trim();
+  const choice = typeof raw === "string" ? raw.trim() : "";
+  const folded = new Map<string, string>();
+  for (const n of names) if (!folded.has(n.toLowerCase())) folded.set(n.toLowerCase(), n);
+  const name = !choice ? null : names.includes(choice) ? choice : (folded.get(choice.toLowerCase()) ?? null);
   const given = found.confidence;
   let value = Number.NaN;
   if (typeof given === "number") value = given;
@@ -634,9 +672,9 @@ export function aiDecision(text: string, choices: Record<string, string> | strin
   else if (typeof given === "string" && NUMBER.test(given.trim())) value = Number(given.trim());
   const reason = found.reason;
   return {
-    choice: names.includes(choice) ? choice : null,
+    choice: name,
     confidence: Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : null,
-    reason: (reason ? (typeof reason === "string" ? reason : JSON.stringify(reason)) : "").slice(0, 500),
+    reason: typeof reason === "string" ? reason.slice(0, 500) : "",
   };
 }
 

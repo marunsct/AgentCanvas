@@ -18,7 +18,7 @@ the editor.
 
 ## Option B: start from a template
 
-On **Home**, the [template gallery](templates.md) creates a ready-to-run workflow from one of 36 templates, beginner to advanced:
+On **Home**, the [template gallery](templates.md) creates a ready-to-run workflow from one of 37 templates, beginner to advanced:
 customer support bots, content writers, data extraction, research, sales, HR, engineering and operations helpers.
 Search it or pick a category, then click a card. The ones to start with:
 

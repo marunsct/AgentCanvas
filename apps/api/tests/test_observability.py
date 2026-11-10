@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 
 import httpx
+import pytest
 from fastapi import FastAPI
 from prometheus_client.parser import text_string_to_metric_families
 from test_publish import make_greeter
@@ -121,3 +122,146 @@ async def test_a_quiet_stream_says_it_is_alive():
     got = [chunk async for chunk in counted_stream(slow(), keepalive_s=0.05)]
     assert got[0] == "data: 1\n\n" and got[-1] == "data: 2\n\n"
     assert got.count(": keepalive\n\n") >= 3 and len(got) == got.count(": keepalive\n\n") + 2
+
+
+async def test_a_crash_is_counted_logged_with_its_request_id_and_masked(app, api_client, monkeypatch):
+    """A route that raised went past the request middleware: no 500 in the error-rate metric (so the alert never
+    fired), no x-request-id header, and the traceback reached the log as plain text, without the request id and with
+    secrets in clear. It is now answered, counted and logged like every other request."""
+    from structlog.contextvars import merge_contextvars
+    from structlog.processors import format_exc_info
+    from structlog.testing import capture_logs
+
+    from agentcanvas.api import main
+    from agentcanvas.log import get_logger, hide_secret_values
+
+    app.state.projects.secrets["p_crash"] = {"API_KEY": "sk-crash-secret-value"}
+
+    async def crash():
+        raise RuntimeError("upstream refused key sk-crash-secret-value")
+
+    app.add_api_route("/v1/_test/crash", crash)
+    before = await scrape(api_client)
+    with capture_logs(processors=[merge_contextvars, format_exc_info, hide_secret_values]) as logs:
+        monkeypatch.setattr(main, "log", get_logger("test"))  # the module's logger is cached on the earlier config
+        # the default transport re-raises what the app lets escape: the crash no longer escapes it
+        r = await api_client.get("/v1/_test/crash", headers={"x-request-id": "req_crash_1"})
+    assert r.status_code == 500 and r.headers["content-type"] == "application/problem+json"
+    assert r.headers["x-request-id"] == "req_crash_1" == r.json()["request_id"]
+    assert "sk-crash-secret-value" not in r.text
+    after = await scrape(api_client)
+    route, labels = "/v1/_test/crash", {"method": "GET", "status": "500"}
+    counted = sample(after, "agentcanvas_http_requests_total", route=route, **labels)
+    assert counted - sample(before, "agentcanvas_http_requests_total", route=route, **labels) == 1
+    crashed = [e for e in logs if e["event"] == "http.unhandled"]
+    assert len(crashed) == 1 and crashed[0]["request_id"] == "req_crash_1" and crashed[0]["route"] == route
+    assert "RuntimeError" in crashed[0]["exception"] and "sk-crash-secret-value" not in crashed[0]["exception"]
+
+
+def test_library_and_server_logs_are_json_lines_too(capsys, monkeypatch):
+    """With JSON logs on (the images), only the app's own lines were JSON: uvicorn's access and error lines and every
+    library's warnings went out as plain text, without the request id, and a traceback there kept secrets in clear."""
+    import logging
+
+    from structlog.contextvars import bind_contextvars, clear_contextvars
+
+    from agentcanvas.log import configure_logging
+    from agentcanvas.services import projects
+
+    root = logging.getLogger()
+    saved = {n: (lg.handlers[:], lg.propagate, lg.level) for n in ("", "uvicorn", "uvicorn.error", "uvicorn.access")
+             for lg in [logging.getLogger(n or None)]}  # fmt: skip
+    registry = type("R", (), {"secrets": {"p": {"API_KEY": "sk-library-secret"}}})()
+    monkeypatch.setattr(projects, "CURRENT", registry)
+    try:
+        access = logging.getLogger("uvicorn.access")  # as uvicorn's own configuration leaves it
+        access.handlers, access.propagate, access.level = [logging.StreamHandler()], False, logging.INFO
+        configure_logging(json=True)
+        bind_contextvars(request_id="req_lib_1")
+        logging.getLogger("uvicorn.access").info('%s - "%s %s HTTP/%s" %d', "10.0.0.1", "GET", "/healthz", "1.1", 200)
+        try:
+            raise RuntimeError("refused sk-library-secret")
+        except RuntimeError:
+            logging.getLogger("uvicorn.error").exception("Exception in ASGI application")
+        logging.getLogger("httpx").info("HTTP Request: GET https://example.test")  # library chatter stays out
+        logging.getLogger("some.library").warning("deprecated option")
+    finally:
+        clear_contextvars()
+        for name, (handlers, propagate, level) in saved.items():
+            lg = logging.getLogger(name or None)
+            lg.handlers, lg.propagate, lg.level = handlers, propagate, level
+        configure_logging()
+    lines = [json.loads(line) for line in capsys.readouterr().out.splitlines() if line.strip()]
+    events = {e["event"]: e for e in lines}
+    assert set(events) == {
+        '10.0.0.1 - "GET /healthz HTTP/1.1" 200',
+        "Exception in ASGI application",
+        "deprecated option",
+    }
+    crash = events["Exception in ASGI application"]
+    assert crash["level"] == "error" and crash["request_id"] == "req_lib_1" and crash["logger"] == "uvicorn.error"
+    assert "RuntimeError" in crash["exception"] and "sk-library-secret" not in crash["exception"]
+    assert events["deprecated option"]["level"] == "warning" and root.handlers == saved[""][0]
+    assert all("timestamp" in e for e in lines)
+
+
+JOBS = [  # app.state attribute, its round, the job label
+    ("handover", "tick", "handover"),
+    ("cron", "tick", "cron"),
+    ("retention", "tick", "retention"),
+    ("crawl", "tick", "knowledge_crawl"),
+    ("experiments", "tick", "experiments"),
+    ("online", "report", "online_metrics"),
+    ("secrets", "sync", "secrets"),
+    ("matura_feed", "tick", "matura_feed"),  # only with Matura sign-in: made here
+]
+
+
+@pytest.mark.parametrize(("attr", "method", "job"), JOBS)
+async def test_background_jobs_count_failed_rounds_and_keep_their_last_success(app, monkeypatch, attr, method, job):
+    """A background job whose round raised was only logged: hand-over or cron could fail on every replica (orphaned
+    runs pile up, triggers stop) with nothing to alert on."""
+    import asyncio
+
+    from prometheus_client import REGISTRY
+
+    def value(name: str) -> float | None:
+        return REGISTRY.get_sample_value(name, {"job": job})
+
+    target = getattr(app.state, attr)
+    if target is None:
+        from types import SimpleNamespace
+
+        from agentcanvas.services.matura import MaturaFeed
+
+        class NoAPI:
+            async def aclose(self):
+                return None
+
+        target = MaturaFeed(app.state.db, SimpleNamespace(matura_sync_interval_s=60), api=NoAPI())  # type: ignore[arg-type]
+    target.start()
+    await target.stop()
+    started = value("agentcanvas_job_last_success_timestamp_seconds")
+    failures = value("agentcanvas_job_failures_total")
+    assert started is not None and failures is not None  # both there from the start, so alerts can see them
+    observability.JOB_LAST_SUCCESS.labels(job=job).set(1.0)  # long ago: the round that finishes moves it
+    seen: list[tuple[float | None, float | None]] = []
+
+    async def round_(*_a, **_k):
+        seen.append((value("agentcanvas_job_failures_total"), value("agentcanvas_job_last_success_timestamp_seconds")))
+        if len(seen) == 1:
+            raise RuntimeError("the database refused")
+        if len(seen) == 3:
+            raise asyncio.CancelledError  # stop the loop
+
+    async def no_wait(_s):
+        return None
+
+    monkeypatch.setattr(target, method, round_)
+    monkeypatch.setattr(asyncio, "sleep", no_wait)
+    with pytest.raises(asyncio.CancelledError):
+        await target._loop()
+    assert seen[0] == (failures, 1.0)
+    assert seen[1] == (failures + 1, 1.0)  # the failed round was counted and is not a success
+    assert seen[2][0] == failures + 1 and (seen[2][1] or 0) >= started  # the next round finished
+    assert value("agentcanvas_job_failures_total") == failures + 1

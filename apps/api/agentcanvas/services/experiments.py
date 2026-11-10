@@ -30,6 +30,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from agentcanvas import observability
 from agentcanvas.db.models import Experiment, ExperimentResult, WorkflowRow
 from agentcanvas.db.repositories import ScopeRepo
 from agentcanvas.errors import Conflict, InvalidInput, NotFound, Unavailable
@@ -264,7 +265,8 @@ def failures(done: Sequence[Any], specs: list[dict[str, Any]]) -> list[FailureGr
         if example not in g.examples and len(g.examples) < FAILURE_EXAMPLES:
             g.examples.append(example)
 
-    for r in done:
+    # in example order, whatever order the database returned them in: the same examples and sample every time
+    for r in sorted(done, key=lambda r: (r.example_id, getattr(r, "repetition", 0) or 0)):
         if r.run_status != "success":
             add(None, _reason(getattr(r, "error", None) or r.run_status), r.example_id)
             continue
@@ -470,6 +472,7 @@ class ExperimentJob:
 
     # ------------------------------------------------------------------------------------------- lifecycle ----
     def start(self) -> None:
+        observability.job_started("experiments")
         self._loop_task = asyncio.create_task(self._loop(), name="experiments")
 
     async def stop(self) -> None:
@@ -493,7 +496,8 @@ class ExperimentJob:
     async def _loop(self) -> None:
         while True:
             try:
-                await self.tick()
+                with observability.job_round("experiments"):
+                    await self.tick()
             except Exception:
                 log.exception("experiments.tick_failed")
             await asyncio.sleep(self.interval_s)
@@ -750,7 +754,7 @@ class ExperimentJob:
         usage = (handle.usage["input_tokens"], handle.usage["output_tokens"], float(handle.usage["cost_usd"] or 0))
         await self._scored(
             result_id, wf, example, specs, run_status=run_status, error=error, output=output,
-            calls=calls_of(handle.events), usage=usage, started=started,
+            calls=calls_of(handle.events), usage=usage, started=started + handle.queued_s,
         )  # fmt: skip
 
     async def _not_started(self, result_id: str, specs: list[Spec], exc: Exception) -> None:
@@ -767,12 +771,12 @@ class ExperimentJob:
         )  # fmt: skip
 
     async def _wait(self, handle: Any) -> tuple[str, str | None, dict[str, Any]]:
-        """A started run's status, error and final output (the run is cancelled when it takes too long)."""
+        """A started run's status, error and final output (the run is cancelled when it takes too long, counted from
+        when it took its slot: experiment runs wait behind people's runs in the run queue)."""
         try:
-            await asyncio.wait_for(handle.done.wait(), EXAMPLE_TIMEOUT_S)
-        except TimeoutError:
-            await self.runner.cancel(handle.run_id)
-            return "timeout", f"no result after {EXAMPLE_TIMEOUT_S:g} s", {}
+            if await handle.done_within(EXAMPLE_TIMEOUT_S) is not None:
+                await self.runner.cancel(handle.run_id)
+                return "timeout", f"no result after {EXAMPLE_TIMEOUT_S:g} s", {}
         except asyncio.CancelledError:
             await self.runner.cancel(handle.run_id)
             raise
@@ -850,6 +854,7 @@ class ExperimentJob:
         tokens_in = tokens_out = 0
         cost = 0.0
         run_status, error, output, ended = "success", None, {}, "max_turns"
+        waited = 0.0  # in the run queue, between turns: not the workflow's latency
         try:
             context = context_for(wf, example.get("context") or {}, user_id, org_id)
             message = simulation.opener(example) or await simulation.next_message(sim, goal, [], complete)
@@ -883,6 +888,7 @@ class ExperimentJob:
             thread_id = handle.thread_id
             await self._save(result_id, status="running", run_id=handle.run_id, thread_id=handle.thread_id)
             run_status, error, output = await self._wait(handle)
+            waited += handle.queued_s
             tokens_in += handle.usage["input_tokens"]
             tokens_out += handle.usage["output_tokens"]
             cost += float(handle.usage["cost_usd"] or 0)
@@ -906,5 +912,5 @@ class ExperimentJob:
         final.update(transcript=transcript, turns=sum(t["role"] == "user" for t in transcript), ended=ended)
         await self._scored(
             result_id, wf, example, specs, run_status=run_status, error=error, output=final,
-            calls=calls, usage=(tokens_in, tokens_out, round(cost, 6)), started=started,
+            calls=calls, usage=(tokens_in, tokens_out, round(cost, 6)), started=started + waited,
         )  # fmt: skip

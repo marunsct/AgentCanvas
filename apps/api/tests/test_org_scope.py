@@ -49,6 +49,7 @@ async def test_org_b_cannot_read_org_a(app, api_client, org_b):
             f"/v1/runs/{h.run_id}",
             f"/v1/threads/{h.thread_id}",
             f"/v1/threads/{h.thread_id}/history",
+            f"/v1/threads/{h.thread_id}/checkpoints/cp_1",
             "/v1/projects/prj_default/workflows",
             "/v1/projects/prj_default/secrets",
             "/v1/projects/prj_default/files",
@@ -123,6 +124,7 @@ CHILD_PARAMS = {
     "token": "a share link's token: public visitor routes, the token is the capability (S23)",
     "page": "a page of the user guide shipped with the server, the same for every organisation",
     "session_id": "an editor tab of {wf_id} (G-4): only the caller's own rows of that workflow are removed",
+    "checkpoint_id": "a checkpoint read from {thread_id}'s own saved state",
 }
 
 

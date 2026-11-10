@@ -69,7 +69,23 @@ export function parseBlocks(src: string): Block[] {
   return out;
 }
 
-const SAFE_LINK = /^(https?:\/\/|mailto:|\/(?!\/)|#)/i;
+const EXTERNAL_LINK = /^(https?:\/\/|mailto:)/i;
+
+/** Whether a link from model or guide text may be followed: an in-app path (same tab), a web or mail address (new
+ * tab), or neither (shown as plain text). A path counts as in-app only when the browser resolves it to this site:
+ * `/\host` reads like a path but the URL parser treats the backslash as a slash and leaves for `host`. */
+export function linkKind(href: string): "internal" | "external" | null {
+  if (href.startsWith("#")) return "internal";
+  if (EXTERNAL_LINK.test(href)) return "external";
+  if (!href.startsWith("/") || href.includes("\\")) return null;
+  const origin = globalThis.location?.origin ?? "http://localhost";
+  try {
+    return new URL(href, origin).origin === origin ? "internal" : null;
+  } catch {
+    return null;
+  }
+}
+
 /** How links are resolved: the guide turns `deploy.md#section` into its own page's address. */
 const LinkRewrite = createContext<((href: string) => string) | null>(null);
 
@@ -90,8 +106,9 @@ export function Inline({ text }: { text: string }) {
     else if (m[3]) {
       const [, label, raw] = /^\[([^\]]+)\]\(([^)\s]+)\)$/.exec(t)!;
       const href = rewrite ? rewrite(raw) : raw;
-      parts.push(SAFE_LINK.test(href)
-        ? <a key={key++} href={href} target={/^[/#]/.test(href) ? undefined : "_blank"} rel="noopener noreferrer">{label}</a>
+      const kind = linkKind(href);
+      parts.push(kind
+        ? <a key={key++} href={href} target={kind === "internal" ? undefined : "_blank"} rel="noopener noreferrer">{label}</a>
         : label);
     } else parts.push(<em key={key++}>{t.slice(1, -1)}</em>);
     last = m.index + t.length;

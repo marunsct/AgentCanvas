@@ -53,7 +53,7 @@ These come from the owner in the project chat; they override defaults.
 ## 2. Repository map
 
 ```
-apps/api/agentcanvas/      FastAPI control plane + runner (Python 3.12+, uv; the image runs 3.14)
+apps/api/agentcanvas/      FastAPI control plane + runner (uv; Python 3.14 as in the image, from .python-version)
   api/v1/                  REST routes; protocols.py = MCP + A2A per deployment, traces.py = trace export settings
   adapters/langchain/      the only place LangChain/LangGraph may be imported (import-linter contract, ADR 0011)
   runtime/                 framework-neutral runner, run handles, finish hooks, masking
@@ -141,10 +141,10 @@ set `E2E_API_PORT`; if the dev server runs out of file watchers set `E2E_PROD=1`
 
 `.github/workflows/ci.yml` jobs: `api` (lint, pyright, import contract, schema drift, pytest on Postgres+pgvector),
 `web` (generated-type drift, typecheck, vitest, build), `e2e` (Playwright on the prod build under the strict CSP via
-`vite preview`), `docs` (MkDocs build), `connectors` (gallery smoke, S15), `audit` (pip-audit, pnpm audit),
+`vite preview`), `docs` (MkDocs build), `connectors` (gallery smoke, S15), `audit` (`scripts/audit-deps.sh`: the API, each framework environment's lock, Mastra, the web app),
 `export` (S19: every template to every target, deploy files linted, each export's own tests, Docker Compose and
 kind deployed for real), `frameworks` (S16: a real agent of each framework as a step against a fake model server;
-Agent Spec exports loaded with pyagentspec), `images` (Docker builds, Trivy, prod and local compose stacks answer through nginx, Helm lint/render). Playwright traces are uploaded on failure.
+Agent Spec exports loaded with pyagentspec), `images` (Docker builds with every framework and Mastra, Trivy, prod and local compose stacks answer through nginx, Helm lint/render). Playwright traces are uploaded on failure.
 
 ## 5. Conventions
 
@@ -155,10 +155,17 @@ Agent Spec exports loaded with pyagentspec), `images` (Docker builds, Trivy, pro
   closed, add what you found); [decisions.md](decisions.md) for a judgment call; user guide pages for anything
   people see (+ `mkdocs.yml` nav, then `make schema` to refresh the Copilot's copy); this file when a convention,
   command or owner decision changes. [README](README.md#keeping-the-docs-current) has the rules.
-- Bump the API version in `api/main.py` for each release; regenerate the schema afterwards.
+- Bump the version for each release in `apps/api/pyproject.toml` (the API reports it from there), `apps/web/package.json`,
+  the chart's `appVersion` and the `VERSION` argument of both Dockerfiles (`test_deploy_files.py` keeps them equal);
+  regenerate the schema afterwards. A migration must leave the previous release working on the migrated database
+  (expand, migrate, contract): the deploy guide's rollback runs the previous images on it.
 - New public or own-credential routes must be added to the allowlists in `apps/api/tests/test_auth.py`.
   Admin-only routes go in the role exceptions in `api/deps.py`.
 - LangChain/LangGraph imports only under `agentcanvas/adapters/` (`lint-imports` enforces it).
+- A migration that adds an index to a large table (`run`, `thread`, `audit_log`, `event_log`, …) builds it
+  concurrently on Postgres, inside `op.get_context().autocommit_block()` with `postgresql_concurrently=True`, after the
+  migration's other changes; a plain CREATE INDEX blocks every write to the table while the old servers still serve
+  (`tests/test_migration_locks.py` checks). Prefer a partial index when only some rows are read.
 - Commit messages describe the change in plain words; no model names in commits, PRs or code.
 - **Releases.** Tags (`vX.Y.Z`) and version bumps are the owner's. The plan for releases, not yet in place (no image is
   published and GitHub Actions has no runners): merging to `main` builds images tagged with the commit SHA; staging

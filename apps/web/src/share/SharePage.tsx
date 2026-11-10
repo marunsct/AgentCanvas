@@ -8,6 +8,7 @@ import {
 import { originAllowed, parseCommand, postToParent } from "./embedApi";
 import type { FileRef } from "../ir/files";
 import { FilePicker } from "../ui/FilePicker";
+import { useFollowBottom } from "../ui/useFollowBottom";
 
 interface Message {
   id: number;
@@ -22,6 +23,11 @@ interface Message {
 }
 
 let nextId = 1;
+
+const sameMessage = (a: Message, b: Message) =>
+  a.role === b.role && a.text === b.text && a.runId === b.runId && a.error === b.error
+  && a.question?.id === b.question?.id && a.question?.kind === b.question?.kind && a.question?.question === b.question?.question
+  && (a.attached ?? []).join("\n") === (b.attached ?? []).join("\n");
 
 /** A saved conversation still being answered is checked every AWAY_POLL_MS, at most AWAY_POLLS times (3 minutes). */
 export const AWAY_POLL_MS = 2000;
@@ -41,16 +47,20 @@ export function SharePage() {
   const [away, setAway] = useState(false); // a saved conversation whose last message is still being answered
   const abort = useRef<AbortController | null>(null);
   const started = useRef(false); // this page sent something: a saved conversation no longer replaces what is shown
-  const logEnd = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
 
-  // the visitor's saved conversation (kept on the server under their browser's secret): shown again after a reload
+  // the visitor's saved conversation (kept on the server under their browser's secret): shown again after a reload.
+  // While an answer is still being written it is fetched again every 2 s: a message keeps its id (the log is
+  // append-only), and an unchanged conversation keeps the same state, so the live region does not announce it again
   const restore = useCallback((saved: SavedConversation) => {
     if (started.current) return;
-    setMessages(saved.messages.map((m) => ({
-      id: nextId++, role: m.role, text: m.text, runId: m.run_id ?? undefined, error: m.error,
-      attached: m.attached, question: m.question ?? undefined,
-    })));
+    setMessages((prev) => {
+      const next = saved.messages.map((m, i): Message => ({
+        id: prev[i]?.id ?? nextId++, role: m.role, text: m.text, runId: m.run_id ?? undefined, error: m.error,
+        attached: m.attached, question: m.question ?? undefined, rating: prev[i]?.rating,
+      }));
+      return next.length === prev.length && next.every((m, i) => sameMessage(m, prev[i])) ? prev : next;
+    });
     setThreadId(saved.thread_id);
     setAway(saved.busy);
   }, []);
@@ -92,7 +102,8 @@ export function SharePage() {
     return () => window.removeEventListener("message", onMessage);
   }, [embed, info, allowed]);
 
-  useEffect(() => { logEnd.current?.scrollIntoView?.({ block: "end" }); }, [messages]);
+  // follows the end only while the visitor is at it: one who scrolled up to re-read is left there
+  const { end: logEnd, onScroll, follow } = useFollowBottom([messages]);
 
   const allowedRef = useRef<readonly string[] | undefined>(undefined);
   allowedRef.current = info?.frame_origins;
@@ -106,6 +117,7 @@ export function SharePage() {
     setMessages((ms) => [...ms, ...(userText !== null ? [{ id: nextId++, role: "user" as const, text: userText, attached }] : []), reply]);
     setBusy(true);
     setNotice(null);
+    follow();
     started.current = true;
     const ctrl = new AbortController();
     abort.current = ctrl;
@@ -136,7 +148,7 @@ export function SharePage() {
       if (abort.current === ctrl) { abort.current = null; setBusy(false); }
       input.current?.focus();
     }
-  }, [embed]);
+  }, [embed, follow]);
 
   const send = (text: string) => {
     const t = text.trim();
@@ -202,15 +214,15 @@ export function SharePage() {
   return (
     <main className={`share-page${embed ? " embed" : ""}`} data-testid="share-page">
       <header className="share-header">
-        <h1>{info.title}</h1>
+        <h1 dir="auto">{info.title}</h1>
         <button type="button" className="share-new" onClick={restart} disabled={messages.length === 0}>New conversation</button>
       </header>
-      <div className="share-log" role="log" aria-live="polite" aria-label="Conversation">
-        {info.greeting && <p className="share-msg assistant share-greeting">{info.greeting}</p>}
+      <div className="share-log" role="log" aria-live="polite" aria-label="Conversation" onScroll={onScroll}>
+        {info.greeting && <p className="share-msg assistant share-greeting" dir="auto">{info.greeting}</p>}
         {messages.length === 0 && info.suggestions.length > 0 && (
           <ul className="share-suggestions" aria-label="Suggestions">
             {info.suggestions.map((s) => (
-              <li key={s}><button type="button" onClick={() => send(s)} disabled={busy}>{s}</button></li>
+              <li key={s}><button type="button" dir="auto" onClick={() => send(s)} disabled={busy}>{s}</button></li>
             ))}
           </ul>
         )}
@@ -219,7 +231,10 @@ export function SharePage() {
                data-testid={`share-${m.role}`} aria-busy={m.pending || undefined}>
             <span className="visually-hidden">{m.role === "user" ? "You:" : "Assistant:"} </span>
             {m.attached?.map((n) => <span key={n} className="share-attached">📎 {n}</span>)}
-            {m.text || (m.pending ? <span className="share-typing" aria-label="Writing an answer">…</span> : null)}
+            {/* dir=auto on the text alone: the bubble starts with the English "Assistant:" label, which would make
+                Arabic or Hebrew text left-to-right (punctuation on the wrong side, numbers and links reordered) */}
+            {m.text ? <span className="share-text" dir="auto">{m.text}</span>
+              : m.pending ? <span className="share-typing" aria-label="Writing an answer">…</span> : null}
             {m.role === "assistant" && !m.pending && !m.error && !m.question && m.runId && (
               <span className="share-rate">
                 <button type="button" aria-label="Good answer" aria-pressed={m.rating === "up"} onClick={() => void thumbs(m, "up")}>👍</button>
@@ -252,7 +267,7 @@ export function SharePage() {
       )}
       <form className="share-composer" onSubmit={onSubmit}>
         <label htmlFor="share-input" className="visually-hidden">{waiting ? "Your answer" : "Your message"}</label>
-        <textarea id="share-input" ref={input} rows={1} value={draft} maxLength={20000}
+        <textarea id="share-input" ref={input} rows={1} value={draft} maxLength={20000} dir="auto"
                   placeholder={waiting ? (approval ? "Or reply with a comment…" : "Type your answer…") : "Type a message…"}
                   onChange={(e) => setDraft(e.target.value)} onKeyDown={onKey} />
         <button type="submit" className="primary" disabled={busy || (!draft.trim() && files.length === 0)}>{busy ? "…" : "Send"}</button>

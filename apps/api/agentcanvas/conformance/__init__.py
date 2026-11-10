@@ -43,6 +43,7 @@ class Case:
     mocks: dict[str, list[Any]] = field(default_factory=dict)
     answers: list[Any] = field(default_factory=list)  # one per pause, in order
     expect_pauses: list[tuple[str, str]] = field(default_factory=list)  # (kind, node id) per pause
+    exact_output: bool = False  # the output must hold exactly `expect_output`'s fields, nothing more
 
     def types(self) -> set[str]:
         return {n["type"] for n in self.workflow["nodes"]} | {r["type"] for r in self.workflow.get("resources", [])}
@@ -112,6 +113,27 @@ def _routes_case(priority: str, lane: str, ran: str) -> Case:
     )  # fmt: skip
 
 
+def _bypassed_case() -> Case:
+    """A bypassed step is skipped, but a bypassed path step still picks the path: the run goes on past it."""
+    nodes = [
+        _set("n_skip", priority="low"),  # were it run, the path would change
+        _router("n_route", [('state.priority == "high"', "high")]), _set("n_high", lane="urgent"),
+        _set("n_other", lane="normal"),
+    ]  # fmt: skip
+    for n in nodes[:2]:
+        n["disabled"] = True
+    edges = [
+        _flow("START", "n_skip"), _flow("n_skip", "n_route"),
+        _flow("n_route", "n_high", "route:high"), _flow("n_route", "n_other", "route:default"),
+        _flow("n_high", "END"), _flow("n_other", "END"),
+    ]  # fmt: skip
+    return Case(
+        "flow/bypassed", "C-FLOW", "a bypassed step is skipped; a bypassed path step still picks the path",
+        _wf("bypassed", ["priority", "lane"], nodes, edges), {"priority": "high"},
+        {"priority": "high", "lane": "urgent"}, {"n_skip": 1, "n_route": 1, "n_high": 1},
+    )  # fmt: skip
+
+
 def _approval_case(name: str, answer: Any, expect: dict[str, Any], ran: str) -> Case:
     nodes = [
         _set("n_draft", draft="Dear {{ state.customer }}, your refund is on its way."),
@@ -166,6 +188,13 @@ def _cases() -> list[Case]:
          _flow("n_route", "n_thanks", "route:other"), _flow("n_sorry", "END"), _flow("n_thanks", "END"),
          _wire("r_model", "n_classify")], resources=[MODEL],
     )  # fmt: skip
+    io = _wf(
+        "io", ["question", "answer", "notes", "scratch"],
+        [_set("n_answer", answer="You asked {{ state.question }}", notes="{{ state.notes }}+", scratch="x")],
+        [_flow("START", "n_answer"), _flow("n_answer", "END")],
+    )  # fmt: skip
+    for ch, kind in zip(io["state"]["channels"], ("in", "out", "inout", "private"), strict=True):
+        ch["io"] = kind
     question = _wf(
         "question", ["name", "greeting"],
         [_node("n_ask", "core.human_input", prompt="What is your name?", output="name",
@@ -181,8 +210,12 @@ def _cases() -> list[Case]:
         _routes_case("", "normal", "n_other"),
         Case("flow/parallel", "C-FLOW", "two branches at once, then wait for all", parallel, {}, {"both": "LR"},
              {"n_left": 1, "n_right": 1, "n_join": 1, "n_both": 1}),
+        _bypassed_case(),
         Case("flow/loop", "C-FLOW", "a loop that stops after three rounds", loop, {"count": "0"}, {"count": "3"},
              {"n_add": 3}),
+        Case("flow/output-fields", "C-FLOW", "the output holds the output and input-output fields only", io,
+             {"question": "why", "notes": "n"}, {"answer": "You asked why", "notes": "n+"}, {"n_answer": 1},
+             exact_output=True),
         Case("agent/model-reply", "C-AGENT", "an AI step's reply lands in its field", reply,
              {"question": "Capital of France?"}, {"answer": "Paris"}, {"n_ask": 1}, mocks={"model": ["Paris"]}),
         Case("agent/model-route", "C-AGENT", "an AI step's reply picks the path", classify,
@@ -235,6 +268,8 @@ def check(case: Case, wf: Workflow, runs: list[list[dict[str, Any]]]) -> list[st
     for key, want in case.expect_output.items():
         if output.get(key) != want:
             problems.append(f"output '{key}' is {output.get(key)!r}, expected {want!r}")
+    if case.exact_output and sorted(output) != sorted(case.expect_output):
+        problems.append(f"the output has fields {sorted(output)}, expected {sorted(case.expect_output)}")
     done = Counter(
         ev["canvas_node_id"] for events in runs for ev in events
         if ev["type"] == "STEP_FINISHED" and ev.get("status") == "ok"

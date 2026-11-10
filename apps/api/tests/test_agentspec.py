@@ -46,7 +46,8 @@ def test_every_template_exports_and_comes_back_exactly(name):
     kinds = {c["component_type"] for c in _components(doc).values()}
     assert {"StartNode", "EndNode"} <= kinds
     ir, notes, layout = import_flow(doc, wf_id="wf_new", name="Copy")
-    assert ir == {**wf.model_dump(mode="json"), "id": "wf_new", "name": "Copy"}
+    meta = {k: v for k, v in wf.metadata.items() if k != "kit"}  # a template's kit is never taken from a file
+    assert ir == {**wf.model_dump(mode="json"), "id": "wf_new", "name": "Copy", "metadata": meta}
     assert notes == ["Restored exactly from the AgentCanvas data inside the file."]
     assert layout == {"n_x": {"x": 1, "y": 2}}
 
@@ -316,3 +317,50 @@ def test_steps_that_start_side_by_side_export_one_after_another():
     edges = [refs[e["$component_ref"]] if "$component_ref" in e else e for e in doc["control_flow_connections"]]
     assert len([e for e in edges if e["from_node"]["$component_ref"] == start]) == 1
     assert any("one after another" in line for line in report)
+
+
+async def test_api_takes_or_refuses_damaged_numbers_plainly(api_client):
+    """A position too large for a number, or a timeout that is not one, is dropped or refused (422), never a 500; on
+    both import routes."""
+    wf = (await api_client.post(f"{P}/workflows", json={"name": "Triage", "template": "classify_and_route"})).json()
+    await api_client.put(f"/v1/workflows/{wf['id']}/layout", json={"positions": {"n_route": {"x": 5, "y": 6}}})
+    spec = (await api_client.get(f"/v1/workflows/{wf['id']}/agent-spec")).json()["spec"]
+    spec["metadata"]["agentcanvas"]["layout"]["n_route"]["x"] = 10**400
+    for url, body in ((f"{P}/workflows/agent-spec", {"spec": spec}), (f"{P}/workflows/import", {"file": spec})):
+        res = await api_client.post(url, json=body)
+        assert res.status_code == 201, res.text
+        assert res.json()["layout"] == {}  # the position it could not read is left out
+
+    damaged = json.dumps(SAMPLE).replace('"timeout": 90.0', '"timeout": "soon"')
+    damaged = damaged.replace('"timeout": 60.0', '"timeout": 1e999')
+    for url, key in ((f"{P}/workflows/agent-spec", "spec"), (f"{P}/workflows/import", "file")):
+        body = f'{{"{key}": {damaged}}}'  # as sent: 1e999 reads as infinity
+        res = await api_client.post(url, content=body, headers={"content-type": "application/json"})
+        assert res.status_code in (201, 422), res.text
+        if res.status_code == 201:
+            assert res.json()["ir"]["nodes"]  # stored as plain JSON
+
+
+async def test_a_shared_file_cannot_plant_workspace_code(app, api_client):
+    """The AgentCanvas data inside a shared file is restored as a workflow only: its `metadata.kit` (code a template
+    writes into the workspace, event handlers that fire on their own included) is never taken from a file."""
+    doc, _ = export_flow(_template("chat_assistant"), {})
+    kept = doc["metadata"]["agentcanvas"]["ir"]
+    kept["metadata"]["kit"] = {"files": {"events/planted.py": "x = 1\n"}}
+    ws = app.state.projects.workspace("prj_default")
+    for route, body in ((f"{P}/workflows/import", {"file": doc}), (f"{P}/workflows/agent-spec", {"spec": doc})):
+        res = await api_client.post(route, json=body)
+        assert res.status_code == 201, res.text
+        assert "kit" not in res.json()["ir"]["metadata"]
+        assert not ws.resolve("events/planted.py").exists()
+        assert not any("planted" in line for line in res.json()["report"])
+
+    kept["metadata"]["kit"] = {"files": 5}  # a malformed kit is dropped the same way, not a server error
+    res = await api_client.post(f"{P}/workflows/import", json={"file": doc})
+    assert res.status_code == 201, res.text
+
+    kept["kind"] = "not a kind"  # refused, and nothing is left behind
+    kept["metadata"]["kit"] = {"files": {"events/planted_even_when_refused.py": "x = 1\n"}}
+    res = await api_client.post(f"{P}/workflows/import", json={"file": doc})
+    assert res.status_code == 422, res.text
+    assert not ws.resolve("events/planted_even_when_refused.py").exists()

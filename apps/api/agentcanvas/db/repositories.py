@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import delete, func, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer
@@ -31,6 +34,7 @@ from agentcanvas.db.models import (
     Project,
     Run,
     RunSearch,
+    SpendArchive,
     Thread,
     Trigger,
     WorkflowRow,
@@ -63,7 +67,8 @@ class UserRepo:
     async def provision(
         self, subject: str, email: str, name: str | None, email_verified: bool = False
     ) -> tuple[AppUser, bool]:
-        """The user of an OIDC subject and whether this sign-in created it; email and name follow the latest token.
+        """The user of an OIDC subject and whether this sign-in is its first with a verified email (it created the
+        user, or the user had none stored: only verified emails are). Email and name follow the latest token.
 
         Provider subjects are stored as `oidc:<sub>`, apart from the seeded `dev` user and `pending:<email>`
         invitations, so no token can take over either. A verified email claims the invitation an admin made for
@@ -88,10 +93,11 @@ class UserRepo:
                 await self.s.rollback()
                 user = await self.by_subject(oidc_subject(subject))
                 assert user is not None
+        first_verified = created or (not user.email and bool(email) and email_verified)
         if (email and user.email != email) or (name and user.display_name != name):
             user.email, user.display_name = email or user.email, name or user.display_name
             await self.s.commit()
-        return user, created
+        return user, first_verified
 
     async def _merge_invitation(self, pending: AppUser, user: AppUser) -> None:
         """Move an invitation's memberships to the user who claimed it (existing memberships win), then drop it.
@@ -544,8 +550,43 @@ LIGHT_RUN = (defer(Run.recording), defer(Run.context), defer(Run.events))
 
 async def delete_thread_rows(session: AsyncSession, thread_id: str) -> None:
     """A conversation's control rows: its decisions, runs and the thread itself. Explicit, because SQLite (the
-    local edition) does not enforce the ON DELETE CASCADE the schema declares."""
+    local edition) does not enforce the ON DELETE CASCADE the schema declares. What its runs spent is kept first
+    (`archive_spend`): budgets and the spending report still count it."""
+    await archive_spend(session, thread_id)
     await session.execute(delete(InterruptTask).where(InterruptTask.thread_id == thread_id))
     await session.execute(delete(RunSearch).where(RunSearch.thread_id == thread_id))
     await session.execute(delete(Run).where(Run.thread_id == thread_id))
     await session.execute(delete(Thread).where(Thread.id == thread_id))
+
+
+async def archive_spend(session: AsyncSession, thread_id: str) -> None:
+    """Add what a conversation's runs spent to `spend_archive`, by the hour each run started."""
+    thread = await session.get(Thread, thread_id)
+    if thread is None:
+        return
+    found = await session.execute(
+        select(Run.started_at, Run.tokens_in, Run.tokens_out, Run.cost_usd, Run.cache_hits, Run.fallbacks).where(
+            Run.thread_id == thread_id
+        )
+    )
+    hours: dict[datetime, list[Any]] = {}
+    for started, tin, tout, cost, hits, fallbacks in found.tuples():
+        at = started.replace(tzinfo=UTC) if started.tzinfo is None else started.astimezone(UTC)
+        add = hours.setdefault(at.replace(minute=0, second=0, microsecond=0), [0, 0, 0, Decimal(0), 0, 0])
+        for i, v in enumerate((1, tin or 0, tout or 0, Decimal(cost or 0), hits or 0, fallbacks or 0)):
+            add[i] += v
+    if not hours:
+        return
+    insert = pg_insert if session.get_bind().dialect.name == "postgresql" else sqlite_insert
+    keys = {
+        "workflow_id": thread.workflow_id,
+        "deployment_id": thread.deployment_id or "",
+        "person": thread.created_by or "",
+    }
+    counted = ("runs", "tokens_in", "tokens_out", "cost_usd", "cache_hits", "fallbacks")
+    for hour, sums in hours.items():
+        stmt = insert(SpendArchive).values(**keys, hour=hour, **dict(zip(counted, sums, strict=True)))
+        add_up = {c: getattr(SpendArchive, c) + getattr(stmt.excluded, c) for c in counted}
+        await session.execute(
+            stmt.on_conflict_do_update(index_elements=["workflow_id", "hour", "deployment_id", "person"], set_=add_up)
+        )

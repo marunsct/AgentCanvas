@@ -101,6 +101,43 @@ def test_flowise_chatflow():
     assert any("Buffer Memory" in r for r in report)
 
 
+def _prompt_of(wf: Workflow) -> str:
+    (step,) = [n for n in wf.nodes if n.type == "core.llm"]
+    return step.config["prompt"]
+
+
+def test_langflow_prompts_keep_literal_braces_as_text():
+    """Langflow prompts are Python format strings: a doubled brace is a literal one. A JSON example or a Markdown
+    anchor imports as plain text that renders as written, not as a broken template."""
+    from agentcanvas.expr import render_template
+
+    doc = _load("langflow_basic_prompting")
+    (prompt,) = [n for n in doc["data"]["nodes"] if n["data"].get("type") == "Prompt"]
+    prompt["data"]["node"]["template"]["template"]["value"] = (
+        'Reply as JSON like {{"answer": "..."}}. See {{#setup}}, {{{{ not a tag }}}} and {%x}. Q: {user_input}'
+    )
+    _, ir, report, _ = import_document(doc, wf_id="wf_new")
+    wf = Workflow.model_validate(ir)
+    assert not [d for d in validate(wf) if d.severity == "error"]
+    text = render_template(_prompt_of(wf), {"user_input": "hi", "messages": [{"content": "hello"}]})
+    assert text.startswith('Reply as JSON like {"answer": "..."}. See {#setup}, {{ not a tag }} and {%x}. Q: hi')
+    assert any("kept as plain text" in line for line in report)
+
+
+def test_flowise_prompts_keep_literal_braces_and_values_as_text():
+    from agentcanvas.expr import render_template
+
+    doc = _load("flowise_chatflow")
+    (prompt,) = [n for n in doc["nodes"] if n["data"]["name"] == "promptTemplate"]
+    prompt["data"]["inputs"]["template"] = 'A name for {product} as {{"name": "..."}} {{#tag}}?'
+    prompt["data"]["inputs"]["promptValues"] = json.dumps({"product": "shoes {% endraw %}{#"})
+    _, ir, _, _ = import_document(doc, wf_id="wf_new")
+    wf = Workflow.model_validate(ir)
+    assert not [d for d in validate(wf) if d.severity == "error"]
+    chain = next(n for n in wf.nodes if n.name == "llm_chain")
+    assert render_template(chain.config["prompt"], {}) == 'A name for shoes {% endraw %}{# as {"name": "..."} {#tag}?'
+
+
 def test_flowise_agentflow():
     _, wf, report, _ = _imported("flowise_agentflow")
     nodes = {n.name: n for n in wf.nodes}
@@ -495,6 +532,20 @@ async def test_the_import_route_takes_agents_sdk_code_and_writes_its_tools(app, 
     assert both.status_code == 422
 
 
+async def test_a_refused_agents_sdk_import_takes_its_tools_back_out(app, api_client, monkeypatch):
+    from agentcanvas.errors import InvalidInput
+    from agentcanvas.services.workflows import WorkflowService
+
+    async def refuse(*_a, **_k):
+        raise InvalidInput("the imported workflow is not valid")
+
+    monkeypatch.setattr(WorkflowService, "create_from_ir", refuse)
+    r = await api_client.post("/v1/projects/prj_default/workflows/import", json={"code": SDK_CODE, "name": "Support"})
+    assert r.status_code == 422, r.text
+    tools = app.state.projects.workspace("prj_default").root / "tools"
+    assert not tools.exists() or not list(tools.glob("*_tools.py"))
+
+
 def test_agents_sdk_code_written_against_agents_classic_imports_too():
     """The Agents SDK's next major release keeps today's API under `agents.classic` (its root package becomes a new
     runtime). Code written that way is the same workflow."""
@@ -545,3 +596,9 @@ async def main(text: str):
     (node,) = ir["nodes"]
     assert node["name"] == "planner" and node["config"]["system_prompt"] == "You plan carousels."
     assert not [r for r in report if "computed by code" in r or "left out" in r]
+
+
+def test_agents_sdk_code_nested_too_deeply_is_refused_plainly():
+    code = 'from agents import Agent\na = Agent(name="a")\nx = ' + "-" * 200_000 + "1\n"
+    with pytest.raises(ImportError_, match="nested too deeply"):
+        import_document(code, wf_id="wf_new")

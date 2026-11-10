@@ -28,6 +28,7 @@ from agentcanvas.errors import Conflict, Forbidden, InvalidInput, NotFound
 from agentcanvas.ids import new_id
 from agentcanvas.ir.contract import breaking_changes, contract
 from agentcanvas.ir.models import Workflow
+from agentcanvas.runtime import nesting
 from agentcanvas.runtime.runner import RunHandle
 from agentcanvas.runtime.types import ResumeSpec
 from agentcanvas.services import annotation, gates
@@ -113,7 +114,10 @@ async def publish(
 
     async def run_tests():
         cases = await tests.list(wf_id)
-        return await tests.run(request.app.state.runner, wf, cases, lambda g: _context(wf, g, user), user_id=user.id)
+        # someone waits to publish: the checklist's runs do not wait behind every person's run in the run queue
+        return await tests.run(
+            request.app.state.runner, wf, cases, lambda g: _context(wf, g, user), user_id=user.id, priority="normal"
+        )
 
     deps = DeploymentService(session)
     checks = await deps.checklist(wf, errors, set(projects.secrets.get(project_id, {})), run_tests, policies=broken)
@@ -290,6 +294,7 @@ async def _start(
     return await request.app.state.runner.start(
         wf, thread_id=body.thread_id, input=body.input, context=await _api_context(session, dep, wf, body),
         deployment_id=dep.id, version_id=version_id, labels={**body.metadata, **(labels or {})},
+        caller_run_id=nesting.caller(request.headers.get(nesting.HEADER)),
     )  # fmt: skip
 
 
@@ -463,7 +468,7 @@ async def api_resume(
     wf, version_id = await _continue_on(session, dep, wf, thread_id)
     h = await request.app.state.runner.start(
         wf, thread_id=thread_id, resume=ResumeSpec(body.value, body.interrupt_id),
-        deployment_id=dep.id, version_id=version_id,
+        deployment_id=dep.id, version_id=version_id, caller_run_id=nesting.caller(request.headers.get(nesting.HEADER)),
     )  # fmt: skip
     await session.close()
     return await _result(h)

@@ -1,5 +1,6 @@
 # Production-style single host (M8-T2): Postgres, a one-shot migration, two API replicas behind nginx.
-#   docker build -f infra/Dockerfile.api -t agentcanvas-api apps/api
+#   docker build -f infra/Dockerfile.api --build-arg FRAMEWORKS=all --build-arg WITH_MASTRA=true -t agentcanvas-api apps/api
+#     (every framework, like the Docker app; fewer: FRAMEWORKS="crewai google_adk", see docs/user-guide/deploy.md)
 #   docker build -f infra/Dockerfile.web -t agentcanvas-web .
 #   cp infra/.env.prod.example infra/.env.prod   # then fill it in
 #   docker compose -f infra/compose.prod.yml --env-file infra/.env.prod up -d
@@ -19,6 +20,8 @@ x-api: &api
     # the API connects as an ordinary role, so row-level security applies (the owner only runs migrations)
     DATABASE_URL: postgresql://agentcanvas_app:${POSTGRES_APP_PASSWORD:?set POSTGRES_APP_PASSWORD}@postgres:5432/agentcanvas
     AGENTCANVAS_ENV: ${AGENTCANVAS_ENV:-prod}
+    # dev = one company's own server (builders may reach its private network); hosted = shared by organisations
+    # that do not trust each other (public addresses only). See docs/user-guide/deploy.md, "Essential settings".
     AGENTCANVAS_EDITION: ${AGENTCANVAS_EDITION:-dev}
     AGENTCANVAS_SECRET_KEY: ${AGENTCANVAS_SECRET_KEY:?set AGENTCANVAS_SECRET_KEY (64+ random characters)}
     LANGGRAPH_AES_KEY: ${LANGGRAPH_AES_KEY:?set LANGGRAPH_AES_KEY (16, 24 or 32 characters) - checkpoints are encrypted at rest}
@@ -133,7 +136,8 @@ services:
       APP_DB_USER: agentcanvas_app
       APP_DB_PASSWORD: ${POSTGRES_APP_PASSWORD:?set POSTGRES_APP_PASSWORD}
     # migrations as the owner, then the API's own role: no superuser, no BYPASSRLS
-    command: ["sh", "-c", "alembic upgrade head && python -m agentcanvas.db.app_role"]
+    # migrate: `alembic upgrade head`, except on a database a later release migrated (a rollback: left as it is)
+    command: ["sh", "-c", "python -m agentcanvas.db.migrate && python -m agentcanvas.db.app_role"]
     depends_on:
       postgres: { condition: service_healthy }
     restart: "no"
@@ -146,7 +150,7 @@ services:
     depends_on:
       migrate: { condition: service_completed_successfully }
       sandbox: { condition: service_healthy }
-    stop_grace_period: 60s                     # streams get 30 s to finish, then runs 20 s before hand-over
+    stop_grace_period: 90s                     # streams 30 s while runs drain 20 s, then ~25 s of saving (api/shutdown.py)
     restart: unless-stopped
 
   web:

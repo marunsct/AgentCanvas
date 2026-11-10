@@ -31,6 +31,11 @@ boundaries below needs a decision in [decisions.md](../decisions.md) and a test 
 ### 1. Workspace code ↔ the server and other tenants
 - Staging and production refuse to run workspace code in the API's own process or as its user (`inprocess`,
   `subprocess`) unless the operator says so (`check_auth_settings`, S-8).
+- Blocks that import workspace code into the API process (`hosted_forbidden` in the manifest: **Agent from another
+  framework**) are refused (E041) in the hosted edition and on every server that keeps workspace code out of the API
+  (`Settings.isolates_workspace_code`: any `script_execution` but `inprocess`, and staging or prod unless the
+  operator allowed unisolated scripts). Runs, publishes and deploys check it (`run_gate`), and the interpreter
+  refuses to build the step when the project has a sandbox runner, for versions that skipped validation.
 - **The sandbox service** (`script_execution=remote`) runs code in a container with no database credentials, no
   keys, a read-only root, no capabilities and two internal networks only: `sandbox` (whose way out is the egress
   proxy) and `sandbox-control` (where the API calls it). The API answers 403 to every request from the control
@@ -68,7 +73,9 @@ boundaries below needs a decision in [decisions.md](../decisions.md) and a test 
 ### 4. Secrets ↔ outputs
 - Values are never returned by the API; they are masked as `***` in run events, traces, error messages and
   exports, in their raw, base64, URL-encoded and JSON-escaped forms; a secret needs at least 6 characters so it can
-  be masked (S-9). Errors raised before an adapter could mask them are masked by the runner (R-7).
+  be masked (S-9). The runner masks every framework's run events, and usage reported after a stop, with the
+  project's secrets before they are streamed, stored or recorded (RT-13); errors raised before an adapter ran are
+  masked there too (R-7).
 - A key typed into a header instead of a secret reference is refused by every export and flagged on the canvas (X-1,
   W021). A rotated key builds new clients at once (R-3).
 - Accepted risk: every organisation's decrypted values sit in one cache per API process. Code that runs inside the

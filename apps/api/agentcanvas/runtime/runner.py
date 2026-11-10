@@ -15,14 +15,14 @@ import traceback
 from collections import OrderedDict
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field, replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, cast
 
 from sqlalchemy import case, func, select, update
 from sqlalchemy.exc import IntegrityError
 
 from agentcanvas.adapters.spi import FrameworkAdapter, ModelService, ThreadStateAbility, supports
-from agentcanvas.db.models import CostAlert, InterruptTask, Run, RunScore, Thread, WorkflowRow
+from agentcanvas.db.models import CostAlert, InterruptTask, Run, RunScore, SpendArchive, Thread, WorkflowRow
 from agentcanvas.db.repositories import ScopeRepo
 from agentcanvas.db.session import Database
 from agentcanvas.errors import Conflict, NotFound, Unavailable
@@ -32,18 +32,24 @@ from agentcanvas.ir.models import Budget, Workflow
 from agentcanvas.log import get_logger
 from agentcanvas.registry import default_registry
 from agentcanvas.runtime import masking
-from agentcanvas.runtime.admission import Admission, Priority, priority_of
+from agentcanvas.runtime.admission import Admission, Priority, QueueTimeout, priority_of
 from agentcanvas.runtime.identity import CURRENT, RunIdentity
 from agentcanvas.runtime.tracing import trace_ref
 from agentcanvas.runtime.trajectory import compact
 from agentcanvas.runtime.types import REPLAYABLE, ResumeSpec, RunMode, RunSpec
 from agentcanvas.services.files import DEFAULT_MAX_BYTES, FileService
+from agentcanvas.services.secrets import masker
 
 log = get_logger(__name__)
 ResourcesFactory = Callable[[str, Workflow | None], Any]
 
 
 STOPPED_BY_ADMIN = "stopped by an admin (stop all runs)"  # the kill switch (F-5); its reason is in the audit log
+FORGET_PAGE = 500  # conversations whose saved state is deleted per query, when a workflow or project goes
+CANCELLED_BY_USER = "cancelled by user"  # Stop pressed on the run
+CONVERSATION_DELETED = "its conversation was deleted"
+# experiments run their examples again themselves, and a test case's or Copilot test's caller is gone with the server
+TEST_NOT_CONTINUED = "its server stopped; test runs are not continued on another server"
 
 
 @dataclass
@@ -70,14 +76,16 @@ class RunHandle:
     traced: bool = False  # sent to LangSmith ("Open trace", M6-T6)
     input: dict[str, Any] | None = None  # a fresh run's input: its model replies are recorded (FR-X-13)
     drained: bool = False  # stopped by a server shutdown; another instance continues it (FR-X-10)
+    handed_over: bool = False  # it continues a run another instance handed over (FR-X-10)
     superseded: bool = False  # swept while this instance stalled: another instance continues it (S13)
     finishing: bool = False  # saving its outcome: a cancel now would cut the save short and wedge the thread
     # a task cancelled before it began never runs its code, so nothing would finish the run: until `_pump` starts,
     # a stop is a request it reads first (RT-10)
     started: bool = False
     stop_requested: bool = False
-    stop_reason: str | None = None  # why it was stopped, when not by the person (the kill switch's reason)
+    stop_reason: str | None = None  # why it was stopped (`Run.stop_reason`); none: the person pressed Stop here
     decided: list[str] = field(default_factory=list)  # Inbox items this run answers (back to pending if it fails)
+    requested_by: str | None = None  # whose request it serves: its Inbox items name them (self-approval policy)
     deployment_id: str | None = None  # a run of a published deployment (online evaluators score these, S13)
     version_id: str | None = None
     labels: dict[str, str] = field(default_factory=dict)  # what the deployment API caller tagged it with
@@ -88,8 +96,34 @@ class RunHandle:
     event_times: list[int] = field(default_factory=list)  # wall clock (ns) of each event, for trace export (S15)
     alerted: set[tuple[str, float]] = field(default_factory=set)  # (period, share) cost alerts this run checked
     routing: list[dict[str, Any]] = field(default_factory=list)  # the model each routed block got (services/routing.py)
+    fresh: bool = False  # it started a new conversation (created its thread)
     project_id: str | None = None
     priority: int = 0  # in the run queue: 1 high, 0 normal, -1 low (runtime/admission.py)
+    caller_run_id: str | None = None  # the run that called this deployment run (A2A, MCP): it works within its slot
+    waiting: bool = False  # in the run queue, waiting for a slot: it has not begun its work
+    # set once it has its slot (at once without a limit) or has ended: callers' time limits count from here
+    admitted: asyncio.Event = field(default_factory=asyncio.Event)
+    created_at: float = field(default_factory=time.perf_counter)
+    admitted_at: float | None = None
+
+    @property
+    def queued_s(self) -> float:
+        """How long it waited in the run queue (so far, while it still waits)."""
+        return (self.admitted_at or time.perf_counter()) - self.created_at
+
+    async def done_within(self, timeout_s: float, queue_s: float | None = None) -> Literal["queue", "run"] | None:
+        """Wait for the run to end, `timeout_s` counted from when it took its slot: time in the run queue does not
+        count (`queue_s` bounds it, else the queue's own maximum wait does). None once it ended, else which wait
+        ran out ("queue" or "run"); the caller stops the run."""
+        try:
+            await asyncio.wait_for(self.admitted.wait(), queue_s)
+        except TimeoutError:
+            return "queue"
+        try:
+            await asyncio.wait_for(self.done.wait(), timeout_s)
+        except TimeoutError:
+            return "run"
+        return None
 
 
 def _plain(value: Any) -> Any:
@@ -212,6 +246,32 @@ def usage_price(model_id: str | None, usage: dict[str, Any]) -> float | None:
     )  # fmt: skip
 
 
+COST_KEY = "cost_nano_usd"  # in a usage record: what its calls cost, each priced on its own (billionths of a USD)
+
+
+def add_call(usage: dict[str, int], model_id: str | None, counts: dict[str, int]) -> None:
+    """Add one model call's token counts to `usage`, and its price to COST_KEY when the model is priced. A call is
+    priced on its own: a long-context price applies to one request's prompt, never to the sum of several."""
+    for k, n in counts.items():
+        usage[k] = usage.get(k, 0) + n
+    cost = usage_price(model_id, counts)
+    if cost is not None:
+        usage[COST_KEY] = usage.get(COST_KEY, 0) + round(cost * 1e9)
+
+
+def usage_cost(model_id: str | None, usage: dict[str, Any]) -> float | None:
+    """What a usage record cost: the sum of its calls' own prices, else (a record kept before calls were priced one
+    by one) the price of its totals; None when the model has no price."""
+    if COST_KEY in usage:
+        return int(usage[COST_KEY]) / 1e9
+    return usage_price(model_id, usage)
+
+
+def tokens_of(usage: dict[str, Any]) -> dict[str, Any]:
+    """A usage record without its cost: the token counts shown to people."""
+    return {k: v for k, v in usage.items() if k != COST_KEY}
+
+
 @dataclass
 class Spent:
     """What was spent before a run: by its thread's earlier runs, and by all the workflow's other runs today and this
@@ -268,12 +328,21 @@ async def workflow_spend(s: Any, workflow_id: str, *, exclude_run: str | None = 
             func.coalesce(func.sum(Run.cost_usd), 0),
         )
         .join(Thread, Thread.id == Run.thread_id)
-        .where(Thread.workflow_id == workflow_id, Run.started_at >= month)
+        # starting a run touches its conversation: only conversations touched this month can hold a run of this
+        # month (thread_workflow_idx), not every one the workflow ever had (a day early, for clocks a little apart)
+        .where(Thread.workflow_id == workflow_id, Thread.updated_at >= month - timedelta(days=1))
+        .where(Run.started_at >= month)
     )
     if exclude_run is not None:
         q = q.where(Run.id != exclude_run)
     today, this_month = (await s.execute(q)).one()
-    return float(today), float(this_month)
+    # and what conversations deleted since spent (retention, or deleted by hand): deleting does not reset a budget
+    gone = select(
+        func.coalesce(func.sum(case((SpendArchive.hour >= day, SpendArchive.cost_usd), else_=0)), 0),
+        func.coalesce(func.sum(SpendArchive.cost_usd), 0),
+    ).where(SpendArchive.workflow_id == workflow_id, SpendArchive.hour >= month)
+    gone_today, gone_month = (await s.execute(gone)).one()
+    return float(today) + float(gone_today), float(this_month) + float(gone_month)
 
 
 class Runner:
@@ -338,6 +407,42 @@ class Runner:
             if supports(a, "thread_state"):
                 await cast(ThreadStateAbility, a).delete_thread(thread_id)
 
+    async def forget_threads(self, thread_ids: list[str], wait_s: float = 10.0) -> None:
+        """Delete conversations' saved state, stopping first the runs this instance has on them: a run writes its
+        last checkpoint as it stops, which must not land after the delete."""
+        stopping = []
+        for thread_id in thread_ids:
+            h = self.handles.get(self.active_by_thread.get(thread_id, ""))
+            if h is not None and await self.cancel(h.run_id):
+                stopping.append(h.done.wait())
+        if stopping:
+            try:
+                await asyncio.wait_for(asyncio.gather(*stopping), timeout=wait_s)
+            except TimeoutError:
+                pass
+        for thread_id in thread_ids:
+            await self.forget_thread(thread_id)
+
+    async def forget_conversations(self, s: Any, *where: Any) -> int:
+        """Delete the saved state of every conversation matching `where` (on `Thread` and its `WorkflowRow`), a
+        page at a time; called before their rows go (a workflow or project deleted), since the rows are the only
+        index of what to delete, and before the caller writes anything (each page's read is ended, so no
+        transaction stays open while runs stop). Returns how many conversations."""
+        done, after = 0, ""
+        while True:
+            q = (
+                select(Thread.id)
+                .join(WorkflowRow, WorkflowRow.id == Thread.workflow_id)
+                .where(Thread.id > after, *where)
+            )
+            page = list((await s.scalars(q.order_by(Thread.id).limit(FORGET_PAGE))).all())
+            await s.commit()
+            await self.forget_threads(page)
+            done += len(page)
+            if len(page) < FORGET_PAGE:
+                return done
+            after = page[-1]
+
     def resources(self, thread_id: str, wf: Workflow | None) -> Any:
         return self.resources_factory(thread_id, wf)
 
@@ -370,13 +475,19 @@ class Runner:
         project_files: bool = False,
         service_connection: bool = False,
         priority: Priority | None = None,
+        queue_key: str | None = None,
+        handed_over: bool = False,
+        caller_run_id: str | None = None,
     ) -> RunHandle:
         """Start a run. `context=None` reuses the context of the last run on `context_from` (default: this thread).
         A deployment's run takes only files given to that deployment (`visitor_hash`: a share link's visitor, whose
         own uploads on the link it may use); `project_files`: the input was written by a builder (a schedule's), so
         any of the project's files. `service_connection`: the person who starts it may use the organisation's service
         connection (an admin); a deployment's runs always may. `priority`: its place in the organisation's run queue
-        when a concurrent-run limit holds it back (default: low for test runs, else normal)."""
+        when a concurrent-run limit holds it back (default: low for test runs, else normal); `queue_key`: the run a
+        hand-over continues, whose place in that queue it keeps; `handed_over`: started by the hand-over;
+        `caller_run_id`: the run of the organisation that called this deployment run (it takes no place in the
+        queue while that run holds a slot: runtime/nesting.py)."""
         if self.draining:
             raise Unavailable("this server is restarting; retry the request", retry_after=5)
         adapter = self.adapter_for(wf)
@@ -403,6 +514,7 @@ class Runner:
                 await prepare(wf)
             async with self.db.sessionmaker() as s:
                 thread = await s.get(Thread, thread_id)
+                fresh = thread is None
                 if thread is None:
                     s.add(
                         Thread(
@@ -455,11 +567,17 @@ class Runner:
                         labels=labels or None,
                         origin=origin,
                         priority=priority_of(priority, origin),
+                        queue_key=queue_key,
+                        event_depth=event_depth,
                     )
                 )
                 decided: list[str] = []
+                requested_by = user_id
                 if resume is not None:
                     decided = await self._decide_interrupts(s, thread_id, resume, decided_by or user_id)
+                    # an answer continues the request of whoever asked, not of who answered
+                    asked_by = select(InterruptTask.requested_by).where(InterruptTask.id.in_(decided))
+                    requested_by = next((u for u in (await s.scalars(asked_by)).all() if u), None)
                 await s.commit()
         except IntegrityError as exc:
             self.active_by_thread.pop(thread_id, None)
@@ -500,10 +618,13 @@ class Runner:
             trace_redact=list(wf.settings.trace_redact),
         )  # fmt: skip
         handle.traced = trace_ref(run_id) is not None
-        handle.event_depth = event_depth
+        handle.event_depth, handle.handed_over = event_depth, handed_over
         handle.routing = routing
         handle.project_id, handle.priority = project_id, priority_of(priority, origin)
+        handle.fresh = fresh
+        handle.caller_run_id = caller_run_id
         handle.decided = decided  # an error before the answer is applied puts them back in the Inbox (R-4)
+        handle.requested_by = requested_by
         if input is not None and resume is None and checkpoint_id is None and origin != "test":
             handle.input = _plain(input)  # a copy: the engine may turn the caller's message dicts into objects in place
         self.handles[run_id] = handle
@@ -529,6 +650,19 @@ class Runner:
         if resume.interrupt_id:
             pending = pending.where(InterruptTask.id == resume.interrupt_id)
         ids = list((await s.scalars(pending)).all())
+        if not ids:  # the question expired unanswered (retention.py): its run was cancelled and must not go on
+            expired = select(InterruptTask.id).where(
+                InterruptTask.thread_id == thread_id, InterruptTask.status == "expired"
+            )
+            if resume.interrupt_id:
+                expired = expired.where(InterruptTask.id == resume.interrupt_id)
+            else:  # what the conversation's last run asked (not this new one): an older expiry does not stop a
+                # later breakpoint
+                ended = (Run.thread_id == thread_id, Run.status != "running")
+                last = select(Run.id).where(*ended).order_by(Run.id.desc()).limit(1)
+                expired = expired.where(InterruptTask.run_id == last.scalar_subquery())
+            if await s.scalar(expired.limit(1)):
+                raise Conflict("this approval expired: nobody answered it in time, and its run was cancelled")
         q = update(InterruptTask).where(InterruptTask.id.in_(ids), InterruptTask.status == "pending")
         decision = resume.value if isinstance(resume.value, dict) else {"value": resume.value}
         res = await s.execute(
@@ -552,9 +686,8 @@ class Runner:
     async def _pump(self, h: RunHandle, spec: RunSpec) -> None:
         h.started = True  # from here on a cancel reaches the code below, which always finishes the run
         started = time.perf_counter()
-        CURRENT.set(
-            RunIdentity(spec.org_id, spec.user_id, spec.service_connection)
-        )  # app connectors that sign in read it per call (G-7)
+        # app connectors that sign in read it per call (G-7), and A2A and MCP calls name the run (runtime/nesting.py)
+        CURRENT.set(RunIdentity(spec.org_id, spec.user_id, spec.service_connection, run_id=h.run_id))
         status, error, interrupts = "error", None, []
         # The run's last events are published only after the run is finalised (saved, thread released): a client
         # that sends its next message the moment it reads RUN_FINISHED must find the thread free, not 'already has
@@ -567,8 +700,12 @@ class Runner:
             else:
                 await self._emit(h, event)
 
+        # every adapter's events are masked here, with the project's secret values: a framework that forgets to
+        # cannot put a key a model or a tool echoed into the stream, the stored run or its recording (RT-13)
+        hide: Callable[[Any], Any] = lambda payload: payload  # noqa: E731 - set once the resources are known
+
         def late_usage(record: dict[str, Any]) -> None:  # reported after the run stopped: before its last event
-            event = self._priced(h, {"type": "CUSTOM", "name": "ac.usage", "value": record})
+            event = self._priced(h, {"type": "CUSTOM", "name": "ac.usage", "value": hide(record)})
             at = next((i for i, e in enumerate(held) if e["type"] in ("RUN_FINISHED", "RUN_ERROR")), len(held))
             held.insert(at, event)
 
@@ -581,6 +718,10 @@ class Runner:
         try:
             if h.stop_requested:  # stopped before its task began (`_stop_task`)
                 raise asyncio.CancelledError
+            if h.fresh:  # a new conversation starts empty, whatever saved state a deleted one left under its id
+                # (callers choose ids, across organisations); cleared once its thread row is ours, so never under a
+                # run another server has on it
+                await self.forget_thread(h.thread_id)
             await self._emit(
                 h,
                 {
@@ -597,16 +738,24 @@ class Runner:
             if self.admission is not None:  # past the organisation's concurrent-run limit it waits for a slot
 
                 async def queued(place: dict[str, Any]) -> None:
+                    h.waiting = True
                     await self._emit(h, {"type": "CUSTOM", "name": "ac.queued", "value": place})
 
-                await self.admission.wait(h.run_id, spec.org_id, h.project_id, queued)
+                await self.admission.wait(
+                    h.run_id, spec.org_id, h.project_id, queued, lambda: _pending(h, spec), caller=h.caller_run_id
+                )
+                h.waiting = False
                 started = time.perf_counter()  # its duration (and budget's time limit) count from here
+            h.admitted_at = time.perf_counter()
+            h.admitted.set()
             before = await self._spent(h, budget) if budget else Spent()
             check_budget(budget, h.usage, before)  # a conversation that is already over budget does not start
             resources = self.resources(spec.thread_id, spec.workflow)
+            hide = masker(list((getattr(resources, "_secrets", None) or {}).values()))
             events = self.adapter_for(spec.workflow).execute(spec, resources)
             async with asyncio.timeout(budget.max_seconds if budget and budget.max_seconds else None):
-                async for raw in events:
+                async for unmasked in events:
+                    raw = hide(unmasked)
                     if raw["type"] == "CUSTOM" and raw.get("name") == "ac.usage":
                         priced = self._priced(h, raw)
                         await emit(priced)
@@ -647,6 +796,12 @@ class Runner:
                     "threadId": h.thread_id,
                 },
             )
+        except QueueTimeout as exc:  # it never began: nothing to stop or save but its outcome
+            status, error = "error", str(exc)
+            await emit(
+                {"type": "RUN_ERROR", "code": "queue_timeout", "message": error, "runId": h.run_id,
+                 "threadId": h.thread_id},
+            )  # fmt: skip
         except asyncio.CancelledError:
             if h.superseded:
                 status, error, code = "interrupted", "another server took this run over", "superseded"
@@ -654,7 +809,7 @@ class Runner:
                 status, error = "interrupted", "paused for a server restart; it continues automatically"
                 code = "redeploy"
             else:
-                status, error, code = "cancelled", h.stop_reason or "cancelled by user", "cancelled"
+                status, error, code = "cancelled", h.stop_reason or CANCELLED_BY_USER, "cancelled"
             await emit(
                 {
                     "type": "RUN_ERROR",
@@ -676,6 +831,8 @@ class Runner:
             try:
                 await self._close(h, events, status, error, interrupts, held)
             finally:  # however the save went, whoever waits for the run is told it is over
+                h.admitted_at = h.admitted_at or time.perf_counter()
+                h.admitted.set()
                 h.finished_at = time.monotonic()
                 h.done.set()
                 if self.admission is not None:
@@ -739,7 +896,10 @@ class Runner:
                     )
                 )
                 if res.rowcount == 0:  # type: ignore[attr-defined]
+                    gone = await s.get(Thread, h.thread_id) is None
                     await s.commit()
+                    if gone:  # deleted while it ran: what its last checkpoint saved must not outlive it
+                        await self.forget_thread(h.thread_id)
                     return
                 await s.execute(update(Thread).where(Thread.id == h.thread_id).values(status=thread_status))
                 untouched = not any(e.get("type") == "STEP_FINISHED" for e in h.events)
@@ -756,7 +916,7 @@ class Runner:
                 for intr in interrupts:
                     asked = {
                         "run_id": h.run_id, "canvas_node_id": intr.get("canvas_node_id") or "", "kind": intr["kind"],
-                        "payload": _as_object(intr["payload"]),
+                        "payload": _as_object(intr["payload"]), "requested_by": h.requested_by,
                     }  # fmt: skip
                     row = await s.get(InterruptTask, intr["id"])
                     if row is None:
@@ -962,20 +1122,34 @@ class Runner:
         """Stop taking runs, give running ones `grace_s` to finish, then stop the rest at their last checkpoint
         and mark them for hand-over (`Run.handover`); returns the ids of the runs handed over (FR-X-10)."""
         self.draining = True
+        if self.admission is not None:
+            self.admission.close()  # a waiting run would be cut off at the end of the grace period: none starts
         running = [h for h in self.handles.values() if h.task and not h.done.is_set()]
+        # a waiting run has not begun: it is handed over at once, its input kept on its row
+        cut = [h for h in running if h.waiting and self._stoppable(h)]
+        for h in cut:
+            self._hand_over(h)
         if running and grace_s > 0:
             waiters = [asyncio.ensure_future(h.done.wait()) for h in running]
             _, pending = await asyncio.wait(waiters, timeout=grace_s)
             for w in pending:  # runs that did not finish in time: their waiters would otherwise outlive the loop
                 w.cancel()
-        left = [h for h in running if self._stoppable(h)]
+        left = [h for h in running if h not in cut and self._stoppable(h)]
         for h in left:
-            h.drained = True
-            self._stop_task(h)
+            self._hand_over(h)
+        left = cut + left
         await asyncio.gather(*(h.task for h in left if h.task), return_exceptions=True)
         if left:
             log.info("runner.drained", runs=[h.run_id for h in left])
         return [h.run_id for h in left]
+
+    def _hand_over(self, h: RunHandle) -> None:
+        """Stop a run for the drain: another instance continues it, unless it is a test run (nobody waits for it)."""
+        if h.origin == "test":
+            h.stop_reason = TEST_NOT_CONTINUED
+        else:
+            h.drained = True
+        self._stop_task(h)
 
     def active(self) -> list[str]:
         return [h.run_id for h in self.handles.values() if h.task and not h.done.is_set()]
@@ -991,19 +1165,25 @@ class Runner:
             await s.execute(
                 update(Run).where(Run.id.in_(ids), Run.status == "running").values(heartbeat_at=datetime.now(UTC))
             )
-            gone = list((await s.scalars(select(Run.id).where(Run.id.in_(ids), Run.status != "running"))).all())
-            asked = list((await s.scalars(select(Run.id).where(Run.id.in_(ids), Run.stop_requested.is_(True)))).all())
+            rows = (
+                await s.execute(select(Run.id, Run.status, Run.stop_requested, Run.stop_reason).where(Run.id.in_(ids)))
+            ).all()
             await s.commit()
-        for run_id in asked:  # the kill switch, pressed on another instance (F-5)
-            if run_id not in gone:
-                await self.cancel(run_id, STOPPED_BY_ADMIN)
+        gone = [run_id for run_id, status, _, _ in rows if status != "running"]
+        asked = [(run_id, reason) for run_id, status, stop, reason in rows if stop and status == "running"]
+        # its row was deleted (its conversation, on another instance or by retention): nothing to save it to
+        deleted = sorted(set(ids) - {run_id for run_id, *_ in rows})
+        for run_id, reason in asked:  # Stop or the kill switch (F-5), pressed on another instance
+            await self.cancel(run_id, reason or STOPPED_BY_ADMIN)
+        for run_id in deleted:
+            await self.cancel(run_id, CONVERSATION_DELETED)
         for run_id in gone:
             h = self.handles.get(run_id)
             if h is not None and self._stoppable(h):
                 log.warning("run.superseded", run_id=run_id)
                 h.superseded = True
                 self._stop_task(h)
-        return gone
+        return gone + [run_id for run_id in deleted if run_id in self.handles]
 
     async def shutdown(self) -> None:
         for h in list(self.handles.values()):
@@ -1016,6 +1196,21 @@ class Runner:
         async with self.db.sessionmaker() as s:
             q = select(InterruptTask).where(InterruptTask.thread_id == thread_id, InterruptTask.status == "pending")
             return list((await s.scalars(q)).all())
+
+
+def _pending(h: RunHandle, spec: RunSpec) -> dict[str, Any]:
+    """What a waiting run was started with: no checkpoint holds it before the run takes a slot, so a hand-over
+    starts the run again with it (services/redeploy.py)."""
+    resume = {"value": spec.resume.value, "interrupt_id": spec.resume.interrupt_id} if spec.resume else None
+    return _plain(
+        {
+            "input": spec.input, "resume": resume, "decided": h.decided, "mode": spec.mode,
+            "breakpoints_before": spec.breakpoints_before, "breakpoints_after": spec.breakpoints_after,
+            "durability": spec.durability, "checkpoint_id": spec.checkpoint_id, "pins": spec.pins,
+            "mocks": spec.mocks, "dry_run": spec.dry_run, "user_id": spec.user_id,
+            "service_connection": spec.service_connection,
+        }
+    )  # fmt: skip
 
 
 def _thread_taken(exc: IntegrityError) -> bool:
