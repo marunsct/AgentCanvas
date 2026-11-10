@@ -14,7 +14,8 @@ RunMode = Literal["normal", "debug"]
 
 @dataclass
 class ResumeSpec:
-    """Answer to one pending interrupt (or to all, when `interrupt_id` is None)."""
+    """Answer to one pending interrupt. The runner fills in `interrupt_id` when the caller left it out and one
+    waits (several waiting need it): through the runner, None reaches an adapter only to go on from a breakpoint."""
 
     value: Any
     interrupt_id: str | None = None

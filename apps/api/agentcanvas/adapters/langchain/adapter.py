@@ -15,7 +15,8 @@ from datetime import UTC, datetime
 from typing import Any
 
 from langchain_core.runnables import RunnableConfig
-from langgraph.errors import GraphRecursionError
+from langgraph._internal._constants import CONFIG_KEY_STRICT_RESUME  # no public name yet (1.2.20)
+from langgraph.errors import GraphRecursionError, UnknownInterruptError
 from langgraph.types import Command
 
 from agentcanvas.adapters.langchain import nodes as ac
@@ -305,8 +306,11 @@ class LangChainAdapter:
         if spec.org_id:  # memory nodes, memory tools and Deep Agent folders prefix their namespaces with it
             cfg.setdefault("configurable", {})[ac.ORG_KEY] = spec.org_id
         if spec.resume is not None:
-            value = {spec.resume.interrupt_id: spec.resume.value} if spec.resume.interrupt_id else spec.resume.value
-            graph_input: Any = Command(resume=value)
+            iid = spec.resume.interrupt_id  # the runner names the pause it answers whenever one waits
+            graph_input: Any = Command(resume={iid: spec.resume.value} if iid else spec.resume.value)
+            # strict resume: an answer LangGraph cannot place (a pause the thread moved past, or one of several
+            # unnamed) fails before anything is written, instead of being dropped while the run goes on
+            cfg.setdefault("configurable", {})[CONFIG_KEY_STRICT_RESUME] = True
         else:
             graph_input = spec.input
         kwargs: dict[str, Any] = {
@@ -353,6 +357,9 @@ class LangChainAdapter:
                 "message": f"stopped after {wf.settings.recursion_limit} steps without reaching END "
                 f"(GraphRecursionError: {exc}). Add a router exit or raise the recursion limit.",
             }
+            return
+        except UnknownInterruptError as exc:  # nothing ran: the answer goes back to wait in the Inbox
+            yield {"type": "RUN_ERROR", "code": "unknown_interrupt", "message": _unplaced(exc)}
             return
         except Exception as exc:  # noqa: BLE001 - every failure must reach the UI as RUN_ERROR
             for record in usage.records():
@@ -459,6 +466,17 @@ class LangChainAdapter:
 
     async def delete_thread(self, thread_id: str) -> None:
         await self._persist().checkpointer.adelete_thread(thread_id)
+
+
+def _unplaced(exc: UnknownInterruptError) -> str:
+    """Why LangGraph refused an answer (strict resume), in the words the Inbox uses."""
+    waiting = f" Waiting now: {', '.join(exc.pending_ids)}." if exc.pending_ids else ""
+    if exc.reason == "ambiguous":
+        return f"several questions wait in this conversation; name the one you answer (interrupt_id).{waiting}"
+    return (
+        "the answer is for a question this conversation no longer asks (answered already, or the conversation "
+        f"moved on past it), so it was not applied.{waiting}"
+    )
 
 
 def _redacted(event: dict[str, Any], hidden: list[str]) -> dict[str, Any]:

@@ -472,7 +472,11 @@ class ApiRunIn(BaseModel):
 
 class ApiResumeIn(BaseModel):
     value: Any = None
-    interrupt_id: str | None = None
+    interrupt_id: str | None = Field(
+        None,
+        max_length=200,
+        description="the pause this answers (an id from the run's interrupts); may be left out only while one waits",
+    )
     callback_url: str | None = Field(default=None, max_length=2000, description=CALLBACK_HELP)
 
 
@@ -906,11 +910,12 @@ async def api_resume(
     response.headers.update(AI_HEADER)
     await own_thread(session, dep, thread_id)
     note(request, interrupt_id=body.interrupt_id, payload_sha256=payload_hash(body.value))
-    await approvers.check_pending(session, thread_id, body.interrupt_id, approvers.CALLER)
+    iid = await approvers.check_pending(session, thread_id, body.interrupt_id, approvers.CALLER)
+    note(request, interrupt_id=iid)  # the pause it answers, also when the caller named none
     callback = await _callback_url(request, session, dep, body.callback_url)
     wf, version_id = await _continue_on(session, dep, wf, thread_id)
     h = await request.app.state.runner.start(
-        wf, thread_id=thread_id, resume=ResumeSpec(body.value, body.interrupt_id),
+        wf, thread_id=thread_id, resume=ResumeSpec(body.value, iid),
         deployment_id=dep.id, version_id=version_id, caller_run_id=nesting.caller(request.headers.get(nesting.HEADER)),
     )  # fmt: skip
     await _add_callback(session, dep, h, callback)

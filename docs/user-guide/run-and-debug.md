@@ -43,6 +43,25 @@ and the Run tab shows **Approval needed** with the value under review.
   a published deployment (API keys, share links) are answered by their callers as before, unless the step names who
   decides it (below).
 
+### Several pauses at once
+
+Steps on parallel branches can pause together, for example two **Ask for approval** steps side by side. Each one is
+its own Inbox item and is answered on its own, in either order. Each branch goes on as soon as its step is answered,
+and the run finishes after the last answer. An answer always names the pause it is for (its `interrupt_id`, which is
+listed in the run's `interrupts` and on the Inbox item), so it can never reach the other pause:
+
+- The Inbox and the Run tab name the pause for you.
+- `POST /v1/threads/{thread}/resume` and the deployment API's `POST /v1/deployments/{id}/threads/{thread}/resume`
+  take `interrupt_id`. You may leave it out only while one pause waits. With two or more waiting, a request without
+  it is refused (409) with the waiting ids in `pending`, and nothing runs.
+- An answer for a pause that is no longer waiting is refused: 404 for an unknown id, 409 for one already decided.
+  On LangGraph workflows the engine checks this as well (strict resume). An answer it cannot place fails the run
+  with *the answer is for a question this conversation no longer asks*. Nothing is applied, and the item goes back
+  to the Inbox.
+
+The other frameworks ask one question at a time even when steps run in parallel, so the same calls work there
+unchanged.
+
 ### Who may decide
 
 Each **Ask for approval** and **Ask a person** step, and each **AI Agent** and **Planning Agent** with tools that need

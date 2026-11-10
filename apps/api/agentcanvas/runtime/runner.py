@@ -48,7 +48,7 @@ from agentcanvas.runtime.tracing import trace_ref
 from agentcanvas.runtime.trajectory import compact
 from agentcanvas.runtime.types import REPLAYABLE, ResumeSpec, RunMode, RunSpec
 from agentcanvas.services import offboarding
-from agentcanvas.services.approvers import escalate_at, node_approvers
+from agentcanvas.services.approvers import answered, escalate_at, node_approvers
 from agentcanvas.services.files import DEFAULT_MAX_BYTES, FileService
 from agentcanvas.services.secrets import masker
 from agentcanvas.services.spend_caps import SpendCaps, SpendCapStop, periods
@@ -601,7 +601,7 @@ class Runner:
                 decided: list[str] = []
                 requested_by = user_id
                 if resume is not None:
-                    decided = await self._decide_interrupts(s, thread_id, resume, decided_by or user_id)
+                    decided, resume = await self._decide_interrupts(s, thread_id, resume, decided_by or user_id)
                     # an answer continues the request of whoever asked, not of who answered
                     asked_by = select(InterruptTask.requested_by).where(InterruptTask.id.in_(decided))
                     requested_by = next((u for u in (await s.scalars(asked_by)).all() if u), None)
@@ -671,35 +671,22 @@ class Runner:
         q = select(Run.context).where(Run.thread_id == thread_id).order_by(Run.id.desc()).limit(1)
         return (await s.scalar(q)) or {}
 
-    async def _decide_interrupts(self, s: Any, thread_id: str, resume: ResumeSpec, decided_by: str | None) -> list[str]:
-        """Mark the answered Inbox items decided; returns their ids."""
-        pending = select(InterruptTask.id).where(
-            InterruptTask.thread_id == thread_id, InterruptTask.status == "pending"
-        )
-        if resume.interrupt_id:
-            pending = pending.where(InterruptTask.id == resume.interrupt_id)
-        ids = list((await s.scalars(pending)).all())
-        if not ids:  # the question expired unanswered (retention.py): its run was cancelled and must not go on
-            expired = select(InterruptTask.id).where(
-                InterruptTask.thread_id == thread_id, InterruptTask.status == "expired"
-            )
-            if resume.interrupt_id:
-                expired = expired.where(InterruptTask.id == resume.interrupt_id)
-            else:  # what the conversation's last run asked (not this new one): an older expiry does not stop a
-                # later breakpoint
-                ended = (Run.thread_id == thread_id, Run.status != "running")
-                last = select(Run.id).where(*ended).order_by(Run.id.desc()).limit(1)
-                expired = expired.where(InterruptTask.run_id == last.scalar_subquery())
-            if await s.scalar(expired.limit(1)):
-                raise Conflict("this approval expired: nobody answered it in time, and its run was cancelled")
-        q = update(InterruptTask).where(InterruptTask.id.in_(ids), InterruptTask.status == "pending")
+    async def _decide_interrupts(
+        self, s: Any, thread_id: str, resume: ResumeSpec, decided_by: str | None
+    ) -> tuple[list[str], ResumeSpec]:
+        """Mark the answered Inbox item decided; returns its id (none for a breakpoint) and the resume naming it: the
+        engine is always told which pause the answer is for (strict resume), so parallel pauses answer separately."""
+        task = await answered(s, thread_id, resume.interrupt_id)
+        if task is None:
+            return [], resume
+        q = update(InterruptTask).where(InterruptTask.id == task.id, InterruptTask.status == "pending")
         decision = resume.value if isinstance(resume.value, dict) else {"value": resume.value}
         res = await s.execute(
             q.values(status="decided", decision=decision, decided_by=decided_by, decided_at=datetime.now(UTC))
         )
-        if resume.interrupt_id and res.rowcount == 0 and await s.get(InterruptTask, resume.interrupt_id):
-            raise Conflict(f"inbox item '{resume.interrupt_id}' was already decided")  # a concurrent decision won
-        return ids
+        if res.rowcount == 0:
+            raise Conflict(f"inbox item '{task.id}' was already decided")  # a concurrent decision won
+        return [task.id], replace(resume, interrupt_id=task.id)
 
     async def _tool_drift(self, h: RunHandle, spec: RunSpec, warning: dict[str, Any]) -> None:
         """An app connector's server changed tools this run's version pinned (E-4): the deployment keeps it for the

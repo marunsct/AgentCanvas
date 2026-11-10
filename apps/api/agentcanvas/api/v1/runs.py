@@ -99,7 +99,11 @@ class RunRequest(DebugOptions):
 
 class ResumeRequest(DebugOptions):
     value: Any = None
-    interrupt_id: str | None = None
+    interrupt_id: str | None = Field(
+        None,
+        max_length=200,
+        description="the pause this answers (an id from the run's interrupts); may be left out only while one waits",
+    )
     stream: bool = True
 
 
@@ -728,18 +732,16 @@ async def resume_thread(
         # reviewers answer what the run asks; pins and scripted replies would let them drive its tools
         raise Forbidden(f"your role '{user.role}' can resume but not with debug pins, mocks or dry runs")
     t = await _thread(session, thread_id)
-    asked = select(InterruptTask).where(InterruptTask.thread_id == t.id, InterruptTask.status == "pending")
-    if body.interrupt_id:
-        asked = asked.where(InterruptTask.id == body.interrupt_id)
-    tasks = list((await session.scalars(asked)).all())
+    task = await approvers.answered(session, t.id, body.interrupt_id)  # the named pause, else the only one
+    tasks = [task] if task else []
     await _not_your_own(session, settings, user, t, tasks)
     await approvers.check(session, tasks, _decider(user), t.created_by)
     wf, target_kw = await _thread_target(session, settings, t)
-    note(request, interrupt_id=body.interrupt_id, payload_sha256=payload_hash(body.value))
+    note(request, interrupt_id=task.id if task else None, payload_sha256=payload_hash(body.value))
     h = await r.start(
         wf,
         thread_id=thread_id,
-        resume=ResumeSpec(body.value, body.interrupt_id),
+        resume=ResumeSpec(body.value, task.id if task else None),
         user_id=user.id,
         service_connection=user.role == "admin",
         mode="debug" if body.pins or body.mocks or body.dry_run else "normal",

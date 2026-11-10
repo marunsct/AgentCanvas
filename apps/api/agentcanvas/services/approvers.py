@@ -23,8 +23,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agentcanvas.db.models import AppUser, InterruptTask, ScimGroup, ScimGroupMember
-from agentcanvas.errors import Forbidden
+from agentcanvas.db.models import AppUser, InterruptTask, Run, ScimGroup, ScimGroupMember
+from agentcanvas.errors import Conflict, Forbidden, NotFound
 from agentcanvas.ir.models import Workflow
 
 ROLES = ("reviewer", "builder", "admin")
@@ -176,11 +176,46 @@ async def check(
             raise Forbidden(why)
 
 
+EXPIRED = "this approval expired: nobody answered it in time, and its run was cancelled"
+
+
+async def answered(session: AsyncSession, thread_id: str, interrupt_id: str | None) -> InterruptTask | None:
+    """The Inbox item a resume of the conversation answers: the one it names, else the only one waiting. None when
+    nothing waits (a debug breakpoint goes on). Two pauses can wait at once (approvals on parallel branches): an
+    answer that names neither is refused rather than given to one of them, which could approve the wrong step."""
+    q = select(InterruptTask).where(InterruptTask.thread_id == thread_id)
+    if interrupt_id:
+        row = await session.scalar(q.where(InterruptTask.id == interrupt_id))
+        if row is None:
+            raise NotFound(f"this conversation has no question '{interrupt_id}'")
+        if row.status == "expired":  # retention.py cancelled its run: it must not go on
+            raise Conflict(EXPIRED)
+        if row.status != "pending":
+            raise Conflict(f"inbox item '{interrupt_id}' was already decided")
+        return row
+    waiting = list((await session.scalars(q.where(InterruptTask.status == "pending"))).all())
+    if len(waiting) > 1:
+        ids = sorted(t.id for t in waiting)
+        raise Conflict(
+            f"this conversation waits for {len(ids)} answers; name the one you answer with interrupt_id "
+            f"({', '.join(ids)})",
+            pending=ids,
+        )
+    if waiting:
+        return waiting[0]
+    # what the conversation's last run asked expired (not an older run's): its run was cancelled
+    ended = select(Run.id).where(Run.thread_id == thread_id, Run.status != "running").order_by(Run.id.desc())
+    expired = q.where(InterruptTask.status == "expired", InterruptTask.run_id == ended.limit(1).scalar_subquery())
+    if await session.scalar(expired.limit(1)):
+        raise Conflict(EXPIRED)
+    return None
+
+
 async def check_pending(
     session: AsyncSession, thread_id: str, interrupt_id: str | None, who: Decider, started_by: str | None = None
-) -> None:
-    """`check` for what a resume of the conversation answers: the named item, else every waiting one."""
-    q = select(InterruptTask).where(InterruptTask.thread_id == thread_id, InterruptTask.status == "pending")
-    if interrupt_id:
-        q = q.where(InterruptTask.id == interrupt_id)
-    await check(session, (await session.scalars(q)).all(), who, started_by)
+) -> str | None:
+    """`check` for what a resume of the conversation answers (`answered`); returns that item's id, which the resume
+    names, so the engine never has to guess."""
+    task = await answered(session, thread_id, interrupt_id)
+    await check(session, [task] if task else [], who, started_by)
+    return task.id if task else None
