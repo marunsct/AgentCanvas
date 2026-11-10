@@ -306,7 +306,6 @@ async def download_org_export(token: str, request: Request, session: AsyncSessio
     from agentcanvas.db.models import AuditLog
     from agentcanvas.db.repositories import AuditRepo
     from agentcanvas.services import org_export
-    from agentcanvas.services.audit_sink import AuditEvent
 
     row = await org_export.use_link(session, token)
     entry = AuditLog(
@@ -314,8 +313,6 @@ async def download_org_export(token: str, request: Request, session: AsyncSessio
         detail={"caller": "export link", "size": row.size}, ip=request.client.host if request.client else None,
     )  # fmt: skip
     await AuditRepo(session).add(entry)
-    if (sink := getattr(request.app.state, "audit_sink", None)) is not None:
-        await sink.emit(AuditEvent(row.org_id, None, entry.action, entry.target, entry.detail, entry.ip))
     await session.close()
     headers = attachment(f"agentcanvas-{row.org_id}-{row.created_at:%Y%m%d}.zip")
     if row.size is not None:

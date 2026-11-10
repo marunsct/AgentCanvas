@@ -323,8 +323,9 @@ class AuditRepo:
     def __init__(self, s: AsyncSession):
         self.s = s
 
-    async def add(self, row: AuditLog) -> None:
-        """Every audit entry is written here, and commits. It joins its organisation's hash chain
+    async def add(self, row: AuditLog, *, commit: bool = True) -> None:
+        """Every audit entry is written here, and commits (`commit=False`: the caller's transaction commits it with
+        its own changes, the organisation's chain held until then). It joins its organisation's hash chain
         (services/audit_chain.py), and one that is forwarded (services/audit_sink.py) is queued for each destination
         in the same transaction, so a recorded entry always leaves the server too."""
         forwarding = audit_sink.forwarding()
@@ -338,7 +339,10 @@ class AuditRepo:
                 AuditOutbox(audit_id=row.id, org_id=row.org_id, destination=name, next_attempt_at=row.created_at)
                 for name in forwarding.destinations
             )
-        await self.s.commit()
+        if commit:
+            await self.s.commit()
+        else:
+            await self.s.flush()
         if forwarded:
             audit_sink.log_event(audit_sink.AuditEvent.of(row))
 

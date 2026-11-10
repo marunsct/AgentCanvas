@@ -50,11 +50,11 @@ from agentcanvas.db.models import (
     Thread,
     WorkflowRow,
 )
+from agentcanvas.db.repositories import AuditRepo
 from agentcanvas.errors import InvalidInput, SpendingCapReached
 from agentcanvas.ids import new_id
 from agentcanvas.log import get_logger
 from agentcanvas.services import org_settings
-from agentcanvas.services.audit_sink import AuditEvent
 from agentcanvas.settings import Settings
 
 log = get_logger(__name__)
@@ -264,7 +264,6 @@ class SpendCaps:
         self._usage: dict[tuple[str, str], tuple[float, Usage]] = {}
         self._raised: set[tuple[str, str, str, str, float]] = set()  # alerts this server knows were raised
         self.alert_hooks: list[Callable[[SpendCapAlert], Any]] = []  # each new alert (metrics)
-        self.sink: Callable[[], Any] = lambda: None  # where security audit entries also go (services/audit_sink)
 
     def forget(self) -> None:
         """Read the caps afresh (a save on this server; the others see it within `config_ttl`)."""
@@ -401,8 +400,8 @@ class SpendCaps:
             try:
                 async with self.db.sessionmaker() as s:
                     s.add(alert)
-                    s.add(AuditLog(org_id=conf.org_id, actor_id=None, action=action, target=target, detail=detail))
-                    await s.commit()
+                    row = AuditLog(org_id=conf.org_id, actor_id=None, action=action, target=target, detail=detail)
+                    await AuditRepo(s).add(row)  # with the alert; the outbox takes it to the SIEM
             except IntegrityError:
                 continue  # another run or server raised it first
             except Exception:
@@ -411,8 +410,6 @@ class SpendCaps:
                 continue
             log.warning("spend_cap_alert", org_id=conf.org_id, scope=cap.scope or "organisation", period=cap.period,
                         share=share, spent_usd=spent, limit_usd=cap.limit)  # fmt: skip
-            if (sink := self.sink()) is not None:
-                await sink.emit(AuditEvent(conf.org_id, None, action, target, detail))
             for hook in self.alert_hooks:
                 try:
                     hook(alert)

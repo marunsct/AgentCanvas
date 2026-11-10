@@ -47,6 +47,7 @@ from agentcanvas.db.models import (
     Thread,
     WorkflowRow,
 )
+from agentcanvas.db.repositories import AuditRepo
 from agentcanvas.errors import Conflict, Forbidden
 from agentcanvas.log import get_logger
 
@@ -167,12 +168,11 @@ class OffboardingJob:
         projects: Any,
         workspaces_dir: str,
         interval_s: float = 60.0,
-        sink: Any = None,
         export_keep_hours: int = 24,
     ):
         from agentcanvas.services.org_export import ExportBuilder
 
-        self.db, self.runner, self.projects, self.sink = db, runner, projects, sink
+        self.db, self.runner, self.projects = db, runner, projects
         self.exports = ExportBuilder(db, runner, workspaces_dir, export_keep_hours)
         self.workspaces_dir, self.interval_s = Path(workspaces_dir), interval_s
         self._task: asyncio.Task | None = None
@@ -267,10 +267,6 @@ class OffboardingJob:
         counts["people_erased"], counts["members"] = await self._people(org_id)
         await self._org_rows(org_id, counts)
         log.info("offboarding.purged", org_id=org_id, **counts)
-        if self.sink is not None:
-            from agentcanvas.services.audit_sink import AuditEvent
-
-            await self.sink.emit(AuditEvent(org_id, None, "purge_organization", f"org_id={org_id}", {"counts": counts}))
         return counts
 
     async def _conversations(self, org_id: str) -> int:
@@ -358,10 +354,9 @@ class OffboardingJob:
                     purge_lease_until=None,
                 )
             )  # fmt: skip
-            s.add(
+            await AuditRepo(s).add(
                 AuditLog(
                     org_id=org_id, actor_id=None, action="purge_organization", target=f"org_id={org_id}",
                     detail={"counts": counts},
                 )
             )  # fmt: skip
-            await s.commit()

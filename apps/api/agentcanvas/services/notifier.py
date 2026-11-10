@@ -52,6 +52,7 @@ from agentcanvas.db.models import (
     Thread,
     WorkflowRow,
 )
+from agentcanvas.db.repositories import AuditRepo
 from agentcanvas.errors import InvalidInput
 from agentcanvas.ids import new_id
 from agentcanvas.log import get_logger
@@ -345,8 +346,9 @@ async def escalate(s: AsyncSession, items: list[tuple[str, str, str]], now: date
         org_id = await s.scalar(q)
         if org_id is None:
             continue
-        s.add(AuditLog(org_id=org_id, action="approval_escalated", target=f"interrupt_id={interrupt_id}",
-                       detail={"role": role, "why": why}))  # fmt: skip
+        escalated = AuditLog(org_id=org_id, action="approval_escalated", target=f"interrupt_id={interrupt_id}",
+                             detail={"role": role, "why": why})  # fmt: skip
+        await AuditRepo(s).add(escalated, commit=False)  # in the caller's transaction, with the claim
         row = await s.get(OrgNotifier, org_id)
         NotifierJob._queue(s, org_id, interrupt_id, "escalated", channels_on(row, smtp) if row else [], now)
         log.info("notifier.escalated", interrupt_id=interrupt_id, role=role, why=why)

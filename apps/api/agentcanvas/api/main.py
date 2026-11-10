@@ -241,7 +241,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             app.state.runner = runner
             # runs report app connector tools changed since publishing (E-4) like any security-relevant entry
-            runner.audit_sink = lambda: getattr(app.state, "audit_sink", None)
             runner.router = lambda session, wf, project_id: routing.route_run(app, session, wf, project_id)
             runner.max_file_bytes = int(settings.max_upload_mb * 1024 * 1024)
             runner.max_project_file_bytes = int(settings.max_project_files_mb * 1024 * 1024)
@@ -259,7 +258,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             # what an organisation or project may spend a day and a month: new runs are refused and runs stop at a cap
             app.state.spend_caps = runner.caps = SpendCaps(db, settings, ttl=0 if settings.env == "test" else 5.0)
-            app.state.spend_caps.sink = lambda: getattr(app.state, "audit_sink", None)
             app.state.spend_caps.alert_hooks.append(observability.spend_cap_alert)
             runner.prepare_hooks.append(
                 RunGate(

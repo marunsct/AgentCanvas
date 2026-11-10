@@ -33,7 +33,7 @@ from agentcanvas.db.models import (
     Thread,
     WorkflowRow,
 )
-from agentcanvas.db.repositories import ScopeRepo
+from agentcanvas.db.repositories import AuditRepo, ScopeRepo
 from agentcanvas.db.session import Database
 from agentcanvas.errors import Conflict, NotFound, Unavailable
 from agentcanvas.ids import new_id
@@ -49,7 +49,6 @@ from agentcanvas.runtime.trajectory import compact
 from agentcanvas.runtime.types import REPLAYABLE, ResumeSpec, RunMode, RunSpec
 from agentcanvas.services import offboarding
 from agentcanvas.services.approvers import escalate_at, node_approvers
-from agentcanvas.services.audit_sink import AuditEvent
 from agentcanvas.services.files import DEFAULT_MAX_BYTES, FileService
 from agentcanvas.services.secrets import masker
 from agentcanvas.services.spend_caps import SpendCaps, SpendCapStop, periods
@@ -396,7 +395,6 @@ class Runner:
         self.draining = False  # shutting down: no new runs (FR-X-10)
         # picks the models of blocks that list `cheapest_of` (db session, workflow, project id -> workflow, notes)
         self.router: Callable[[Any, Workflow, str], Awaitable[tuple[Workflow, list[dict[str, Any]]]]] | None = None
-        self.audit_sink: Callable[[], Any] | None = None  # where security-relevant audit entries also go (TS26)
         # (workflow, version, connector) -> the tool drift last audited for runs the deployment's record does not
         # cover: a draft schedule that runs every minute is audited once per change, not once per run (per server)
         self._drift_seen: OrderedDict[tuple[str, str, str], dict[str, Any]] = OrderedDict()
@@ -725,7 +723,6 @@ class Runner:
                     self._drift_seen[key] = seen
                     while len(self._drift_seen) > 1000:
                         self._drift_seen.popitem(last=False)
-                event = None
                 if new and drifted and spec.org_id:
                     detail = {
                         "workflow_id": h.workflow_id, "deployment_id": h.deployment_id, "version_id": h.version_id,
@@ -735,12 +732,8 @@ class Runner:
                         org_id=spec.org_id, actor_id=None, action="mcp_tool_drift", target=f"run_id={h.run_id}",
                         detail=detail,
                     )  # fmt: skip
-                    s.add(row)
-                    event = AuditEvent(spec.org_id, None, "mcp_tool_drift", row.target, detail)
+                    await AuditRepo(s).add(row, commit=False)  # the outbox takes it to the SIEM
                 await s.commit()
-            sink = self.audit_sink() if self.audit_sink is not None else None
-            if event is not None and sink is not None:
-                await sink.emit(event)
         except Exception:
             log.exception("run.tool_drift_not_recorded", run_id=h.run_id, resource=resource)
 
