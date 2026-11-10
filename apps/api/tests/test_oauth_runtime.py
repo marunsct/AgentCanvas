@@ -188,3 +188,11 @@ async def test_the_runner_lets_only_deployments_and_admins_use_the_service_conne
     )  # fmt: skip
     assert r.status_code == 200, r.text
     assert seen == [True, False, True]  # the admin's draft run, the builder's, the deployment's
+    # an admin of the project only (E-10) is not an admin of the organisation's service connection
+    r = await client.put(
+        "/v1/projects/prj_default/members", json={"email": "bob@example.com", "role": "admin"}, headers=ALICE
+    )
+    assert r.status_code == 200, r.text
+    r = await client.post(f"/v1/workflows/{wf}/runs/stream", json={"input": {"who": "x"}}, headers=BOB)
+    assert r.status_code == 200, r.text
+    assert seen[-1] is False

@@ -53,8 +53,8 @@ async def list_tools(
     """The tools an MCP server offers now, as the person making the request may see them."""
     mcp = require(r.adapter, "mcp_inspect", McpAbility)
     me = request.state.user
-    # a connector that signs in is browsed with your own connection (the service one: admins only)
-    CURRENT.set(RunIdentity(me.org_id, me.id, service_ok=me.role == "admin"))
+    # a connector that signs in is browsed with your own connection (the service one: organisation admins only)
+    CURRENT.set(RunIdentity(me.org_id, me.id, service_ok=me.org_role == "admin"))
     url = str(cfg.get("url") or "")
     local = cfg.get("transport") == "stdio" or not url.startswith(("http://", "https://"))
     settings = await request.app.state.org_settings.for_project(settings, project_id)  # the organisation's own

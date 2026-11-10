@@ -364,7 +364,8 @@ async def start_run(
         context=_context(wf, body.context, user),
         durability=body.durability,
         user_id=user.id,
-        service_connection=user.role == "admin",  # the organisation's service connection is the admins'
+        # the organisation's service connection is its admins', not a project admin's (E-10)
+        service_connection=user.org_role == "admin",
         priority=body.priority,
         **_debug(wf, body, body.mode),
     )
@@ -750,7 +751,7 @@ async def resume_thread(
         thread_id=thread_id,
         resume=ResumeSpec(body.value, task.id if task else None),
         user_id=user.id,
-        service_connection=user.role == "admin",
+        service_connection=user.org_role == "admin",
         mode="debug" if body.pins or body.mocks or body.dry_run else "normal",
         **_debug(wf, body, "debug"),
         **target_kw,

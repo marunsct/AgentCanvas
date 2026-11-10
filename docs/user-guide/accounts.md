@@ -73,7 +73,9 @@ Security, or `security.private_projects` of `PUT /v1/org/settings`):
   webhook still get every project's, as their admin chose).
 
 A project role may be **above** the person's organisation role: an organisation viewer can be the admin of one
-project. It applies to that project only; the organisation's pages keep the organisation role. A personal API token
+project. It applies to that project only; the organisation's pages keep the organisation role, and so does the
+organisation's [service connection](agents-and-connectors.md) for app connectors (only organisation admins' runs use
+it). A personal API token
 never does more than the role it was made with, in any project.
 
 - Whoever creates a project while projects are private becomes its admin; otherwise they could not see it.

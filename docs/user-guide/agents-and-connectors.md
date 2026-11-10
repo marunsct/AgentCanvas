@@ -290,9 +290,11 @@ one shared key. Each person connects their own account, once:
    - **service**: the organisation's service connection, which an admin connects with **Connect the service account** on
      the same block. Use it for schedules, webhooks and deployments, and when the app account should be shared on purpose.
      A draft run that a builder starts in the editor does not use it (that would lend the admin's account to every
-     builder): publish the workflow, to a test environment if you like, and run it there. Admins' own runs, and a
-     deployment's runs resumed from the inbox, do use it.
-3. **Browse tools** uses your own connection (or the service one, when the block is set to it and you are an admin).
+     builder): publish the workflow, to a test environment if you like, and run it there. Organisation admins' own runs,
+     and a deployment's runs resumed from the inbox, do use it; an admin of one project only
+     ([project members](accounts.md#projects-and-their-members)) is a builder here.
+3. **Browse tools** uses your own connection (or the service one, when the block is set to it and you are an
+   organisation admin).
 
 Behind the scenes AgentCanvas follows the MCP authorization standard against whatever server the block points at: it finds
 the server's sign-in settings itself, uses the server's client-metadata-document support or registers itself with the
