@@ -109,6 +109,7 @@ Lists are JSON (`["a", "b"]`), booleans `true` or `false`. Settings whose names 
 | `AGENTCANVAS_SMTP_PASSWORD` |  | As the row above (one comment in settings.py covers these). |
 | `AGENTCANVAS_SMTP_FROM` |  | the sender, e.g. "AgentCanvas <approvals@example.com>"; required with a host |
 | `AGENTCANVAS_NOTIFY_INTERVAL_S` | `15` | how often each server looks for approvals to announce and for notifications to send or retry (seconds) |
+| `AGENTCANVAS_APPROVAL_REMINDER_HOURS` | `24` | an approval or question still waiting this many hours before it expires or escalates is announced once more, on the same channels; 0 = no reminders. An item that waits less than twice this in all gets none (its first message is recent) |
 | `AGENTCANVAS_NOTIFY_ALLOW_PRIVATE` | `False` | notification webhooks (Slack, an organisation's own) may reach private addresses, e.g. an internal relay; link-local and cloud metadata addresses never |
 | `AGENTCANVAS_MAX_QUEUE_WAIT_S` | `3600` | how long a run may wait in that queue before it gives up with an error (seconds); 0 = as long as it takes |
 | `AGENTCANVAS_RETENTION_INTERVAL_S` | `3600` | how often the retention job looks for expired conversations |

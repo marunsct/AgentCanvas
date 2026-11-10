@@ -8836,6 +8836,153 @@
         "title": "LayoutUpdate",
         "type": "object"
       },
+      "LinkDecision": {
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "a denied tool call: the reason the agent reads",
+            "title": "Reason"
+          },
+          "token": {
+            "description": "the link's token (after `#` in its address)",
+            "maxLength": 2048,
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "title": "LinkDecision",
+        "type": "object"
+      },
+      "LinkIn": {
+        "properties": {
+          "token": {
+            "description": "the link's token (after `#` in its address)",
+            "maxLength": 2048,
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "title": "LinkIn",
+        "type": "object"
+      },
+      "LinkOut": {
+        "properties": {
+          "action": {
+            "description": "approve or deny",
+            "title": "Action",
+            "type": "string"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "deciders": {
+            "title": "Deciders",
+            "type": "string"
+          },
+          "expires_at": {
+            "description": "when the link stops working",
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "inbox_path": {
+            "title": "Inbox Path",
+            "type": "string"
+          },
+          "interrupt_id": {
+            "title": "Interrupt Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "project_name": {
+            "title": "Project Name",
+            "type": "string"
+          },
+          "recipient": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the e-mail address the link was sent to; null: a channel",
+            "title": "Recipient"
+          },
+          "sign_in": {
+            "description": "the link cannot decide by itself: open the item in the Inbox and sign in",
+            "title": "Sign In",
+            "type": "boolean"
+          },
+          "status": {
+            "description": "the item's: pending, decided, expired or cancelled",
+            "title": "Status",
+            "type": "string"
+          },
+          "step": {
+            "title": "Step",
+            "type": "string"
+          },
+          "why_sign_in": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Why Sign In"
+          },
+          "workflow_name": {
+            "title": "Workflow Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "interrupt_id",
+          "action",
+          "kind",
+          "status",
+          "workflow_name",
+          "project_name",
+          "step",
+          "deciders",
+          "recipient",
+          "expires_at",
+          "sign_in",
+          "inbox_path"
+        ],
+        "title": "LinkOut",
+        "type": "object"
+      },
       "LintItem": {
         "properties": {
           "code": {
@@ -10164,6 +10311,17 @@
       "NotificationsIn": {
         "description": "Only what is sent changes; `null` removes the Slack address or the webhook.",
         "properties": {
+          "actions": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actions"
+          },
           "digest": {
             "anyOf": [
               {
@@ -10246,6 +10404,12 @@
       },
       "NotificationsOut": {
         "properties": {
+          "actions": {
+            "default": false,
+            "description": "approval messages carry Approve and Deny links: e-mails, bound to each person; Slack and the webhook, links that open the item in the Inbox",
+            "title": "Actions",
+            "type": "boolean"
+          },
           "digest": {
             "default": false,
             "description": "each project's weekly run digest also goes to these channels",
@@ -10299,6 +10463,12 @@
       },
       "NotificationsSaved": {
         "properties": {
+          "actions": {
+            "default": false,
+            "description": "approval messages carry Approve and Deny links: e-mails, bound to each person; Slack and the webhook, links that open the item in the Inbox",
+            "title": "Actions",
+            "type": "boolean"
+          },
           "digest": {
             "default": false,
             "description": "each project's weekly run digest also goes to these channels",
@@ -21401,6 +21571,108 @@
         "summary": "Add Items",
         "tags": [
           "annotation queues"
+        ]
+      }
+    },
+    "/v1/approval-links/decision": {
+      "post": {
+        "description": "Approve or deny with a link sent to one person, as that person: the same checks as the Inbox (their role in\nthe project, who the step names, approving your own runs). Decides once.",
+        "operationId": "decide_by_link_v1_approval_links_decision_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkDecision"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error (a problem document)"
+          }
+        },
+        "summary": "Decide By Link",
+        "tags": [
+          "inbox"
+        ]
+      }
+    },
+    "/v1/approval-links/inspect": {
+      "post": {
+        "description": "What a link is for, and whether it can decide by itself. Changes nothing (it is a POST so the token stays out\nof the address): opening a link never decides.",
+        "operationId": "inspect_approval_link_v1_approval_links_inspect_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error (a problem document)"
+          }
+        },
+        "summary": "Inspect Approval Link",
+        "tags": [
+          "inbox"
         ]
       }
     },

@@ -195,7 +195,8 @@ SCIM is off.
 An admin can limit where the organisation can be used from: **Settings › Organisation › Security › Allowed
 networks** takes one address (`203.0.113.7`) or network (`203.0.113.0/24`, IPv6 too) per line, up to 100. With a list,
 every request that acts in the organisation must come from one of them, whatever it carries: a person's sign-in, a
-personal API token, a deployment key (also over MCP and A2A), a share link or the SCIM token. Anything else gets
+personal API token, a deployment key (also over MCP and A2A), a share link, an approval e-mail's Approve or Deny
+link or the SCIM token. Anything else gets
 `403` with the address it came from (problem type `…/errors/network-not-allowed`). An empty list, the default,
 accepts any address. Webhook triggers are not covered: the services that send them do not have fixed addresses, and
 their signature already proves who sent them.
