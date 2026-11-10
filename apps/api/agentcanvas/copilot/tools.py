@@ -21,7 +21,7 @@ from pydantic import ValidationError
 from agentcanvas import designs
 from agentcanvas.copilot import docs, rules, skillbook
 from agentcanvas.copilot.pack import block_summary
-from agentcanvas.copilot.runs import RunAccess
+from agentcanvas.copilot.runs import RunAccess, RunFinder
 from agentcanvas.ir.commands import Command, CommandError, apply_batch, parse_commands
 from agentcanvas.ir.models import Workflow
 from agentcanvas.registry import Registry
@@ -68,6 +68,7 @@ class ToolContext:
     brief: dict[str, Any] | None = None
     proposal: Proposal = field(default_factory=Proposal)
     runs: RunAccess | None = None  # past runs, test runs, reproductions (S15)
+    run_finder: RunFinder | None = None  # the project's runs by filters and topic (search_runs)
     secret_names: list[str] = field(default_factory=list)  # names only, never values
     events: list[dict[str, Any]] = field(default_factory=list)  # brief/proposal updates for the stream
     allow_real_runs: bool = False  # the person allowed test runs that call real models in this conversation
@@ -253,6 +254,12 @@ async def get_run(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     if ctx.runs is None:
         return {"ok": False, "error": "runs are not available here"}
     return await ctx.runs.describe(str(args.get("run_id") or ""))
+
+
+async def search_runs(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    if ctx.run_finder is None:
+        return {"ok": False, "error": "run search is not available here"}
+    return await ctx.run_finder.find(args)
 
 
 async def _runnable(ctx: ToolContext) -> str | None:
@@ -664,6 +671,36 @@ TOOLS: dict[str, Tool] = {
             "What happened in one run: status, error with an explanation, input, output and each step.",
             {"type": "object", "properties": {"run_id": {"type": "string"}}, "required": ["run_id"]},
             get_run,
+        ),
+        Tool(
+            "search_runs",
+            "Find the project's runs (every workflow, people's runs only) by filters; every filter given must hold. "
+            "`text` ranks the runs left by what the conversation was about. Returns each run's status, error, cost, "
+            "start, duration and labels, how many runs matched and what they cost together. For one run's steps use "
+            "get_run.",
+            {
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "enum": ["success", "error", "interrupted", "cancelled", "running"],
+                        "description": "error: failed; interrupted: waiting for a person",
+                    },
+                    "since": {
+                        "type": "string",
+                        "description": "started at or after: an ISO date or time in UTC (2026-11-02), or a span back "
+                        "from now (24h, 7d, 4w)",
+                    },
+                    "until": {"type": "string", "description": "started before; same forms as since"},
+                    "min_cost_usd": {"type": "number", "description": "cost at least this, in US dollars"},
+                    "max_cost_usd": {"type": "number"},
+                    "workflow": {"type": "string", "description": "a workflow's name or id; omit for every workflow"},
+                    "label": {"type": "string", "description": "a label the API caller set: key=value, or key"},
+                    "text": {"type": "string", "description": "the topic, e.g. refunds; ranked by meaning"},
+                    "limit": {"type": "integer", "description": "runs returned, 1-50 (default 20)"},
+                },
+            },
+            search_runs,
         ),
         Tool(
             "search_guide",

@@ -15,15 +15,17 @@ with the project's secrets before it is embedded or kept.
 from __future__ import annotations
 
 import asyncio
+import re
 from collections.abc import Callable
-from datetime import datetime
-from typing import Any
+from datetime import UTC, date, datetime, timedelta
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
-from sqlalchemy import delete, func, or_, select
+from pydantic import BaseModel, Field, field_validator
+from sqlalchemy import Select, delete, func, or_, select
 
 from agentcanvas import knowledge_search as ks
 from agentcanvas.db.models import Project, Run, RunSearch, Thread, WorkflowRow
+from agentcanvas.errors import InvalidInput
 from agentcanvas.ids import new_id
 from agentcanvas.log import get_logger
 from agentcanvas.services import model_defaults
@@ -39,6 +41,8 @@ BATCH = 64
 INDEXING = 4  # finished runs indexed at once per process; the rest wait their turn
 SNIPPET = 220
 REINDEX_LIMIT = 2000  # runs one reindex fills in
+FIND_LIMIT = 50  # runs one structured search returns
+ERROR_CHARS = 300
 
 
 class RunHit(BaseModel):
@@ -56,6 +60,71 @@ class RunSearchResult(BaseModel):
     model: str = Field(description="the embedding model that ranked them")
     indexed: int = Field(description="runs of the project this search could rank")
     stale: int = Field(description="runs indexed with another model or not yet: reindex to include them")
+
+
+RunStatus = Literal["success", "error", "interrupted", "cancelled", "running"]
+SPAN = re.compile(r"^\s*(\d{1,4})\s*(h|d|w)\s*$", re.I)
+
+
+def when(value: str | datetime | date | None, now: datetime) -> datetime | None:
+    """A moment from an ISO date or time (UTC when it names no zone) or a span back from `now` ("24h", "7d", "4w")."""
+    if value is None or value == "":
+        return None
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=UTC)
+    if isinstance(value, date):
+        return datetime(value.year, value.month, value.day, tzinfo=UTC)
+    if m := SPAN.match(value):
+        hours = int(m.group(1)) * {"h": 1, "d": 24, "w": 168}[m.group(2).lower()]
+        return now - timedelta(hours=hours)
+    try:
+        t = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError:
+        raise InvalidInput(f"'{value}' is not a date: use an ISO date or time (2026-11-03, 2026-11-03T09:00) or a span "
+                           "back from now (24h, 7d, 4w)") from None  # fmt: skip
+    return t if t.tzinfo else t.replace(tzinfo=UTC)
+
+
+class RunFilters(BaseModel):
+    """What a structured run search keeps: every filter given must hold. `text` ranks what is left by meaning."""
+
+    status: RunStatus | None = None
+    since: datetime | None = Field(default=None, description="runs that started at or after this moment")
+    until: datetime | None = Field(default=None, description="runs that started before this moment")
+    min_cost_usd: float | None = Field(default=None, ge=0)
+    max_cost_usd: float | None = Field(default=None, ge=0)
+    workflow: str | None = Field(default=None, max_length=200, description="a workflow's id or name, in the project")
+    label: str | None = Field(default=None, max_length=200, description="key=value, or key alone: has that label")
+    text: str | None = Field(default=None, max_length=500, description="what the conversation was about")
+    limit: int = Field(default=20, ge=1, le=FIND_LIMIT)
+
+    @field_validator("workflow", "label", "text")
+    @classmethod
+    def _blank(cls, v: str | None) -> str | None:
+        return v.strip() or None if isinstance(v, str) else v
+
+
+class FoundRun(BaseModel):
+    run_id: str
+    thread_id: str
+    workflow_id: str
+    workflow_name: str | None = None
+    status: str
+    error: str | None = None
+    cost_usd: float
+    tokens: int
+    started_at: datetime | None = None
+    duration_ms: int | None = None
+    labels: dict[str, Any] = Field(default_factory=dict)
+    score: float | None = Field(None, description="with `text`: how well it matches, 0-1")
+    snippet: str | None = Field(None, description="with `text`: the start of what was asked and answered")
+
+
+class RunFindResult(BaseModel):
+    runs: list[FoundRun]
+    matched: int = Field(description="runs that pass the filters (before `text` ranks them and `limit` cuts)")
+    cost_usd: float = Field(description="what the runs that pass the filters cost together")
+    stale: int = Field(0, description="with `text`: runs not in the search index yet")
 
 
 def strings(value: Any, out: list[str] | None = None) -> list[str]:
@@ -208,11 +277,21 @@ class RunSearchService:
 
     # -------------------------------------------------------------- search ----
     async def search(
-        self, project_id: str, query: str, *, workflow_id: str | None = None, limit: int = 20, mode: str = "hybrid"
+        self,
+        project_id: str,
+        query: str,
+        *,
+        workflow_id: str | None = None,
+        limit: int = 20,
+        mode: str = "hybrid",
+        within: Select[Any] | None = None,
     ) -> RunSearchResult:
+        """`within`: a query of run ids; only those runs are ranked (a structured search's filters)."""
         async with self.db.sessionmaker() as s:
             model, spec = await self._model(s, project_id)
             rows_q = select(RunSearch).where(RunSearch.project_id == project_id, RunSearch.model == model)
+            if within is not None:
+                rows_q = rows_q.where(RunSearch.run_id.in_(within))
             total_q = (
                 select(func.count())
                 .select_from(Run)
@@ -257,3 +336,74 @@ class RunSearchService:
             if len(hits) >= limit:
                 break
         return RunSearchResult(hits=hits, model=model, indexed=len(rows), stale=max(0, total - in_index))
+
+    # ---------------------------------------------------------- structured ----
+    async def find(self, project_id: str, f: RunFilters) -> RunFindResult:
+        """The project's runs that pass every filter, newest first; with `text`, ranked by meaning among them (the
+        best run of each conversation). Test and experiment runs are left out, as in `search`."""
+        where = [WorkflowRow.project_id == project_id, PEOPLES]
+        async with self.db.sessionmaker() as s:
+            if f.workflow:
+                wf_id = await s.scalar(
+                    select(WorkflowRow.id)
+                    .where(WorkflowRow.project_id == project_id)
+                    .where(or_(WorkflowRow.id == f.workflow, func.lower(WorkflowRow.name) == f.workflow.lower()))
+                    .order_by(WorkflowRow.id)
+                    .limit(1)
+                )
+                if wf_id is None:
+                    raise InvalidInput(f"no workflow '{f.workflow}' in this project")
+                where.append(WorkflowRow.id == wf_id)
+            if f.status:
+                where.append(Run.status == f.status)
+            if f.since:
+                where.append(Run.started_at >= f.since)
+            if f.until:
+                where.append(Run.started_at < f.until)
+            if f.min_cost_usd is not None:
+                where.append(Run.cost_usd >= f.min_cost_usd)
+            if f.max_cost_usd is not None:
+                where.append(Run.cost_usd <= f.max_cost_usd)
+            if f.label:
+                key, eq, value = f.label.partition("=")
+                found = Run.labels[key.strip()].as_string()
+                where.append(found == value.strip() if eq else found.is_not(None))
+            base = select(Run.id).join(Thread, Thread.id == Run.thread_id)
+            base = base.join(WorkflowRow, WorkflowRow.id == Thread.workflow_id).where(*where)
+            totals = base.with_only_columns(func.count(), func.coalesce(func.sum(Run.cost_usd), 0))
+            matched, cost = (await s.execute(totals)).one()
+            ranked: dict[str, tuple[float, str]] = {}
+            ids: list[str] = []
+            stale = 0
+            if not f.text:
+                ids = list((await s.scalars(base.order_by(Run.started_at.desc(), Run.id.desc()).limit(f.limit))).all())
+        if f.text:
+            found_runs = await self.search(project_id, f.text, limit=f.limit, within=base)
+            ranked = {h.run_id: (h.score, h.snippet) for h in found_runs.hits}
+            ids, stale = list(ranked), found_runs.stale
+        secrets = self.secrets(project_id)
+        async with self.db.sessionmaker() as s:
+            q = (
+                select(Run, Thread.workflow_id, WorkflowRow.name)
+                .join(Thread, Thread.id == Run.thread_id)
+                .join(WorkflowRow, WorkflowRow.id == Thread.workflow_id)
+                .where(Run.id.in_(ids), WorkflowRow.project_id == project_id)
+            )
+            rows = {r.id: (r, wf_id, name) for r, wf_id, name in (await s.execute(q)).all()}
+        runs = []
+        for run_id in ids:
+            if run_id not in rows:  # deleted meanwhile
+                continue
+            r, wf_id, name = rows[run_id]
+            took = int((r.ended_at - r.started_at).total_seconds() * 1000) if r.ended_at and r.started_at else None
+            score, snippet = ranked.get(run_id, (None, None))
+            runs.append(
+                FoundRun(
+                    run_id=r.id, thread_id=r.thread_id, workflow_id=wf_id, workflow_name=name, status=r.status,
+                    error=hide_secrets(r.error[:ERROR_CHARS], secrets) if r.error else None,
+                    cost_usd=float(r.cost_usd or 0), tokens=int(r.tokens_in or 0) + int(r.tokens_out or 0),
+                    started_at=r.started_at, duration_ms=took, labels=dict(r.labels or {}), score=score,
+                    snippet=snippet,
+                )
+            )  # fmt: skip
+        return RunFindResult(runs=runs, matched=int(matched or 0), cost_usd=round(float(cost or 0), 6), stale=stale)

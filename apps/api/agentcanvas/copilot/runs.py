@@ -10,16 +10,20 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 
+from pydantic import ValidationError
 from sqlalchemy import select
 
 from agentcanvas.adapters.spi import ThreadStateAbility, require
 from agentcanvas.db.models import Run, Thread, WorkflowVersion
+from agentcanvas.errors import InvalidInput
 from agentcanvas.ids import new_id
 from agentcanvas.ir.models import Workflow
 from agentcanvas.services.explain import explain
+from agentcanvas.services.run_search import RunFilters, when
 from agentcanvas.services.secrets import hide_secrets
 from agentcanvas.services.testcases import Expect, check
 from agentcanvas.validation.help import run_error_help
@@ -31,6 +35,55 @@ MAX_VALUE = 1500
 def _short(value: Any) -> Any:
     text = json.dumps(value, default=str)
     return value if len(text) <= MAX_VALUE else text[: MAX_VALUE - 1] + "…"
+
+
+STATUS_WORDS = {
+    "failed": "error", "failure": "error", "errored": "error", "succeeded": "success", "ok": "success",
+    "waiting": "interrupted", "paused": "interrupted", "stopped": "cancelled", "canceled": "cancelled",
+}  # fmt: skip
+
+
+@dataclass
+class RunFinder:
+    """`search_runs`: the project's runs (every workflow of it) by status, time, cost, workflow, label and topic. The
+    model only turns the person's words into filters; the runs come from SQL and the run-search index."""
+
+    service: Any  # services.run_search.RunSearchService
+    project_id: str
+    found: list[dict[str, Any]] = field(default_factory=list)  # the runs this turn's searches returned, first first
+    clock: Callable[[], datetime] = lambda: datetime.now(UTC)
+
+    def filters(self, args: dict[str, Any], now: datetime) -> RunFilters:
+        given = {k: v for k, v in args.items() if k in RunFilters.model_fields and v not in (None, "", [])}
+        if isinstance(given.get("status"), str):
+            word = given["status"].strip().lower()
+            given["status"] = STATUS_WORDS.get(word, word)
+        for key in ("since", "until"):
+            if key in given:
+                given[key] = when(str(given[key]), now)
+        return RunFilters.model_validate(given)
+
+    async def find(self, args: dict[str, Any]) -> dict[str, Any]:
+        now = self.clock()
+        try:
+            f = self.filters(args, now)
+            result = await self.service.find(self.project_id, f)
+        except ValidationError as exc:
+            errors = "; ".join(f"{'.'.join(str(p) for p in e['loc'])}: {e['msg']}" for e in exc.errors()[:5])
+            return {"ok": False, "error": f"filters are not valid: {errors}"}
+        except InvalidInput as exc:
+            return {"ok": False, "error": str(exc)}
+        runs = [r.model_dump(mode="json", exclude_none=True) for r in result.runs]
+        seen = {r["run_id"] for r in self.found}
+        self.found.extend(r for r in runs if r["run_id"] not in seen)
+        out: dict[str, Any] = {
+            "ok": True, "now": now.isoformat(timespec="seconds"),
+            "filters": f.model_dump(mode="json", exclude_none=True, exclude={"limit"}),
+            "matched": result.matched, "cost_usd": result.cost_usd, "runs": runs,
+        }  # fmt: skip
+        if result.stale:
+            out["note"] = f"{result.stale} runs are not in the search index yet, so `text` could not rank them"
+        return out
 
 
 @dataclass

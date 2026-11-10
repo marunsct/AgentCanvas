@@ -33,7 +33,7 @@ from agentcanvas.api.v1.runs import _context as run_context
 from agentcanvas.api.v1.workspace import _off_loop
 from agentcanvas.copilot import settings as copilot_settings
 from agentcanvas.copilot.pack import Pack, build_pack
-from agentcanvas.copilot.runs import RunAccess
+from agentcanvas.copilot.runs import RunAccess, RunFinder
 from agentcanvas.copilot.service import CopilotTurn, diff
 from agentcanvas.copilot.settings import CopilotSettings, ResolvedModel
 from agentcanvas.copilot.tools import ToolContext, carry_pending
@@ -367,7 +367,8 @@ async def _start_turn(
 
     ctx = ToolContext(
         workflow=view.workflow, registry=registry, templates=templates, validate=validate, brief=conv.brief,
-        runs=runs, secret_names=sorted(request.app.state.projects.secrets.get(project_id, {})),
+        runs=runs, run_finder=RunFinder(request.app.state.run_search, project_id),
+        secret_names=sorted(request.app.state.projects.secrets.get(project_id, {})),
         allow_real_runs=body.allow_real_runs, workspace=request.app.state.projects.workspace(project_id),
         knowledge=knowledge_bases,
     )  # fmt: skip
