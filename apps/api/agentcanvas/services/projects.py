@@ -54,6 +54,8 @@ class ProjectRegistry:
                 registry=lambda: self.registry(project_id),
                 resources_class=self.resources_class,
             )
+            if self.settings.sandbox_mcp and runner is not None:  # local app connectors start in its sandbox
+                self._resources[project_id].mcp_sandbox = runner
             if self.knowledge is not None:
                 self._resources[project_id].knowledge = self.knowledge.for_project(project_id)
             if self.answer_cache is not None:
@@ -63,7 +65,12 @@ class ProjectRegistry:
         return self._resources[project_id]
 
     async def aclose(self) -> None:
-        """Release per-project sandboxes (a LangSmith Sandbox stays up until its idle timeout otherwise)."""
+        """Release per-project sandboxes (a LangSmith Sandbox stays up until its idle timeout otherwise), and the
+        app connectors' sandboxes."""
+        if self.settings.sandbox_mcp:
+            from agentcanvas.sandbox.mcp import SESSIONS
+
+            await SESSIONS.aclose()
         for res in self._resources.values():
             runner = getattr(res, "script_runner", None)
             if runner is not None and hasattr(runner, "aclose"):

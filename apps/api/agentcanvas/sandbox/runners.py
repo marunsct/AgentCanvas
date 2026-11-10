@@ -21,6 +21,7 @@ log = get_logger(__name__)
 _WARNED: set[tuple[str, str]] = set()  # (workspace, mode) pairs already told that sandbox.json network rules are idle
 
 CHILD = Path(__file__).with_name("child.py")
+MCP_CHILD = Path(__file__).with_name("mcp_child.py")  # starts a local app connector's server (`sandbox.mcp`)
 TIMEOUT_S = 30.0
 MEMORY_MB = 512
 
@@ -435,7 +436,7 @@ class SandboxRunner:
         except PolicyError as exc:
             raise ScriptError(str(exc)) from None
         mode = self.settings.script_execution
-        proxy = await self._egress(policy, mode)
+        proxy = await self.egress(policy, mode)
         if mode == "remote":
             return await _remote_exchange(
                 self.settings, self.workspace, import_path, payload, policy.timeout_s, policy.memory_mb, proxy
@@ -455,8 +456,17 @@ class SandboxRunner:
             raise ScriptError(str(exc)) from None
         return _parse(import_path, out, err, code)
 
-    async def _egress(self, policy: SandboxPolicy, mode: str) -> str | None:
-        """The proxy URL that lets this call reach the policy's allow-list, or None for no network at all.
+    def mcp_transport(self, label: str, command: str, args: list[str], env: dict[str, str]) -> Any:
+        """An MCP client transport that starts this stdio server in the sandbox (docker or remote), with the
+        project's egress list and the `mcp` limits of its `sandbox.json` (`agentcanvas.sandbox.mcp`)."""
+        from agentcanvas.sandbox.mcp import McpServer, SandboxTransport, open_connector
+
+        server = McpServer(label, command, tuple(args), tuple(sorted(env.items())))
+        return SandboxTransport(lambda: open_connector(self, server), label)
+
+    async def egress(self, policy: SandboxPolicy, mode: str, ttl_s: float | None = None) -> str | None:
+        """The proxy URL that lets this call reach the policy's allow-list, or None for no network at all; its
+        credential expires after `ttl_s` (default: one call's time).
 
         `docker` and `remote` enforce the list through the egress proxy. `inprocess` and `subprocess` cannot: in
         staging and production a list there is refused (the code would get no network, or all of it, silently);
@@ -489,7 +499,7 @@ class SandboxRunner:
                 except docker_egress.EgressUnavailable as exc:
                     raise ScriptError(f"sandbox.json allows network access, but {exc}") from None
             # valid while the call may wait for a sandbox and run, and no longer (S-7); the call id is for the log
-            return proxy_url(address, allow, secret, policy.timeout_s + QUEUE_WAIT_S + 10)
+            return proxy_url(address, allow, secret, ttl_s or policy.timeout_s + QUEUE_WAIT_S + 10)
         if self.settings.env in ("staging", "prod"):
             raise ScriptError(
                 f"sandbox.json allows network access, which script execution '{mode}' cannot restrict; "

@@ -504,6 +504,8 @@ class Resources:
         self.client_context: list[dict[str, str]] = []
         # hosted edition: tools and agents reach public addresses only, whatever allow_private_network says
         self.public_only = False
+        # a `SandboxRunner` when local (stdio) app connectors start in the sandbox (`sandbox_mcp`), not on this server
+        self.mcp_sandbox: Any = None
         self._cache: OrderedDict[str, Any] = OrderedDict()  # model clients, least recently used first
         self.answers = AnswerCache()  # models' cached answers (S26), shared by this project's runs
         self._mcp: dict[tuple[str, str], list[BaseTool]] = {}
@@ -719,13 +721,17 @@ class Resources:
             for old in [k for k in self._mcp if k[0] == name and k != key]:  # its tools under an older key or config
                 del self._mcp[old]
             target = self._overrides.get(name)
-            if target is None:
-                target = mcp_target(config, self._resolve, public_only=self.public_only)
-                if config.get("transport", "http") != "stdio" and MCP_CLIENT_FACTORY is None:  # tests set one
-                    parts = urlsplit(config["url"])  # never the cloud metadata address; hosted: public ones only
-                    port = parts.port or (443 if parts.scheme == "https" else 80)
-                    await _reachable_address(parts.hostname or "", port, private_ok=not self.public_only)
-            tools = await mcp_tools(target)
+            local = config.get("transport", "http") == "stdio"
+            if target is None and local and (self.mcp_sandbox is not None or self.public_only):
+                tools = await sandboxed_mcp_tools(name, config, self)
+            else:
+                if target is None:
+                    target = mcp_target(config, self._resolve, public_only=self.public_only)
+                    if not local and MCP_CLIENT_FACTORY is None:  # tests set one
+                        parts = urlsplit(config["url"])  # never the cloud metadata address; hosted: public ones only
+                        port = parts.port or (443 if parts.scheme == "https" else 80)
+                        await _reachable_address(parts.hostname or "", port, private_ok=not self.public_only)
+                tools = await mcp_tools(target)
             wanted = config.get("tool_filter") or []
             tools = [t for t in tools if not wanted or t.name in wanted]
             if self.pin_mcp:
@@ -923,6 +929,63 @@ def _naming_the_run(factory: Callable[..., Any] | None) -> Callable[..., Any]:
         return client
 
     return make
+
+
+async def sandboxed_mcp_tools(name: str, config: dict[str, Any], resources: Resources) -> list[BaseTool]:
+    """A local (stdio) connector's tools, its server started in the sandbox (`agentcanvas.sandbox.mcp`): listed in a
+    sandbox of their own, then called in the run's (or, with `session: thread`, the conversation's) sandbox, which
+    stops when the run ends or after its time limits. Never on this server: the hosted edition refuses without."""
+    from agentcanvas.sandbox.mcp import SESSIONS, McpSandboxError
+
+    sandbox = resources.mcp_sandbox
+    if sandbox is None:
+        raise McpSandboxError(
+            f"'{name}' starts a program, which the hosted edition runs only in the sandbox (AGENTCANVAS_SANDBOX_MCP)"
+        )
+    with warnings.catch_warnings():  # langchain.mcp is beta (surfaced as I010 on the canvas instead)
+        warnings.simplefilter("ignore")
+        from langchain.mcp import MCPAdapter, as_langchain_tool
+
+    env = {k: str(resources.resolve(v)) for k, v in (config.get("env") or {}).items()}
+    command, args = str(config["command"]), [str(a) for a in config.get("args") or []]
+
+    def open_client() -> Any:  # armed by the adapter: a server asking for input pauses the run
+        return MCPAdapter(sandbox.mcp_transport(name, command, args, env)).client
+
+    # a sandbox serves one project's connector as configured (its secrets included), never another's
+    connector = hashlib.sha256(f"{sandbox.workspace}:{name}:{resources._key(config)}".encode()).hexdigest()[:24]
+    scope = "thread" if config.get("session") == "thread" else "run"
+    async with SESSIONS.once(open_client) as client:
+        listed = await client.list_tools()
+        templates = [await as_langchain_tool(t, client) for t in listed]
+
+    def routed(template: BaseTool, tool: Any) -> BaseTool:
+        async def call(**arguments: Any) -> Any:
+            key = _connector_scope(scope, connector)
+            uses = SESSIONS.once(open_client) if key is None else SESSIONS.use(key, open_client)
+            async with uses as client:
+                inner = await as_langchain_tool(tool, client)
+                assert isinstance(inner, StructuredTool) and inner.coroutine is not None
+                return await inner.coroutine(**arguments)
+
+        return template.model_copy(update={"coroutine": call})
+
+    return [routed(tpl, t) for tpl, t in zip(templates, listed, strict=True)]
+
+
+def _connector_scope(scope: str, connector: str) -> tuple[str, str, str] | None:
+    """The sandbox a tool call goes to: the run's, or the conversation's; None outside a run (one for the call)."""
+    try:
+        cfg = get_config()
+    except RuntimeError:
+        return None
+    run = (cfg.get("metadata") or {}).get("run_id")
+    thread = (cfg.get("configurable") or {}).get("thread_id")
+    if scope == "run" and run:
+        return ("run", str(run), connector)
+    if thread:  # a conversation's, or a run without an id (reading state): stopped when idle
+        return ("thread", str(thread), connector)
+    return None
 
 
 async def mcp_tools(target: Any) -> list[BaseTool]:

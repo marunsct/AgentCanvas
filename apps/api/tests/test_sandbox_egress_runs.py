@@ -199,7 +199,10 @@ async def test_settings_reads_and_writes_the_sandbox_policy(app, api_client):
     """Settings > Sandbox: the policy as a form, and what this server does with it (here: in-process, dev)."""
     url = "/v1/projects/prj_default/sandbox"
     first = (await api_client.get(url)).json()
-    assert first["policy"] == {"egress": [], "inject": [], "timeout_s": 30.0, "memory_mb": 512}
+    assert first["policy"] == {
+        "egress": [], "inject": [], "timeout_s": 30.0, "memory_mb": 512,
+        "mcp": {"memory_mb": 1024, "idle_s": 300.0, "lifetime_s": 1800.0},
+    }  # fmt: skip
     assert first["mode"] == "inprocess" and not first["enforces_egress"] and not first["refuses_egress"]
     saved = await api_client.put(url, json={"egress": ["api.github.com", "*.googleapis.com:443"], "timeout_s": 60})
     assert saved.status_code == 200, saved.text
@@ -208,7 +211,14 @@ async def test_settings_reads_and_writes_the_sandbox_policy(app, api_client):
     assert [p["code"] for p in out["problems"]] == ["W082"]  # in-process code cannot be limited: said, in dev
     text = (await api_client.get("/v1/projects/prj_default/files/sandbox.json")).json()["content"]
     assert json.loads(text) == {"egress": ["api.github.com", "*.googleapis.com:443"], "timeout_s": 60.0}
-    for bad in ({"egress": ["https://api.github.com/x"]}, {"timeout_s": 0}, {"egres": []}, {"egress": ["x"] * 101}):
+    # app connector limits written in the file stay when the form (which does not show them) saves
+    await api_client.put("/v1/projects/prj_default/files/sandbox.json", json={"content": '{"mcp": {"idle_s": 60}}'})
+    kept = await api_client.put(url, json={"egress": ["api.github.com"]})
+    assert kept.json()["policy"]["mcp"]["idle_s"] == 60 and kept.json()["policy"]["egress"] == ["api.github.com"]
+    text = (await api_client.get("/v1/projects/prj_default/files/sandbox.json")).json()["content"]
+    assert json.loads(text) == {"egress": ["api.github.com"], "mcp": {"idle_s": 60.0}}
+    for bad in ({"egress": ["https://api.github.com/x"]}, {"timeout_s": 0}, {"egres": []}, {"egress": ["x"] * 101},
+                {"mcp": {"lifetime_s": 0}}, {"mcp": {"memory_mb": 64}}):  # fmt: skip
         assert (await api_client.put(url, json=bad)).status_code == 422, bad
     await api_client.put("/v1/projects/prj_default/files/sandbox.json", json={"content": "{nope"})
     broken = (await api_client.get(url)).json()
@@ -234,8 +244,8 @@ async def test_the_api_can_hand_the_sandbox_the_proxys_address_so_the_sandbox_ne
     (ws / "sandbox.json").write_text(json.dumps({"egress": ["api.github.com"]}))
     base = {"script_execution": "remote", "sandbox_url": "http://sandbox", "sandbox_token": TOKEN,
             "egress_proxy": "localhost:3128", "egress_secret": SECRET}  # fmt: skip
-    named = await SandboxRunner(Settings(**base), ws, {})._egress(load_policy(ws), "remote")
-    resolved = await SandboxRunner(Settings(**base, egress_proxy_resolve=True), ws, {})._egress(
+    named = await SandboxRunner(Settings(**base), ws, {}).egress(load_policy(ws), "remote")
+    resolved = await SandboxRunner(Settings(**base, egress_proxy_resolve=True), ws, {}).egress(
         load_policy(ws), "remote"
     )
     assert named and named.endswith("@localhost:3128")

@@ -297,6 +297,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # E-2: deployment runs' completion callbacks, delivered by every server
             app.state.callbacks = CallbackJob(db, runner, app.state.keyring, public_only=settings.edition == "hosted")
             runner.finish_hooks.append(app.state.callbacks.on_run_finished)
+            if settings.sandbox_mcp:  # a run's app connector sandboxes stop when it ends
+                from agentcanvas.sandbox.mcp import SESSIONS
+
+                SESSIONS.limit = settings.sandbox_mcp_sessions
+
+                async def stop_connectors(h: Any, *_: Any) -> None:
+                    await SESSIONS.end("run", h.run_id)
+
+                runner.finish_hooks.append(stop_connectors)
             app.state.cron = CronScheduler(db, runner, app.state.keyring, catchup_s=settings.cron_catchup_s)
             app.state.ratelimit = RateLimiter(db)
             app.state.retention = RetentionJob(

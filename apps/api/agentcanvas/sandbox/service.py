@@ -9,6 +9,10 @@ files it was sent and the hosts its project allows. Run it as:
 
     AGENTCANVAS_SANDBOX_TOKEN=... uvicorn agentcanvas.sandbox.service:app --host 0.0.0.0 --port 8090
 
+`/mcp` (a WebSocket) runs a local (stdio) app connector's server for as long as the connection lasts
+(`agentcanvas.sandbox.mcp`): the first message says what to start, then binary frames carry its stdin and stdout.
+It takes the same slot as a call, so a connector and other code never share this container at the same moment.
+
 Only the standard library, FastAPI and `runners` are used: no settings, no database.
 """
 
@@ -16,8 +20,10 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 import hmac
 import io
+import math
 import os
 import shutil
 import signal
@@ -29,10 +35,19 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from fastapi import Depends, FastAPI, HTTPException, Request
-from pydantic import BaseModel, Field
+from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from pydantic import BaseModel, Field, ValidationError
 
-from agentcanvas.sandbox.runners import MEMORY_MB, QUEUE_WAIT_S, TIMEOUT_S, ScriptError, _exchange
+from agentcanvas.sandbox.runners import (
+    MCP_CHILD,
+    MEMORY_MB,
+    PROCESSES,
+    QUEUE_WAIT_S,
+    TIMEOUT_S,
+    ScriptError,
+    _exchange,
+    _tasks_of_this_user,
+)
 
 MAX_WORKSPACE_BYTES = 20 * 1024 * 1024  # packed
 MAX_UNPACKED_BYTES = 100 * 1024 * 1024
@@ -102,6 +117,150 @@ class RunIn(BaseModel):
 
 
 DISCONNECT_POLL_S = 0.5  # how soon a call whose caller went away is stopped
+
+
+class McpStartIn(BaseModel):
+    """What a connector session starts (the first message on `/mcp`)."""
+
+    command: str = Field(min_length=1, max_length=300, pattern=r"^\S+$")
+    args: list[str] = Field(default_factory=list, max_length=200)
+    env: dict[str, str] = Field(default_factory=dict, max_length=200)
+    workspace: str = Field(description="the workspace as a base64 tar.gz")
+    memory_mb: int = Field(default=1024, ge=128, le=16384)
+    lifetime_s: float = Field(default=1800, gt=0, le=4 * 3600)
+    egress_proxy: str | None = Field(None, max_length=8000, pattern=r"^http://[^/\s]+$")
+
+
+MCP_MAX_LINE = 32 * 1024 * 1024
+MEMORY_POLL_S = 1.0  # how often a connector's memory is measured
+# what of the service's environment a connector's server gets: where programs are and how npm, uv, Node.js and
+# Playwright are set up in the image (never the service's token)
+PASS_ENV = ("PATH", "LANG", "LC_ALL", "TZ")
+PASS_PREFIXES = ("npm_config_", "NPM_CONFIG_", "PLAYWRIGHT_", "UV_", "NODE_")
+
+
+def _connector_env(body: McpStartIn, home: Path) -> dict[str, str]:
+    env = {k: v for k, v in os.environ.items() if k in PASS_ENV or k.startswith(PASS_PREFIXES)}
+    env = {"PATH": "/usr/local/bin:/usr/bin:/bin", **env, "HOME": str(home), **body.env}
+    env.pop("AGENTCANVAS_SANDBOX_TOKEN", None)
+    if body.egress_proxy:
+        env["AC_EGRESS_UPSTREAM"] = body.egress_proxy  # `mcp_child` relays to it; the server never sees it
+    return env
+
+
+def _connector_limits(cpu_s: int, processes: int | None) -> Callable[[], None]:
+    """A connector's limits: CPU seconds (per process) and processes; no address-space cap, which Node.js and
+    Chromium reserve far beyond what they use (memory is measured instead, `_memory_mb`)."""
+
+    def apply() -> None:  # pragma: no cover - runs in the child before exec
+        import resource
+
+        resource.setrlimit(resource.RLIMIT_CPU, (cpu_s, cpu_s + 1))
+        resource.setrlimit(resource.RLIMIT_NOFILE, (4096, 4096))
+        if processes is not None:
+            hard = resource.getrlimit(resource.RLIMIT_NPROC)[1]
+            cap = processes if hard == resource.RLIM_INFINITY else min(processes, hard)
+            resource.setrlimit(resource.RLIMIT_NPROC, (cap, cap))
+
+    return apply
+
+
+def _memory_mb(root: int) -> float:
+    """Resident memory of a process and everything it started (Linux; 0 elsewhere)."""
+    if sys.platform != "linux":
+        return 0.0
+    page = os.sysconf("SC_PAGE_SIZE")
+    total = 0
+    for pid in [root, *_descendants(root)]:
+        try:
+            total += int(Path(f"/proc/{pid}/statm").read_text().split()[1]) * page
+        except (OSError, ValueError, IndexError):
+            pass
+    return total / (1024 * 1024)
+
+
+def _kill_tree(proc: asyncio.subprocess.Process) -> None:
+    if proc.returncode is not None:
+        return
+    pids = _descendants(proc.pid) if sys.platform == "linux" else []
+    with contextlib.suppress(ProcessLookupError, PermissionError):
+        os.killpg(proc.pid, signal.SIGKILL)  # its own process group (start_new_session)
+    for pid in pids:  # and whatever left the group
+        with contextlib.suppress(ProcessLookupError, PermissionError):
+            os.kill(pid, signal.SIGKILL)
+
+
+async def _run_connector(ws: WebSocket, body: McpStartIn, work: Path) -> None:
+    """Start the server and relay its stdio until either side ends, its time is up or it uses too much memory."""
+    home = work / ".home"
+    home.mkdir()
+    running = await asyncio.to_thread(_tasks_of_this_user) if sys.platform == "linux" else None
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable, "-I", str(MCP_CHILD), body.command, *body.args,
+            stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            env=_connector_env(body, home), cwd=work, limit=MCP_MAX_LINE, start_new_session=True,
+            preexec_fn=_connector_limits(math.ceil(body.lifetime_s), running + PROCESSES if running else None)
+            if os.name == "posix" else None,
+        )  # fmt: skip
+    except OSError as exc:
+        await ws.send_json({"error": f"could not start it: {exc}"})
+        return
+    assert proc.stdin is not None and proc.stdout is not None and proc.stderr is not None
+    stdin, stdout, stderr = proc.stdin, proc.stdout, proc.stderr
+    tail = bytearray()
+    await ws.send_json({"ready": True})
+
+    async def up() -> str:  # the API -> the server
+        while True:
+            msg = await ws.receive()
+            if msg["type"] == "websocket.disconnect":
+                return "the caller went away"
+            data = msg.get("bytes") or (msg.get("text") or "").encode()
+            stdin.write(data)
+            await stdin.drain()
+
+    async def down() -> str:  # the server -> the API
+        try:
+            while line := await stdout.readline():
+                await ws.send_bytes(line)
+        except ValueError:
+            return f"it sent a message over {MCP_MAX_LINE // (1024 * 1024)} MB"
+        await proc.wait()
+        return f"it exited ({proc.returncode})"
+
+    async def errors() -> str:
+        while chunk := await stderr.read(65536):
+            tail.extend(chunk)
+            del tail[:-16384]
+        await asyncio.Event().wait()  # never the reason it ended
+        return ""
+
+    async def limits() -> str:
+        deadline = time.monotonic() + body.lifetime_s
+        while time.monotonic() < deadline:
+            await asyncio.sleep(MEMORY_POLL_S)
+            if await asyncio.to_thread(_memory_mb, proc.pid) > body.memory_mb:
+                return f"it used more than {body.memory_mb} MB of memory and was stopped"
+        return f"it ran for {body.lifetime_s:g} s, its time limit, and was stopped"
+
+    tasks = [asyncio.ensure_future(t()) for t in (up, down, errors, limits)]
+    reason = "stopped"
+    try:
+        done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        first = next(iter(done))
+        reason = first.result() if not first.cancelled() and first.exception() is None else "the relay failed"
+    finally:
+        _kill_tree(proc)
+        for t in tasks:
+            t.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        with contextlib.suppress(Exception):
+            await asyncio.wait_for(proc.wait(), 5)
+    said = bytes(tail).decode(errors="replace").strip()[-500:]
+    with contextlib.suppress(Exception):  # the caller may be gone already
+        await ws.send_json({"exit": proc.returncode, "error": reason + (f": {said}" if said else "")})
+        await ws.close()
 
 
 def _become_subreaper() -> None:
@@ -186,6 +345,46 @@ def create_service(token: str | None = None, run: Callable[..., Any] = _exchange
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.websocket("/mcp")
+    async def mcp_session(ws: WebSocket) -> None:
+        """A local app connector's server, for as long as this connection lasts (`agentcanvas.sandbox.mcp`)."""
+        sent = ws.headers.get("authorization", "").removeprefix("Bearer ").strip()
+        if not hmac.compare_digest(sent.encode(), secret.encode()):
+            await ws.close(code=1008)
+            return
+        await ws.accept()
+        try:
+            body = McpStartIn.model_validate_json(await ws.receive_text())
+            packed = base64.b64decode(body.workspace, validate=True)
+            if len(packed) > MAX_WORKSPACE_BYTES:
+                raise ValueError("the workspace is too large")
+        except (ValidationError, ValueError, WebSocketDisconnect, KeyError) as exc:
+            with contextlib.suppress(Exception):
+                await ws.send_json({"error": f"bad request: {str(exc)[:300]}"})
+                await ws.close(code=1003)
+            return
+        try:  # one call or connector at a time, like /run
+            await asyncio.wait_for(slots.acquire(), QUEUE_WAIT_S)
+        except TimeoutError:
+            await ws.send_json({"error": f"every sandbox was busy for {QUEUE_WAIT_S} s; add sandbox replicas"})
+            await ws.close(code=1013)
+            return
+        started = time.time()
+        work = Path(tempfile.mkdtemp(prefix="ac-mcp-"))
+        try:
+            try:
+                await asyncio.to_thread(unpack_workspace, packed, work)
+            except (ValueError, tarfile.TarError, OSError) as exc:
+                await ws.send_json({"error": f"bad workspace: {exc}"})
+                await ws.close(code=1003)
+                return
+            await _run_connector(ws, body, work)
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
+            if sweeping:
+                await asyncio.to_thread(sweep, started)
+            slots.release()
 
     @app.post("/run", dependencies=[Depends(authorised)])
     async def run_script(body: RunIn, request: Request) -> dict[str, Any]:

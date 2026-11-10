@@ -7,6 +7,7 @@ use) next to the project's shared code at the root.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import json
 import re
@@ -307,7 +308,11 @@ async def get_sandbox(project_id: str, request: Request, ws: Workspace = Depends
 async def put_sandbox(
     project_id: str, body: SandboxPolicy, request: Request, ws: Workspace = Depends(workspace)
 ) -> SandboxOut:
-    """Save the sandbox policy as `sandbox.json` (the same checks as the file: hostnames, secrets, limits)."""
+    """Save the sandbox policy as `sandbox.json` (the same checks as the file: hostnames, secrets, limits). A body
+    without `mcp` keeps the file's app connector limits (a form that does not show them leaves them as they are)."""
+    if "mcp" not in body.model_fields_set:
+        with contextlib.suppress(PolicyError):
+            body = body.model_copy(update={"mcp": (await asyncio.to_thread(load_policy, ws.root)).mcp})
     text = json.dumps(body.model_dump(exclude_defaults=True), indent=2) + "\n"
     try:
         parse_policy(text)

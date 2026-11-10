@@ -150,6 +150,7 @@ Every setting, with its default, is listed in [Server settings](server-settings.
 | `AGENTCANVAS_SANDBOX_URL`, `AGENTCANVAS_SANDBOX_TOKEN` | With `remote`: where the sandbox service is, and the secret (32+ random characters) the API presents to it. The compose file and chart set the URL; you provide the token |
 | `SANDBOX_REPLICAS` (compose), `sandbox.replicas` (Helm) | How many sandbox containers run (4 by default). Each runs one call at a time and, after it, stops anything the code left running and removes what it wrote (`AGENTCANVAS_SANDBOX_SWEEP=1`), so code of different projects never shares a container at the same moment; more replicas, more calls at once |
 | `AGENTCANVAS_EGRESS_PROXY`, `AGENTCANVAS_EGRESS_SECRET` | The egress proxy the sandbox reaches the hosts of a project's `sandbox.json` through (`egress:3128` in the compose files, the `-egress` Service in the chart), and the secret (32+ random characters) it checks each call's list with. You provide the secret; with `docker` and no proxy set, the API starts an `agentcanvas-egress` container itself. `AGENTCANVAS_EGRESS_PROXY_RESOLVE=true` (set by the chart) hands the sandbox the proxy's address instead of its name, so the sandbox pods need no DNS |
+| `AGENTCANVAS_ALLOW_LOCAL_MCP`, `AGENTCANVAS_SANDBOX_MCP` | Local (stdio) app connectors: `ALLOW_LOCAL_MCP=true` lets builders use them, and `SANDBOX_MCP=true` runs them in the sandbox instead of on the API server ([below](#local-app-connectors-in-the-sandbox)). Both default to `false`. The hosted edition runs them only in the sandbox |
 | `AGENTCANVAS_CORS_ORIGINS` | The web app's origin, as a JSON list |
 | `AGENTCANVAS_AUDIT_SINK_URL`, `AGENTCANVAS_AUDIT_SINK_SECRET` | Optional: where security events are also POSTed as signed CloudEvents, and the secret that signs them ([Security events](#security-events-and-audit-forwarding)) |
 | `AGENTCANVAS_AUDIT_SPLUNK_HEC_URL`, `AGENTCANVAS_AUDIT_SPLUNK_HEC_TOKEN` | Optional: Splunk's HTTP Event Collector, which also receives security events, and its token ([Security events](#security-events-and-audit-forwarding)) |
@@ -160,6 +161,35 @@ Every setting, with its default, is listed in [Server settings](server-settings.
 | `AGENTCANVAS_RATE_LIMIT_PER_DEPLOYMENT` / `_PER_WEBHOOK` / `_PER_PROJECT` / `_PER_SHARE_CLIENT` | Public API requests per minute (120 / 120 / 600 / 30 per share-link visitor address). An organisation's admin may set lower ones for the organisation ([Settings](settings.md#what-an-organisation-may-override)) |
 | `TRUSTED_PROXIES` (web) | The address ranges (space-separated) of a load balancer or ingress in front of the web container, e.g. `10.0.0.0/8`. Only a client address it forwards is believed, for rate limits, the audit log and organisations' allowed networks. Default `127.0.0.1/32` (nothing in front). In Helm: `web.trustedProxies`, by default every RFC 1918 range (`10.0.0.0/8 172.16.0.0/12 192.168.0.0/16`); narrow it to your ingress controller's pod range. |
 | `SECURITY_CONTACT`, `SECURITY_POLICY` (web) | What `/.well-known/security.txt` (RFC 9116) names as the place to report a vulnerability (an `https:`, `mailto:` or `tel:` address) and the disclosure policy (an `https:` page). Default: AgentCanvas's private advisory form and security policy on GitHub; set your own security team's. Anything but a plain address stops the web container from starting. In Helm: `web.securityContact`, `web.securityPolicy`. |
+
+### Local app connectors in the sandbox
+
+Local app connectors (Playwright's browser, the filesystem, git, Slack's `npx` server…) start a program and talk to
+it over its input and output. On a production server, run them in the sandbox, never on the API server:
+
+```bash
+AGENTCANVAS_ALLOW_LOCAL_MCP=true
+AGENTCANVAS_SANDBOX_MCP=true   # needs AGENTCANVAS_SCRIPT_EXECUTION=remote (the default here) or docker
+```
+
+- **`remote`** (compose, Helm): the API opens a WebSocket to the sandbox service (`/mcp`, with the sandbox token),
+  which starts the program with the connector's own environment and relays its input and output for as long as
+  the connection lasts. A connector takes a sandbox for its whole life, as a script call does for its own, so plan
+  replicas for both: with the defaults, a run's connector holds one until the run ends. `AGENTCANVAS_SANDBOX_MCP_URL`
+  sends connectors to a sandbox service of their own (for example one running the browser image below), and
+  `AGENTCANVAS_SANDBOX_URL` keeps serving scripts.
+- **`docker`**: each connector gets a container of its own (`ac-mcp-…`, label `agentcanvas.mcp=1`) from
+  `AGENTCANVAS_SANDBOX_MCP_IMAGE` (default: `AGENTCANVAS_SANDBOX_IMAGE`), as nobody, read-only with a 512 MB `/tmp`,
+  no capabilities, one CPU, at most 512 processes, `--init`, and no network or only the egress network. Its
+  environment goes in a file readable only by the API's user, removed once the container exists.
+- Either way the program reaches only the hosts of its project's `sandbox.json` egress list, through the egress
+  proxy (a relay inside the sandbox adds the signed list, so browsers that send no proxy password work too), and is
+  stopped when it uses more memory than `mcp.memory_mb`, after `mcp.idle_s` without a call, after `mcp.lifetime_s`
+  in any case, or when its run ends ([Sandbox](workspace.md#sandbox)).
+- `AGENTCANVAS_SANDBOX_MCP_SESSIONS` (default 8) caps the connector sandboxes one API server runs at once; past
+  it the least recently used idle one is stopped, or the run fails with "8 app connector sandboxes are in use".
+- The image needs Python 3 (which starts the program) and the program itself. Programs are not downloaded at run
+  time unless the egress list allows the registry (`registry.npmjs.org`, `pypi.org`, `files.pythonhosted.org`).
 
 ## Sign-in
 

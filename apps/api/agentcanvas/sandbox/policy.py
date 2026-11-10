@@ -5,13 +5,15 @@
       "inject": [{"name": "github", "hosts": ["api.github.com"],
                   "headers": {"Authorization": "Bearer {{ secret.GITHUB_TOKEN }}"}}],
       "timeout_s": 30,
-      "memory_mb": 512
+      "memory_mb": 512,
+      "mcp": {"memory_mb": 1024, "idle_s": 300, "lifetime_s": 1800}
     }
 
 `egress` is an allow-list (default: no network). The `docker` and `remote` modes enforce it through the egress proxy
 (`sandbox.egress`), LangSmith through its own; `inprocess` and `subprocess` cannot (an error in staging and
 production, a warning in development). `inject` rules are applied by the LangSmith auth proxy outside the sandbox, so
 secret values never enter it; their hosts are allowed on port 443 automatically. Elsewhere they are not applied.
+`mcp` limits the local (stdio) app connectors the sandbox runs (`sandbox.mcp`): each gets the same egress list.
 """
 
 from __future__ import annotations
@@ -47,6 +49,16 @@ class HeaderRule(BaseModel):
     headers: dict[str, str] = Field(min_length=1, description="values may use {{ secret.NAME }}")
 
 
+class McpPolicy(BaseModel):
+    """Limits of a local (stdio) app connector's sandbox: it lives for a run, or a conversation, within these."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    memory_mb: int = Field(default=1024, ge=128, le=16384, description="memory of the connector's processes")
+    idle_s: float = Field(default=300, gt=0, le=3600, description="stopped after this long without a tool call")
+    lifetime_s: float = Field(default=1800, gt=0, le=4 * 3600, description="stopped after this long in any case")
+
+
 class SandboxPolicy(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -56,6 +68,7 @@ class SandboxPolicy(BaseModel):
     inject: list[HeaderRule] = Field(default_factory=list)
     timeout_s: float = Field(default=30.0, gt=0, le=900)
     memory_mb: int = Field(default=512, ge=64, le=16384)
+    mcp: McpPolicy = Field(default_factory=McpPolicy)
 
     def secret_names(self) -> set[str]:
         return {name for rule in self.inject for value in rule.headers.values() for name in SECRET_REF.findall(value)}

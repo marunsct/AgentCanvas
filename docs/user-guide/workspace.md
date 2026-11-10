@@ -128,6 +128,22 @@ no connection. The in-process and child-process modes cannot limit the network: 
 there, and a staging or production server refuses to run code that has one. Headers injected into outgoing
 requests (`inject`, so code can call an API without seeing its key) are applied by the LangSmith Sandbox only.
 
+**App connectors.** On a server that runs local app connectors in the sandbox
+([Local connectors](agents-and-connectors.md#local-connectors-in-the-sandbox)), each connector's program gets the
+same egress list and the limits of the `mcp` section, which you edit in the file itself (Settings › Sandbox keeps
+it when you save the form):
+
+```json
+{
+  "egress": ["example.com", "*.example.com"],
+  "mcp": {"memory_mb": 1024, "idle_s": 300, "lifetime_s": 1800}
+}
+```
+
+`memory_mb` (128 to 16384, default 1024) is the memory of the program and everything it starts; `idle_s` (default
+300 s) stops it after that long without a tool call; `lifetime_s` (default 30 minutes, at most 4 hours) stops it in
+any case.
+
 ## Events
 
 Events start or resume workflows when something happens elsewhere ("a lead was created", "a payment failed").

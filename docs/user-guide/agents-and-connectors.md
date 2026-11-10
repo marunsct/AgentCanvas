@@ -206,13 +206,38 @@ into an agent, and use **Browse tools** to pick tools.
 - **Keys.** Connectors that need a key name the secret they read, such as `GITHUB_MCP_AUTH`. Add it under
   **Settings › Secrets**. Where a server expects `Authorization: Bearer <token>`, store the whole value,
   including `Bearer `.
-- **Local connectors** start a program on the AgentCanvas server (`npx` or `uvx`). They work only in the local
-  edition, after an admin turns on *local MCP servers*, and need Node.js or uv on the server.
+- **Local connectors** start a program (`npx` or `uvx`) that the agent talks to over its input and output. An
+  admin must allow them first (*local MCP servers*). On a local install the program runs on the AgentCanvas server,
+  which needs Node.js or uv. On a production or hosted server it runs in the sandbox instead, once the operator
+  turns that on: see [Local connectors in the sandbox](#local-connectors-in-the-sandbox).
 - **Sign-in only.** A few apps (Linear, Atlassian…) accept only an interactive sign-in (OAuth). Select the block and click
   **Connect** to sign in with your own account; see [Sign-in per person](#sign-in-per-person).
 
 Each entry was checked against npm, PyPI or the official MCP registry when the gallery was built; its tooltip says
 what it needs.
+
+### Local connectors in the sandbox
+
+When the server runs local connectors in the sandbox (`AGENTCANVAS_SANDBOX_MCP=true`, with the sandbox service or
+Docker running workspace code; see [Deploy](deploy.md#local-app-connectors-in-the-sandbox)), the connector's program
+never runs on the AgentCanvas server:
+
+- It starts in a sandbox of its own, with the project's files (read-only with Docker) and only the environment
+  variables you set on the block (their secrets included); never the server's keys or another project's files.
+- It reaches only the hosts of the project's [egress list](workspace.md#sandbox) (`sandbox.json`), through the
+  egress proxy; with no list it has no network at all. A browser connector needs the sites it should open on the
+  list (`*.example.com` for a whole domain).
+- It gets the memory and time limits of the `mcp` section of `sandbox.json` (1 GB, stopped after 5 idle minutes
+  and after 30 minutes in any case, by default), one CPU and a bounded number of processes.
+- **Keep the program** on the block says how long it lives: **run** (the default) starts a fresh one for each run
+  and stops it when the run ends; **thread** keeps the same one for a conversation's runs, so a browser keeps its
+  pages and sign-ins between messages, until it is idle or reaches its time limit. A conversation continued on
+  another server, or after the program stopped, starts a fresh one.
+- Browse tools starts the program once to list its tools, then stops it.
+
+The hosted edition runs local connectors only this way. To let an agent click or type in a browser only with a
+person's say-so, put an approval on its submit-like tools (`browser_click`, `browser_type`,
+`browser_file_upload`) under **Tools that need approval** on the agent.
 
 ### Published tools are pinned
 

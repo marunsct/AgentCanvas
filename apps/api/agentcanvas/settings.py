@@ -93,6 +93,16 @@ class Settings(BaseSettings):
     )
     sandbox_token: str | None = None  # the bearer token the service expects
     sandbox_image: str = "python:3.12-slim"  # "docker": the image workspace code runs in
+    # local (stdio) app connectors run in the sandbox instead of on the API server: a sandbox of their own for each
+    # run (or conversation), with the project's sandbox.json egress list and limits. Needs script execution docker
+    # or remote, and AGENTCANVAS_ALLOW_LOCAL_MCP; the hosted edition allows only the gallery's connectors marked to
+    # run in the sandbox
+    sandbox_mcp: bool = False
+    # "docker": the image connectors run in (unset: AGENTCANVAS_SANDBOX_IMAGE); it needs Python 3 and the programs
+    # the connectors start, such as the API image built with WITH_BROWSER=true
+    sandbox_mcp_image: str | None = None
+    sandbox_mcp_url: str | None = None  # "remote": a sandbox service for connectors (unset: AGENTCANVAS_SANDBOX_URL)
+    sandbox_mcp_sessions: int = Field(default=8, ge=1, le=1000)  # connector sandboxes one API server runs at once
     # sandbox.json egress allow-lists (docker, remote): sandboxed code reaches the network only through this proxy
     # (`agentcanvas.sandbox.egress`), which admits the hosts of the call's signed list. "remote": its address as the
     # sandbox sees it (e.g. egress:3128); "docker": unset starts and uses the `agentcanvas-egress` container
