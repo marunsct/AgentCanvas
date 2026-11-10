@@ -4,34 +4,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { apiDownload, apiFetch } from "../api/client";
-import type { DeploymentOut, MemberOut } from "../api/generated";
+import type { DeploymentOut, MemberOut, RecordFields, SystemRecordOut } from "../api/generated";
 import { can } from "../api/session";
 
-// narrow local types until the generated API types are regenerated (GET/PUT /deployments/{id}/system-record)
-export type RiskClass = "minimal" | "limited" | "high";
-export interface RecordFields {
-  purpose: string;
-  owner_id: string | null;
-  risk_class: RiskClass | null;
-  risk_rationale: string;
-  data_categories: string[];
-  end_user_facing: boolean | null;
-  review_date: string | null;
-}
-export interface SystemRecordOut {
-  record: RecordFields & { owner_email: string | null; owner_member: boolean; updated_by_email: string | null; updated_at: string | null };
-  version: { semver: string };
-  models: { model: string }[];
-  subprocessors: { name: string }[];
-  tools: { name: string }[];
-  approvals: { step: string }[];
-  ungated: string[];
-  evaluation: { release_gate: unknown; experiment: unknown; red_team: unknown; online: unknown[]; test_cases: number };
-  history: unknown[];
-  notes: string[];
-}
+/** The form: every field of a save, filled in. */
+export type RecordForm = Required<RecordFields>;
+type Risk = NonNullable<RecordForm["risk_class"]>;
 
-const RISKS: [RiskClass, string][] = [
+const RISKS: [Risk, string][] = [
   ["minimal", "Minimal: no particular risk to people"],
   ["limited", "Limited: people must be told they deal with an AI"],
   ["high", "High: decisions about people's work, credit, education, essential services or safety"],
@@ -40,7 +20,7 @@ const CATEGORIES = [
   "public information", "internal business data", "customer contact details", "personal data",
   "special-category personal data", "children's data", "financial data", "health data", "credentials or secrets",
 ];
-const EMPTY: RecordFields = {
+const EMPTY: RecordForm = {
   purpose: "", owner_id: null, risk_class: null, risk_rationale: "", data_categories: [], end_user_facing: null, review_date: null,
 };
 
@@ -57,7 +37,7 @@ export function SystemRecordSection({ deployment }: { deployment: DeploymentOut 
   const url = `/deployments/${deployment.id}/system-record`;
   const rec = useQuery({ queryKey: key, queryFn: () => apiFetch<SystemRecordOut>(url) });
   const members = useQuery({ queryKey: ["members"], queryFn: () => apiFetch<MemberOut[]>("/org/members"), enabled: can("builder") });
-  const [form, setForm] = useState<RecordFields>(EMPTY);
+  const [form, setForm] = useState<RecordForm>(EMPTY);
   const [other, setOther] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const seeded = useRef<string | null>(null); // the deployment the form was filled from: a refetch must not wipe typing
@@ -72,7 +52,7 @@ export function SystemRecordSection({ deployment }: { deployment: DeploymentOut 
     seed(rec.data);
   }, [rec.data, deployment.id]);
   const save = useMutation({
-    mutationFn: (body: RecordFields) => apiFetch<SystemRecordOut>(url, { method: "PUT", json: body }),
+    mutationFn: (body: RecordForm) => apiFetch<SystemRecordOut>(url, { method: "PUT", json: body }),
     onSuccess: (out) => {
       qc.setQueryData(key, out);
       seed(out);
@@ -84,7 +64,7 @@ export function SystemRecordSection({ deployment }: { deployment: DeploymentOut 
     mutationFn: (format: "markdown" | "html") =>
       apiDownload(`${url}/export?format=${format}`, `system-record.${format === "html" ? "html" : "md"}`),
   });
-  const set = (patch: Partial<RecordFields>) => { setForm((f) => ({ ...f, ...patch })); setStatus(null); };
+  const set = (patch: Partial<RecordForm>) => { setForm((f) => ({ ...f, ...patch })); setStatus(null); };
   const ticked = (c: string) => form.data_categories.includes(c);
   const tick = (c: string, on: boolean) =>
     set({ data_categories: on ? [...form.data_categories, c] : form.data_categories.filter((x) => x !== c) });
@@ -133,7 +113,7 @@ export function SystemRecordSection({ deployment }: { deployment: DeploymentOut 
               {owners.map((m) => <option key={m.user_id} value={m.user_id}>{m.display_name ? `${m.display_name} (${m.email})` : m.email}</option>)}
             </select>
             <label htmlFor={`${id}-risk`}>Risk class</label>
-            <select id={`${id}-risk`} value={form.risk_class ?? ""} onChange={(e) => set({ risk_class: (e.target.value || null) as RiskClass | null })}>
+            <select id={`${id}-risk`} value={form.risk_class ?? ""} onChange={(e) => set({ risk_class: (e.target.value || null) as Risk | null })}>
               <option value="">Not classified</option>
               {RISKS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>

@@ -552,6 +552,8 @@ p a, small a, .small a, li > a:not([class]), td a:not([class]), td a[title] { te
 .inbox-list { display: flex; flex-direction: column; gap: 12px; }
 .inbox-item { border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 14px 16px; background: var(--panel); box-shadow: var(--shadow-sm); }
 .inbox-item.linked { box-shadow: 0 0 0 2px var(--accent), 0 0 0 6px var(--accent-ring), var(--shadow-sm); }
+.inbox-withdrawn { margin-top: 24px; }
+.inbox-item.withdrawn { background: transparent; box-shadow: none; }
 .palette-overlay {
   position: fixed; inset: 0; background: var(--overlay); z-index: 50; display: flex; justify-content: center; align-items: flex-start;
   padding-top: 12vh; backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); animation: fade .15s ease-out;
@@ -900,6 +902,11 @@ label.button:has(+ input:focus-visible) { outline: 2px solid var(--accent); outl
 .designed-agent .row { flex-wrap: wrap; }
 .designed-code { font-family: var(--mono); font-size: 11px; white-space: pre; overflow: auto; max-height: 360px;
   background: var(--code-bg); color: var(--code-fg); padding: 8px 10px; border-radius: 6px; }
+
+/* ---------- an Approve or Deny link from an approval notification (F-9) ---------- */
+.approve-page { max-width: 560px; margin: 0 auto; padding: 48px 16px; }
+.approve-page h1 { font-size: 22px; font-weight: 650; }
+.approve-page .row { align-items: center; flex-wrap: wrap; }
 
 /* ---------- share links (S23): the public chat page, full page or compact in the widget's iframe ---------- */
 .share-page {

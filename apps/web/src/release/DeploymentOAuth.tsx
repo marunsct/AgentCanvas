@@ -1,36 +1,23 @@
-/** OAuth sign-in for a deployment's MCP server and A2A agent (E-11): people sign in with the organisation's identity
- * provider instead of sharing a key, and each is their own end user. Off until a builder turns it on; the keys keep
+/** OAuth sign-in for a deployment's MCP server, A2A agent, AG-UI endpoint and deployment API (E-11): people sign in
+ * with the organisation's identity provider instead of sharing a key, and each is their own end user. Off until a builder turns it on; the keys keep
  * working beside it. Builders only. */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { apiFetch } from "../api/client";
-import type { DeploymentOut } from "../api/generated";
-
-// narrow local types until the generated API types are regenerated (GET/PUT /deployments/{id}/oauth)
-export interface DeploymentOAuthOut {
-  enabled: boolean;
-  issuer: string | null;
-  authorization_server: string | null;
-  audience: string | null;
-  scopes: string[];
-  mcp_resource: string;
-  a2a_resource: string;
-  mcp_metadata: string;
-  a2a_metadata: string;
-}
+import type { DeploymentOut, OAuthOut } from "../api/generated";
 
 export const DEFAULT_SCOPE = "agentcanvas:deployment:run";
 
 export function DeploymentOAuth({ deployment }: { deployment: DeploymentOut }) {
   const qc = useQueryClient();
   const queryKey = ["deployment-oauth", deployment.id];
-  const oauth = useQuery({ queryKey, queryFn: () => apiFetch<DeploymentOAuthOut>(`/deployments/${deployment.id}/oauth`) });
+  const oauth = useQuery({ queryKey, queryFn: () => apiFetch<OAuthOut>(`/deployments/${deployment.id}/oauth`) });
   const [issuer, setIssuer] = useState("");
   const [audience, setAudience] = useState("");
   const [scopes, setScopes] = useState(DEFAULT_SCOPE);
   const [note, setNote] = useState<string | null>(null);
   const seeded = useRef<string | null>(null); // the deployment the form was filled from
-  const seed = (d: DeploymentOAuthOut) => {
+  const seed = (d: OAuthOut) => {
     setIssuer(d.issuer ?? "");
     setAudience(d.audience ?? "");
     setScopes(d.scopes.join(" "));
@@ -41,7 +28,7 @@ export function DeploymentOAuth({ deployment }: { deployment: DeploymentOut }) {
     seed(oauth.data);
   }, [oauth.data, deployment.id]);
   const save = useMutation({
-    mutationFn: (enabled: boolean) => apiFetch<DeploymentOAuthOut>(`/deployments/${deployment.id}/oauth`, {
+    mutationFn: (enabled: boolean) => apiFetch<OAuthOut>(`/deployments/${deployment.id}/oauth`, {
       method: "PUT",
       json: enabled
         ? { enabled, issuer: issuer.trim() || null, audience: audience.trim() || null, scopes: scopes.split(/\s+/).filter(Boolean) }
@@ -51,7 +38,7 @@ export function DeploymentOAuth({ deployment }: { deployment: DeploymentOut }) {
       qc.setQueryData(queryKey, out);
       seed(out);
       void qc.invalidateQueries({ queryKey: ["deployments"] });
-      setNote(out.enabled ? "Saved. People can now sign in to this deployment's MCP server and A2A agent." : "Turned off: only the keys work.");
+      setNote(out.enabled ? "Saved. People can now sign in to this deployment's endpoints and API." : "Turned off: only the keys work.");
     },
   });
   const data = oauth.data;
@@ -59,11 +46,12 @@ export function DeploymentOAuth({ deployment }: { deployment: DeploymentOut }) {
   const error = (oauth.error ?? save.error) as Error | null;
   return (
     <details className="connect small" data-testid={`oauth-${deployment.environment}`}>
-      <summary>Sign-in with OAuth (MCP, A2A){data?.enabled ? ": on" : ""}</summary>
+      <summary>Sign-in with OAuth{data?.enabled ? ": on" : ""}</summary>
       <p>
-        Let people sign in to this deployment&apos;s MCP server and A2A agent with your identity provider instead of
-        sharing a key. Clients that follow the MCP sign-in standard (Claude, ChatGPT, VS Code) then need only the
-        address, and each person has their own memories and conversations. The keys keep working beside it.
+        Let people sign in to this deployment&apos;s MCP server, A2A agent, AG-UI endpoint and API with your identity
+        provider instead of sharing a key. Clients that follow the MCP sign-in standard (Claude, ChatGPT, VS Code) then
+        need only the address, and each person has their own memories, conversations and runs. The keys keep working
+        beside it.
       </p>
       {error && <p className="error-text" role="alert">{error.message}</p>}
       {data && (
@@ -99,6 +87,10 @@ export function DeploymentOAuth({ deployment }: { deployment: DeploymentOut }) {
               <code className="mono" aria-labelledby={`${id}-mcp`} data-testid="oauth-mcp-resource">{data.mcp_resource}</code>
               <p id={`${id}-a2a`} className="connect-label">A2A agent (resource)</p>
               <code className="mono" aria-labelledby={`${id}-a2a`}>{data.a2a_resource}</code>
+              <p id={`${id}-agui`} className="connect-label">AG-UI endpoint (resource)</p>
+              <code className="mono" aria-labelledby={`${id}-agui`} data-testid="oauth-ag-ui-resource">{data.ag_ui_resource}</code>
+              <p id={`${id}-api`} className="connect-label">Deployment API: runs/wait and the others (resource)</p>
+              <code className="mono" aria-labelledby={`${id}-api`} data-testid="oauth-api-resource">{data.api_resource}</code>
               <p id={`${id}-meta`} className="connect-label">Where clients find the issuer (RFC 9728)</p>
               <code className="mono" aria-labelledby={`${id}-meta`}>{data.mcp_metadata}</code>
             </>

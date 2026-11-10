@@ -3,24 +3,19 @@
 import { create } from "zustand";
 import { portalUrl } from "./auth";
 import { apiFetch } from "./client";
-import type { Preferences } from "./generated";
+import type { MeOut } from "./generated";
 import { applyPreferences } from "./preferences";
 
 export type Role = "viewer" | "reviewer" | "builder" | "admin";
 const RANK: Record<Role, number> = { viewer: 0, reviewer: 1, builder: 2, admin: 3 };
 
-export interface Me {
-  id: string;
-  email: string;
-  org_id: string;
+/** GET /me with the roles narrowed (the API types them as strings), and the role in the current project. */
+export type Me = Omit<MeOut, "role" | "memberships"> & {
   role: Role;
   memberships: Record<string, Role>;
-  org_names?: Record<string, string>;
-  portal_url?: string | null; // Matura mode: this organisation's page in Matura's portal (TS26)
-  preferences?: Preferences;
   /** the role in the current project (E-10): it can differ from `role`, the organisation's */
   project_role?: Role;
-}
+};
 
 // dev-mode default until `loadMe` answers (and in unit tests)
 const DEFAULT_ME: Me = { id: "usr_dev", email: "", org_id: "org_default", role: "admin", memberships: {} };

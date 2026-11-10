@@ -86,9 +86,9 @@ which shows what will be sent on an approval card; a rejection skips the agent.
 (MCP, A2A, AG-UI)**. The panel shows the addresses and a ready-to-paste Claude Desktop setting. All use the
 deployment's API key, the same one as the [deployment API](publish.md), with the same rate limits. The AG-UI address
 is for CopilotKit-style front ends: see [Connect a CopilotKit-style front end](publish.md#connect-a-copilotkit-style-front-end-ag-ui).
-A builder can also let people sign in to the MCP and A2A agents with the organisation's identity provider instead
-([Sign-in with OAuth](publish.md#sign-in-with-oauth-mcp-and-a2a)): then each person is their own end user, with their
-own memories and conversations.
+A builder can also let people sign in to the MCP, A2A and AG-UI endpoints with the organisation's identity
+provider instead ([Sign-in with OAuth](publish.md#sign-in-with-oauth)): then each person is their own end user,
+with their own memories and conversations.
 
 ### As an MCP server
 
@@ -118,7 +118,7 @@ own memories and conversations.
 Clients that support remote MCP servers with headers (Cursor, VS Code, agent frameworks such as LangChain's MCP
 adapter or the OpenAI Agents SDK) take the address and the header directly.
 
-With [OAuth sign-in](publish.md#sign-in-with-oauth-mcp-and-a2a) on, clients that follow the MCP authorization spec
+With [OAuth sign-in](publish.md#sign-in-with-oauth) on, clients that follow the MCP authorization spec
 (Claude's custom connectors, ChatGPT, VS Code and others) need only the address: they find the identity provider
 from the `401`, sign the person in and send their access token. The identity provider must let the client
 register (Client ID Metadata Documents, dynamic client registration, or a client you register for it there). Nobody
@@ -187,7 +187,7 @@ of its result (`GET /v1/deployments/<id>/runs/<run_id>` with the deployment key,
 - Not supported: streaming (`message/stream`, `SendStreamingMessage`) and push notifications.
 - The agent card (and the MCP Server Card) may be cached for five minutes and carry an `ETag`: a republished
   deployment's new card reaches clients that cache it within that time.
-- With [OAuth sign-in](publish.md#sign-in-with-oauth-mcp-and-a2a) on, the card's `securitySchemes` lists an OpenID
+- With [OAuth sign-in](publish.md#sign-in-with-oauth) on, the card's `securitySchemes` lists an OpenID
   Connect scheme (`openIdConnectUrl`: the issuer's discovery document) beside the key, with the scopes the
   deployment requires; either one will do. Its description names the audience the token must have (the A2A
   endpoint's address, or the deployment's audience), which is what Microsoft 365 Copilot and Agent 365 ask for when

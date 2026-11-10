@@ -21,7 +21,7 @@ describe("ShareSection (S23)", () => {
   it("keeps unsaved typing when the switch changes the share", async () => {
     server.share = {
       deployment_id: "d1", enabled: false, greeting: "Hi", input: { field: "q", chat: true }, input_field: "q", inputs: ["q"],
-      path: "/s/t", suggestions: [], title: "Saved title", token: "t", frame_origins: [],
+      path: "/s/t", suggestions: [], title: "Saved title", token: "t", frame_origins: [], ai_notice: "An AI answers.",
     } as unknown as ShareOut;
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<QueryClientProvider client={qc}><ShareSection deployment={deployment} /></QueryClientProvider>);
@@ -36,7 +36,7 @@ describe("ShareSection (S23)", () => {
   it("saves the sites allowed to frame the chat page, one per line", async () => {
     server.share = {
       deployment_id: "d1", enabled: true, greeting: "", input: { field: "q", chat: false }, input_field: "q", inputs: ["q"],
-      path: "/s/t", suggestions: [], title: "T", token: "t", frame_origins: [],
+      path: "/s/t", suggestions: [], title: "T", token: "t", frame_origins: [], ai_notice: "An AI answers.",
     } as unknown as ShareOut;
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<QueryClientProvider client={qc}><ShareSection deployment={deployment} /></QueryClientProvider>);
@@ -63,7 +63,7 @@ describe("ShareSection (S23)", () => {
     expect((screen.getByText("Save") as HTMLButtonElement).disabled).toBe(true);
     fireEvent.change(notice, { target: { value: " Sie chatten mit einer KI. " } });
     await act(async () => { fireEvent.click(screen.getByText("Save")); });
-    await waitFor(() => expect((server.share as { ai_notice?: string }).ai_notice).toBe("Sie chatten mit einer KI."));
+    await waitFor(() => expect(server.share.ai_notice).toBe("Sie chatten mit einer KI."));
   });
 
   it("follows a new default notice unless the builder is rewording it", async () => {
@@ -88,7 +88,7 @@ describe("ShareSection (S23)", () => {
   it("picks the input messages go to, or leaves it to the server", async () => {
     server.share = {
       deployment_id: "d1", enabled: true, greeting: "", input: { field: "question", chat: false }, input_field: null,
-      inputs: ["question", "messages"], path: "/s/t", suggestions: [], title: "T", token: "t", frame_origins: [],
+      inputs: ["question", "messages"], path: "/s/t", suggestions: [], title: "T", token: "t", frame_origins: [], ai_notice: "An AI answers.",
     } as unknown as ShareOut;
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<QueryClientProvider client={qc}><ShareSection deployment={deployment} /></QueryClientProvider>);

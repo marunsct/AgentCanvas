@@ -211,6 +211,10 @@ class Settings(BaseSettings):
     smtp_from: str | None = None  # the sender, e.g. "AgentCanvas <approvals@example.com>"; required with a host
     # how often each server looks for approvals to announce and for notifications to send or retry (seconds)
     notify_interval_s: float = Field(default=15, gt=0)
+    # an approval or question still waiting this many hours before it expires or escalates is announced once more,
+    # on the same channels; 0 = no reminders. An item that waits less than twice this in all gets none (its first
+    # message is recent)
+    approval_reminder_hours: int = Field(default=24, ge=0, le=24 * 365)
     # notification webhooks (Slack, an organisation's own) may reach private addresses, e.g. an internal relay;
     # link-local and cloud metadata addresses never
     notify_allow_private: bool = False

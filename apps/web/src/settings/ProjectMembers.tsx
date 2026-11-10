@@ -5,23 +5,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { maturaMode } from "../api/auth";
 import { apiFetch } from "../api/client";
+import type { OrgSettingsOut, ProjectMemberOut } from "../api/generated";
 import { PROJECT_ID, PROJECT_NAME } from "../api/queries";
 import { useCan, type Role } from "../api/session";
 import { confirmDialog, toast } from "../ui/dialog";
 import { QueryStatus } from "../ui/QueryStatus";
-
-// narrow local types until the generated API types are regenerated (GET /v1/projects/{id}/members)
-export interface ProjectMemberOut {
-  id: string;
-  kind: "user" | "group";
-  user_id: string | null;
-  email: string | null;
-  display_name: string | null;
-  group_id: string | null;
-  group: string | null;
-  role: Role;
-  created_at: string;
-}
 
 const ROLES: Role[] = ["viewer", "reviewer", "builder", "admin"];
 
@@ -37,9 +25,9 @@ export function ProjectMembers() {
   const key = ["project-members", PROJECT_ID];
   const q = useQuery({ queryKey: key, queryFn: () => apiFetch<ProjectMemberOut[]>(`/projects/${PROJECT_ID}/members`) });
   const security = useQuery({
-    queryKey: ["org-settings"], queryFn: () => apiFetch<{ security?: { private_projects?: boolean } }>("/org/settings"),
+    queryKey: ["org-settings"], queryFn: () => apiFetch<OrgSettingsOut>("/org/settings"),
   });
-  const isPrivate = security.data?.security?.private_projects === true;
+  const isPrivate = security.data?.security.private_projects === true;
   const [who, setWho] = useState("");
   const [role, setRole] = useState<Role>("builder");
   const set = useMutation({

@@ -10,7 +10,7 @@ from typing import Annotated, Any, Literal
 from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from sqlalchemy import null, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -543,6 +543,8 @@ class PolicyIn(BaseModel):
 
 
 class PolicyOut(PolicyIn):
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True)  # every field is sent
+
     id: str
     created_at: datetime
 
@@ -612,7 +614,7 @@ class OrgSecurityOut(BaseModel):
     require_mfa: bool = Field(description="members must sign in with multi-factor authentication")
     mfa_available: bool = Field(description="people sign in through an identity provider, so MFA can be required")
     your_sign_in_is_mfa: bool = Field(description="this request's sign-in counts as multi-factor on this server")
-    private_projects: bool = Field(False, description="projects are seen only by organisation admins and their members")
+    private_projects: bool = Field(description="projects are seen only by organisation admins and their members")
 
 
 class OrgLimitsOut(BaseModel):

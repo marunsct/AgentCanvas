@@ -59,13 +59,34 @@ listed in the run's `interrupts` and on the Inbox item), so it can never reach t
 - An A2A reply names the pause in a data part, `{"interrupt_id": "..."}`. The task's status message lists the ids.
 - The share-link page sends the id of the question the visitor answers. An event handler passes it with
   `act.resume(thread_id, value, interrupt_id=event.data["interrupt_id"])`; the `interrupt.raised` event carries it.
-- An answer for a pause that is no longer waiting is refused: 404 for an unknown id, 409 for one already decided.
-  On LangGraph workflows the engine checks this as well (strict resume). An answer it cannot place fails the run
-  with *the answer is for a question this conversation no longer asks*. Nothing is applied, and the item goes back
-  to the Inbox.
+- An answer for a pause that is no longer waiting is refused: 404 for an unknown id, 409 for one already decided
+  or withdrawn (below). On LangGraph workflows the engine checks this as well (strict resume). An answer it cannot
+  place fails the run with *the answer is for a question this conversation no longer asks*. Nothing is applied, and
+  the item is withdrawn.
 
 The other frameworks ask one question at a time even when steps run in parallel, so the same calls work there
 unchanged.
+
+### Withdrawn questions
+
+On LangGraph workflows a question can stop being asked while its Inbox item still waits: the conversation's state
+was edited (`POST /v1/threads/{id}/state`), it went back to an earlier point (`POST /v1/threads/{id}/fork` with
+`"mode": "branch"`), or a new message started it over. No answer can reach such a question any more, so its item is
+**withdrawn**:
+
+- It leaves the pending list, its count and the approval notifications, and it no longer keeps the conversation from
+  [retention](security.md#retention-and-deletion) (a conversation that waits for nothing else becomes idle). An item that has not
+  expired yet does not expire later either.
+- The Inbox shows the items withdrawn in the last 7 days under **Withdrawn**, each with the reason, and a
+  notification's link to one says it was withdrawn. `GET /v1/inbox?status=withdrawn` lists them.
+- An answer for it is refused (409, *this question was withdrawn: the conversation moved on past it…*); so is a
+  resume that names no question when the conversation's last run asked only withdrawn ones, so that answer never
+  reaches whatever the conversation asks next.
+- A state edit withdraws at once (its answer lists them in `withdrawn`, and its audit entry names them). A replay or
+  a new message withdraws when its run ends with the questions the conversation asks now. If something else moved the
+  conversation on, the first answer finds out: LangGraph refuses it, and the item is withdrawn then.
+- **⏵ Continue** after a state edit runs the step again, which asks anew as a new Inbox item. A Wait step left
+  behind the same way is cancelled.
 
 ### Who may decide
 
@@ -97,9 +118,15 @@ published workflow so does its caller. Fill it in to send the decision to partic
 
 A step's setting is saved with the pause when the run stops there, so editing the workflow later does not change who
 decides a pause that already waits. In the Inbox each item says who decides it (*Decided by: admin role; group
-Finance*) and, when you cannot, why; its buttons are then off. A helper agent's tool approvals follow the setting of its
+Finance*) and, when you cannot, why; its buttons are then off. The editor's Run tab says the same under a test run's
+pause. A helper agent's tool approvals follow the setting of its
 Planning Agent. Steps inside a subgraph keep their own setting. AgentCanvas checks it; code exported from the workflow
 does not (I011).
+
+The people who may decide are told by the organisation's [approval notifications](settings.md#approval-notifications).
+When an admin adds **Approve and Deny** links to them, a person can decide an approval from their e-mail: the link
+opens a page that asks to confirm, and the decision goes through the same checks as the Inbox and is audited as theirs
+(`decide_by_link`). Links posted to Slack or a webhook open the item in the Inbox instead, behind sign-in.
 
 ## Waiting runs
 

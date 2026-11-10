@@ -237,7 +237,7 @@ class Deployment(Base):
     # app connector name -> the tools its runs left out because the server changed them since publishing (E-4):
     # {"added", "changed", "outcome", "unpinned", "run_id", "seen_at"}; shown in the editor, cleared on publish
     tool_drift: Mapped[dict[str, Any] | None] = mapped_column(Json)
-    # OAuth sign-in for its MCP and A2A endpoints (E-11, services/deployment_oauth.py): {"issuer", "audience",
+    # OAuth sign-in for its endpoints and API (E-11, services/deployment_oauth.py): {"issuer", "audience",
     # "scopes"}; NULL: off, only its keys work
     oauth: Mapped[dict[str, Any] | None] = mapped_column(Json)
     # its AI-system record (services/system_record.py): purpose, owner_id, risk_class, risk_rationale,
@@ -547,7 +547,8 @@ class InterruptTask(Base):
     __tablename__ = "interrupt_task"
     __table_args__ = (
         CheckConstraint("kind IN ('tool_approval','approval','input','timer')", name="interrupt_kind"),
-        CheckConstraint("status IN ('pending','decided','expired','cancelled')", name="interrupt_status"),
+        # withdrawn: the conversation moved past the question (a state edit, a replay, a new message): unanswerable
+        CheckConstraint("status IN ('pending','decided','expired','cancelled','withdrawn')", name="interrupt_status"),
         Index("interrupt_pending_idx", "status", "created_at"),
         Index("interrupt_thread_idx", "thread_id"),  # deleting a conversation or a run (cascade, retention)
         Index("interrupt_run_idx", "run_id"),
@@ -598,6 +599,9 @@ class InterruptTask(Base):
     # the step escalates at all), and when it was escalated to `assignee_role` (its expiry counts from then)
     escalate_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
     escalated_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
+    # when the notifier claimed its reminder before it expires or escalates (cleared by an escalation: the new
+    # deadline gets its own)
+    reminded_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
     # a Wait step (kind "timer", services/timers.py): when it is due (an event wait's timeout), the event type and key
     # that wake it sooner, and until when one server holds it while it starts the run that continues
     due_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
@@ -620,7 +624,7 @@ class ApprovalNotice(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True)
     org_id: Mapped[str] = mapped_column(ForeignKey("organization.id", ondelete="CASCADE"))
     interrupt_id: Mapped[str] = mapped_column(ForeignKey("interrupt_task.id", ondelete="CASCADE"))
-    event: Mapped[str] = mapped_column(Text)  # waiting | escalated
+    event: Mapped[str] = mapped_column(Text)  # waiting | escalated | reminder
     channel: Mapped[str] = mapped_column(Text)  # email | slack | webhook
     status: Mapped[str] = mapped_column(Text, server_default=text("'pending'"), default="pending")
     attempts: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
@@ -666,6 +670,8 @@ class OrgNotifier(Base):
     webhook_secret: Mapped[bytes | None] = mapped_column(LargeBinary)  # encrypted: signs what the webhook gets
     # each project's weekly run digest goes to the same channels too (an organisation's opt-in)
     digest: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    # approval notifications carry Approve and Deny links (services/approval_links.py; an organisation's opt-in)
+    actions: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     updated_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id", ondelete="SET NULL"))
     updated_at: Mapped[datetime] = mapped_column(
         UtcDateTime(), server_default=text("CURRENT_TIMESTAMP"), onupdate=func.now(), nullable=False

@@ -49,6 +49,8 @@ from agentcanvas.db.models import (
     WorkflowRow,
 )
 from agentcanvas.db.repositories import delete_thread_rows
+from agentcanvas.db.retry import retrying
+from agentcanvas.errors import Unavailable
 from agentcanvas.log import get_logger
 from agentcanvas.runtime.types import CLIENT_TOOL
 from agentcanvas.services import org_settings
@@ -127,15 +129,23 @@ class RetentionJob:
         if thread_id in self.runner.active_by_thread:  # started since the scan
             return False
         async with self.db.sessionmaker() as s:
-            claimed = await s.scalar(
-                select(Thread.id).where(Thread.id == thread_id, *_expired(cutoff)).with_for_update(skip_locked=True)
-            )
-            if claimed is None:  # touched since the scan, gone, or another replica's
+
+            async def rows() -> bool:
+                claimed = await s.scalar(
+                    select(Thread.id).where(Thread.id == thread_id, *_expired(cutoff)).with_for_update(skip_locked=True)
+                )
+                if claimed is None:  # touched since the scan, gone, or another replica's
+                    return False
+                await self.runner.forget_thread(thread_id)  # checkpoints first: rows are the index
+                await delete_thread_rows(s, thread_id)
+                await s.commit()
+                return True
+
+            try:  # a deadlock's victim (something still writing under it) runs again, claim and all
+                return await retrying(s, rows, what="retention delete")
+            except Unavailable:  # it kept colliding: the next tick tries again
+                log.warning("retention.delete_deferred", thread_id=thread_id)
                 return False
-            await self.runner.forget_thread(thread_id)  # checkpoints first: rows are the index
-            await delete_thread_rows(s, thread_id)
-            await s.commit()
-        return True
 
     async def tick(self, now: datetime) -> list[str]:
         """Delete the conversations that expired by `now`; returns their ids."""

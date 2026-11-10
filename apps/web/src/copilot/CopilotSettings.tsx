@@ -8,7 +8,7 @@ import { can } from "../api/session";
 import { toast } from "../ui/dialog";
 import { QueryStatus } from "../ui/QueryStatus";
 
-type Settings = G.CopilotSettings & { resolved?: { model?: string | null; origin?: string | null } | null };
+type Settings = G.SettingsOut;
 
 export function CopilotSettings() {
   const qc = useQueryClient();

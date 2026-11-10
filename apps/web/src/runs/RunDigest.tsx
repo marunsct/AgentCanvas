@@ -4,22 +4,9 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router";
 import { apiFetch } from "../api/client";
+import type { DigestSummary, RunDigestOut } from "../api/generated";
 import { PROJECT_ID } from "../api/queries";
 import { QueryStatus } from "../ui/QueryStatus";
-
-// typed here until the generated API types are regenerated
-interface DigestSummary {
-  runs: number;
-  failed: number;
-  failure_rate: number | null;
-  cost_usd: number;
-  latency_p50_ms: number | null;
-  latency_p95_ms: number | null;
-  failure_groups: { reason: string; runs: number; workflows: string[]; example: Record<string, string> }[];
-  workflows: { id: string; name: string; runs: number; failed: number; cost_usd: number }[];
-  flagged: { run_id: string; thread_id: string; workflow_id: string; workflow_name: string; flags: number; why: string[] }[];
-}
-export interface RunDigestOut { week_start: string; week_end: string; current: boolean; summary: DigestSummary }
 
 export function seconds(ms: number | null): string {
   if (ms === null || ms === undefined) return "—";

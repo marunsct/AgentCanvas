@@ -5,14 +5,14 @@ import { maturaMode } from "./auth";
 import { apiFetch } from "./client";
 import { canOrg, setProjectRole, type Role } from "./session";
 import type { AdapterManifest, AgentFrameworkOut, ModelInfo, NodeManifest, ProviderInfo, SetupOut, TemplateInfo, WorkflowPage } from "./types";
-import type { InterruptOut, McpConnector, ModelOption } from "./generated";
+import type { InterruptOut, McpConnector, ModelOption, WorkspaceOut } from "./generated";
 
 /** The project the app works in, chosen at startup (see `chooseProject`); a live binding, so pages read the choice. */
 export let PROJECT_ID = "prj_default";
 export let PROJECT_NAME = "Default project";
 
 /** A Matura workspace of the organisation (TS26): projects can be grouped by them in Matura mode. */
-export interface Workspace { id: string; name: string; is_default: boolean }
+export type Workspace = WorkspaceOut;
 /** The organisation's workspaces (empty outside Matura mode) and the one picked, null = all of them. */
 export let WORKSPACES: Workspace[] = [];
 export let WORKSPACE_ID: string | null = null;
@@ -206,10 +206,18 @@ export function useWorkflows() {
   });
 }
 
-/** A run waiting for a person (an approval or an answer), in any workflow of the organisation. Who may decide it
- * (E-6) is typed here until the generated types are regenerated. */
-export type InboxItem = InterruptOut & { deciders?: string | null; may_decide?: boolean; why_not?: string | null };
+/** A run waiting for a person (an approval or an answer), in any workflow of the organisation, with who may decide it
+ * (E-6). */
+export type InboxItem = InterruptOut;
 
 export function useInbox() {
   return useQuery({ queryKey: ["inbox"], queryFn: () => apiFetch<InboxItem[]>("/inbox"), refetchInterval: 5000 });
+}
+
+/** Inbox items withdrawn because their conversation moved on past the question (its state was edited, it went back
+ * to an earlier point, or a new message started it over): nobody can answer them any more. */
+export function useWithdrawn() {
+  return useQuery({
+    queryKey: ["inbox", "withdrawn"], queryFn: () => apiFetch<InboxItem[]>("/inbox?status=withdrawn&limit=50"), refetchInterval: 30_000,
+  });
 }

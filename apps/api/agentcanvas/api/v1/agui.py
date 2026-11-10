@@ -1,13 +1,16 @@
 """AG-UI 1.0 for deployments (F-8): `POST /v1/deployments/{id}/ag-ui`, for CopilotKit-style front ends.
 
-The request is an AG-UI `RunAgentInput` (the official `ag-ui-protocol` models), with the deployment's key; the answer
-is a stream of AG-UI events (runtime/agui.py). The run is an ordinary run of the deployment's version: it shows in
-Runs, counts for rate limits, spending caps and online evaluators, and keeps its conversation under the caller's
-`threadId` (a new id starts a conversation, a known one continues it).
+The request is an AG-UI `RunAgentInput` (the official `ag-ui-protocol` models), with the deployment's key or, when the
+deployment takes OAuth sign-in, a person's access token for this endpoint (who is then the run's end user, and may
+continue only their own conversations); the answer is a stream of AG-UI events (runtime/agui.py). The run is an
+ordinary run of the deployment's version: it shows in Runs, counts for rate limits, spending caps and online
+evaluators, and keeps its conversation under the caller's `threadId` (a new id starts a conversation, a known one
+continues it).
 
 * `messages`: a chat workflow (a message list input) gets the conversation on a new thread, then each new user
   message; any other workflow gets the newest user message in its text input. `state` sets the workflow's other
-  input fields. `forwardedProps` may carry `user_id` and `metadata`, like the deployment API.
+  input fields. `forwardedProps` may carry `user_id` (ignored for a signed-in person) and `metadata`, like the
+  deployment API.
 * `tools` (front-end tools) are offered to the workflow's agents. A call of one ends the run as a success with the
   call in `pendingToolCallIds`; the next input's tool message with that `toolCallId` continues the run with the result.
 * `context` is shown to the agents as information.
@@ -32,7 +35,16 @@ from agentcanvas.adapters.spi import supports
 from agentcanvas.api.audit import note, payload_hash
 from agentcanvas.api.deps import get_session
 from agentcanvas.api.v1 import mcp_input
-from agentcanvas.api.v1.deployments import ApiRunIn, _api_context, _continue_on, key_caller
+from agentcanvas.api.v1.deployments import (
+    ApiRunIn,
+    Caller,
+    _api_context,
+    _continue_on,
+    bound_end_user,
+    deployment_caller,
+    own_files,
+    signed_in,
+)
 from agentcanvas.api.v1.protocols import _people_decide, answer_value
 from agentcanvas.api.v1.runs import SSE_HEADERS
 from agentcanvas.api.v1.share import _answer_steps
@@ -50,6 +62,7 @@ from agentcanvas.services.run_results import ResultRepo
 from agentcanvas.services.share import InputShape, answer_text, input_shape
 
 router = APIRouter(tags=["deployments"])
+ag_ui_caller = deployment_caller("api_ag_ui")  # its own resource: tokens for this endpoint's address
 
 THREAD_ID = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 TOOL_NAME = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
@@ -242,7 +255,7 @@ def _interrupt(i: dict[str, Any], wf: Workflow) -> Interrupt:
 async def api_ag_ui(
     body: RunAgentInput,
     request: Request,
-    caller: tuple[Deployment, Workflow] = Depends(key_caller),
+    caller: Caller = Depends(ag_ui_caller),
     session: AsyncSession = Depends(get_session),
 ) -> Response:
     """Run the published version for an AG-UI client (CopilotKit and others): the request is a `RunAgentInput`, the
@@ -255,10 +268,14 @@ async def api_ag_ui(
     if len(body.messages) > MAX_MESSAGES:
         raise InvalidInput(f"at most {MAX_MESSAGES} messages")
     user_id, labels = _props(body)
+    if (who := signed_in(request)) is not None:  # a signed-in person is the run's end user, whatever the props say
+        user_id = who.user_id
     tools, context = _client_tools(body)
     warnings: list[str] = []
     thread = await session.get(Thread, body.thread_id)
-    if thread is not None and thread.deployment_id != dep.id:  # ids are one namespace: never say whose it is
+    mine = bound_end_user(request, dep)
+    # ids are one namespace: never say whose it is (another deployment's, or another signed-in person's)
+    if thread is not None and (thread.deployment_id != dep.id or (mine is not None and thread.end_user != mine)):
         raise Conflict(f"thread '{body.thread_id}' is taken; start the conversation with another threadId")
     version_id = dep.version_id
     if thread is not None:
@@ -298,6 +315,7 @@ async def api_ag_ui(
         version_id=version_id, labels={**labels, "channel": "ag-ui", "ag_ui_run": body.run_id[:200]},
         caller_run_id=nesting.caller(request.headers.get(nesting.HEADER)),
         end_user=end_user_label(dep.id, user_id) if user_id else None, client_tools=tools, client_context=context,
+        visitor_hash=own_files(request),
     )  # fmt: skip
     await session.close()  # no connection held while the run works
     c = contract(wf)

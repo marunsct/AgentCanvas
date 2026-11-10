@@ -622,8 +622,9 @@ CREATE TABLE public.interrupt_task (
     wait_event text,
     wait_key text,
     claimed_until timestamp with time zone,
+    reminded_at timestamp with time zone,
     CONSTRAINT interrupt_kind CHECK ((kind = ANY (ARRAY['tool_approval'::text, 'approval'::text, 'input'::text, 'timer'::text]))),
-    CONSTRAINT interrupt_status CHECK ((status = ANY (ARRAY['pending'::text, 'decided'::text, 'expired'::text, 'cancelled'::text])))
+    CONSTRAINT interrupt_status CHECK ((status = ANY (ARRAY['pending'::text, 'decided'::text, 'expired'::text, 'cancelled'::text, 'withdrawn'::text])))
 );
 
 ALTER TABLE ONLY public.interrupt_task FORCE ROW LEVEL SECURITY;
@@ -1002,7 +1003,8 @@ CREATE TABLE public.org_notifier (
     webhook_secret bytea,
     updated_by character varying,
     updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    digest boolean DEFAULT false NOT NULL
+    digest boolean DEFAULT false NOT NULL,
+    actions boolean DEFAULT false NOT NULL
 );
 
 ALTER TABLE ONLY public.org_notifier FORCE ROW LEVEL SECURITY;

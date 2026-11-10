@@ -2,10 +2,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { API_BASE, apiFetch } from "../api/client";
-import type { DeploymentOut, TriggerCreated, TriggerOut as GeneratedTriggerOut } from "../api/generated";
-
-/** With a cron trigger's last outcome, which the generated API types do not have yet. */
-type TriggerOut = GeneratedTriggerOut & { last_run_id?: string | null; last_error?: string | null; failures?: number };
+import type { DeploymentOut, TriggerCreated, TriggerOut } from "../api/generated";
 
 export function TriggersSection({ wfId }: { wfId: string }) {
   const qc = useQueryClient();

@@ -38,6 +38,7 @@ from agentcanvas.api.deps import get_session, get_settings_dep
 from agentcanvas.api.urls import api_base, api_url
 from agentcanvas.api.v1 import mcp_input
 from agentcanvas.api.v1.deployments import (
+    API,
     ApiResult,
     ApiRunIn,
     _caller,
@@ -47,6 +48,7 @@ from agentcanvas.api.v1.deployments import (
     api_result,
     bound_end_user,
     oauth_resource,
+    oauth_scopes,
     own_thread,
     signed_in,
 )
@@ -385,7 +387,8 @@ async def _mcp_call(
         if name == "answer" and c.pauses:
             thread_id, iid = str(args.get("thread_id") or ""), args.get("interrupt_id")
             iid = str(iid) if iid else None
-            await own_thread(session, dep, thread_id)  # before anything about its pauses is said
+            # before anything about its pauses is said: a signed-in person learns nothing of another's conversation
+            await own_thread(session, dep, thread_id, bound_end_user(request, dep))
             pending = await _pending(request, session, thread_id, iid)
             value = answer_value(pending, args.get("approve"), args.get("text"), args.get("value"))
             h = await _resume_run(request, session, dep, wf, thread_id, value, iid)
@@ -925,31 +928,34 @@ def _card_sign_in(request: Request, dep: Deployment, url: str) -> CardSignIn | N
     return CardSignIn(issuer=issuer, scopes=cfg.scopes, audience=cfg.audience or url)
 
 
-ENDPOINT_PATH = re.compile(r"/v1/deployments/([^/]+)/(mcp|a2a)")
+ENDPOINT_PATH = re.compile(r"/v1/deployments/([^/]+)(?:/(mcp|a2a|ag-ui))?$")  # none: the deployment API
+ENDPOINT_ROUTES = {"mcp": "mcp_endpoint", "a2a": "a2a_endpoint", "ag-ui": "api_ag_ui", None: API}
 
 
 @well_known.get(deployment_oauth.WELL_KNOWN + "/{resource_path:path}", include_in_schema=False)
 async def protected_resource(
     resource_path: str, request: Request, session: AsyncSession = Depends(get_session)
 ) -> Response:
-    """The protected resource metadata (RFC 9728) of a deployment's MCP or A2A endpoint that takes OAuth sign-in:
-    which authorization server issues its tokens and which scopes they need. Public, as clients read it before they
-    sign in; only a deployment with OAuth on has one, at the path of the endpoint's public address."""
+    """The protected resource metadata (RFC 9728) of a deployment's endpoint that takes OAuth sign-in (MCP, A2A,
+    AG-UI, or the deployment API at the deployment's own address): which authorization server issues its tokens and
+    which scopes they may carry. Public, as clients read it before they sign in; only a deployment with OAuth on has
+    one, at the path of the endpoint's public address."""
     path = "/" + resource_path
     found = ENDPOINT_PATH.search(path)
-    dep = await session.get(Deployment, found[1]) if found and path.endswith(found[0]) else None
+    dep = await session.get(Deployment, found[1]) if found else None
     cfg = deployment_oauth.config(dep.oauth) if dep is not None and dep.active else None
     issuer = deployment_oauth.issuer_of(cfg, request.app.state.settings) if cfg else None
     if found is None or dep is None or cfg is None or issuer is None:
         raise NotFound("no protected resource here")
-    resource = oauth_resource(request, "mcp_endpoint" if found[2] == "mcp" else "a2a_endpoint", dep.id)
+    route = ENDPOINT_ROUTES[found[2]]
+    resource = oauth_resource(request, route, dep.id)
     if urlsplit(resource).path != path:  # the metadata of an address callers do not use (RFC 9728 section 3.3)
         raise NotFound("no protected resource here")
     version = await session.get(WorkflowVersion, dep.version_id)
     doc: dict[str, Any] = {"resource": resource, "authorization_servers": [issuer],
                            "bearer_methods_supported": ["header"]}  # fmt: skip
-    if cfg.scopes:  # RFC 9728: a parameter without values is left out
-        doc["scopes_supported"] = list(cfg.scopes)
+    if scopes := oauth_scopes(cfg, route):  # RFC 9728: a parameter without values is left out
+        doc["scopes_supported"] = scopes
     if version is not None:
         doc["resource_name"] = Workflow.model_validate(version.ir).name
     return _card_response(request, doc, "application/json", cors=True)

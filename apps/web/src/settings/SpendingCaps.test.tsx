@@ -2,7 +2,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { SpendingCapsOut } from "./SpendingCaps";
+import type { SpendingCapsOut } from "../api/generated";
 
 const apiFetch = vi.hoisted(() => vi.fn());
 vi.mock("../api/client", () => ({ ApiError: class extends Error {}, apiFetch }));

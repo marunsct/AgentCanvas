@@ -5,13 +5,11 @@ import { useNavigate } from "react-router";
 import { apiFetch } from "../api/client";
 import { PROJECT_ID, useModelProviders, useModels, useSetup } from "../api/queries";
 import { can } from "../api/session";
+import type { ServerModelsOut, TestOut } from "../api/generated";
 import type { SetupOut } from "../api/types";
 import { QueryStatus } from "../ui/QueryStatus";
 import { toast } from "../ui/dialog";
 import { providerHint } from "../inspector/widgets";
-
-interface TestResult { ok: boolean; reply?: string | null; error?: string | null }
-interface ServerModels { ok: boolean; models: string[]; error?: string | null }
 
 export function SetupPage() {
   const providers = useModelProviders();
@@ -49,11 +47,11 @@ export function SetupPage() {
 
   const body = () => ({ model: `${providerId}:${model.trim()}`, base_url: baseUrl.trim() || null, api_key: apiKey.trim() || null });
   const test = useMutation({
-    mutationFn: () => apiFetch<TestResult>(`/projects/${PROJECT_ID}/setup/test`, { method: "POST", json: body() }),
+    mutationFn: () => apiFetch<TestOut>(`/projects/${PROJECT_ID}/setup/test`, { method: "POST", json: body() }),
   });
   // the models a local server or OpenAI-compatible API offers (its /models list), to pick instead of typing
   const found = useMutation({
-    mutationFn: () => apiFetch<ServerModels>(`/projects/${PROJECT_ID}/setup/server-models`, {
+    mutationFn: () => apiFetch<ServerModelsOut>(`/projects/${PROJECT_ID}/setup/server-models`, {
       method: "POST", json: { provider: providerId, base_url: baseUrl.trim() || null, api_key: apiKey.trim() || null },
     }),
     onSuccess: (r) => { if (r.ok && r.models.length && !r.models.includes(model.trim())) setModel(r.models[0]); },

@@ -1,9 +1,8 @@
 /** Settings › About (everyone): the release and commit the server and this web app run, what support asks for. */
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "../api/client";
+import type { ReleaseOut as Version } from "../api/generated";
 import { QueryStatus } from "../ui/QueryStatus";
-
-interface Version { version: string; commit: string | null }
 
 function shown(v: Version): string {
   return v.commit ? `${v.version} (commit ${v.commit.slice(0, 12)})` : v.version;

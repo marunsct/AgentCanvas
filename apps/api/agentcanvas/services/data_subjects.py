@@ -43,6 +43,7 @@ from agentcanvas.db.models import (
     WorkflowRow,
 )
 from agentcanvas.db.repositories import MemberRepo, ScopeRepo, delete_thread_rows
+from agentcanvas.db.retry import retrying
 from agentcanvas.errors import Conflict, NotFound
 from agentcanvas.services.offboarding import erase_profile
 
@@ -78,9 +79,13 @@ async def delete_conversations(session: AsyncSession, runner: Any, thread_ids: l
     for i in range(0, len(thread_ids), 200):
         page = thread_ids[i : i + 200]
         await runner.forget_threads(page)
-        for thread_id in page:
-            await delete_thread_rows(session, thread_id)
-        await session.commit()
+
+        async def rows(page: list[str] = page) -> None:
+            for thread_id in page:
+                await delete_thread_rows(session, thread_id)
+            await session.commit()
+
+        await retrying(session, rows, what="conversation delete")  # runs that just ended may still write under them
     return len(thread_ids)
 
 

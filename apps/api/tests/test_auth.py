@@ -255,6 +255,9 @@ PUBLIC = {
     ("DELETE", "/v1/share/{token}/conversation"),
     # E-7: an organisation export's download link; the token in the path is the capability (unknown: 404)
     ("GET", "/v1/exports/{token}"),
+    # F-9: the links in approval notifications; the signed token in the body is the capability (unknown: 404)
+    ("POST", "/v1/approval-links/inspect"),
+    ("POST", "/v1/approval-links/decision"),
 }  # fmt: skip
 OWN_CREDENTIALS = (
     "/v1/deployments/{dep_id}/runs/", "/v1/deployments/{dep_id}/threads/", "/v1/hooks/",

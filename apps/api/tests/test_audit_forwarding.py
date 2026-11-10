@@ -98,6 +98,7 @@ def test_security_actions_name_routes_or_the_rows_services_write():
         "spend_cap_warning", "spend_cap_reached",  # the spending caps, as a run's spend crosses one
         "purge_organization", "download_org_export",  # the offboarding job; an export's (token-only) download link
         "export_member",  # a person's data export (record_read)
+        "approval_escalated",  # the notifier and retention jobs, when nobody decided an approval in time
     }  # fmt: skip
     assert SECURITY_ACTIONS - written_by_services <= _audited_writes()
 

@@ -10,7 +10,7 @@ from typing import Literal, Self
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, Field, model_validator
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,6 +27,7 @@ from agentcanvas.api.deps import (
 from agentcanvas.api.v1.org import CapUse
 from agentcanvas.db.models import AppUser, Membership, Organization, Project, ScimGroup, WorkflowRow
 from agentcanvas.db.repositories import ProjectMemberRepo, ProjectRepo
+from agentcanvas.db.retry import retrying
 from agentcanvas.errors import Conflict, InvalidInput
 from agentcanvas.registry import default_registry
 from agentcanvas.services import matura, model_defaults, org_settings, spend_caps
@@ -169,20 +170,24 @@ async def delete_project(
     """Delete a project with everything in it: workflows and their versions, deployments (their endpoints stop
     answering), runs, datasets, knowledge, secrets and the workspace's code. An organisation keeps at least one
     project (409 for the last one). Admins only."""
-    p = await ProjectRepo(session).require(project_id)
+    await ProjectRepo(session).require(project_id)
     if await session.scalar(select(func.count()).select_from(Project).where(Project.org_id == user.org_id)) == 1:
         raise Conflict("this is the organisation's only project: create another one before deleting it")
     # its conversations' saved state first: their rows are the only index of it, and go with the project
     await request.app.state.runner.forget_conversations(session, WorkflowRow.project_id == project_id)
-    # one delete at a time per organisation (a row lock on Postgres) and the count after the write (on SQLite the
-    # write lock makes a parallel delete wait, then see this one): two at once cannot remove the last two projects
-    await session.execute(select(Organization.id).where(Organization.id == user.org_id).with_for_update())
-    await session.delete(p)
-    await session.flush()
-    if not await session.scalar(select(func.count()).select_from(Project).where(Project.org_id == user.org_id)):
-        await session.rollback()
-        raise Conflict("this is the organisation's only project: create another one before deleting it")
-    await session.commit()
+
+    async def rows() -> None:
+        # one delete at a time per organisation (a row lock on Postgres) and the count after the write (on SQLite the
+        # write lock makes a parallel delete wait, then see this one): two at once cannot remove the last two projects
+        await session.execute(select(Organization.id).where(Organization.id == user.org_id).with_for_update())
+        await session.execute(delete(Project).where(Project.id == project_id))
+        if not await session.scalar(select(func.count()).select_from(Project).where(Project.org_id == user.org_id)):
+            await session.rollback()
+            raise Conflict("this is the organisation's only project: create another one before deleting it")
+        await session.commit()
+
+    # runs that just ended write under it (their finish hooks, the search index): a deadlock's victim runs again
+    await retrying(session, rows, what="project delete")
     projects = getattr(request.app.state, "projects", None)
     if projects is not None:
         await projects.forget(project_id)
@@ -209,11 +214,11 @@ class ProjectMemberIn(BaseModel):
 class ProjectMemberOut(BaseModel):
     id: str
     kind: Literal["user", "group"]
-    user_id: str | None = None
-    email: str | None = None
-    display_name: str | None = None
-    group_id: str | None = None
-    group: str | None = Field(None, description="the SCIM group's display name")
+    user_id: str | None
+    email: str | None
+    display_name: str | None
+    group_id: str | None
+    group: str | None = Field(description="the SCIM group's display name")
     role: Role
     created_at: datetime
 

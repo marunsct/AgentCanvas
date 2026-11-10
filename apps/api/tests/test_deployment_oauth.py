@@ -229,6 +229,28 @@ async def test_people_continue_only_their_own_conversations(api_client, tokens):
     assert refused["error"]["code"] == -32001
 
 
+async def test_the_answer_tool_says_nothing_of_another_persons_pauses(app, api_client, tokens):
+    """Bob naming a pause on Alice's conversation learns neither that it exists nor its state: the same not-found."""
+    from test_protocols import _publish
+    from test_versions import HIGH_CASE, new_triage
+
+    from agentcanvas.testing import DemoResources
+
+    app.state.resources_factory = lambda thread_id, wf: DemoResources().with_mocks(HIGH_CASE["mocks"])
+    dep, _ = await _publish(api_client, (await new_triage(api_client))["id"])
+    await _turn_on(api_client, dep)
+    alice, bob = bearer(access_token(resource(dep))), bearer(access_token(resource(dep), sub="bob"))
+    tools = (await api_client.post(mcp_url(dep), json=rpc("tools/list"), headers=alice)).json()["result"]["tools"]
+    call = rpc("tools/call", {"name": tools[0]["name"], "arguments": {"ticket": "down"}})
+    paused = (await api_client.post(mcp_url(dep), json=call, headers=alice)).json()["result"]["structuredContent"]
+    assert paused["status"] == "interrupted"
+    for named in ("nope", paused["interrupts"][0]["id"]):
+        probe = {"thread_id": paused["thread_id"], "interrupt_id": named, "approve": True}
+        said = (await api_client.post(mcp_url(dep), json=rpc("tools/call", {"name": "answer", "arguments": probe}),
+                                      headers=bob)).json()["result"]  # fmt: skip
+        assert said["isError"] is True and said["content"][0]["text"].startswith("thread "), said
+
+
 async def test_the_agent_card_offers_openid_connect_beside_the_key(api_client, tokens):
     dep, _ = await _published(api_client)
     await _turn_on(api_client, dep)

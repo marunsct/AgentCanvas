@@ -10,6 +10,29 @@ Merging, deleting branches and anything outward-facing stay with you: work is de
 - No version bump or tag (yours to decide); `CHANGELOG.md` "Unreleased" and `HARDENING.md` are kept current.
 - Prefer checks that grow with the product (driven by the OpenAPI document or the template list) over lists to maintain.
 
+## 2026-11-10 (leftovers)
+
+### Judgment calls in the fourth wave (delete retries, withdrawn items, generated types, OAuth everywhere, approval links)
+- Retries are bounded at 4 attempts (about 1 s) and then fail closed with 503 rather than wait longer; raise `ATTEMPTS`
+  in `db/retry.py` if operators see `db.retry_gave_up`.
+- Only LangGraph (the framework whose saved state holds every pause) withdraws at the end of a run; other frameworks'
+  items are left as they were. A Wait step left behind is "cancelled", not "withdrawn", as before. Downgrading the
+  migration turns withdrawn items into expired ones.
+- Output models whose defaulted fields are always sent use json_schema_serialization_defaults_required instead of losing
+  their defaults, so models built step by step keep working; remove the config to make them optional in the schema
+  again.
+- The deployment API is one OAuth resource at the deployment's address rather than one per route, and reading takes
+  agentcanvas:deployment:read as an alternative to the configured scopes; to give each route its own audience, return
+  the route's address from _address in api/v1/deployments.py. Signed-in callers may not ask for callbacks; to allow it,
+  drop the check in _callback_url.
+- One reminder per deadline (an escalated item gets a second before it expires) rather than strictly one per item; to
+  send only one, drop reminded_at=None from notifier.escalate. Reminders are on by default because they only go to
+  organisations that already switched notifications on.
+- Off by default per organisation because a personal link decides without a sign-in; channel links never decide
+  directly. A link is single-use through the item's own one-time claim rather than a used-token table; add a table keyed
+  by a nonce in the token if a link must stay spent even when its decision is rolled back (R-4). Links last at most 7
+  days (approval_links.MAX_DAYS); reminders carry fresh ones.
+
 ## 2026-11-10 (the rest of the roadmap)
 
 ### E-10 to E-13 and the re-scoped F items, built together

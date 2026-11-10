@@ -4,19 +4,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { apiFetch } from "../api/client";
+import type { NotificationsOut, NotificationsSaved, TestResult } from "../api/generated";
 import { toast } from "../ui/dialog";
 import { QueryStatus } from "../ui/QueryStatus";
-
-// typed here until the generated API types are regenerated
-export interface NotificationsOut {
-  email: { enabled: boolean; to: string[]; available: boolean };
-  slack: boolean;
-  webhook_url: string | null;
-  webhook_secret_set: boolean;
-  webhook_secret?: string | null;
-  digest?: boolean;
-}
-interface TestResult { channel: string; ok: boolean; error: string | null }
 
 const CHANNEL = { email: "E-mail", slack: "Slack", webhook: "Webhook" } as Record<string, string>;
 
@@ -28,6 +18,7 @@ export function NotificationSettings() {
   const [slack, setSlack] = useState("");
   const [hook, setHook] = useState("");
   const [digest, setDigest] = useState(false);
+  const [actions, setActions] = useState(false);
   const [secret, setSecret] = useState<string | null>(null);
   const [tested, setTested] = useState<TestResult[] | null>(null);
   useEffect(() => {
@@ -36,9 +27,10 @@ export function NotificationSettings() {
     setTo(q.data.email.to.join(", "));
     setHook(q.data.webhook_url ?? "");
     setDigest(Boolean(q.data.digest));
+    setActions(Boolean(q.data.actions));
   }, [q.data]);
   const save = useMutation({
-    mutationFn: (json: Record<string, unknown>) => apiFetch<NotificationsOut>("/org/notifications", { method: "PUT", json }),
+    mutationFn: (json: Record<string, unknown>) => apiFetch<NotificationsSaved>("/org/notifications", { method: "PUT", json }),
     onSuccess: (out) => {
       qc.setQueryData(["org-notifications"], out);
       setSlack("");
@@ -59,6 +51,7 @@ export function NotificationSettings() {
     ...(slack.trim() ? { slack_url: slack.trim() } : {}),
     ...(hook.trim() !== (d.webhook_url ?? "") ? { webhook_url: hook.trim() || null } : {}),
     ...(digest !== Boolean(d.digest) ? { digest } : {}),
+    ...(actions !== Boolean(d.actions) ? { actions } : {}),
   };
   return (
     <section className="settings-card" aria-label="Notifications">
@@ -111,6 +104,16 @@ export function NotificationSettings() {
           </div>
         </div>
       )}
+
+      <h3>Approve and Deny in messages</h3>
+      <label className="row"><input type="checkbox" checked={actions} onChange={(e) => setActions(e.target.checked)} aria-label="approve and deny links" />
+        Add Approve and Deny links to approval messages</label>
+      <p className="muted small">
+        Each person gets their own e-mail, with links that decide as them after the Inbox's checks: they work once, for a
+        week at most, and open a page that asks to confirm (so a mail scanner cannot approve). Slack gets buttons and the
+        webhook <code>actions</code>; those open the item in the Inbox, where whoever decides signs in. With multi-factor
+        sign-in required, every link opens the Inbox. Questions are always answered in the Inbox.
+      </p>
 
       <h3>Weekly run digests</h3>
       <label className="row"><input type="checkbox" checked={digest} onChange={(e) => setDigest(e.target.checked)} aria-label="send weekly run digests" />

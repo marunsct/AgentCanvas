@@ -3,18 +3,13 @@
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { apiFetch } from "../api/client";
+import type { CodeHelpOut } from "../api/generated";
 import { can } from "../api/session";
 import type { LintItem } from "./CodeEditor";
 import { lineDiff } from "./diff";
 import { KIND_LABEL, kindOf } from "./starters";
 
 type Action = "write" | "explain" | "fix";
-
-interface CodeHelpOut {
-  text: string;
-  code: string | null;
-  model: string;
-}
 
 export function CodeHelp({ workflowId, path, content, diagnostics, selection, onAccept }: {
   workflowId: string | null;

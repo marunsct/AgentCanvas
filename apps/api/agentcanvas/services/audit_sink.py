@@ -50,13 +50,15 @@ SECURITY_ACTIONS = frozenset({
     "publish", "unpublish", "rotate_key",  # workflows published to an environment, their keys
     "create_deployment_key", "revoke_deployment_key",
     "rotate_callback_secret",  # the secret that signs a deployment's run callbacks
-    "put_deployment_oauth",  # who may sign in to a deployment's MCP and A2A endpoints, and with which issuer
+    "put_deployment_oauth",  # who may sign in to a deployment's endpoints and API, and with which issuer
     "update_share", "regenerate_share",  # public share links of deployments
     "create_trigger", "enable_trigger",  # webhooks and schedules: a way in that runs workflows without a person
     "put_secret", "delete_secret",  # project secrets
     "put_client", "delete_client", "callback", "delete_connection",  # OAuth app credentials and connected accounts
     "put_sandbox",  # what the project's code may reach (network, limits)
     "decide", "resume_thread", "api_resume", "share_resume",  # approvals of paused runs (inbox, canvas, API, share)
+    "decide_by_link",  # an approval decided with the link an approval e-mail carried
+    "approval_escalated",  # nobody decided an approval in time: its step handed it to another role
     "edit_state",  # a conversation's state changed by hand, past what was approved
     "stop_all_runs",  # the organisation's kill switch
     "set_member", "remove_member", "accept_invitation",  # members and roles (dev and oidc modes)

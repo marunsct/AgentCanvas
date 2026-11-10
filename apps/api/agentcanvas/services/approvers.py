@@ -20,7 +20,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.db.models import AppUser, InterruptTask, Run, ScimGroup, ScimGroupMember
@@ -177,6 +177,10 @@ async def check(
 
 
 EXPIRED = "this approval expired: nobody answered it in time, and its run was cancelled"
+WITHDRAWN = (
+    "this question was withdrawn: the conversation moved on past it (its state was edited, it went back to an "
+    "earlier point, or a new message started it over), so it can no longer be answered"
+)
 
 
 async def answered(session: AsyncSession, thread_id: str, interrupt_id: str | None) -> InterruptTask | None:
@@ -190,6 +194,8 @@ async def answered(session: AsyncSession, thread_id: str, interrupt_id: str | No
             raise NotFound(f"this conversation has no question '{interrupt_id}'")
         if row.status == "expired":  # retention.py cancelled its run: it must not go on
             raise Conflict(EXPIRED)
+        if row.status == "withdrawn":
+            raise Conflict(WITHDRAWN)
         if row.status != "pending":
             raise Conflict(f"inbox item '{interrupt_id}' was already decided")
         return row
@@ -206,12 +212,49 @@ async def answered(session: AsyncSession, thread_id: str, interrupt_id: str | No
     # what the conversation's last run asked expired (not an older run's): its run was cancelled
     ended = select(Run.id).where(Run.thread_id == thread_id, Run.status != "running").order_by(Run.id.desc())
     gone = q.where(
-        InterruptTask.status.in_(("expired", "cancelled")), InterruptTask.run_id == ended.limit(1).scalar_subquery()
+        InterruptTask.status.in_(("expired", "cancelled", "withdrawn")),
+        InterruptTask.run_id == ended.limit(1).scalar_subquery(),
     )
     row = await session.scalar(gone.limit(1))
     if row is not None:  # a Wait step that Stop or the kill switch ended is "cancelled": its run went with it
-        raise Conflict("this run's wait was cancelled, and the run with it" if row.status == "cancelled" else EXPIRED)
+        # withdrawn: an answer naming nothing must not go to whatever the moved-on conversation asks next
+        raise Conflict(
+            {"cancelled": "this run's wait was cancelled, and the run with it", "withdrawn": WITHDRAWN}.get(
+                row.status, EXPIRED
+            )
+        )
     return None
+
+
+async def withdraw(
+    session: AsyncSession, thread_id: str, held: Iterable[str], now: datetime, asked_before: datetime | None = None
+) -> list[str]:
+    """Withdraw the conversation's Inbox items its saved state no longer asks (`held`: the pauses it holds): a
+    state edit, a replay from an earlier point or a new message moved it past them, and an answer would only be
+    refused. A Wait step left behind is cancelled instead (nobody answers one). `asked_before`: only items asked
+    before then (when the state was read), never one a run that started since has just asked. Returns the ids
+    withdrawn; does not commit."""
+    left = (InterruptTask.thread_id == thread_id, InterruptTask.status == "pending")
+    stale = select(InterruptTask.id, InterruptTask.kind).where(*left, InterruptTask.id.not_in(list(held)))
+    if asked_before is not None:
+        stale = stale.where(InterruptTask.created_at <= asked_before)
+    found = (await session.execute(stale)).all()
+    people = [i for i, kind in found if kind != "timer"]
+    timers = [i for i, kind in found if kind == "timer"]
+    for ids, status in ((people, "withdrawn"), (timers, "cancelled")):
+        if ids:
+            await session.execute(
+                update(InterruptTask)
+                .where(InterruptTask.id.in_(ids), InterruptTask.status == "pending")
+                .values(status=status, decided_at=now)
+            )
+    return people
+
+
+async def still_waits(session: AsyncSession, thread_id: str) -> bool:
+    """Whether anything of the conversation waits in the Inbox."""
+    left = (InterruptTask.thread_id == thread_id, InterruptTask.status == "pending")
+    return await session.scalar(select(InterruptTask.id).where(*left).limit(1)) is not None
 
 
 async def check_pending(

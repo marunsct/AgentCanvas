@@ -17,6 +17,7 @@ from agentcanvas.adapters import framework_adapter
 from agentcanvas.api.deps import CurrentUser, current_user, get_session, get_settings_dep, if_match
 from agentcanvas.api.v1.workspace import _off_loop
 from agentcanvas.db.models import CostAlert, Run, SpendArchive, Thread, WorkflowRow
+from agentcanvas.db.retry import retrying
 from agentcanvas.errors import InvalidInput
 from agentcanvas.ids import new_id
 from agentcanvas.ir.commands import Command
@@ -222,7 +223,7 @@ async def delete_workflow(wf_id: str, request: Request, svc: WorkflowService = D
     """Delete a workflow with its versions, deployments and conversations, the conversations' saved state too."""
     await svc.repo.require(wf_id)
     await request.app.state.runner.forget_conversations(svc.repo.s, Thread.workflow_id == wf_id)
-    await svc.delete(wf_id)
+    await retrying(svc.repo.s, lambda: svc.delete(wf_id), what="workflow delete")  # runs ending write under it
     return Response(status_code=204)
 
 

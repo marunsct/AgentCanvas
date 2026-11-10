@@ -4,24 +4,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { apiFetch } from "../api/client";
-import type { DeploymentOut } from "../api/generated";
+import type { DeploymentKeyOut, DeploymentOut, KeyCreated } from "../api/generated";
 import { tokenState } from "../settings/ApiTokens";
 import { confirmDialog, toast } from "../ui/dialog";
 import { ago, exact } from "../ui/time";
-
-// narrow local types until the generated API types are regenerated (GET/POST /deployments/{id}/keys)
-export interface DeploymentKeyOut {
-  id: string;
-  name: string;
-  prefix: string;
-  created_by: string | null;
-  created_at: string;
-  expires_at: string | null;
-  last_used_at: string | null;
-  revoked_at: string | null;
-  active: boolean;
-}
-export interface KeyCreated extends DeploymentKeyOut { api_key: string }
 
 const EXPIRY: [string, number | null][] = [["Never", null], ["30 days", 30], ["90 days", 90], ["1 year", 365]];
 

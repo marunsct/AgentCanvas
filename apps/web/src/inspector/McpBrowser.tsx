@@ -1,17 +1,10 @@
 /** "Browse tools" for an MCP server resource (M3-T5): list the server's tools, pick some, flag destructive ones. */
 import { useState } from "react";
 import { apiFetch } from "../api/client";
+import type { McpToolInfo } from "../api/generated";
 import { PROJECT_ID } from "../api/queries";
 import { useEditor } from "../editor/store";
 import type { IRResource } from "../ir/model";
-
-export interface McpTool {
-  name: string;
-  description?: string;
-  destructive?: boolean;
-  read_only?: boolean;
-  hash?: string; // what publishing pins: the tool's description, input schema and annotations
-}
 
 /**
  * The `tool_filter` after ticking or unticking `name`: an empty filter offers every tool, so unticking starts from
@@ -27,7 +20,7 @@ export function McpBrowser({ resource }: { resource: IRResource }) {
   const dispatch = useEditor((s) => s.dispatch);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const cfg = (resource.config ?? {}) as { discovered?: McpTool[]; tool_filter?: string[] };
+  const cfg = (resource.config ?? {}) as { discovered?: McpToolInfo[]; tool_filter?: string[] };
   const tools = cfg.discovered ?? [];
   const filter = new Set(cfg.tool_filter ?? []);
   const save = (patch: Record<string, unknown>) =>
@@ -37,7 +30,7 @@ export function McpBrowser({ resource }: { resource: IRResource }) {
     setBusy(true);
     setError(null);
     try {
-      const found = await apiFetch<McpTool[]>(`/mcp/inspect?project_id=${encodeURIComponent(PROJECT_ID)}`, {
+      const found = await apiFetch<McpToolInfo[]>(`/mcp/inspect?project_id=${encodeURIComponent(PROJECT_ID)}`, {
         method: "POST", json: { name: resource.name, config: { ...resource.config, discovered: undefined } },
       });
       save({ discovered: found });

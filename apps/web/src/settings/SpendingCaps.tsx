@@ -4,16 +4,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { apiFetch } from "../api/client";
+import type { CapUse, Period, ScopeCaps, SpendingCapsOut } from "../api/generated";
 import { toast } from "../ui/dialog";
 import { QueryStatus } from "../ui/QueryStatus";
 import { usd } from "./SpendingSettings";
-
-// narrow local types until the generated API types are regenerated (GET /v1/org/spending/caps)
-type Period = "day" | "month";
-interface CapUse { period: Period; period_start: string; limit_usd: number | null; spent_usd: number }
-interface ScopeCaps { id: string | null; name: string; own: Partial<Record<CapKey, number | null>>; day: CapUse; month: CapUse }
-interface CapAlert { project_id: string | null; period: string; period_start: string; share: number; spent_usd: number; limit_usd: number; message: string; created_at: string }
-export interface SpendingCapsOut { warn_percent: number; server: Record<CapKey, number>; organisation: ScopeCaps; projects: ScopeCaps[]; alerts: CapAlert[] }
 
 type CapKey = "max_cost_usd_day" | "max_cost_usd_month";
 const KEYS: { key: CapKey; period: Period; label: string }[] = [

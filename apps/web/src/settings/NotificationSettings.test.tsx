@@ -47,6 +47,15 @@ describe("Settings › Organisation › Notifications", () => {
     expect(apiFetch).toHaveBeenCalledWith("/org/notifications", { method: "PUT", json: { digest: true } });
   });
 
+  it("opts in to Approve and Deny links (off until an admin ticks it)", async () => {
+    renderIt();
+    const box = await screen.findByLabelText("approve and deny links") as HTMLInputElement;
+    expect(box.checked).toBe(false);
+    fireEvent.click(box);
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Save" })); });
+    expect(apiFetch).toHaveBeenCalledWith("/org/notifications", { method: "PUT", json: { actions: true } });
+  });
+
   it("sends a test and says how each channel went", async () => {
     renderIt();
     fireEvent.change(await screen.findByLabelText("Slack webhook address"), { target: { value: "https://hooks.slack.com/services/T/B/x" } });

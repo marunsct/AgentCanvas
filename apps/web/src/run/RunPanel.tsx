@@ -10,6 +10,8 @@ import { apiFetch } from "../api/client";
 import { can } from "../api/session";
 import { useEditor } from "../editor/store";
 import { DecisionCard } from "../inbox/DecisionCard";
+import { WhoDecides } from "../inbox/WhoDecides";
+import type { InboxItem } from "../api/queries";
 import type { WF } from "../ir/model";
 import { formatMetrics, useRun } from "./runStore";
 import { useUi } from "../editor/ui";
@@ -137,10 +139,7 @@ export function RunPanel() {
           ✦ Ask the Copilot why
         </button>
       )}
-      {!run.running && run.interrupts.map((intr) => (
-        <DecisionCard key={intr.id} intr={intr} busy={run.starting || !can("reviewer")} onDecide={(v) => void resumeRun(v, intr.id)}
-          onStop={builder ? () => void stopWaiting() : undefined} />
-      ))}
+      <Pauses workflowId={wf.id} onStop={builder ? () => void stopWaiting() : undefined} />
       {Object.keys(run.output).length > 0 && !chat && (
         <>
           <h4>Streamed output</h4>
@@ -158,6 +157,30 @@ export function RunPanel() {
       {builder && <SaveAsTest />}
     </div>
   );
+}
+
+/** The run's pauses, each with who may decide it as the Inbox says (E-6): the buttons are off for a pause you may
+ * not decide, rather than failing with 403 when pressed. */
+export function Pauses({ workflowId, onStop }: { workflowId: string; onStop?: () => void }) {
+  const run = useRun(useShallow((s) => ({ interrupts: s.interrupts, running: s.running, starting: s.starting })));
+  const asked = run.interrupts.filter((i) => i.kind !== "timer").map((i) => i.id);
+  const inbox = useQuery({
+    queryKey: ["inbox", "run", workflowId, asked.join(",")],
+    queryFn: () => apiFetch<InboxItem[]>(`/inbox?workflow_id=${encodeURIComponent(workflowId)}`),
+    enabled: !run.running && asked.length > 0,
+  });
+  if (run.running) return null;
+  const items = new Map((inbox.data ?? []).map((i) => [i.id, i]));
+  return run.interrupts.map((intr) => {
+    const item = items.get(intr.id);
+    return (
+      <div key={intr.id} data-testid="run-pause">
+        {item && <WhoDecides item={item} />}
+        <DecisionCard intr={intr} busy={run.starting || !can("reviewer") || item?.may_decide === false}
+          onDecide={(v) => void resumeRun(v, intr.id)} onStop={onStop} />
+      </div>
+    );
+  });
 }
 
 function FormInput({ wf, disabled }: { wf: WF; disabled: boolean }) {

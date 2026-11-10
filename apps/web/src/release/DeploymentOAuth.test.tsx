@@ -2,11 +2,10 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DeploymentOut } from "../api/generated";
-import type { DeploymentOAuthOut } from "./DeploymentOAuth";
+import type { DeploymentOut, OAuthOut } from "../api/generated";
 
 const calls: { path: string; method?: string; json?: unknown }[] = [];
-let state: DeploymentOAuthOut;
+let state: OAuthOut;
 let refuse: string | null = null;
 vi.mock("../api/client", () => ({
   apiFetch: vi.fn(async (path: string, init?: { method?: string; json?: Record<string, unknown> }) => {
@@ -40,6 +39,9 @@ beforeEach(() => {
     mcp_resource: "https://canvas.example.com/api/v1/deployments/d1/mcp", a2a_resource: "https://canvas.example.com/api/v1/deployments/d1/a2a",
     mcp_metadata: "https://canvas.example.com/.well-known/oauth-protected-resource/api/v1/deployments/d1/mcp",
     a2a_metadata: "https://canvas.example.com/.well-known/oauth-protected-resource/api/v1/deployments/d1/a2a",
+    ag_ui_resource: "https://canvas.example.com/api/v1/deployments/d1/ag-ui", api_resource: "https://canvas.example.com/api/v1/deployments/d1",
+    ag_ui_metadata: "https://canvas.example.com/.well-known/oauth-protected-resource/api/v1/deployments/d1/ag-ui",
+    api_metadata: "https://canvas.example.com/.well-known/oauth-protected-resource/api/v1/deployments/d1",
   };
 });
 afterEach(cleanup);
@@ -58,7 +60,9 @@ describe("DeploymentOAuth (E-11)", () => {
       json: { enabled: true, issuer: null, audience: "api://agentcanvas", scopes: [DEFAULT_SCOPE, "agents"] },
     });
     expect((await screen.findByTestId("oauth-mcp-resource")).textContent).toBe(state.mcp_resource);
-    expect(screen.getByText("Sign-in with OAuth (MCP, A2A): on")).toBeTruthy();
+    expect(screen.getByTestId("oauth-ag-ui-resource").textContent).toBe(state.ag_ui_resource);
+    expect(screen.getByTestId("oauth-api-resource").textContent).toBe(state.api_resource);
+    expect(screen.getByText("Sign-in with OAuth: on")).toBeTruthy();
     expect(screen.getByRole("status").textContent).toContain("People can now sign in");
   });
 

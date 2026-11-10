@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { apiFetch } from "../api/client";
-import type { SpendDeployment, SpendPerson, SpendProject, SpendTotal, SpendWorkflow, SpendingOut } from "../api/generated";
+import type { SpendDeployment, SpendOutsideRuns, SpendPerson, SpendProject, SpendTotal, SpendWorkflow, SpendingOut } from "../api/generated";
 import { QueryStatus } from "../ui/QueryStatus";
 
 const DAY = 86_400_000;
@@ -14,8 +14,6 @@ const daysAgo = (n: number) => isoDay(new Date(Date.now() - n * DAY));
 export const usd = (v: number) => `$${v >= 1 ? v.toFixed(2) : v === 0 ? "0.00" : v.toFixed(4)}`;
 const count = (n: number) => n.toLocaleString("en-US");
 
-// model calls outside runs, until the generated API types are regenerated (`outside_runs` of GET /v1/org/spending)
-interface OutsideRuns { kind: "copilot" | "judge"; calls: number; tokens_in: number; tokens_out: number; cost_usd: number }
 const KIND = { copilot: "The Copilot", judge: "AI judges" } as const;
 
 export function SpendingSettings() {
@@ -29,7 +27,7 @@ export function SpendingSettings() {
       const p = new URLSearchParams();
       p.set("since", new Date(`${from}T00:00:00`).toISOString());
       p.set("until", new Date(new Date(`${to}T00:00:00`).getTime() + DAY).toISOString()); // the whole last day
-      return apiFetch<SpendingOut & { outside_runs?: OutsideRuns[] }>(`/org/spending?${p}`);
+      return apiFetch<SpendingOut>(`/org/spending?${p}`);
     },
   });
   const preset = (days: number) => { setFrom(daysAgo(days - 1)); setTo(isoDay(new Date())); };
@@ -60,7 +58,7 @@ export function SpendingSettings() {
             extra={{ head: "Email", cell: (r: SpendPerson) => r.email }} />
           <Breakdown title="By deployment" what="Deployment" rows={q.data.by_deployment} testid="spend-deployments"
             extra={{ head: "Workflow id", cell: (r: SpendDeployment) => r.workflow_id }} />
-          <Outside rows={q.data.outside_runs ?? []} />
+          <Outside rows={q.data.outside_runs} />
         </>
       )}
     </section>
@@ -80,7 +78,7 @@ function Totals({ total }: { total: SpendTotal }) {
 }
 
 /** The Copilot's answers and AI judges: not runs, so not in the totals above, but counted by the spending caps. */
-function Outside({ rows }: { rows: OutsideRuns[] }) {
+function Outside({ rows }: { rows: SpendOutsideRuns[] }) {
   return (
     <div>
       <h3>Outside runs</h3>

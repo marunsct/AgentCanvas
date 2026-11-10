@@ -2,12 +2,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { apiFetch } from "../api/client";
-import type { DeploymentOut, ShareOut as GeneratedShareOut } from "../api/generated";
-import { DEFAULT_AI_NOTICE, embedSnippet } from "../share/share";
+import type { DeploymentOut, ShareOut } from "../api/generated";
+import { embedSnippet } from "../share/share";
 import { confirmDialog } from "../ui/dialog";
-
-/** ai_notice: written here until the generated API types include it. */
-type ShareOut = GeneratedShareOut & { ai_notice?: string };
 
 async function copy(text: string, done: (msg: string) => void) {
   try {
@@ -34,7 +31,7 @@ export function ShareSection({ deployment }: { deployment: DeploymentOut }) {
     setGreeting(d.greeting);
     setSuggestions(d.suggestions.join("\n"));
     setSites(d.frame_origins.join("\n"));
-    setAiNotice(d.ai_notice ?? DEFAULT_AI_NOTICE);
+    setAiNotice(d.ai_notice);
   };
   // fill the form once per deployment and after a save of its fields, not on every refetch: the switch and a
   // new link update the query too, and that must not wipe what is being typed

@@ -364,7 +364,9 @@ class LangChainAdapter:
             }
             return
         except UnknownInterruptError as exc:  # nothing ran: the answer goes back to wait in the Inbox
-            yield {"type": "RUN_ERROR", "code": "unknown_interrupt", "message": _unplaced(exc)}
+            # which answers it refused and what still waits: the runner withdraws Inbox items it moved past
+            yield {"type": "RUN_ERROR", "code": "unknown_interrupt", "message": _unplaced(exc), "reason": exc.reason,
+                   "interrupt_ids": list(exc.interrupt_ids), "pending_ids": list(exc.pending_ids)}  # fmt: skip
             return
         except Exception as exc:  # noqa: BLE001 - every failure must reach the UI as RUN_ERROR
             for record in usage.records():
@@ -480,7 +482,7 @@ def _unplaced(exc: UnknownInterruptError) -> str:
         return f"several questions wait in this conversation; name the one you answer (interrupt_id).{waiting}"
     return (
         "the answer is for a question this conversation no longer asks (answered already, or the conversation "
-        f"moved on past it), so it was not applied.{waiting}"
+        f"moved on past it), so it was not applied and the question is withdrawn.{waiting}"
     )
 
 

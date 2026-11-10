@@ -24,7 +24,7 @@ READS = {"GET", "HEAD", "OPTIONS"}
 # public run calls (volume), checks that change nothing, and canvas positions (cosmetic)
 SKIPPED = {
     "api_run_wait", "api_run_stream", "api_run_start", "webhook", "check_expression", "validate_workflow",
-    "inspect_mcp", "dry_run", "set_layout", "share_run_stream",
+    "inspect_mcp", "dry_run", "set_layout", "share_run_stream", "inspect_approval_link",
 }  # fmt: skip
 # public run calls that are recorded only when they carry a decision (an AG-UI resume): the route notes it
 NOTED_ONLY = {"api_ag_ui"}
@@ -111,7 +111,8 @@ async def record(request: Request, response: Response) -> None:
     if params:
         detail["params"] = params
     if user is None:
-        detail["caller"] = "deployment key"
+        who = getattr(request.state, "signed_in", None)  # a person signed in to a deployment with OAuth (E-11)
+        detail.update({"caller": "oauth", "end_user": who.user_id} if who else {"caller": "deployment key"})
     elif user.token_id:
         detail["caller"] = f"personal token {user.token_id}"
     detail.update(extra)

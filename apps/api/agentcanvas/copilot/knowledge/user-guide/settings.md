@@ -167,8 +167,8 @@ personal data. A conversation is announced once, whatever the number of API serv
 - **Webhook**: an `https` address of your own gets a JSON `POST` for every waiting item:
   `{"type": "approval.waiting", "id", "interrupt_id", "kind", "organisation_id", "project": {"id", "name"},
   "workflow": {"id", "name"}, "step", "thread_id", "run_id", "deciders", "created_at", "expires_at", "escalates_at",
-  "escalate_to", "url"}`, and `"type": "approval.escalated"` when its step escalates it. It is
-  signed like webhook triggers: `X-AgentCanvas-Signature: sha256=<hex HMAC-SHA256 of "<X-AgentCanvas-Timestamp>." +
+  "escalate_to", "url"}`, `"type": "approval.escalated"` when its step escalates it, and `"approval.reminder"` for a
+  reminder (below). It is signed like webhook triggers: `X-AgentCanvas-Signature: sha256=<hex HMAC-SHA256 of "<X-AgentCanvas-Timestamp>." +
   body>` with the signing secret shown once when you save the address (send `webhook_secret` to set your own, 24
   characters or more). `X-AgentCanvas-Delivery` is the same on a retry: use it to ignore a repeat. Private and internal
   addresses are refused unless the operator sets `AGENTCANVAS_NOTIFY_ALLOW_PRIVATE=true`; link-local and cloud
@@ -177,6 +177,34 @@ personal data. A conversation is announced once, whatever the number of API serv
 When a step escalates an item nobody decided ([Who may decide](run-and-debug.md#who-may-decide)), the escalation
 role's members get an e-mail of their own, and Slack and the webhook get the item again as *escalated*. A message
 before the escalation says when it will happen instead of when the item expires.
+
+**Approve and Deny in messages** (off until an admin ticks **Add Approve and Deny links to approval messages**, or sends
+`"actions": true` on `PUT /v1/org/notifications`) lets people decide an approval where they read about it:
+
+- **E-mail** then goes to each person on their own, with an **Approve** and a **Deny** link made for them. A link opens
+  a page of AgentCanvas that says what it decides and asks to confirm: opening it decides nothing, so a mail scanner or
+  a link preview cannot approve. The button decides as the person the link was sent to, after the same checks as the
+  Inbox (their role in the project, who the step names, approving your own runs), from the organisation's [allowed
+  networks](accounts.md#allowed-networks) only, and the audit log records it as `decide_by_link` with them as the actor.
+  A link works once (after that, or once anyone decided the item, it says so), only for the item, the action and the
+  person it was made for (it is signed with the server's `AGENTCANVAS_SECRET_KEY`; changing any part breaks it), and
+  until the item expires, a week at most: a reminder (below) brings fresh ones. Denying an agent's tool call asks a
+  reason the agent reads. The team addresses listed for steps that name nobody are not a person: they get links that
+  open the Inbox, like Slack's.
+- **Slack** gets **Approve**, **Deny** and **Open in the Inbox** buttons (no Slack app is needed), and the **webhook**
+  `"actions": {"approve": "<url>", "deny": "<url>"}`. A channel is not a person, so these links open the item in the
+  Inbox, where whoever decides signs in first and decides as themselves.
+- An organisation that requires [multi-factor sign-in](accounts.md#multi-factor-sign-in), a server that requires a
+  stronger sign-in, and Matura sign-in get no decision without a sign-in: every link then opens the item in the Inbox.
+  So do questions (*Ask a person*), which need a written answer. Switching the setting off stops links already sent from
+  deciding.
+
+**Reminders.** An item still waiting 24 hours before it escalates or expires is announced once more, on the same
+channels and to the same people (*Approval still waiting: …*; the webhook's `type` is `approval.reminder`). Each
+item gets one reminder, sent by one server whatever their number; an escalated item gets one more before it expires.
+An item that waits less than twice that time in all (a step that escalates after 30 hours, say) gets none, since its
+first message is recent. The operator sets the lead time with `AGENTCANVAS_APPROVAL_REMINDER_HOURS` (24; `0` sends no
+reminders).
 
 A notification that fails (a refused address, a server error) is tried again after 30 s, 2 min, 10 min, 30 min and
 2 h, then given up; an item decided meanwhile is not announced any more. Draft runs you start in the editor are not

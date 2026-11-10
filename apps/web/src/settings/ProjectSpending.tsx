@@ -3,15 +3,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { apiFetch } from "../api/client";
+import type { ProjectCapsOut } from "../api/generated";
 import { PROJECT_ID, PROJECT_NAME } from "../api/queries";
 import { toast } from "../ui/dialog";
 import { QueryStatus } from "../ui/QueryStatus";
 import { usd } from "./SpendingSettings";
 
 type CapKey = "max_cost_usd_day" | "max_cost_usd_month";
-interface CapUse { period: "day" | "month"; period_start: string; limit_usd: number | null; spent_usd: number }
-// narrow local type until the generated API types are regenerated (GET /v1/projects/{id}/spending-caps)
-export interface ProjectCapsOut { own: Record<CapKey, number | null>; organisation: Record<CapKey, number | null>; day: CapUse; month: CapUse }
 
 const KEYS: { key: CapKey; use: "day" | "month"; label: string }[] = [
   { key: "max_cost_usd_day", use: "day", label: "Cap a day (USD)" },

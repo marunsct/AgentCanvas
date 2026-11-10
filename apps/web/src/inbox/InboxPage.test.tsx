@@ -9,10 +9,12 @@ const item = (id: string) => ({
 });
 const decisions: string[] = [];
 let listed: Record<string, unknown>[] | null = null;
+let withdrawn: Record<string, unknown>[] = [];
 vi.mock("../api/client", () => ({
   ApiError: class extends Error {},
   apiFetch: vi.fn(async (path: string) => {
     if (path === "/inbox") return listed ?? [item("a"), item("b")];
+    if (path.startsWith("/inbox?status=withdrawn")) return withdrawn;
     if (path.startsWith("/runs/")) {
       decisions.push(path);
       return { cancelled: true, pending: false };
@@ -75,6 +77,30 @@ describe("Inbox", () => {
       expect(decisions).toEqual(["/runs/run_w/cancel"]);
     } finally {
       listed = null;
+    }
+  });
+
+  it("shows the last week's withdrawn items apart, with why, and says so of one a notification links to", async () => {
+    const day = 24 * 3600 * 1000;
+    const at = (ago: number) => new Date(Date.now() - ago).toISOString();
+    listed = [item("a")];
+    withdrawn = [{ ...item("w1"), status: "withdrawn", node_label: "Sign A", decided_at: at(day) },
+      { ...item("old"), status: "withdrawn", decided_at: at(9 * day) }];
+    try {
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false, refetchInterval: false } } });
+      render(<QueryClientProvider client={qc}><MemoryRouter initialEntries={["/inbox?item=w1"]}><InboxPage /></MemoryRouter></QueryClientProvider>);
+      const section = await screen.findByTestId("inbox-withdrawn");
+      expect(section.textContent).toContain("moved on past these questions");
+      const items = within(section).getAllByTestId("inbox-withdrawn-item");
+      expect(items).toHaveLength(1); // older than a week: not shown
+      expect(items[0].textContent).toContain("Sign A");
+      expect(items[0].getAttribute("aria-current")).toBe("true");
+      expect(within(items[0]).queryByRole("button")).toBeNull(); // nothing to decide
+      expect(screen.getAllByTestId("inbox-item")).toHaveLength(1); // the pending list is unchanged
+      expect(screen.getByTestId("inbox-gone").textContent).toContain("withdrawn");
+    } finally {
+      listed = null;
+      withdrawn = [];
     }
   });
 

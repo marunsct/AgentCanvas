@@ -27,7 +27,7 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Annotated, Any, Literal
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, Field, StringConstraints, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -114,6 +114,9 @@ class RecordFields(BaseModel):
 
 
 class RecordOut(RecordFields):
+    # every field is sent, so the API schema marks them all required (the form fields may be left out of a save)
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
+
     owner_email: str | None = Field(
         default=None, description="the owner's email; none when they are no longer a member"
     )
@@ -231,6 +234,8 @@ class OnlineEvidence(BaseModel):
 
 
 class Evaluation(BaseModel):
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True)  # every field is sent
+
     release_gate: GateEvidence | None = None
     experiment: ExperimentEvidence | None = Field(default=None, description="the latest finished experiment")
     red_team: ExperimentEvidence | None = Field(default=None, description="the latest finished red-team run")

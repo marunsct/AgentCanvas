@@ -509,16 +509,20 @@
       "ApiEndUserIn": {
         "properties": {
           "user_id": {
-            "description": "the `user_id` you sent with their runs",
-            "maxLength": 500,
-            "minLength": 1,
-            "title": "User Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the `user_id` you sent with their runs; left out by a person signed in with OAuth (their own)",
+            "title": "User Id"
           }
         },
-        "required": [
-          "user_id"
-        ],
         "title": "ApiEndUserIn",
         "type": "object"
       },
@@ -2407,7 +2411,9 @@
         },
         "required": [
           "text",
-          "model"
+          "code",
+          "model",
+          "usage"
         ],
         "title": "CodeHelpOut",
         "type": "object"
@@ -3041,7 +3047,10 @@
           "messages",
           "brief",
           "proposals",
+          "pending",
           "usage",
+          "chosen_model",
+          "cost_usd",
           "token_cap",
           "model",
           "pack_tokens"
@@ -4022,7 +4031,7 @@
           },
           "oauth": {
             "default": false,
-            "description": "people may also sign in to its MCP and A2A endpoints with OAuth",
+            "description": "people may also sign in to its endpoints and API with OAuth",
             "title": "Oauth",
             "type": "boolean"
           },
@@ -4900,6 +4909,13 @@
             "type": "integer"
           }
         },
+        "required": [
+          "release_gate",
+          "experiment",
+          "red_team",
+          "online",
+          "test_cases"
+        ],
         "title": "Evaluation",
         "type": "object"
       },
@@ -8820,6 +8836,153 @@
         "title": "LayoutUpdate",
         "type": "object"
       },
+      "LinkDecision": {
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "a denied tool call: the reason the agent reads",
+            "title": "Reason"
+          },
+          "token": {
+            "description": "the link's token (after `#` in its address)",
+            "maxLength": 2048,
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "title": "LinkDecision",
+        "type": "object"
+      },
+      "LinkIn": {
+        "properties": {
+          "token": {
+            "description": "the link's token (after `#` in its address)",
+            "maxLength": 2048,
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "title": "LinkIn",
+        "type": "object"
+      },
+      "LinkOut": {
+        "properties": {
+          "action": {
+            "description": "approve or deny",
+            "title": "Action",
+            "type": "string"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "deciders": {
+            "title": "Deciders",
+            "type": "string"
+          },
+          "expires_at": {
+            "description": "when the link stops working",
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "inbox_path": {
+            "title": "Inbox Path",
+            "type": "string"
+          },
+          "interrupt_id": {
+            "title": "Interrupt Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "project_name": {
+            "title": "Project Name",
+            "type": "string"
+          },
+          "recipient": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the e-mail address the link was sent to; null: a channel",
+            "title": "Recipient"
+          },
+          "sign_in": {
+            "description": "the link cannot decide by itself: open the item in the Inbox and sign in",
+            "title": "Sign In",
+            "type": "boolean"
+          },
+          "status": {
+            "description": "the item's: pending, decided, expired or cancelled",
+            "title": "Status",
+            "type": "string"
+          },
+          "step": {
+            "title": "Step",
+            "type": "string"
+          },
+          "why_sign_in": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Why Sign In"
+          },
+          "workflow_name": {
+            "title": "Workflow Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "interrupt_id",
+          "action",
+          "kind",
+          "status",
+          "workflow_name",
+          "project_name",
+          "step",
+          "deciders",
+          "recipient",
+          "expires_at",
+          "sign_in",
+          "inbox_path"
+        ],
+        "title": "LinkOut",
+        "type": "object"
+      },
       "LintItem": {
         "properties": {
           "code": {
@@ -10148,6 +10311,17 @@
       "NotificationsIn": {
         "description": "Only what is sent changes; `null` removes the Slack address or the webhook.",
         "properties": {
+          "actions": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actions"
+          },
           "digest": {
             "anyOf": [
               {
@@ -10230,6 +10404,12 @@
       },
       "NotificationsOut": {
         "properties": {
+          "actions": {
+            "default": false,
+            "description": "approval messages carry Approve and Deny links: e-mails, bound to each person; Slack and the webhook, links that open the item in the Inbox",
+            "title": "Actions",
+            "type": "boolean"
+          },
           "digest": {
             "default": false,
             "description": "each project's weekly run digest also goes to these channels",
@@ -10283,6 +10463,12 @@
       },
       "NotificationsSaved": {
         "properties": {
+          "actions": {
+            "default": false,
+            "description": "approval messages carry Approve and Deny links: e-mails, bound to each person; Slack and the webhook, links that open the item in the Inbox",
+            "title": "Actions",
+            "type": "boolean"
+          },
           "digest": {
             "default": false,
             "description": "each project's weekly run digest also goes to these channels",
@@ -10362,7 +10548,7 @@
             "title": "Audience"
           },
           "enabled": {
-            "description": "people may sign in to the MCP and A2A endpoints; the keys keep working",
+            "description": "people may sign in to the MCP, A2A and AG-UI endpoints and the deployment API; keys keep working",
             "title": "Enabled",
             "type": "boolean"
           },
@@ -10406,6 +10592,26 @@
           "a2a_resource": {
             "description": "the A2A endpoint's resource identifier: its tokens' audience",
             "title": "A2A Resource",
+            "type": "string"
+          },
+          "ag_ui_metadata": {
+            "description": "the AG-UI endpoint's protected resource metadata",
+            "title": "Ag Ui Metadata",
+            "type": "string"
+          },
+          "ag_ui_resource": {
+            "description": "the AG-UI endpoint's resource identifier: its tokens' audience",
+            "title": "Ag Ui Resource",
+            "type": "string"
+          },
+          "api_metadata": {
+            "description": "the deployment API's protected resource metadata",
+            "title": "Api Metadata",
+            "type": "string"
+          },
+          "api_resource": {
+            "description": "the deployment API's resource identifier (runs/wait and the others): its tokens' audience",
+            "title": "Api Resource",
             "type": "string"
           },
           "audience": {
@@ -10473,8 +10679,12 @@
           "scopes",
           "mcp_resource",
           "a2a_resource",
+          "ag_ui_resource",
+          "api_resource",
           "mcp_metadata",
-          "a2a_metadata"
+          "a2a_metadata",
+          "ag_ui_metadata",
+          "api_metadata"
         ],
         "title": "OAuthOut",
         "type": "object"
@@ -11155,7 +11365,6 @@
             "type": "boolean"
           },
           "private_projects": {
-            "default": false,
             "description": "projects are seen only by organisation admins and their members",
             "title": "Private Projects",
             "type": "boolean"
@@ -11189,7 +11398,8 @@
           "networks_ignored",
           "require_mfa",
           "mfa_available",
-          "your_sign_in_is_mfa"
+          "your_sign_in_is_mfa",
+          "private_projects"
         ],
         "title": "OrgSecurityOut",
         "type": "object"
@@ -11624,7 +11834,13 @@
         },
         "required": [
           "name",
+          "description",
+          "scope",
+          "match",
           "require",
+          "severity",
+          "environments",
+          "enabled",
           "id",
           "created_at"
         ],
@@ -12075,6 +12291,11 @@
         "required": [
           "id",
           "kind",
+          "user_id",
+          "email",
+          "display_name",
+          "group_id",
+          "group",
           "role",
           "created_at"
         ],
@@ -12990,6 +13211,19 @@
             "title": "Updated By Email"
           }
         },
+        "required": [
+          "purpose",
+          "owner_id",
+          "risk_class",
+          "risk_rationale",
+          "data_categories",
+          "end_user_facing",
+          "review_date",
+          "owner_email",
+          "owner_member",
+          "updated_by_email",
+          "updated_at"
+        ],
         "title": "RecordOut",
         "type": "object"
       },
@@ -15099,7 +15333,9 @@
           }
         },
         "required": [
-          "ok"
+          "ok",
+          "models",
+          "error"
         ],
         "title": "ServerModelsOut",
         "type": "object"
@@ -21338,6 +21574,108 @@
         ]
       }
     },
+    "/v1/approval-links/decision": {
+      "post": {
+        "description": "Approve or deny with a link sent to one person, as that person: the same checks as the Inbox (their role in\nthe project, who the step names, approving your own runs). Decides once.",
+        "operationId": "decide_by_link_v1_approval_links_decision_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkDecision"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error (a problem document)"
+          }
+        },
+        "summary": "Decide By Link",
+        "tags": [
+          "inbox"
+        ]
+      }
+    },
+    "/v1/approval-links/inspect": {
+      "post": {
+        "description": "What a link is for, and whether it can decide by itself. Changes nothing (it is a POST so the token stays out\nof the address): opening a link never decides.",
+        "operationId": "inspect_approval_link_v1_approval_links_inspect_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error (a problem document)"
+          }
+        },
+        "summary": "Inspect Approval Link",
+        "tags": [
+          "inbox"
+        ]
+      }
+    },
     "/v1/auth/config": {
       "get": {
         "description": "How the web app signs in: `dev` (no sign-in), `oidc` with the public client details, or `matura` (the same,\nplus the portal and the parameter that signs in to another organisation).",
@@ -23381,7 +23719,7 @@
     },
     "/v1/deployments/{dep_id}/end-users/erase": {
       "post": {
-        "description": "Erase one of your end users (GDPR Art. 17), by the `user_id` you sent with their runs: their conversations on\nthis deployment (with feedback), long-term memories and the files their runs used. Answers the counts; an\nend user with nothing left answers zeros.",
+        "description": "Erase one of your end users (GDPR Art. 17), by the `user_id` you sent with their runs: their conversations on\nthis deployment (with feedback), long-term memories and the files their runs used. Answers the counts; an\nend user with nothing left answers zeros. A person signed in with OAuth erases their own.",
         "operationId": "api_erase_end_user_v1_deployments__dep_id__end_users_erase_post",
         "parameters": [
           {
@@ -23460,7 +23798,7 @@
     },
     "/v1/deployments/{dep_id}/end-users/export": {
       "post": {
-        "description": "One of your end users' data as JSON (GDPR Art. 15 and 20), by the `user_id` you sent with their runs: their\nconversations on this deployment with each run's input, answer and steps, long-term memories and the files their\nruns used (names and sizes).",
+        "description": "One of your end users' data as JSON (GDPR Art. 15 and 20), by the `user_id` you sent with their runs: their\nconversations on this deployment with each run's input, answer and steps, long-term memories and the files their\nruns used (names and sizes). A person signed in with OAuth exports their own.",
         "operationId": "api_export_end_user_v1_deployments__dep_id__end_users_export_post",
         "parameters": [
           {
@@ -24025,7 +24363,7 @@
     },
     "/v1/deployments/{dep_id}/oauth": {
       "get": {
-        "description": "Whether people may sign in to the deployment's MCP and A2A endpoints with OAuth, and the addresses a client\nand the identity provider need.",
+        "description": "Whether people may sign in to the deployment's endpoints and API with OAuth, and the addresses a client and\nthe identity provider need.",
         "operationId": "get_deployment_oauth_v1_deployments__dep_id__oauth_get",
         "parameters": [
           {
@@ -24099,7 +24437,7 @@
         ]
       },
       "put": {
-        "description": "Let people sign in to the deployment's MCP and A2A endpoints with an access token from the identity provider\n(OAuth 2.1, the MCP authorization spec), or stop it. The keys keep working either way. Turning it on checks that\nthe issuer's signing keys can be loaded (502 otherwise).",
+        "description": "Let people sign in to the deployment's MCP, A2A and AG-UI endpoints and its API with an access token from the\nidentity provider (OAuth 2.1, the MCP authorization spec), or stop it. The keys keep working either way. Turning it\non checks that the issuer's signing keys can be loaded (502 otherwise).",
         "operationId": "put_deployment_oauth_v1_deployments__dep_id__oauth_put",
         "parameters": [
           {
@@ -24676,7 +25014,7 @@
     },
     "/v1/deployments/{dep_id}/runs/{run_id}": {
       "get": {
-        "description": "A run of this deployment: `running` while it works (or waits for a run slot), then its output, the pauses it\nwaits for, or its error. Any server answers; a run another deployment made is not found.",
+        "description": "A run of this deployment: `running` while it works (or waits for a run slot), then its output, the pauses it\nwaits for, or its error. Any server answers; a run another deployment made (or, signed in, another person) is not\nfound.",
         "operationId": "api_run_get_v1_deployments__dep_id__runs__run_id__get",
         "parameters": [
           {
@@ -25597,7 +25935,7 @@
     },
     "/v1/deployments/{dep_id}/threads/{thread_id}/resume": {
       "post": {
-        "description": "Answer a pending interrupt (approval, input) of a conversation this deployment started.",
+        "description": "Answer a pending interrupt (approval, input) of a conversation this deployment started (signed in: one of\nyour own).",
         "operationId": "api_resume_v1_deployments__dep_id__threads__thread_id__resume_post",
         "parameters": [
           {
@@ -26744,7 +27082,7 @@
     },
     "/v1/inbox": {
       "get": {
-        "description": "What waits for a person (or was decided), of the projects the caller sees, with whether they may decide each:\nby their role in its project.",
+        "description": "What waits for a person (or was decided, expired, or withdrawn because the conversation moved past it), of\nthe projects the caller sees, with whether they may decide each: by their role in its project.",
         "operationId": "inbox_v1_inbox_get",
         "parameters": [
           {
@@ -26756,7 +27094,8 @@
               "enum": [
                 "pending",
                 "decided",
-                "expired"
+                "expired",
+                "withdrawn"
               ],
               "title": "Status",
               "type": "string"
@@ -39269,6 +39608,7 @@
     },
     "/v1/threads/{thread_id}/state": {
       "post": {
+        "description": "Edit the conversation's state (a new checkpoint). A question it was waiting at is then no longer asked: its\nInbox item is withdrawn (`withdrawn` lists them), and Continue runs the step again, which asks anew.",
         "operationId": "edit_state_v1_threads__thread_id__state_post",
         "parameters": [
           {

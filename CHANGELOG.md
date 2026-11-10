@@ -8,6 +8,10 @@ The product pass ([PLAN.md](docs/developer/history/product-plan-2026-10.md): one
 review of 2026-10-29 ([HARDENING.md](docs/developer/hardening.md)); no version has been tagged for them yet.
 
 ### Security
+- The MCP answer tool no longer tells a person signed in with OAuth whether another person's conversation has a given
+  pause.
+- Approvals escalated because nobody decided them in time (`approval_escalated`) are now forwarded to the audit sink
+  with the other security events.
 - Code running in the sandbox can no longer read the sandbox service's token from /proc/1/environ.
 - Run search no longer shows the start of a project secret that falls where a run's error is cut short.
 - The hosted edition no longer runs a local (stdio) app connector on the API server; it runs only the gallery's
@@ -198,6 +202,11 @@ review of 2026-10-29 ([HARDENING.md](docs/developer/hardening.md)); no version h
   and metadata addresses are never reached, and a list naming one is refused (HARDENING S-1).
 
 ### Fixed
+- Deleting a conversation, workflow or project the moment a run ends no longer fails on Postgres when the run's last
+  writes collide with it; the delete waits for them or runs again.
+- An Inbox item whose question the conversation moved past (a state edit, going back to an earlier point, a new message)
+  is marked withdrawn, shown as such in the Inbox and no longer keeps the conversation waiting, instead of refusing
+  every answer.
 - The bridges page of a workflow with a malformed list of tools needing approval no longer fails.
 - The web image builds again (make docker-up failed after the approval routing changes).
 - The Share section's AI notice follows the deployment's new default wording after its system record changes, instead of
@@ -822,6 +831,14 @@ review of 2026-10-29 ([HARDENING.md](docs/developer/hardening.md)); no version h
   1.9.1 and dnspython 2.9.0.
 
 ### Added
+- A deployment with OAuth sign-in on also takes people's access tokens on its AG-UI endpoint and its deployment API
+  (runs, results, resume, files, feedback, export and erase of their own data), each person reaching only their own runs
+  and conversations.
+- An approval or question still waiting a day before it escalates or expires is announced once more on the
+  organisation's notification channels (AGENTCANVAS_APPROVAL_REMINDER_HOURS, 24; 0 turns reminders off).
+- Admins can add Approve and Deny links to approval notifications: e-mails carry one-click links bound to each person
+  (confirmed on a page, single-use, expiring with the item), and Slack buttons and webhook links open the item in the
+  Inbox behind sign-in.
 - Builders can let people sign in to a deployment's MCP server and A2A agent with an OAuth access token from the
   organisation's identity provider (RFC 9728 discovery, audience-bound tokens), each person being their own end user.
 - The Publish panel turns on OAuth sign-in for a deployment's MCP server and A2A agent, with its issuer, audience and
@@ -1289,6 +1306,9 @@ review of 2026-10-29 ([HARDENING.md](docs/developer/hardening.md)); no version h
 - An e2e check that every control in the inspector has an accessible name and stays in the tab order.
 
 ### Changed
+- The web app's screens use the generated API types instead of hand-written ones (spending, security, keys, share,
+  projects, runs, deployments, audit, data, policies, setup, notifications, Copilot, editor).
+- The editor's Run tab shows who may decide a paused test run, and why you may not, as the Inbox does.
 - A deployment whose AI-system record says it serves only your own staff shows an AI notice worded for colleagues on its
   share link and widget, unless a builder reworded it.
 - Weekly run digests no longer re-read the past week's runs every hour once all of its digests are made.
