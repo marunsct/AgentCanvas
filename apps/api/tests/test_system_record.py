@@ -309,3 +309,32 @@ def test_markdown_escaping_keeps_text_on_one_line_and_inert():
     from agentcanvas.services.system_record_doc import md
 
     assert md("a|b\n\n<b>*x*</b> `c` [l](u)") == "a\\|b \\<b\\>\\*x\\*\\</b\\> \\`c\\` \\[l\\](u)"
+
+
+async def test_publishing_shows_the_records_notes_and_goes_ahead(api_client):
+    wf, dep, _ = await published(api_client)
+    first = (await api_client.get(f"/v1/deployments/{dep}/system-record")).json()["history"]
+    assert [(h["environment"], h["version"]) for h in first] == [("prod", "1.0.0")]  # the audit entry names both
+    await set_greeting(api_client, wf, "Howdy")
+    r = await api_client.post(f"/v1/workflows/{wf}/publish", json={})  # a record nobody filled in says nothing
+    assert "system record" not in [c["name"] for c in r.json()["checklist"]]
+
+    assert (await api_client.put(f"/v1/deployments/{dep}/system-record", json=HIGH)).status_code == 200
+    await set_greeting(api_client, wf, "Hi")
+    r = await api_client.post(f"/v1/workflows/{wf}/publish", json={})
+    assert r.status_code == 200, r.text
+    [check] = [c for c in r.json()["checklist"] if c["name"] == "system record"]
+    assert check["ok"] and check["detail"] == "3 note(s); publishing goes ahead"
+    assert any("no evaluation evidence" in i for i in check["items"])
+    history = (await api_client.get(f"/v1/deployments/{dep}/system-record")).json()["history"]
+    assert [(h["action"], h["version"]) for h in history] == [
+        ("publish", "1.2.0"),
+        ("update_system_record", None),
+        ("publish", "1.1.0"),
+        ("publish", "1.0.0"),
+    ]
+
+    staging = await api_client.post(f"/v1/workflows/{wf}/publish", json={"environment": "staging"})
+    assert "system record" not in [c["name"] for c in staging.json()["checklist"]]  # its own record, still empty
+    history = (await api_client.get(f"/v1/deployments/{dep}/system-record")).json()["history"]
+    assert len(history) == 4  # another environment's publish is not this deployment's history

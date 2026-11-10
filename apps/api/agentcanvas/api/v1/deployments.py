@@ -47,7 +47,7 @@ from agentcanvas.ir.models import Workflow
 from agentcanvas.runtime import nesting
 from agentcanvas.runtime.runner import RunHandle
 from agentcanvas.runtime.types import ResumeSpec
-from agentcanvas.services import annotation, approvers, callbacks, deployment_oauth, gates, networks
+from agentcanvas.services import annotation, approvers, callbacks, deployment_oauth, gates, networks, system_record
 from agentcanvas.services.data_subjects import end_user_label
 from agentcanvas.services.deployments import KEY_PREFIX, Check, DeploymentService
 from agentcanvas.services.disclosure import AI_HEADER, GeneratedBy, marked
@@ -192,6 +192,8 @@ async def publish(
     deps = DeploymentService(session)
     checks = await deps.checklist(wf, errors, set(projects.secrets.get(project_id, {})), run_tests, policies=broken)
     checks.append(await _contract_check(session, wf_id, body.environment, wf))
+    if (record := await _record_check(session, wf_id, body.environment, wf, user.org_id)) is not None:
+        checks.append(record)
     gate = await gate_for(session, wf_id, body.environment)
     commit = await workspace_commit(request, session, wf_id)
     if gate is not None and all(c.ok for c in checks):  # an evaluation is costly: only when nothing else failed
@@ -222,6 +224,7 @@ async def publish(
         created_by=user.id, reuse_unchanged=True,
     )  # fmt: skip
     dep, key = await deps.publish(view.row, body.environment, version, created_by=user.id)
+    note(request, environment=body.environment, version=version.semver, deployment=dep.id)  # the record's history
     prefix = (await deps.newest_prefixes([dep.id])).get(dep.id)
     out = PublishOut(deployment=_dep(dep, version, prefix), api_key=key, checklist=checks)
     out.git = await sync_after_version(request, session, wf_id, version, "publish")  # G-14: never fails the publish
@@ -256,6 +259,19 @@ async def _contract_check(session: AsyncSession, wf_id: str, environment: str, w
     ]
     detail = f"{len(breaking)} breaking change(s) vs v{live.semver}" if breaking else f"compatible with v{live.semver}"
     return Check(name="contract", ok=True, detail=detail, items=[c.message for c in breaking])
+
+
+async def _record_check(session: AsyncSession, wf_id: str, environment: str, wf: Workflow, org_id: str) -> Check | None:
+    """Informational (E-13): the reminders of the environment's AI-system record, once someone has filled it in (a
+    high-risk system without evaluation evidence or an approval step, an owner who left, a review date passed)."""
+    dep = await session.scalar(
+        select(Deployment).where(Deployment.workflow_id == wf_id, Deployment.environment == environment)
+    )
+    if dep is None or not dep.system_record:
+        return None
+    notes = await system_record.notes_at_publish(session, dep, wf, org_id)
+    detail = f"{len(notes)} note(s); publishing goes ahead" if notes else "nothing to note"
+    return Check(name="system record", ok=True, detail=detail, items=notes)
 
 
 @router.get("/workflows/{wf_id}/deployments", response_model=list[DeploymentOut])

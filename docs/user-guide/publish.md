@@ -45,6 +45,7 @@ Publishing first runs a checklist, and refuses on a failure:
 | tests | the saved test cases pass |
 | contract | no breaking change against the live version (or it is the first publish) |
 | release gate | the evaluation meets the environment's gate, if one is set |
+| system record | always (a reminder, never a refusal): lists the notes of the environment's [AI-system record](#ai-system-record), once someone has filled it in |
 
 The deployment's first **API key** is shown **once**, when the deployment is created. Store it safely.
 **Unpublish** removes the deployment and revokes its keys; publishing it again makes a new key.
@@ -97,7 +98,8 @@ and data handling.
 
 The record also lists **notes**: reminders, never errors, of what an auditor would ask about. A deployment marked
 high risk with no evaluation evidence, with no step that asks a person, or without an owner gets one; so does an
-owner who left the organisation and a review date that passed.
+owner who left the organisation and a review date that passed. Publishing lists them in its checklist
+(**system record**) and goes ahead.
 
 | Request | Does |
 |---|---|
