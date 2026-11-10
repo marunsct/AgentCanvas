@@ -189,12 +189,10 @@ def answer_value(interrupt: dict[str, Any] | None, approve: bool | None, text: s
 async def _pending(
     request: Request, session: AsyncSession, thread_id: str, interrupt_id: str | None
 ) -> dict[str, Any] | None:
-    """The thread's pending interrupt (to shape a simple answer): from the inbox table, which every API replica
-    shares, else from a recent run in this process."""
-    q = select(InterruptTask).where(InterruptTask.thread_id == thread_id, InterruptTask.status == "pending")
-    if interrupt_id:
-        q = q.where(InterruptTask.id == interrupt_id)
-    row = await session.scalar(q.order_by(InterruptTask.created_at.desc()).limit(1))
+    """The interrupt an answer is for (to shape a simple answer): the one named, else the only one waiting (several
+    waiting and none named is refused). From the inbox table, which every API replica shares, else from a recent run
+    in this process. The caller has checked the thread is its own: a refusal lists the ids that wait."""
+    row = await approvers.answered(session, thread_id, interrupt_id)
     if row is not None:
         return {"id": row.id, "kind": row.kind, "payload": row.payload}
     for h in reversed(list(request.app.state.runner.handles.values())):
@@ -233,7 +231,7 @@ async def _resume_run(
 ) -> RunHandle:
     """Answer a pause of the deployment's conversation: the run that goes on (no connection held while it works)."""
     await own_thread(session, dep, thread_id, bound_end_user(request, dep))
-    await approvers.check_pending(session, thread_id, iid, approvers.CALLER)
+    iid = await approvers.check_pending(session, thread_id, iid, approvers.CALLER)
     wf, version_id = await _continue_on(session, dep, wf, thread_id)
     h = await request.app.state.runner.start(
         wf,
@@ -283,7 +281,8 @@ def _mcp_tools(wf: Workflow, c: Contract, caller: Caller = LEGACY) -> list[dict[
                 "name": "answer",
                 "title": "Answer a paused run",
                 "description": "Continue a run that paused for an approval or a question. Set approve for an "
-                "approval, text for a question (or a reason when rejecting); value sends the raw resume value.",
+                "approval, text for a question (or a reason when rejecting); value sends the raw resume value. "
+                "When several pauses wait, interrupt_id names the one you answer.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -304,7 +303,9 @@ def _mcp_tools(wf: Workflow, c: Contract, caller: Caller = LEGACY) -> list[dict[
 def _tool_result(res: ApiResult, result_url: str | None = None, wf: Workflow | None = None) -> dict[str, Any]:
     data = res.model_dump(exclude_none=True)
     if res.status == "interrupted":
-        then = _next_step(res.interrupts, wf, "Call `answer`.")
+        several = len(res.interrupts) > 1  # parallel pauses: each answer names the one it is for
+        then = _next_step(res.interrupts, wf, "Call `answer` once for each, with its interrupt_id." if several
+                          else "Call `answer`.")  # fmt: skip
         text = f"The run paused (thread_id {res.thread_id}):\n{_describe_pause(res.interrupts, wf)}\n{then}"
     elif res.status == "success":
         text = json.dumps(res.output, ensure_ascii=False, indent=1)
@@ -355,6 +356,8 @@ async def _mcp_call(
             return await _answer_call(request, dep, wf, h, str(name), args, caller)
         if name == "answer" and c.pauses:
             thread_id, iid = str(args.get("thread_id") or ""), args.get("interrupt_id")
+            iid = str(iid) if iid else None
+            await own_thread(session, dep, thread_id)  # before anything about its pauses is said
             pending = await _pending(request, session, thread_id, iid)
             value = answer_value(pending, args.get("approve"), args.get("text"), args.get("value"))
             h = await _resume_run(request, session, dep, wf, thread_id, value, iid)
@@ -961,7 +964,9 @@ def _task(res: ApiResult, task_id: str, wf: Workflow | None = None) -> dict[str,
         status["message"] = _agent_message(
             task_id, res.thread_id,
             f"Paused:\n{_describe_pause(res.interrupts, wf)}\n"
-            + _next_step(res.interrupts, wf, "Reply to this task to continue."),
+            + _next_step(res.interrupts, wf, 'Reply to this task once for each, with a data part {"interrupt_id": '
+                         '"..."} naming the one you answer.' if len(res.interrupts) > 1
+                         else "Reply to this task to continue."),
             {"interrupts": res.interrupts},
         )  # fmt: skip
     elif state == "failed":
@@ -1024,16 +1029,17 @@ async def _a2a_send(
     if task_id:  # the answer to a paused task
         task_id = str(task_id)
         thread = await _task_thread(session, dep, task_id, bound_end_user(request, dep))
-        pending = await _pending(request, session, thread.id, None)
-        if thread.status != "interrupted" or pending is None:
+        data, text = _parts(message)
+        named = str(data["interrupt_id"]) if data.get("interrupt_id") else None  # one of several pauses
+        pending = await _pending(request, session, thread.id, named) if thread.status == "interrupted" else None
+        if pending is None:
             raise RpcError(-32602, f"task '{task_id}' is not waiting for input; send a new message (with contextId "
                            f"'{thread.id}' to continue the conversation)")  # fmt: skip
-        data, text = _parts(message)
         approve = data.get("approve") if isinstance(data.get("approve"), bool) else None
         if approve is None and text is not None and pending.get("kind") in ("approval", "tool_approval"):
             approve = text.strip().lower() in YES
         value = answer_value(pending, approve, text, data.get("value"))
-        res = await _resume(request, session, dep, wf, thread.id, value, None, labels={"a2a_task": task_id})
+        res = await _resume(request, session, dep, wf, thread.id, value, named, labels={"a2a_task": task_id})
         return _task(res, task_id, wf)
     fields = _input_from(message, contract(wf))
     context_id = message.get("contextId")

@@ -54,6 +54,11 @@ listed in the run's `interrupts` and on the Inbox item), so it can never reach t
 - `POST /v1/threads/{thread}/resume` and the deployment API's `POST /v1/deployments/{id}/threads/{thread}/resume`
   take `interrupt_id`. You may leave it out only while one pause waits. With two or more waiting, a request without
   it is refused (409) with the waiting ids in `pending`, and nothing runs.
+- An MCP client's `answer` tool takes `interrupt_id` the same way. A client that shows forms is asked about one pause
+  at a time.
+- An A2A reply names the pause in a data part, `{"interrupt_id": "..."}`. The task's status message lists the ids.
+- The share-link page sends the id of the question the visitor answers. An event handler passes it with
+  `act.resume(thread_id, value, interrupt_id=event.data["interrupt_id"])`; the `interrupt.raised` event carries it.
 - An answer for a pause that is no longer waiting is refused: 404 for an unknown id, 409 for one already decided.
   On LangGraph workflows the engine checks this as well (strict resume). An answer it cannot place fails the run
   with *the answer is for a question this conversation no longer asks*. Nothing is applied, and the item goes back

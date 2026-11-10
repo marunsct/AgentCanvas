@@ -139,7 +139,9 @@ When a run pauses for an approval or a question, who answers depends on the clie
   answered once. Declining an approval rejects it; closing the form leaves the run waiting (it can still be
   answered in the **Inbox**). Each answer that leads to another pause asks again.
 - **Other clients**: the tool's answer says the run paused and gives a `thread_id`; the calling agent continues
-  it with `answer` (`approve: true` or `false`, or `text` for a question).
+  it with `answer` (`approve: true` or `false`, or `text` for a question). When several pauses wait at once
+  (steps on parallel branches), the answer lists each with its `interrupt_id`, and each `answer` call names the
+  one it answers; one without an id is refused while several wait.
 
 To continue a conversation, pass the `thread_id` of the earlier run to the workflow's tool.
 
@@ -169,7 +171,9 @@ of its result (`GET /v1/deployments/<id>/runs/<run_id>` with the deployment key,
   text field (one named `message`, `question`, `query`, `input`, `text`, `request`, `prompt` or `ticket`, or its
   only text input). The answer is a task whose artifact holds the output.
 - A pause becomes the `input-required` state. Send the answer to the same task (`taskId`): "yes" or "no" for an
-  approval, or the answer to a question.
+  approval, or the answer to a question. When several pauses wait at once, the status message lists them with
+  their ids; add a data part `{"interrupt_id": "..."}` to each reply to say which one it answers (a reply without
+  one is refused while several wait).
 - `contextId` continues a conversation; `tasks/get` reads a task again, with its output or what it waits for,
   from whichever server answers: the result is kept with the run, not only in the memory of the server that ran it.
 - A2A 1.0 clients use `SendMessage` and `GetTask` (the same behaviour, in 1.0's form: `TASK_STATE_COMPLETED`,

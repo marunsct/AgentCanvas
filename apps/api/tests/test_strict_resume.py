@@ -1,12 +1,14 @@
 """Strict resume: every answer names the pause it is for, so two pauses waiting at once (approvals on parallel
-branches) are answered separately, in either order."""
+branches) are answered separately, in either order, from every place a run can be answered."""
 
 from __future__ import annotations
 
 import json
 
 import pytest
+from test_protocols import rpc
 from test_publish import bearer
+from test_share import ADA, say, share_on
 
 P = "/v1/projects/prj_default/workflows"
 SIGNERS = {"n_a": "ok_a", "n_b": "ok_b"}
@@ -154,3 +156,139 @@ async def test_the_deployment_api_answers_parallel_pauses_by_id(api_client, orde
     res = (await api.post(url, json={"value": False, "interrupt_id": asked[second]}, headers=bearer(key))).json()
     assert res["status"] == "success" and res["output"][SIGNERS[first]] is True
     assert res["output"][SIGNERS[second]] is False
+
+
+@ORDERS
+async def test_the_mcp_answer_tool_names_the_pause(api_client, order):
+    api = api_client
+    dep, key = await published(api, parallel())
+    url, auth = f"/v1/deployments/{dep}/mcp", bearer(key)
+    tools = (await api.post(url, json=rpc("tools/list"), headers=auth)).json()["result"]["tools"]
+    call = rpc("tools/call", {"name": tools[0]["name"], "arguments": {"who": "x"}})
+    res = (await api.post(url, json=call, headers=auth)).json()["result"]
+    assert "Call `answer` once for each, with its interrupt_id." in res["content"][0]["text"]
+    thread = res["structuredContent"]["thread_id"]
+    asked = {i["canvas_node_id"]: i["id"] for i in res["structuredContent"]["interrupts"]}
+
+    def answer(**args):
+        return rpc("tools/call", {"name": "answer", "arguments": {"thread_id": thread, **args}})
+
+    vague = (await api.post(url, json=answer(approve=True), headers=auth)).json()["result"]
+    assert vague["isError"] is True and "name the one you answer" in vague["content"][0]["text"]
+    first, second = order
+    res = (await api.post(url, json=answer(approve=False, interrupt_id=asked[first]), headers=auth)).json()["result"]
+    assert res["structuredContent"]["status"] == "interrupted"
+    assert [i["id"] for i in res["structuredContent"]["interrupts"]] == [asked[second]]
+    res = (await api.post(url, json=answer(approve=True, interrupt_id=asked[second]), headers=auth)).json()["result"]
+    out = res["structuredContent"]["output"]
+    assert res["structuredContent"]["status"] == "success"
+    assert out[SIGNERS[first]] is False and out[SIGNERS[second]] is True
+
+
+async def test_the_mcp_answer_tool_says_nothing_of_another_deployments_pauses(api_client):
+    api = api_client
+    dep, key = await published(api, parallel())
+    other, other_key = await published(api, parallel())
+    thread, theirs = await api_paused(api, other, other_key)  # the other deployment's conversation waits for two
+    call = rpc("tools/call", {"name": "answer", "arguments": {"thread_id": thread, "approve": True}})
+    res = (await api.post(f"/v1/deployments/{dep}/mcp", json=call, headers=bearer(key))).json()["result"]
+    text = res["content"][0]["text"]
+    assert res["isError"] is True and "not found" in text and not any(i in text for i in theirs.values())
+
+
+@ORDERS
+async def test_a2a_replies_name_the_pause_they_answer(api_client, order):
+    api = api_client
+    dep, key = await published(api, parallel())
+    url, auth = f"/v1/deployments/{dep}/a2a", bearer(key)
+    msg = {"message": {"role": "user", "messageId": "m1", "parts": [{"kind": "data", "data": {"who": "x"}}]}}
+    task = (await api.post(url, json=rpc("message/send", msg), headers=auth)).json()["result"]
+    assert task["status"]["state"] == "input-required"
+    assert '{"interrupt_id": "..."}' in task["status"]["message"]["parts"][0]["text"]
+    asked = {i["canvas_node_id"]: i["id"] for i in task["status"]["message"]["parts"][1]["data"]["interrupts"]}
+
+    def reply(n: int, text: str, **data):
+        parts: list[dict] = [{"kind": "text", "text": text}]
+        if data:
+            parts.append({"kind": "data", "data": data})
+        message = {"role": "user", "messageId": f"m{n}", "taskId": task["id"], "contextId": task["contextId"],
+                   "parts": parts}  # fmt: skip
+        return rpc("message/send", {"message": message})
+
+    vague = (await api.post(url, json=reply(2, "yes"), headers=auth)).json()
+    assert vague["error"]["code"] == -32602 and "name the one you answer" in vague["error"]["message"]
+    first, second = order
+    res = (await api.post(url, json=reply(3, "no", interrupt_id=asked[first]), headers=auth)).json()["result"]
+    assert res["status"]["state"] == "input-required"
+    assert "Reply to this task to continue." in res["status"]["message"]["parts"][0]["text"]  # one left
+    res = (await api.post(url, json=reply(4, "yes"), headers=auth)).json()["result"]
+    assert res["status"]["state"] == "completed"
+    out = res["artifacts"][0]["parts"][0]["data"]
+    assert out[SIGNERS[first]] is False and out[SIGNERS[second]] is True
+
+
+async def test_mcp_forms_ask_each_parallel_pause_in_turn(api_client):
+    """MRTR: one form per pause; the answer to the first asks the second."""
+    from test_mcp_input import FORMS, modern
+
+    api = api_client
+    dep, key = await published(api, parallel())
+    url, auth = f"/v1/deployments/{dep}/mcp", bearer(key)
+    body, headers = modern("tools/list", {}, FORMS)
+    tool = (await api.post(url, json=body, headers={**auth, **headers})).json()["result"]["tools"][0]["name"]
+    call = {"name": tool, "arguments": {"who": "x"}}
+    seen, res = [], {}
+    params = dict(call)
+    for _ in range(3):
+        body, headers = modern("tools/call", params, FORMS)
+        res = (await api.post(url, json=body, headers={**auth, **headers})).json()["result"]
+        if res.get("resultType") != "input_required":
+            break
+        (iid,) = res["inputRequests"]
+        seen.append(iid)
+        params = {**call, "requestState": res["requestState"],
+                  "inputResponses": {iid: {"action": "accept", "content": {"approve": True}}}}  # fmt: skip
+    assert len(set(seen)) == 2, seen
+    assert res["structuredContent"]["status"] == "success" and res["structuredContent"]["output"]["ok_a"] is True
+    assert res["structuredContent"]["output"]["ok_b"] is True
+
+
+async def test_a_share_visitor_answers_two_questions_in_either_order(api_client):
+    api = api_client
+    dep, _ = await published(api, parallel("core.human_input"))
+    token = (await share_on(api, dep, input_field="who"))["token"]
+    evs = events((await say(api, token, "x")).text)
+    done = evs[-1]
+    assert done["status"] == "interrupted", done
+    asked = {q["question"]: q["id"] for q in done["interrupts"]}
+    assert set(asked) == {"n_a?", "n_b?"}
+    resume = f"/v1/share/{token}/threads/{evs[0]['threadId']}/resume"
+    vague = await api.post(resume, json={"visitor": ADA, "text": "Bea"})
+    assert vague.status_code == 409 and "name the one you answer" in vague.json()["detail"]
+    after = events((await api.post(resume, json={"visitor": ADA, "text": "Bea", "interrupt_id": asked["n_b?"]})).text)
+    assert after[-1]["status"] == "interrupted" and [q["id"] for q in after[-1]["interrupts"]] == [asked["n_a?"]]
+    after = events((await api.post(resume, json={"visitor": ADA, "text": "Al", "interrupt_id": asked["n_a?"]})).text)
+    assert after[-1]["status"] == "success", after[-1]
+
+
+async def test_an_event_handler_resumes_the_pause_it_names(app, api_client):
+    from test_events import delivered, finished
+
+    src = (
+        "from agentcanvas.sdk import on\n\n\n"
+        '@on("contract.signed")\n'
+        "def signed(event, act):\n"
+        '    act.resume(event.data["thread_id"], True, interrupt_id=event.data.get("interrupt_id"))\n'
+    )
+    await api_client.put("/v1/projects/prj_default/files/events/sign.py", json={"content": src})
+    wf = await make(api_client, parallel())
+    asked = await paused(api_client, wf, "th_event")
+    await delivered(app)
+    url = "/v1/projects/prj_default/events"
+    vague = (await api_client.post(url, json={"type": "contract.signed", "data": {"thread_id": "th_event"}})).json()
+    assert vague["handlers"][0]["error"] and "name the one you answer" in vague["handlers"][0]["error"]
+    named = {"thread_id": "th_event", "interrupt_id": asked["n_b"]}
+    res = (await api_client.post(url, json={"type": "contract.signed", "data": named})).json()
+    await finished(app, res["handlers"][0]["runs"])
+    assert await waiting(api_client, "th_event") == {"n_a"}
+    assert (await api_client.get("/v1/threads/th_event")).json()["values"]["ok_b"] is True

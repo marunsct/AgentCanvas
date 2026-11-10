@@ -190,7 +190,9 @@ class ShareRunIn(BaseModel):
 
 class ShareResumeIn(BaseModel):
     visitor: Visitor
-    interrupt_id: str | None = None
+    interrupt_id: str | None = Field(
+        None, max_length=200, description="the question this answers; may be left out only while one waits"
+    )
     approve: bool | None = Field(None, description="not used: approvals cannot be given on a share link")
     text: str | None = Field(None, max_length=20_000, description="the answer to a question")
 
@@ -496,11 +498,11 @@ async def share_resume(
             "this conversation is waiting for approval from the people who run this assistant; it cannot be "
             "approved from a share link"
         )
-    await approvers.check_pending(session, thread_id, pending.get("id"), approvers.CALLER)
+    iid = await approvers.check_pending(session, thread_id, body.interrupt_id, approvers.CALLER)
     value = answer_value(pending, None, body.text, None)
     wf, version_id = await _continue_on(session, dep, wf, thread_id)
     h = await request.app.state.runner.start(
-        wf, thread_id=thread_id, resume=ResumeSpec(value, pending.get("id")), deployment_id=dep.id,
+        wf, thread_id=thread_id, resume=ResumeSpec(value, iid), deployment_id=dep.id,
         version_id=version_id, decided_by=None, labels={"channel": "share"},
     )  # fmt: skip
     await ShareService(session).record(thread_id, {"role": "user", "text": (body.text or "").strip()})

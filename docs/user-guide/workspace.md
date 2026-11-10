@@ -143,6 +143,9 @@ def qualify(event, act):
 
 Handlers only *describe* actions (`act.start_workflow`, `act.resume`, `act.emit`); the platform performs them, so
 handler code never holds credentials. Steps can emit events during a run with `agentcanvas.sdk.emit(type, data)`.
+`act.resume(thread_id, value, interrupt_id=...)` answers the pause that `interrupt_id` names; the `interrupt.raised`
+event carries the id. You may leave it out while only one pause waits; with several waiting, the action fails and the
+event log shows the waiting ids ([Several pauses at once](run-and-debug.md#several-pauses-at-once)).
 
 `dedup_key` runs the handler once per value: the same lead delivered again is skipped. Values are remembered for 30
 days (the operator's `AGENTCANVAS_EVENT_DEDUP_DAYS`), or the organisation's conversation retention when that is
