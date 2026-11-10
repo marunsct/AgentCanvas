@@ -400,7 +400,7 @@ class RunSearchService:
             runs.append(
                 FoundRun(
                     run_id=r.id, thread_id=r.thread_id, workflow_id=wf_id, workflow_name=name, status=r.status,
-                    error=hide_secrets(r.error[:ERROR_CHARS], secrets) if r.error else None,
+                    error=hide_secrets(r.error, secrets)[:ERROR_CHARS] if r.error else None,  # masked, then cut
                     cost_usd=float(r.cost_usd or 0), tokens=int(r.tokens_in or 0) + int(r.tokens_out or 0),
                     started_at=r.started_at, duration_ms=took, labels=dict(r.labels or {}), score=score,
                     snippet=snippet,

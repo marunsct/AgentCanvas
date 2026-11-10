@@ -113,6 +113,23 @@ async def test_test_runs_and_other_projects_are_left_out(app, api_client, week):
     assert theirs["runs"] == 1 and theirs["cost_usd"] == pytest.approx(5.0)
 
 
+async def test_a_secret_in_an_error_is_masked_in_the_digest(app, api_client, week):
+    secret = "sk-live-0123456789abcdef"
+    app.state.projects.secrets["prj_default"] = {"API_KEY": secret}
+    async with app.state.db.sessionmaker() as s:
+        await s.execute(update(Run).where(Run.status == "error").values(error=f"bad key {secret}"))
+        await s.commit()
+    made = DigestJob(app.state.db, 3600, lambda project_id: app.state.projects.secrets.get(project_id, {}))
+    assert await made.tick(NOW) == 1
+    kept = (await api_client.get(f"{P}/run-digests")).json()[0]
+    assert kept["summary"]["failure_groups"] and secret not in json.dumps(kept)
+    async with app.state.db.sessionmaker() as s:  # this week so far, computed on request, is masked too
+        await s.execute(update(Run).where(Run.thread_id == "th_refund_1").values(started_at=datetime.now(UTC)))
+        await s.commit()
+    current = (await api_client.get(f"{P}/run-digests/current")).json()
+    assert current["summary"]["failure_groups"] and secret not in json.dumps(current)
+
+
 async def test_this_week_so_far_is_computed_on_request(app, api_client, week):
     from test_run_find import DemoResources
 

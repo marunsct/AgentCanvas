@@ -135,6 +135,17 @@ async def test_test_runs_are_left_out(app, runs):
     assert "th_hotel" not in threads(await find(app))
 
 
+async def test_a_secret_in_an_error_is_masked_even_where_the_error_is_cut(app, runs):
+    secret = "sk-live-0123456789abcdef"
+    app.state.projects.secrets["prj_default"] = {"API_KEY": secret}
+    long = "x" * 280 + f" key {secret} rejected"  # the cut (300 characters) falls inside the secret
+    async with app.state.db.sessionmaker() as s:
+        await s.execute(update(Run).where(Run.thread_id == "th_refund_1").values(error=long))
+        await s.commit()
+    [one] = (await find(app, label="tier=gold", status="error")).runs
+    assert one.error and "sk-live-0123" not in one.error and len(one.error) <= 300
+
+
 def test_when_reads_dates_times_and_spans():
     assert when("7d", NOW) == NOW - timedelta(days=7)
     assert when("24h", NOW) == NOW - timedelta(hours=24) and when("2W", NOW) == NOW - timedelta(weeks=2)
