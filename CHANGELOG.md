@@ -198,6 +198,7 @@ review of 2026-10-29 ([HARDENING.md](docs/developer/hardening.md)); no version h
   and metadata addresses are never reached, and a list naming one is refused (HARDENING S-1).
 
 ### Fixed
+- The bridges page of a workflow with a malformed list of tools needing approval no longer fails.
 - The web image builds again (make docker-up failed after the approval routing changes).
 - The Share section's AI notice follows the deployment's new default wording after its system record changes, instead of
   saving the old wording as a custom one.
