@@ -15,6 +15,7 @@ from typing import Any
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 from agentcanvas import designs, guardrails
+from agentcanvas.adapters.langchain.interpreter import wait_settings
 from agentcanvas.adapters.langchain.plan import lower
 from agentcanvas.errors import WorkflowHasErrors
 from agentcanvas.filecontent import file_fields
@@ -71,6 +72,7 @@ def generate(wf: Workflow, *, format_code: bool = True, registry: Registry | Non
         file_fields=file_fields,
         pii_types=list(guardrails.PII_TYPES),
         moderation_categories=list(guardrails.MODERATION_CATEGORIES),
+        wait_settings=wait_settings,
     )
     return ruff_format(source) if format_code else source
 

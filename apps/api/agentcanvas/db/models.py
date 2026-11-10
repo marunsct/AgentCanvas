@@ -506,8 +506,8 @@ class Presence(Base):
 class InterruptTask(Base):
     __tablename__ = "interrupt_task"
     __table_args__ = (
-        CheckConstraint("kind IN ('tool_approval','approval','input')", name="interrupt_kind"),
-        CheckConstraint("status IN ('pending','decided','expired')", name="interrupt_status"),
+        CheckConstraint("kind IN ('tool_approval','approval','input','timer')", name="interrupt_kind"),
+        CheckConstraint("status IN ('pending','decided','expired','cancelled')", name="interrupt_status"),
         Index("interrupt_pending_idx", "status", "created_at"),
         Index("interrupt_thread_idx", "thread_id"),  # deleting a conversation or a run (cascade, retention)
         Index("interrupt_run_idx", "run_id"),
@@ -517,6 +517,20 @@ class InterruptTask(Base):
             "escalate_at",
             postgresql_where=text("escalate_at IS NOT NULL"),
             sqlite_where=text("escalate_at IS NOT NULL"),
+        ),
+        # what the timer job wakes next (services/timers.py): only Wait steps still waiting
+        Index(
+            "interrupt_due_idx",
+            "due_at",
+            postgresql_where=text("status = 'pending' AND due_at IS NOT NULL"),
+            sqlite_where=text("status = 'pending' AND due_at IS NOT NULL"),
+        ),
+        # the event waits an event of one type may wake (services/events.py)
+        Index(
+            "interrupt_event_idx",
+            "wait_event",
+            postgresql_where=text("status = 'pending' AND wait_event IS NOT NULL"),
+            sqlite_where=text("status = 'pending' AND wait_event IS NOT NULL"),
         ),
     )
     id: Mapped[str] = mapped_column(String, primary_key=True)  # LangGraph interrupt id
@@ -538,12 +552,18 @@ class InterruptTask(Base):
     created_at: Mapped[datetime] = _now()
     decided_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
     # which announcement of it the notifier claimed (services/notifier.py): NULL not yet, "waiting" (or "off": its
-    # organisation sends none, "quiet": a draft run its starter watches)
+    # organisation sends none, "quiet": a draft run its starter watches, "timer": a Wait step, nobody to tell)
     noticed: Mapped[str | None] = mapped_column(Text)
     # escalation (services/notifier.py): when its step's "escalate after" runs out (NULL: at the approval expiry, if
     # the step escalates at all), and when it was escalated to `assignee_role` (its expiry counts from then)
     escalate_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
     escalated_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
+    # a Wait step (kind "timer", services/timers.py): when it is due (an event wait's timeout), the event type and key
+    # that wake it sooner, and until when one server holds it while it starts the run that continues
+    due_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
+    wait_event: Mapped[str | None] = mapped_column(Text)
+    wait_key: Mapped[str | None] = mapped_column(Text)
+    claimed_until: Mapped[datetime | None] = mapped_column(UtcDateTime())
 
 
 class ApprovalNotice(Base):

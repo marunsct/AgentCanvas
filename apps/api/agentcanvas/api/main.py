@@ -71,6 +71,7 @@ from agentcanvas.services.run_gate import RunGate
 from agentcanvas.services.run_search import RunSearchService
 from agentcanvas.services.secrets import SecretCache, encoded_forms
 from agentcanvas.services.spend_caps import SpendCaps
+from agentcanvas.services.timers import TimerJob
 from agentcanvas.services.trace_export import Exporter, TraceExportHook
 from agentcanvas.services.triggers import CronScheduler
 from agentcanvas.settings import Settings, get_settings
@@ -310,6 +311,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 return await runs_module.handover_target(s, settings, thread_id, version_id)
 
             app.state.notifier = NotifierJob(db, app.state.keyring, settings)
+            # F-10: Wait steps continue when due, or when their event arrives (on the version that paused)
+            app.state.timers = TimerJob(db, runner, handover_target)
+            app.state.events.timers = app.state.timers
             app.state.handover = HandoverJob(
                 db, runner, handover_target, settings.handover_interval_s, settings.orphan_after_s
             )
@@ -317,6 +321,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if settings.env != "test":  # tests drive the schedulers with explicit ticks
                 app.state.experiments.start()
                 app.state.cron.start()
+                app.state.timers.start()
                 app.state.retention.start()
                 app.state.notifier.start()
                 app.state.offboarding.start()
@@ -351,6 +356,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 app.state.presence.close()  # endless streams end: uvicorn's wait for connections need not last
                 await app.state.experiments.stop()  # before the drain: its runs are handed over with the rest
                 await app.state.cron.stop()
+                await app.state.timers.stop()
                 await app.state.retention.stop()
                 await app.state.notifier.stop()
                 await app.state.offboarding.stop()

@@ -101,6 +101,30 @@ Finance*) and, when you cannot, why; its buttons are then off. A helper agent's 
 Planning Agent. Steps inside a subgraph keep their own setting. AgentCanvas checks it; code exported from the workflow
 does not (I011).
 
+## Waiting runs
+
+A run that reaches a [Wait](widgets.md#wait) step pauses until its time comes or its event arrives, then continues on
+its own. Nothing runs while it waits: no server, model or connection is held, and the wait survives restarts and
+redeploys. Every API server checks every few seconds for waits that are due, and each wait is continued by exactly one
+of them; the run goes on with the workflow version it paused on, as the person who started it (while they are still a
+member of the organisation).
+
+- **Nobody answers a wait.** Unlike an approval, a Wait step cannot be decided in the Run tab, the Inbox or through the
+  API (409): only its time or its event ends it. A new message on the conversation leaves the wait behind: it ends
+  and never wakes the run that moved on.
+- **Events.** Send the event to the project, `POST /v1/projects/{project}/events` with
+  `{"type": "invoice.paid", "data": {"key": "INV-42", ...}}`, or from a run or an event handler (`emit`). The waits in
+  that project for that type, with that key (or with none), continue with the event; the response lists the runs it
+  continued under `woke`. Events of another project never reach them. A wait whose conversation is running something
+  else at that moment keeps waiting for its time limit.
+- **Test runs do not wait.** Saved test cases, experiments, Copilot test runs and dry runs pass through Wait steps at
+  once (an event wait counts as timed out), with `skipped: true` in what the step saves. To try the event path, pin
+  the Wait step's output.
+- If the run cannot continue when due (the workflow draft has errors, the organisation is at a spending cap), it is
+  tried again every few minutes; if its workflow or deployment is gone, the run is cancelled with the reason.
+- **Exports** run the same step, but the exported service has no timer job: your scheduler resumes the conversation
+  at `due_at` (`POST .../threads/{thread}/resume` with `{"value": {"timed_out": false, "event": null}}`, or the event).
+
 ## Breakpoints
 
 Select a step and click **○ Add breakpoint** in the Inspector. A run pauses *before* that step

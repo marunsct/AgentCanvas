@@ -73,6 +73,7 @@ RUNTIME_FILES = [
     "workspace/__init__.py",
     "workspace/loader.py",
     "workspace/store.py",
+    "waits.py",  # the Wait step's times and durations
 ]
 FILE_PACKAGES = ["pypdf", "python-docx"]  # added when the workflow has file fields (G-5)
 PINNED = ["langgraph", "langchain", "langchain-core", "deepagents", "jsonschema", "cel-python", "jinja2", "httpx"]

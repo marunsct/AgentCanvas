@@ -31,7 +31,7 @@ PYTHON_IMAGE = "python:3.12.16-slim@sha256:8523d6abeb48ceae0b7240d30c5808fc26cb7
 UV_IMAGE = "ghcr.io/astral-sh/uv:0.11.33@sha256:77280f2f771df71f90786c314fe1bbc1e023feac652969bbf139c280babf2eb7"
 POSTGRES_IMAGE = "postgres:16.15-alpine@sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab"
 CADDY_IMAGE = "caddy:2.11.7-alpine@sha256:eb4d35b7452d1ab6171fbdbe8d9275b2301dad6dad92115d91e19fb9b24d510f"
-INTERRUPTING = {"core.approval", "core.human_input"}
+INTERRUPTING = {"core.approval", "core.human_input", "core.wait"}
 AGENTS = {"core.agent", "agent.deep"}
 MEMORY = {"core.memory_recall", "core.memory_remember", "core.memory_forget", "tool.memory", "backend.store"}
 

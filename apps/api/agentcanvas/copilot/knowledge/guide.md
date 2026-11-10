@@ -44,6 +44,10 @@ commands; the person sees your change as a proposal on the canvas and accepts or
   `config.default = "normal"`.
 - `core.set` (Set values): write fixed or templated values: `config.values = {"summary": "..."}`.
 - `core.approval` / `core.human_input`: pause for a person (approve a value, or fill a form).
+- `core.wait` (Wait, LangGraph only): pause, then continue on its own. `config.mode` = `for` (`duration`, e.g. `3d`),
+  `until` (`until`, an ISO date and time, optional `timezone`) or `event` (`event` type, `event_key` template,
+  required `timeout`); `output` gets `{timed_out, event, woke_at}`. Use it for "follow up later", never an agent
+  scheduling its own work.
 - `core.map` + `core.join`: do something per list item in parallel.
 - `core.script` / `tool.python`: the project's own Python code (`import_path` like `scripts.clean:run`).
 - Memory: `core.memory_recall`, `core.memory_remember`, `core.memory_forget`, `tool.memory`.

@@ -82,6 +82,14 @@ def _resource(pr: PlannedResource, plan: Plan, resources: ac.Resources, objs: di
     raise ValueError(f"unsupported resource type {r.type}")  # pragma: no cover - rejected by the validator
 
 
+WAIT_SETTINGS = ("mode", "duration", "until", "timezone", "event", "event_key", "timeout", "output")
+
+
+def wait_settings(cfg: dict[str, Any]) -> dict[str, Any]:
+    """A Wait step's settings as `ac.wait_node` takes them (the generated code passes the same): the ones it has."""
+    return {"mode": "for", **{k: cfg[k] for k in WAIT_SETTINGS if cfg.get(k) not in (None, "")}}
+
+
 GUARDS = {"guard.pii", "guard.injection", "guard.moderation", "guard.schema"}
 
 
@@ -269,6 +277,8 @@ def build_from_plan(plan: Plan, resources: ac.Resources, checkpointer=None, stor
             fn = ac.human_input_node(
                 node_id=n.id, prompt=cfg["prompt"], output=cfg["output"], response_schema=cfg.get("response_schema")
             )
+        elif n.type == "core.wait":
+            fn = ac.wait_node(node_id=n.id, **wait_settings(cfg))
         elif n.type in MEMORY_OPS:
             fn = ac.memory_node(
                 op=MEMORY_OPS[n.type],

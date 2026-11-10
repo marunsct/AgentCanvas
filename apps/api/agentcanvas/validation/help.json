@@ -168,6 +168,10 @@
       "what": "An organisation rule could not be checked.",
       "fix": "Ask an admin to look at the rule; the message says which one."
     },
+    "E097": {
+      "what": "A Wait block is missing how long or until when to wait, or a duration, time, time zone or event it cannot use.",
+      "fix": "Select the Wait block and fill in how long (e.g. 3d or 2h 30m), the time (e.g. 2026-12-01T09:00), or the event and its time limit. A wait lasts at most a year."
+    },
     "E999": {
       "what": "One of the checks failed while checking this workflow (a problem in AgentCanvas, not in your workflow). The other checks still ran.",
       "fix": "Report it with the message shown. You can keep editing; publishing stays blocked until the check runs."
@@ -303,6 +307,10 @@
     "W095": {
       "what": "This goes against a recommended organisation rule.",
       "fix": "Read the rule in the message; consider changing the workflow."
+    },
+    "W096": {
+      "what": "A Wait block waits for an event without a key: one such event ends every run that waits for it.",
+      "fix": "Set \u201cOnly the event with this key\u201d (e.g. {{ state.order_id }}) and send the same value as \"key\" in the event's data."
     }
   },
   "run_errors": [

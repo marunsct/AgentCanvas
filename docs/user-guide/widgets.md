@@ -56,7 +56,31 @@ not receive file fields yet.
 | **Decide with AI** (`core.decide`) | An AI model reads the data and picks one of the paths you describe (each choice is a path name and when to choose it), for decisions a rule cannot make: what a ticket is about, whether a reply is ready to send. The decision `{choice, confidence, reason}` is saved in a data field for later steps and evaluators. The model's JSON answer is found even with text or a code fence around it, and a path name in another case (`Billing` for `billing`) counts. An answer that is not one of the choices, or a confidence below **Minimum confidence**, takes the default path. Every framework runs it the same way, and so do exports. To grade outputs the same way, use the **AI classification** evaluator. |
 | **Repeat for each item** (`core.map`) | Runs the step connected to `each` once per list item, in parallel. Results must go to an `append` (list) field. |
 | **Wait for all** (`core.join`) | Waits until every incoming branch has finished, then continues. |
+| **Wait** (`core.wait`) | Pauses the run **for a while** (`3d`, `2h 30m`, `PT45M`), **until a time** (`2026-12-01T09:00` in a time zone you pick, UTC by default), or **until an event arrives**, with a time limit. Each can be a template, so an earlier step can choose it (`{{ state.follow_up_in }}`). The run then continues on its own; see [Waiting runs](run-and-debug.md#waiting-runs). LangGraph only. |
 | **Group of steps** (`core.subgraph`) | A small workflow with its own data, run as one step. Double-click it to look inside. |
+
+### Wait
+
+A **Wait** step is the safe way to say "follow up in three days if nobody replied": the wait is on the canvas, checked
+before the run, instead of an agent scheduling work for itself.
+
+- **For a while**: how long, from when the run gets there: a number of seconds, amounts with units (`3d`, `2h 30m`,
+  `90 minutes`, `1 week`) or an ISO 8601 duration without years or months (`PT2H30M`, `P3D`). Up to a year.
+- **Until a time**: an ISO 8601 date and time (`2026-12-01T09:00`, or with `Z` or an offset) or a date (its midnight). A
+  time without an offset is in the step's **Time zone** (e.g. `Europe/Berlin`; empty: UTC). A time already past does not
+  wait.
+- **Until an event arrives**: the event type that ends the wait (e.g. `invoice.paid`) and a **Time limit** (required).
+  **Only the event with this key** (e.g. `{{ state.invoice_id }}`) makes only the event whose data has the same `"key"`
+  end this run's wait; without a key, one such event ends every run waiting for it (the editor warns, W096). Events
+  about runs themselves (`run.*`, `interrupt.*`) cannot end a wait.
+- **Save what ended the wait in** (optional): a data field that gets `{"timed_out": false, "event": {...}, "woke_at":
+  "..."}`. After an event wait, route on it with **Choose a path**, e.g. `state.reply.timed_out == true` → send a
+  reminder.
+
+The editor checks the settings it can (E097: a missing or unreadable duration, time, time zone or event, or a wait over
+a year); a template is checked when the run gets there, and a value that does not work then fails the step with the
+reason. Only LangGraph runs it (it needs checkpoints the server can wake days later); on another framework the editor
+says so (P001) and suggests switching.
 
 ## Data and code
 

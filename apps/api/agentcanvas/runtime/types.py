@@ -9,8 +9,8 @@ from typing import Any, Literal
 from agentcanvas.ir.models import Workflow
 
 # client_tool: a tool the caller's application runs (AG-UI front-end tools): it waits for the application, not a
-# person, so it never becomes an Inbox item
-InterruptKind = Literal["tool_approval", "approval", "input", "client_tool"]
+# person, so it never becomes an Inbox item; timer: a Wait step, ended only by its time or its event
+InterruptKind = Literal["tool_approval", "approval", "input", "client_tool", "timer"]
 CLIENT_TOOL = "client_tool"
 RunMode = Literal["normal", "debug"]
 
@@ -24,6 +24,8 @@ class ResumeSpec:
     value: Any
     interrupt_id: str | None = None
     by_id: bool = False
+    # the timer job or a matching event ends a Wait step (services/timers.py); nobody else may answer one
+    wake: bool = False
 
 
 @dataclass
@@ -94,6 +96,8 @@ def interrupt_kind(payload: Any) -> InterruptKind:
             return "tool_approval"
         if payload.get("kind") == "approval":
             return "approval"
+        if payload.get("kind") == "timer":
+            return "timer"
     return "input"
 
 

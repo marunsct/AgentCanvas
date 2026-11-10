@@ -147,6 +147,9 @@ handler code never holds credentials. Steps can emit events during a run with `a
 event carries the id. You may leave it out while only one pause waits; with several waiting, the action fails and the
 event log shows the waiting ids ([Several pauses at once](run-and-debug.md#several-pauses-at-once)).
 
+An event also ends the [Wait](widgets.md#wait) steps of the project that wait for its type, with or without handlers:
+those with a key only when the event's data has the same `"key"` ([Waiting runs](run-and-debug.md#waiting-runs)).
+
 `dedup_key` runs the handler once per value: the same lead delivered again is skipped. Values are remembered for 30
 days (the operator's `AGENTCANVAS_EVENT_DEDUP_DAYS`), or the organisation's conversation retention when that is
 shorter; after that the same value runs the handler again.

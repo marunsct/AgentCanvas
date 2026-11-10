@@ -604,10 +604,20 @@ class Runner:
                 decided: list[str] = []
                 requested_by = user_id
                 if resume is not None:
-                    decided, resume = await self._decide_interrupts(s, thread_id, resume, decided_by or user_id)
+                    who = decided_by or (None if resume.wake else user_id)  # a Wait step's time came: nobody
+                    decided, resume = await self._decide_interrupts(s, thread_id, resume, who)
                     # an answer continues the request of whoever asked, not of who answered
                     asked_by = select(InterruptTask.requested_by).where(InterruptTask.id.in_(decided))
                     requested_by = next((u for u in (await s.scalars(asked_by)).all() if u), None)
+                elif not fresh and (input is not None or checkpoint_id is not None):
+                    # a new message (or a replay) leaves the step the conversation waited at: its Wait steps end
+                    # rather than wake a run that has moved on
+                    await s.execute(
+                        update(InterruptTask)
+                        .where(InterruptTask.thread_id == thread_id, InterruptTask.status == "pending")
+                        .where(InterruptTask.kind == "timer")
+                        .values(status="cancelled", decided_at=datetime.now(UTC))
+                    )
                 await s.commit()
         except IntegrityError as exc:
             self.active_by_thread.pop(thread_id, None)
@@ -681,23 +691,48 @@ class Runner:
     ) -> tuple[list[str], ResumeSpec]:
         """Mark the answered Inbox items decided; returns their ids (none for a breakpoint) and the resume naming
         them: the engine is always told which pause an answer is for (strict resume), so parallel pauses answer
-        separately. `resume.by_id`: several pauses answered together, each with its own answer (AG-UI)."""
+        separately. `resume.by_id`: several pauses answered together, each with its own answer (AG-UI). A Wait step
+        (kind "timer") is ended only by its time or its event (`resume.wake`): nobody can answer it, and an answer
+        that names nothing goes to the one other pause waiting, never to a Wait step."""
 
         def decision(value: Any) -> dict[str, Any]:
             return value if isinstance(value, dict) else {"value": value}
 
         now = datetime.now(UTC)
-        pairs: list[tuple[str | None, Any]] = (
-            list(resume.value.items()) if resume.by_id else [(resume.interrupt_id, resume.value)]
-        )
+        if resume.wake:
+            row = await s.get(InterruptTask, resume.interrupt_id) if resume.interrupt_id else None
+            if row is None or row.kind != "timer" or row.status != "pending":
+                raise Conflict("this Wait step is no longer waiting")
+            pairs: list[tuple[str | None, Any]] = [(row.id, resume.value)]
+        elif resume.by_id:
+            pairs = list(resume.value.items())
+        else:
+            pairs = [(resume.interrupt_id, resume.value)]
+            if not resume.interrupt_id:  # names nothing: the one pause a person may answer, beside any Wait steps
+                waiting = (InterruptTask.thread_id == thread_id, InterruptTask.status == "pending")
+                kinds = (await s.execute(select(InterruptTask.id, InterruptTask.kind).where(*waiting))).all()
+                others = [i for i, kind in kinds if kind != "timer"]
+                if len(others) < len(kinds):  # a Wait step waits too
+                    if len(others) != 1:
+                        raise Conflict(
+                            "this conversation also waits at a Wait step: name the item to answer (interrupt_id)"
+                            if others
+                            else "this run is at a Wait step: it continues on its own when the time comes or its "
+                            "event arrives, and cannot be answered (Stop cancels it)"
+                        )
+                    pairs = [(others[0], resume.value)]
         ids: list[str] = []
         for asked, value in pairs:
-            if (
-                asked
-                and await s.get(InterruptTask, asked) is None
-                and await self._client_tool_call(s, thread_id, asked)
-            ):
+            row = await s.get(InterruptTask, asked) if asked else None
+            if asked and row is None and await self._client_tool_call(s, thread_id, asked):
                 continue  # a tool call the caller's application answers (AG-UI): no Inbox item to decide
+            if row is not None and row.kind == "timer" and not resume.wake:
+                raise Conflict(
+                    "this run's wait was cancelled, and the run with it"
+                    if row.status == "cancelled"
+                    else "this run is at a Wait step: it continues on its own when the time comes or its event "
+                    "arrives, and cannot be answered (Stop cancels it)"
+                )
             task = await answered(s, thread_id, asked)  # unknown, decided or expired: refused with the reason
             if task is None:  # a breakpoint: nothing waits in the Inbox
                 continue
@@ -1018,7 +1053,7 @@ class Runner:
                         "approvers": h.approvers.get(intr.get("canvas_node_id") or ""), "assignee_role": None,
                         "noticed": None,  # announced again when asked again
                         "escalate_at": escalate_at(h.approvers.get(intr.get("canvas_node_id") or "")),
-                        "escalated_at": None,
+                        "escalated_at": None, **_waiting(intr),
                     }  # fmt: skip
                     row = await s.get(InterruptTask, intr["id"])
                     if row is None:
@@ -1029,6 +1064,16 @@ class Runner:
                             .where(InterruptTask.id == intr["id"])
                             .values(status="pending", decision=None, decided_by=None, decided_at=None, **asked)
                         )
+                if status in ("success", "interrupted") and not h.drained:
+                    # the run reported every pause its conversation still has: a Wait step it left behind (a time
+                    # that passed while another branch waited) must not wake the conversation later
+                    left = (InterruptTask.thread_id == h.thread_id, InterruptTask.status == "pending")
+                    await s.execute(
+                        update(InterruptTask)
+                        .where(*left, InterruptTask.kind == "timer")
+                        .where(InterruptTask.id.not_in([i["id"] for i in interrupts]))
+                        .values(status="cancelled", decided_at=datetime.now(UTC))
+                    )
                 s.add_all(rubric_scores(h))
                 await s.commit()
         except Exception:
@@ -1326,7 +1371,11 @@ class Runner:
 def _pending(h: RunHandle, spec: RunSpec) -> dict[str, Any]:
     """What a waiting run was started with: no checkpoint holds it before the run takes a slot, so a hand-over
     starts the run again with it (services/redeploy.py)."""
-    resume = {"value": spec.resume.value, "interrupt_id": spec.resume.interrupt_id} if spec.resume else None
+    resume = (
+        {"value": spec.resume.value, "interrupt_id": spec.resume.interrupt_id, "wake": spec.resume.wake}
+        if spec.resume
+        else None
+    )
     return _plain(
         {
             "input": spec.input, "resume": resume, "decided": h.decided, "mode": spec.mode,
@@ -1353,6 +1402,24 @@ def _title(input: dict[str, Any] | None) -> str | None:
 
 def _as_object(payload: Any) -> dict[str, Any]:
     return payload if isinstance(payload, dict) else {"value": payload}
+
+
+def _waiting(intr: dict[str, Any]) -> dict[str, Any]:
+    """A Wait step's Inbox columns (services/timers.py): when it is due and the event that wakes it sooner. It is
+    nobody's to decide or be told about."""
+    if intr.get("kind") != "timer":
+        return {"due_at": None, "wait_event": None, "wait_key": None, "claimed_until": None}
+    payload = _as_object(intr.get("payload"))
+    try:
+        due = datetime.fromisoformat(str(payload.get("due_at")))
+    except ValueError:  # the step always names one; a payload without it is due now rather than never
+        due = datetime.now(UTC)
+    key = payload.get("key")
+    return {
+        "due_at": due if due.tzinfo else due.replace(tzinfo=UTC), "wait_event": payload.get("event") or None,
+        "wait_key": None if key in (None, "") else str(key), "claimed_until": None, "approvers": None,
+        "escalate_at": None, "noticed": "timer",
+    }  # fmt: skip
 
 
 def _is_drift(value: Any) -> bool:

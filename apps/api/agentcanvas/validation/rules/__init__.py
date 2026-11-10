@@ -10,6 +10,7 @@ from agentcanvas.validation.rules import (
     ports,
     security,
     structure,
+    waits,
 )
 
 __all__ = [
@@ -22,4 +23,5 @@ __all__ = [
     "ports",
     "security",
     "structure",
+    "waits",
 ]

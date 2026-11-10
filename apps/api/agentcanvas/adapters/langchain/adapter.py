@@ -308,6 +308,8 @@ class LangChainAdapter:
         cfg = self._config(wf, spec.thread_id, spec.checkpoint_id, spec.run_id, spec.labels)
         if spec.org_id:  # memory nodes, memory tools and Deep Agent folders prefix their namespaces with it
             cfg.setdefault("configurable", {})[ac.ORG_KEY] = spec.org_id
+        if spec.dry_run or spec.labels.get("origin") == "test":  # test cases and experiments never wait for days
+            cfg.setdefault("configurable", {})[ac.SKIP_WAITS] = True
         if spec.resume is not None:
             iid = spec.resume.interrupt_id  # the runner names the pause it answers whenever one waits
             graph_input: Any = Command(resume={iid: spec.resume.value} if iid else spec.resume.value)

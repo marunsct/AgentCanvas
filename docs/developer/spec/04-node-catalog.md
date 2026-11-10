@@ -229,6 +229,7 @@ Ports are written `name: Type`. Inputs ← , outputs → .
 | Middleware: PII guard, model/tool call limit, model/tool retry, model fallback, summarization, to-dos, tool selector | `mw.pii`, `mw.model_call_limit`, `mw.tool_call_limit`, `mw.model_retry`, `mw.tool_retry`, `mw.model_fallback` (← models), `mw.summarization` (← model), `mw.todo`, `mw.tool_selector` (← model) | resource → `Middleware` |
 | Router · Map · Join | `core.router` · `core.map` (outputs `each`, `empty`) · `core.join` | runtime |
 | Approval · Human input | `core.approval` · `core.human_input` | runtime |
+| Wait (for a duration, until a time, until an event with a time limit) | `core.wait` (interrupt kind `timer` with `due_at`; woken by `services/timers.py`, never by a person) | runtime (LangGraph only) |
 | Set values · Python script | `core.set` · `core.script` | runtime |
 
 Resources may take inputs from other resources (a fallback middleware takes models, a subagent takes a model and tools); the Execution Plan builds them in dependency order. Ordered multi-ports (`middleware`, `tools`, `subagents`) use the edge `order`.

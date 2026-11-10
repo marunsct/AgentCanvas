@@ -46,7 +46,8 @@ def framework_runs_every_block(ctx: ValidationContext) -> Iterator[Diagnostic]:
     for el in [*wf.nodes, *wf.resources]:
         level = target.support(el.type)
         if level == "unsupported":
-            yield error("P001", f"{target.label} cannot run '{el.type}' blocks", node_id=el.id)
+            hint = target.notes.get(el.type)  # e.g. which framework can, when its manifest says
+            yield error("P001", f"{target.label} cannot run '{el.type}' blocks", node_id=el.id, hint=hint)
         elif level == "emulated":
             how = target.notes.get(el.type, "it behaves differently there")
             yield warning("P002", f"{target.label} only emulates '{el.type}': {how}", node_id=el.id)

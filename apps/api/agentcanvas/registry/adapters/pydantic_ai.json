@@ -23,9 +23,11 @@
     "knowledge.search": "emulated",
     "mw.model_call_limit": "native",
     "core.decide": "emulated",
+    "core.wait": "unsupported",
     "*": "unsupported"
   },
   "notes": {
+    "core.wait": "a Wait step needs saved checkpoints that a scheduler can wake days later: run this workflow on LangGraph (Framework in the workflow settings)",
     "core.set": "an async function that returns the fields it sets",
     "core.router": "the flow engine follows the first route whose CEL rule matches (generated orchestration: Pydantic AI has no graph of its own)",
     "core.join": "the flow engine waits for every branch before the block runs",

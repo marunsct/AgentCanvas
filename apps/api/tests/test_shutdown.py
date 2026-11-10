@@ -14,7 +14,7 @@ from test_runs_v1 import make
 from agentcanvas.api.main import create_app
 
 # the hand-over job stops last, after the drain: its ticks keep the heartbeat of runs finishing in the grace period
-JOBS = ("experiments", "cron", "retention", "crawl", "secrets", "handover")
+JOBS = ("experiments", "cron", "timers", "retention", "crawl", "secrets", "handover")
 
 
 async def rest(stream) -> list[str]:

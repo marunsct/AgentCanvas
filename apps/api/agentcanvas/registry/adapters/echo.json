@@ -16,9 +16,11 @@
     "core.script": "native",
     "core.llm": "emulated",
     "model.chat": "emulated",
+    "core.wait": "unsupported",
     "*": "unsupported"
   },
   "notes": {
+    "core.wait": "a Wait step needs saved checkpoints that a scheduler can wake days later: run this workflow on LangGraph (Framework in the workflow settings)",
     "core.llm": "answers with the scripted reply for its AI model, or repeats its prompt",
     "model.chat": "only names the scripted replies; no model is called"
   }

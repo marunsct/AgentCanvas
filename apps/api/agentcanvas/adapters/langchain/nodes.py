@@ -24,6 +24,7 @@ import warnings
 from collections import OrderedDict
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any
 from urllib.parse import urlsplit
@@ -56,7 +57,7 @@ from langgraph.runtime import Runtime
 from langgraph.types import CachePolicy, Command, RetryPolicy, Send, TimeoutPolicy, TracePolicy, interrupt
 from typing_extensions import TypedDict
 
-from agentcanvas import cloudmodels, filecontent
+from agentcanvas import cloudmodels, filecontent, waits
 from agentcanvas import guardrails as guard
 from agentcanvas import knowledge_search as ks
 from agentcanvas.adapters.langchain.gateway import AnswerCache, GatewayModel
@@ -1676,6 +1677,51 @@ def human_input_node(
             if not problems:
                 return {output: answer}
             request = {**request, "error": problems[0].message}
+
+    return run
+
+
+SKIP_WAITS = "agentcanvas_skip_waits"  # run config: a test or dry run does not wait at Wait steps
+
+
+def wait_node(
+    *,
+    node_id: str,
+    mode: str = "for",
+    duration: str | None = None,
+    until: str | None = None,
+    timezone: str | None = None,
+    event: str | None = None,
+    event_key: str | None = None,
+    timeout: str | None = None,
+    output: str | None = None,
+) -> Callable:
+    """Wait for a while, until a time, or until an event (F-10): the run pauses with an interrupt of kind "timer"
+    that names when it is due, and whoever runs the service resumes it then (AgentCanvas: its timer job, or the
+    matching event) with `waits.woken(...)`. Nothing is held while it waits. A time already past does not pause."""
+
+    def text(template: str | None, state: Any) -> str | None:
+        return render_template(template, state).strip() if template else template
+
+    async def run(state: Any) -> dict:
+        now = datetime.now(UTC)
+        due = waits.due_at(
+            mode, now=now, duration=text(duration, state), until=text(until, state), timeout=text(timeout, state),
+            timezone=timezone,
+        )  # fmt: skip
+        skip = bool((get_config().get("configurable") or {}).get(SKIP_WAITS))
+        if skip or due <= now:  # an event wait whose time limit is 0 has timed out at once
+            value: Any = waits.woken(timed_out=mode == "event", at=now, skipped=skip)
+        else:
+            request: dict[str, Any] = {"kind": "timer", "canvas_node_id": node_id, "mode": mode,
+                                       "due_at": due.isoformat()}  # fmt: skip
+            if mode == "event":
+                request["event"] = waits.check_event(event)
+                request["key"] = text(event_key, state) or None
+            value = interrupt(request)
+            if not isinstance(value, dict):  # resumed by hand (an exported service): the time is up
+                value = waits.woken(at=datetime.now(UTC))
+        return {output: value} if output else {}
 
     return run
 

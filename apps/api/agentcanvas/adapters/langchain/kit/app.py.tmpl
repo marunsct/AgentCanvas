@@ -13,6 +13,10 @@ except /healthz and /docs needs `Authorization: Bearer <one of API_KEYS>`.
 Conversations (approvals, chat history) are kept in DATABASE_URL (Postgres) when it is set, otherwise in the SQLite
 file SQLITE_PATH (one machine only). Run `make doctor` to check the environment; the service runs the same checks
 when it starts and stops with a plain message instead of failing on the first request.
+
+A Wait step pauses a run as an interrupt of kind "timer" whose payload says when it is due (`due_at`) and, for an
+event wait, the event and key it waits for. This service does not wake it on its own: your scheduler or event
+handler resumes the conversation then, with {"timed_out": false, "event": null} (or the event, or timed_out true).
 """
 
 from __future__ import annotations
@@ -97,8 +101,8 @@ def interrupt_kind(payload: Any) -> str:
     if isinstance(payload, dict):
         if "action_requests" in payload:
             return "tool_approval"
-        if payload.get("kind") == "approval":
-            return "approval"
+        if payload.get("kind") in ("approval", "timer"):  # timer: a Wait step, due at payload["due_at"]
+            return payload["kind"]
     return "input"
 
 
