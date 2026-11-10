@@ -58,6 +58,11 @@ dependencies = [
 # the one it needs: uv sync --extra kms-aws)
 kms-aws = ["boto3>=1.35"]
 kms-gcp = ["google-cloud-kms>=3.2"]
+# model providers in your own cloud account: AWS Bedrock (bedrock_converse:) and Claude on Google Vertex AI
+# (google_anthropic_vertex:). The API image installs both; a source install adds the one it needs: uv sync --extra
+# models-aws. Gemini on Vertex AI (google_vertexai:) needs neither: it uses langchain-google-genai
+models-aws = ["langchain-aws>=1.9,<2"]
+models-gcp = ["langchain-google-vertexai>=3.2,<4"]
 
 [dependency-groups]
 dev = [
@@ -68,6 +73,9 @@ dev = [
     "ruff>=0.9",
     "hypothesis>=6.120",
     "import-linter>=2.1",
+    # the cloud model providers (the models-aws and models-gcp extras), so their tests run
+    "langchain-aws>=1.9,<2",
+    "langchain-google-vertexai>=3.2,<4",
 ]
 
 [build-system]

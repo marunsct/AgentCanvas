@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-from agentcanvas import designs
+from agentcanvas import cloudmodels, designs
 from agentcanvas.adapters.langchain.codegen import one_line
 from agentcanvas.errors import InvalidInput
 from agentcanvas.ir.contract import output_names
@@ -39,7 +39,6 @@ PROVIDER_HOSTS = {
     "openai": "api.openai.com",
     "anthropic": "api.anthropic.com",
     "google_genai": "generativelanguage.googleapis.com",
-    "google_vertexai": "aiplatform.googleapis.com",
     "mistralai": "api.mistral.ai",
     "groq": "api.groq.com",
     "deepseek": "api.deepseek.com",
@@ -304,9 +303,12 @@ def facts(wf: Workflow, pkg: str, version: str, cases: list[dict[str, Any]] | No
                 env.setdefault(var, {"name": var, "kind": "model_key", "required": True,
                                      "where": f"an API key from your {label} account"})  # fmt: skip
             base = cfg.get("base_url") or LOCAL_PROVIDERS.get(provider)
+            cloud_host = cloudmodels.host(model, cfg, {})  # AWS Bedrock, Vertex AI: the block's region's address
             host = (
-                _host(str(base)) if base else (_host(PROVIDER_HOSTS[provider]) if provider in PROVIDER_HOSTS else None)
-            )
+                _host(str(base)) if base
+                else _host(f"https://{cloud_host}") if cloud_host
+                else (_host(PROVIDER_HOSTS[provider]) if provider in PROVIDER_HOSTS else None)
+            )  # fmt: skip
             if host:
                 hosts.setdefault(host[0], {"host": host[0], "port": host[1], "kind": "model",
                                            "why": f"the AI model {model}"})  # fmt: skip

@@ -21,6 +21,9 @@ in **Settings › Models**.
 | DeepSeek | `deepseek:deepseek-v4-pro` | `DEEPSEEK_API_KEY` |
 | xAI | `xai:grok-4.7` | `XAI_API_KEY` |
 | Any OpenAI-compatible API (OpenRouter, Together, Fireworks, a gateway…) | `openai_compatible:<model>` | `OPENAI_COMPATIBLE_API_KEY`, or a secret you pick; a **Base URL** is required |
+| AWS Bedrock (your AWS account) | `bedrock_converse:eu.anthropic.claude-sonnet-5-5` | no key: AWS credentials and a **Region**, see [below](#models-in-your-own-cloud-account) |
+| Google Vertex AI, Gemini (your Google Cloud project) | `google_vertexai:gemini-3.8-flash` | no key: Google Cloud credentials, a **Region** and a project |
+| Google Vertex AI, Claude (your Google Cloud project) | `google_anthropic_vertex:claude-sonnet-5-5` | no key: Google Cloud credentials, a **Region** and a project |
 
 ### Models on your computer
 
@@ -54,9 +57,90 @@ produce structured output: if an agent misbehaves, try a larger model.
 When AgentCanvas runs in Docker, `localhost` is the container itself: local servers are reached through
 `host.docker.internal` automatically (`AGENTCANVAS_LOCAL_MODELS_HOST`).
 
-Any other provider LangChain's `init_chat_model` supports can be used by its prefix too (for example
-`bedrock_converse:`), once its integration package is installed on the server; the editor then warns that the
-model is not in the catalog (`W010`).
+Any other provider LangChain's `init_chat_model` supports can be used by its prefix too, once its integration
+package is installed on the server; the editor then warns that the model is not in the catalog (`W010`).
+
+## Models in your own cloud account
+
+AWS Bedrock and Google Vertex AI run the models in your organisation's own cloud account: the calls are billed
+there, fall under the data-processing terms you have with that cloud, can stay on its private network, and are
+allowed or denied by its access rules (IAM) instead of an API key.
+
+| Provider | Model ids in the catalog | Integration on the server |
+|---|---|---|
+| AWS Bedrock | Claude Opus, Sonnet and Haiku 5.5, Amazon Nova 2 Lite and Nova Pro, Llama 4 Maverick, Mistral Large 3, for example `bedrock_converse:eu.anthropic.claude-sonnet-5-5` | `langchain-aws` |
+| Google Vertex AI, Gemini | `google_vertexai:gemini-3.8-flash`, `google_vertexai:gemini-3.6-flash` | `langchain-google-genai` (always installed) |
+| Google Vertex AI, Claude | `google_anthropic_vertex:claude-opus-5-5`, `…claude-sonnet-5-5`, `…claude-haiku-5-5` | `langchain-google-vertexai` |
+
+The API image includes all three (an operator can leave the AWS and Claude-on-Vertex ones out: see
+[Deploy and operate](deploy.md#option-1-docker-compose-on-one-host)). Any other Bedrock model or inference
+profile id works too, for example an application inference profile ARN for cost tracking; the editor then warns
+that it is not in the catalog (`W010`), and an operator can price it with `AGENTCANVAS_MODEL_PRICES`.
+
+### Region: where your prompts go
+
+The AI model block's **Region** is where the prompts and answers are sent and processed: `eu-central-1`
+(Frankfurt) on AWS; `europe-west4` (Netherlands), `eu` (any EU region), `us` or `global` on Google Cloud. Pick the
+region your data may be processed in. Without one, the block uses the server's default (`AWS_REGION` or
+`AWS_DEFAULT_REGION`; `GOOGLE_CLOUD_LOCATION`), and without either the editor reports `E024` and runs stop with
+the same message. The region must be a region name: anything else is refused, because it becomes part of the
+address the signed request goes to.
+
+On Bedrock, the model id says where a request may be served from, within the region you call:
+
+- `eu.…`, `us.…`, `au.…`, `jp.…`: cross-region inference that stays in that geography (an EU profile called
+  from `eu-central-1` may serve the request in Frankfurt, Stockholm, Milan, Spain, Ireland or Paris).
+- `global.…`: any AWS region in the world, for the most capacity, at a lower price (Claude: 10% less).
+- A model id without a prefix (`mistral.mistral-large-3-675b-instruct`): in the region you call only, where the
+  model offers it.
+
+On Google Cloud, a region (`europe-west4`) keeps the request there, `eu` or `us` within that geography, and
+`global` anywhere. Current Claude models on Vertex AI take `global`, `eu` or `us` only.
+
+The catalog prices each Bedrock routing choice separately (an EU or US profile of Claude costs 10% more than the
+global one). On Vertex AI the price depends on the region, which is not part of the model id, so the catalog
+records the price of a regional or multi-region endpoint, the higher one: cost budgets err on the safe side, and a
+`global` endpoint is billed 10% less than they count. Prices were checked on 2026-11-10 against the AWS Bedrock and
+Google Cloud pricing pages and Anthropic's; Gemini is recorded at its 2027 price (double the introductory one).
+Your own negotiated prices: `AGENTCANVAS_MODEL_PRICES`.
+
+### Credentials
+
+For each AI model block, the first of these that exists is used. A run signs its calls with it; nothing is stored
+in the workflow.
+
+1. **AWS Bedrock:** the block's **API key** secret (a Bedrock API key), else the project secret
+   `AWS_BEARER_TOKEN_BEDROCK`, else the project secrets `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` (and
+   `AWS_SESSION_TOKEN` for temporary keys; one without the other is refused, not mixed with the server's).
+   **Google Vertex AI:** the project secret `GOOGLE_SERVICE_ACCOUNT_KEY`, the contents of a service account's JSON
+   key file. Only a service account key is taken: other credential files (external accounts, workload identity
+   federation configurations) name files, addresses or commands on the server, and are refused.
+2. **The server's own identity:** on AWS, an IAM role for the API's service account (IRSA or EKS Pod Identity),
+   an ECS task role, an EC2 instance role, or `AWS_*` variables; on Google Cloud, Workload Identity on GKE, the
+   service account of the VM or Cloud Run service, or a key file in `GOOGLE_APPLICATION_CREDENTIALS`. This needs no
+   secret at all, and the keys never leave the cloud. Every project on the server can use it, so give that identity
+   access to the models you want offered, and nothing else.
+
+In the **hosted edition**, the server's identity is the operator's, not a tenant's: models in your cloud account use
+only the project's own secrets, and a run without them stops with a message naming them.
+
+The project for Vertex AI is the block's **Google Cloud project**, else the project of the service account key,
+else the server's `GOOGLE_CLOUD_PROJECT`. The identity needs the Vertex AI User role
+(`roles/aiplatform.user`) on it. On AWS, it needs `bedrock:InvokeModel` and
+`bedrock:InvokeModelWithResponseStream` on the models (and, for a cross-region profile, on the profile and the
+models in each region it may route to), and the models enabled in the Bedrock console.
+
+A block of these providers reaches the provider at its own address: a **Base URL** is refused (`E024`). For private
+networking, create a VPC interface endpoint (AWS PrivateLink) for `bedrock-runtime`, or a Private Service Connect
+endpoint for Vertex AI, with private DNS: the provider's own address then resolves to it.
+
+Backup models of the same cloud keep the block's region and project; a backup of another provider uses its own
+settings, so its prompts go where that provider runs: list only backups you accept for this data. **Use the
+cheapest of** never picks a model of another provider for a block that names a region, nor a Bedrock model that may
+serve requests from more places than the block's own (a `global.` profile in place of an `eu.` one), so it never
+moves prompts out of where the block keeps them. Agents designed for other frameworks (CrewAI, Google ADK, the
+OpenAI Agents SDK and the others) reach these models through AgentCanvas, like every catalog model, so the same
+credentials and region apply.
 
 ## Where a model's API key comes from
 

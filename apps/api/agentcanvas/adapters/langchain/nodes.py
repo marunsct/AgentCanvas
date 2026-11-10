@@ -56,7 +56,7 @@ from langgraph.runtime import Runtime
 from langgraph.types import CachePolicy, Command, RetryPolicy, Send, TimeoutPolicy, TracePolicy, interrupt
 from typing_extensions import TypedDict
 
-from agentcanvas import filecontent
+from agentcanvas import cloudmodels, filecontent
 from agentcanvas import guardrails as guard
 from agentcanvas import knowledge_search as ks
 from agentcanvas.adapters.langchain.gateway import AnswerCache, GatewayModel
@@ -370,6 +370,10 @@ def chat_model_args(model: str, params: dict[str, Any], secrets: dict[str, str])
     """The `init_chat_model` id and keyword arguments for a model id and its resolved config."""
     provider, _, name = model.partition(":")
     params, _ = without_sampling(model, dict(params))  # W020: the provider would refuse them with a 400
+    if provider in cloudmodels.CLOUD:  # AWS Bedrock, Google Vertex AI: a region and a cloud identity, not a key
+        return cloudmodels.client_args(model, params, secrets)
+    for k in cloudmodels.BLOCK_ONLY:  # left from a cloud model the block had before (W029)
+        params.pop(k, None)
     if provider == "ollama" and not params.get("base_url") and os.environ.get("AGENTCANVAS_LOCAL_MODELS_HOST"):
         params["base_url"] = _local(OLLAMA_URL)
     if provider in OPENAI_COMPATIBLE:
@@ -412,6 +416,13 @@ def public_only_args(model_id: str, args: dict[str, Any], what: str) -> dict[str
     the connection-pinned HTTP client; any other provider is refused an address of its own (or a local default,
     like Ollama's), because its client cannot be pinned."""
     provider = model_id.partition(":")[0]
+    cloud = {cloudmodels.BEDROCK: "aws", cloudmodels.CLAUDE_VERTEX: "gcp"}.get(provider)
+    if cloud or args.get("vertexai"):
+        # the provider's own address, from a checked region; the server's cloud identity is the operator's, not a
+        # tenant's, so only the project's own credentials are used
+        if not cloudmodels.has_own_credentials(model_id, args):
+            raise ValueError(f"{what} '{model_id}': {cloudmodels.hosted_problem(cloud or 'gcp')}")
+        return args
     if provider in PINNABLE:
         from agentcanvas.adapters.langchain.pinned import public_async_client
 
@@ -532,7 +543,11 @@ class Resources:
         shared = {k: v for k, v in params.items() if k in BACKUP_KEYS}  # backups use their provider's own key
 
         def backup(model: str) -> BaseChatModel:
-            backup_id, backup_args = chat_model_args(model, shared, self._secrets)
+            own = shared
+            if (cloud := cloudmodels.cloud_of(model)) and cloud == cloudmodels.cloud_of(config["model"]):
+                # a backup in the same cloud keeps the block's region and project: where its prompts may go
+                own = {**shared, **{k: params[k] for k in cloudmodels.BLOCK_ONLY if k in params}}
+            backup_id, backup_args = chat_model_args(model, own, self._secrets)
             if self.public_only:  # e.g. a local server's default address
                 backup_args = public_only_args(backup_id, backup_args, "backup model")
             return init_chat_model(backup_id, **backup_args)

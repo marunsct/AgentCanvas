@@ -49,6 +49,14 @@ in a file can leave them out (about 60 MB) with `--build-arg KMS=""`, or keep on
 whose master key needs a client it does not have stops at startup with a message naming the setting and what to
 install. Installed from source, add the one you use: `uv sync --extra kms-aws` or `uv sync --extra kms-gcp`.
 
+**Cloud model providers.** The API image also includes the integrations for models in your own cloud account: AWS
+Bedrock (`langchain-aws`, about 60 MB) and Claude on Google Vertex AI (`langchain-google-vertexai`, about 105 MB);
+Gemini on Vertex AI needs neither. A server that uses neither can leave them out with `--build-arg MODELS=""`, or keep
+one with `--build-arg MODELS=aws`. Without its integration, a model block of that provider gets the editor warning
+`W011` and its runs stop with a message naming the package. Installed from source: `uv sync --extra models-aws` or
+`uv sync --extra models-gcp`. How the models find their credentials and region: [Models in your own cloud
+account](models.md#models-in-your-own-cloud-account).
+
 **Database connections.** Each API replica opens up to `AGENTCANVAS_DB_POOL_SIZE` + `AGENTCANVAS_DB_MAX_OVERFLOW` +
 `AGENTCANVAS_PERSISTENCE_POOL_SIZE` connections (10 + 20 + 20 = 50 by default). Postgres's `max_connections` must be
 at least `API_REPLICAS × 50 + 10` (the 10 for migrations, `psql` and backups). The compose file starts Postgres with

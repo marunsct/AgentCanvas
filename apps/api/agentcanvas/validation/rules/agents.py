@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Iterator
 
+from agentcanvas import cloudmodels
 from agentcanvas.ir.models import BUDGET_LIMITS, Node, Resource, unenforced_limits
 from agentcanvas.registry import SAMPLING, provider_installed
 from agentcanvas.sampling import refuses
@@ -32,6 +33,28 @@ def model_catalog(ctx: ValidationContext) -> Iterator[Diagnostic]:
                     f"(install {provider.package})",
                     node_id=r.id,
                 )
+            yield from _cloud_settings(r, model, provider.label)
+
+
+def _cloud_settings(r: Resource, model: str, label: str) -> Iterator[Diagnostic]:
+    """E024: a model in your own cloud account needs a region (where its prompts go) and reaches the provider at
+    its own address; W029: a region or project on another provider's model is left out."""
+    if cloudmodels.cloud_of(model) is None:
+        for k in cloudmodels.BLOCK_ONLY:
+            if r.config.get(k):
+                yield warning(
+                    "W029", f"'{r.name}': {label} models take no {k}, so it is left out", node_id=r.id,
+                    path=f"config.{k}", hint="clear it, or pick an AWS Bedrock or Google Vertex AI model",
+                )  # fmt: skip
+        return
+    if problem := cloudmodels.region_problem(model, r.config):
+        yield error("E024", f"'{r.name}': {problem}", node_id=r.id, path="config.region")
+    if r.config.get("base_url"):
+        yield error(
+            "E024", f"'{r.name}': {label} models reach the provider at its own address, not a Base URL",
+            node_id=r.id, path="config.base_url",
+            hint="for private networking, use a VPC or Private Service Connect endpoint with private DNS",
+        )  # fmt: skip
 
 
 def _writes(t: Resource, ctx: ValidationContext) -> str | None:

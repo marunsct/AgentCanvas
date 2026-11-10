@@ -88,6 +88,10 @@
       "what": "A step reads a data field that does not exist.",
       "fix": "Add the field (click empty canvas, \u201c+ Channel\u201d) or correct its name in the step."
     },
+    "E024": {
+      "what": "This AI model runs in your own cloud account (AWS Bedrock or Google Vertex AI) and needs a region: the place its prompts are sent to and processed in. It always uses the provider's own address.",
+      "fix": "Select the AI model block and fill in Region (e.g. eu-central-1 on AWS, europe-west4, eu or global on Google Cloud), or ask whoever runs the server to set a default region. Clear Base URL."
+    },
     "E030": {
       "what": "The chosen AI model cannot do what this step asks (use tools or give structured answers).",
       "fix": "Pick a more capable model in the AI model block, or remove the tools / structured output."
@@ -283,6 +287,10 @@
     "W023": {
       "what": "The provider stops serving this model on the day shown; after it, every call to it fails.",
       "fix": "Pick a newer model from the list before that day (the provider names a successor)."
+    },
+    "W029": {
+      "what": "A region or Google Cloud project is set on a model that is not in your own cloud account, so it is not used.",
+      "fix": "Clear the setting, or pick an AWS Bedrock or Google Vertex AI model if the region matters."
     },
     "W045": {
       "what": "An app connector’s server added or changed tools since this workflow was published. The deployment leaves those tools out (or stops), because nobody reviewed them.",

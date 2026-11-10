@@ -62,7 +62,19 @@
           }
         },
         "format": "secret_ref",
-        "description": "A project secret holding the key. Empty: the project secret or server variable named after the provider (e.g. OPENAI_API_KEY)"
+        "description": "A project secret holding the key. Empty: the project secret or server variable named after the provider (e.g. OPENAI_API_KEY). AWS Bedrock: a Bedrock API key, instead of the AWS credentials"
+      },
+      "region": {
+        "type": "string",
+        "title": "Region",
+        "pattern": "^[a-z0-9-]+$",
+        "description": "AWS Bedrock and Google Vertex AI models only: the cloud region the prompts are sent to and processed in (data residency), e.g. eu-central-1 on AWS, europe-west4, eu or global on Google Cloud. Empty: the server's AWS_REGION or GOOGLE_CLOUD_LOCATION"
+      },
+      "project": {
+        "type": "string",
+        "title": "Google Cloud project",
+        "pattern": "^[a-z0-9.:-]+$",
+        "description": "Google Vertex AI models only: the project billed for the calls. Empty: the project of the service account key (the project secret GOOGLE_SERVICE_ACCOUNT_KEY), else the server's GOOGLE_CLOUD_PROJECT"
       },
       "fallbacks": {
         "type": "array",

@@ -163,7 +163,7 @@ def test_the_api_image_installs_both_cloud_kms_clients_from_the_lock():
     assert any(d.startswith("google-cloud-kms") for d in extras["kms-gcp"])
     lock = {p["name"]: p for p in tomllib.loads((api / "uv.lock").read_text())["package"]}
     assert {"boto3", "google-cloud-kms"} <= set(lock)
-    assert set(lock["agentcanvas"]["optional-dependencies"]) == {"kms-aws", "kms-gcp"}
+    assert {"kms-aws", "kms-gcp"} <= set(lock["agentcanvas"]["optional-dependencies"])
     dockerfile = (api.parents[1] / "infra" / "Dockerfile.api").read_text()
     assert 'ARG KMS="aws gcp"' in dockerfile
     assert dockerfile.count("$(for k in $KMS; do printf -- '--extra kms-%s ' \"$k\"; done)") == 2  # both uv syncs

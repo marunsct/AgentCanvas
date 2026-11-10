@@ -58,6 +58,7 @@ RUNTIME_FILES = [
     "adapters/langchain/parts.py",
     "adapters/langchain/spend.py",  # the deploy kit's per-run budget
     "adapters/langchain/testing.py",
+    "cloudmodels.py",  # AWS Bedrock and Google Vertex AI clients (`nodes.chat_model_args`)
     "expr.py",
     "filecontent.py",
     "guardrails.py",
@@ -84,7 +85,8 @@ PROVIDERS = {  # model id prefix -> (integration package, API key variable)
     "azure_openai": ("langchain-openai", "AZURE_OPENAI_API_KEY"),
     "anthropic": ("langchain-anthropic", "ANTHROPIC_API_KEY"),
     "google_genai": ("langchain-google-genai", "GOOGLE_API_KEY"),
-    "google_vertexai": ("langchain-google-vertexai", None),
+    "google_vertexai": ("langchain-google-genai", None),  # Gemini on Vertex AI: google-genai's Vertex backend
+    "google_anthropic_vertex": ("langchain-google-vertexai", None),
     "bedrock_converse": ("langchain-aws", None),
     "mistralai": ("langchain-mistralai", "MISTRAL_API_KEY"),
     "groq": ("langchain-groq", "GROQ_API_KEY"),
