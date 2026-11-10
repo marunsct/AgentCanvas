@@ -329,6 +329,19 @@ def sweep(since: float, tmp: Path | None = None) -> tuple[int, int]:
     return len(killed), removed
 
 
+def hide_from_children() -> None:
+    """Workspace code runs as this service's own user, and the service is the container's PID 1: without this, that
+    code could read AGENTCANVAS_SANDBOX_TOKEN from /proc/1/environ (its own environment has it removed) or ptrace
+    this process. A non-dumpable process's /proc files belong to root, so they are closed to it. Linux only."""
+    if sys.platform != "linux":
+        return
+    import ctypes
+
+    libc = ctypes.CDLL(None, use_errno=True)
+    if libc.prctl(4, 0, 0, 0, 0) != 0:  # PR_SET_DUMPABLE, 0
+        raise OSError(ctypes.get_errno(), "prctl(PR_SET_DUMPABLE, 0) failed: the service would expose its token")
+
+
 def create_service(token: str | None = None, run: Callable[..., Any] = _exchange) -> FastAPI:
     secret = token if token is not None else os.environ.get("AGENTCANVAS_SANDBOX_TOKEN", "")
     if len(secret) < 16:
@@ -445,6 +458,7 @@ def create_service(token: str | None = None, run: Callable[..., Any] = _exchange
 
 def __getattr__(name: str) -> Any:  # `uvicorn agentcanvas.sandbox.service:app` builds the app on first use
     if name == "app":
+        hide_from_children()  # the service itself (tests build theirs with create_service)
         app = create_service()
         globals()["app"] = app
         return app

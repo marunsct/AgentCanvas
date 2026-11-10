@@ -8,6 +8,7 @@ The product pass ([PLAN.md](docs/developer/history/product-plan-2026-10.md): one
 review of 2026-10-29 ([HARDENING.md](docs/developer/hardening.md)); no version has been tagged for them yet.
 
 ### Security
+- Code running in the sandbox can no longer read the sandbox service's token from /proc/1/environ.
 - Run search no longer shows the start of a project secret that falls where a run's error is cut short.
 - The hosted edition no longer runs a local (stdio) app connector on the API server; it runs only the gallery's
   connectors marked for the sandbox, and only there (E046)

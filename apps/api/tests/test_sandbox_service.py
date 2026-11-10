@@ -6,6 +6,7 @@ import asyncio
 import base64
 import io
 import os
+import sys
 import tarfile
 
 import httpx
@@ -235,3 +236,33 @@ async def test_a_busy_sandbox_says_so_instead_of_hanging(monkeypatch):
         second = await c.post("/run", json=body)
         gate.set()
         assert second.status_code == 503 and (await first).status_code == 200
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="/proc and prctl are Linux's")
+def test_workspace_code_cannot_read_the_services_token_from_proc(tmp_path):
+    """Workspace code runs as the sandbox service's own user, and the service is PID 1 of its container: it could read
+    AGENTCANVAS_SANDBOX_TOKEN from /proc/1/environ (its own environment has the token removed, the service's not).
+    The service makes itself non-dumpable, so its /proc files belong to root."""
+    import subprocess
+
+    child = tmp_path / "workspace_code.py"
+    child.write_text(
+        "import os\n"
+        "try:\n"
+        "    seen = open(f'/proc/{os.getppid()}/environ').read()\n"
+        "    print('READ' if 'AGENTCANVAS_SANDBOX_TOKEN' in seen else 'EMPTY')\n"
+        "except PermissionError:\n"
+        "    print('DENIED')\n"
+    )
+    script = tmp_path / "service.py"
+    script.write_text(
+        "import subprocess, sys\n"
+        "from agentcanvas.sandbox import service\n"
+        "service.hide_from_children()\n"
+        f"print(subprocess.run([sys.executable, {str(child)!r}], capture_output=True, text=True).stdout.strip())\n"
+    )
+    env = {**os.environ, "AGENTCANVAS_SANDBOX_TOKEN": TOKEN}
+    done = subprocess.run(
+        [sys.executable, str(script)], env=env, capture_output=True, text=True, timeout=60, check=False
+    )
+    assert done.stdout.strip() == "DENIED", (done.stdout, done.stderr[-500:])
