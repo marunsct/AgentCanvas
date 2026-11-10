@@ -49,6 +49,14 @@ in a file can leave them out (about 60 MB) with `--build-arg KMS=""`, or keep on
 whose master key needs a client it does not have stops at startup with a message naming the setting and what to
 install. Installed from source, add the one you use: `uv sync --extra kms-aws` or `uv sync --extra kms-gcp`.
 
+**Cloud model providers.** The API image also includes the integrations for models in your own cloud account: AWS
+Bedrock (`langchain-aws`, about 60 MB) and Claude on Google Vertex AI (`langchain-google-vertexai`, about 105 MB);
+Gemini on Vertex AI needs neither. A server that uses neither can leave them out with `--build-arg MODELS=""`, or keep
+one with `--build-arg MODELS=aws`. Without its integration, a model block of that provider gets the editor warning
+`W011` and its runs stop with a message naming the package. Installed from source: `uv sync --extra models-aws` or
+`uv sync --extra models-gcp`. How the models find their credentials and region: [Models in your own cloud
+account](models.md#models-in-your-own-cloud-account).
+
 **Database connections.** Each API replica opens up to `AGENTCANVAS_DB_POOL_SIZE` + `AGENTCANVAS_DB_MAX_OVERFLOW` +
 `AGENTCANVAS_PERSISTENCE_POOL_SIZE` connections (10 + 20 + 20 = 50 by default). Postgres's `max_connections` must be
 at least `API_REPLICAS × 50 + 10` (the 10 for migrations, `psql` and backups). The compose file starts Postgres with
@@ -106,6 +114,17 @@ lists everything else. The chart refuses to render without the image repositorie
 issuer and audience, and `helm install` / `helm upgrade` fail when the Secret lacks a required key. Migrations run as
 a Helm hook Job before the API starts.
 
+**A cloud identity instead of keys.** AWS Bedrock and Google Vertex AI models (and a KMS master key) can use the API
+pods' own cloud identity, so no access key is stored anywhere. Set `api.serviceAccount.create: true` and give the
+service account the annotation of your cloud: `eks.amazonaws.com/role-arn: arn:aws:iam::<account>:role/<role>` for
+AWS IRSA, or `iam.gke.io/gcp-service-account: <name>@<project>.iam.gserviceaccount.com` for GKE Workload Identity
+(and bind the Google service account to it). For EKS Pod Identity, associate the role with the service account's
+name (`<release>-agentcanvas-api`, or yours in `api.serviceAccount.name`). To use a service account you manage,
+set only `api.serviceAccount.name`. The pods still mount no Kubernetes API token. Set the default region beside it
+(`AWS_REGION`, `GOOGLE_CLOUD_LOCATION` and `GOOGLE_CLOUD_PROJECT` in the Secret) if model blocks do not name one.
+Every project on the server can use this identity: grant it only the models you want offered. See [Models in your
+own cloud account](models.md#models-in-your-own-cloud-account).
+
 Kubernetes puts no limit on the processes a pod starts unless the kubelet's `podPidsLimit` is set (the compose files
 set `pids_limit` on the sandbox containers). Each sandbox call's code may start about 256 processes or threads, so a
 fork loop stops there; still set `podPidsLimit` (e.g. 1024) on the nodes the sandbox pods run on
@@ -131,6 +150,7 @@ Every setting, with its default, is listed in [Server settings](server-settings.
 | `AGENTCANVAS_SANDBOX_URL`, `AGENTCANVAS_SANDBOX_TOKEN` | With `remote`: where the sandbox service is, and the secret (32+ random characters) the API presents to it. The compose file and chart set the URL; you provide the token |
 | `SANDBOX_REPLICAS` (compose), `sandbox.replicas` (Helm) | How many sandbox containers run (4 by default). Each runs one call at a time and, after it, stops anything the code left running and removes what it wrote (`AGENTCANVAS_SANDBOX_SWEEP=1`), so code of different projects never shares a container at the same moment; more replicas, more calls at once |
 | `AGENTCANVAS_EGRESS_PROXY`, `AGENTCANVAS_EGRESS_SECRET` | The egress proxy the sandbox reaches the hosts of a project's `sandbox.json` through (`egress:3128` in the compose files, the `-egress` Service in the chart), and the secret (32+ random characters) it checks each call's list with. You provide the secret; with `docker` and no proxy set, the API starts an `agentcanvas-egress` container itself. `AGENTCANVAS_EGRESS_PROXY_RESOLVE=true` (set by the chart) hands the sandbox the proxy's address instead of its name, so the sandbox pods need no DNS |
+| `AGENTCANVAS_ALLOW_LOCAL_MCP`, `AGENTCANVAS_SANDBOX_MCP` | Local (stdio) app connectors: `ALLOW_LOCAL_MCP=true` lets builders use them, and `SANDBOX_MCP=true` runs them in the sandbox instead of on the API server ([below](#local-app-connectors-in-the-sandbox)). Both default to `false`. The hosted edition runs them only in the sandbox |
 | `AGENTCANVAS_CORS_ORIGINS` | The web app's origin, as a JSON list |
 | `AGENTCANVAS_AUDIT_SINK_URL`, `AGENTCANVAS_AUDIT_SINK_SECRET` | Optional: where security events are also POSTed as signed CloudEvents, and the secret that signs them ([Security events](#security-events-and-audit-forwarding)) |
 | `AGENTCANVAS_AUDIT_SPLUNK_HEC_URL`, `AGENTCANVAS_AUDIT_SPLUNK_HEC_TOKEN` | Optional: Splunk's HTTP Event Collector, which also receives security events, and its token ([Security events](#security-events-and-audit-forwarding)) |
@@ -141,6 +161,60 @@ Every setting, with its default, is listed in [Server settings](server-settings.
 | `AGENTCANVAS_RATE_LIMIT_PER_DEPLOYMENT` / `_PER_WEBHOOK` / `_PER_PROJECT` / `_PER_SHARE_CLIENT` | Public API requests per minute (120 / 120 / 600 / 30 per share-link visitor address). An organisation's admin may set lower ones for the organisation ([Settings](settings.md#what-an-organisation-may-override)) |
 | `TRUSTED_PROXIES` (web) | The address ranges (space-separated) of a load balancer or ingress in front of the web container, e.g. `10.0.0.0/8`. Only a client address it forwards is believed, for rate limits, the audit log and organisations' allowed networks. Default `127.0.0.1/32` (nothing in front). In Helm: `web.trustedProxies`, by default every RFC 1918 range (`10.0.0.0/8 172.16.0.0/12 192.168.0.0/16`); narrow it to your ingress controller's pod range. |
 | `SECURITY_CONTACT`, `SECURITY_POLICY` (web) | What `/.well-known/security.txt` (RFC 9116) names as the place to report a vulnerability (an `https:`, `mailto:` or `tel:` address) and the disclosure policy (an `https:` page). Default: AgentCanvas's private advisory form and security policy on GitHub; set your own security team's. Anything but a plain address stops the web container from starting. In Helm: `web.securityContact`, `web.securityPolicy`. |
+
+### Local app connectors in the sandbox
+
+Local app connectors (Playwright's browser, the filesystem, git, Slack's `npx` server…) start a program and talk to
+it over its input and output. On a production server, run them in the sandbox, never on the API server:
+
+```bash
+AGENTCANVAS_ALLOW_LOCAL_MCP=true
+AGENTCANVAS_SANDBOX_MCP=true   # needs AGENTCANVAS_SCRIPT_EXECUTION=remote (the default here) or docker
+```
+
+- **`remote`** (compose, Helm): the API opens a WebSocket to the sandbox service (`/mcp`, with the sandbox token),
+  which starts the program with the connector's own environment and relays its input and output for as long as
+  the connection lasts. A connector takes a sandbox for its whole life, as a script call does for its own, so plan
+  replicas for both: with the defaults, a run's connector holds one until the run ends. `AGENTCANVAS_SANDBOX_MCP_URL`
+  sends connectors to a sandbox service of their own (for example one running the browser image below), and
+  `AGENTCANVAS_SANDBOX_URL` keeps serving scripts.
+- **`docker`**: each connector gets a container of its own (`ac-mcp-…`, label `agentcanvas.mcp=1`) from
+  `AGENTCANVAS_SANDBOX_MCP_IMAGE` (default: `AGENTCANVAS_SANDBOX_IMAGE`), as nobody, read-only with a 512 MB `/tmp`,
+  no capabilities, one CPU, at most 512 processes, `--init`, and no network or only the egress network. Its
+  environment goes in a file readable only by the API's user, removed once the container exists.
+- Either way the program reaches only the hosts of its project's `sandbox.json` egress list, through the egress
+  proxy (a relay inside the sandbox adds the signed list, so browsers that send no proxy password work too), and is
+  stopped when it uses more memory than `mcp.memory_mb`, after `mcp.idle_s` without a call, after `mcp.lifetime_s`
+  in any case, or when its run ends ([Sandbox](workspace.md#sandbox)).
+- `AGENTCANVAS_SANDBOX_MCP_SESSIONS` (default 8) caps the connector sandboxes one API server runs at once; past
+  it the least recently used idle one is stopped, or the run fails with "8 app connector sandboxes are in use".
+- The image needs Python 3 (which starts the program) and the program itself. Programs are not downloaded at run
+  time unless the egress list allows the registry (`registry.npmjs.org`, `pypi.org`, `files.pythonhosted.org`);
+  the browser image below comes with the gallery's sandbox connectors.
+- The hosted edition allows only the gallery's connectors marked to run in the sandbox (E046), and checks it again
+  before every run. With `AGENTCANVAS_EDITION=hosted` and `SANDBOX_MCP` off, no local connector runs at all: the
+  hosted edition never starts one on the API server.
+
+**The browser image.** Build the API image with `--build-arg WITH_BROWSER=true` and run the sandbox from it; the API
+itself keeps the plain image:
+
+```bash
+docker build -f infra/Dockerfile.api --build-arg FRAMEWORKS=all --build-arg WITH_MASTRA=true \
+  --build-arg WITH_BROWSER=true -t agentcanvas-api:browser apps/api
+```
+
+- It adds Node.js, the gallery's connectors that run in the sandbox (**Browser (Playwright)**, **Sequential
+  thinking**, at the gallery's versions, installed from `agentcanvas/sandbox/connectors/package-lock.json`) and
+  Chromium with its system libraries: about 950 MB more on disk (about 370 MB to download): Chromium, Node.js and
+  the connectors 595 MB, Chromium's libraries and fonts 350 MB.
+- Compose: `SANDBOX_IMAGE=agentcanvas-api:browser`. Helm: `sandbox.image`. Docker mode:
+  `AGENTCANVAS_SANDBOX_MCP_IMAGE=agentcanvas-api:browser`.
+- In it, `npx @playwright/mcp@0.0.83 …` starts the installed copy, offline; Playwright MCP uses that Chromium and
+  writes its snapshots under `/tmp`. Chromium runs without its own sandbox (the container is the sandbox) and with
+  the connector's memory limit: give a browser `"mcp": {"memory_mb": 1024}` or more in `sandbox.json`, and the
+  sandbox pods or containers that much on top of what scripts need (the compose file gives them 2 GB).
+- To offer another connector in the hosted edition, add it to that `package.json` (and its lockfile) at the
+  gallery's exact version and mark the gallery entry `sandboxable`; a test checks the two agree.
 
 ## Sign-in
 

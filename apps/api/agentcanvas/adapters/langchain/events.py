@@ -84,11 +84,17 @@ def translate(
                 yield {"type": "STATE_DELTA", "canvas_node_id": names.get(node_name), "delta": jsonable(update)}
     elif kind == "messages":
         chunk, meta = data
+        if getattr(chunk, "type", "") not in ("ai", "AIMessageChunk"):
+            return
         text = getattr(chunk, "content", "")
-        if text and isinstance(text, str) and getattr(chunk, "type", "") in ("ai", "AIMessageChunk"):
-            parent = ns[0].split(":")[0] if ns else meta.get("langgraph_node")
+        parent = ns[0].split(":")[0] if ns else meta.get("langgraph_node")
+        agent = _agent(meta) if ns else None  # which agent wrote it: a Planning Agent's helper, for the trajectory
+        if thought := _reasoning(chunk):  # the model's thinking, as it streams (AG-UI REASONING events)
+            value = {"delta": thought, **({"agent": agent} if agent else {})}
+            yield {"type": "CUSTOM", "name": "ac.reasoning", "canvas_node_id": names.get(parent), "value": value}
+        if text and isinstance(text, str):
             ev = {"type": "TEXT_MESSAGE_CONTENT", "canvas_node_id": names.get(parent), "delta": text}
-            if ns and (agent := _agent(meta)):  # which agent wrote it: a Planning Agent's helper, for the trajectory
+            if agent:
                 ev["agent"] = agent
             yield ev
     elif kind == "custom":
@@ -105,6 +111,28 @@ def translate(
                    "value": jsonable(value)}  # fmt: skip
         else:
             yield {"type": "CUSTOM", "name": "ac.custom", "value": jsonable(data)}
+
+
+def _reasoning(chunk: Any) -> str:
+    """The thinking text in a streamed model chunk: Anthropic `thinking` and standard `reasoning` content blocks, or
+    `reasoning_content` (DeepSeek, xAI, OpenAI-compatible servers)."""
+    out: list[str] = []
+    content = getattr(chunk, "content", None)
+    for block in content if isinstance(content, list) else []:
+        if not isinstance(block, dict):
+            continue
+        if block.get("type") == "thinking" and isinstance(block.get("thinking"), str):
+            out.append(block["thinking"])
+        elif block.get("type") == "reasoning":
+            if isinstance(block.get("reasoning"), str):
+                out.append(block["reasoning"])
+            for part in block.get("summary") or []:
+                if isinstance(part, dict) and isinstance(part.get("text"), str):
+                    out.append(part["text"])
+    extra = (getattr(chunk, "additional_kwargs", None) or {}).get("reasoning_content")
+    if isinstance(extra, str):
+        out.append(extra)
+    return "".join(out)
 
 
 def _agent(metadata: Any) -> str | None:

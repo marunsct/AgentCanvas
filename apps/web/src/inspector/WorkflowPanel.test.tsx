@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Command } from "../ir/commands";
 import { triage } from "../test/fixtures";
 
-vi.mock("../api/session", () => ({ can: () => true, useCan: () => true, ME: { role: "builder" } }));
+vi.mock("../api/session", () => ({ can: () => true, canOrg: () => true, useCan: () => true, useCanOrg: () => true, ME: { role: "builder" } }));
 vi.mock("../api/client", () => ({ ApiError: class extends Error {}, apiFetch: vi.fn(() => new Promise(() => undefined)) }));
 
 const { useEditor } = await import("../editor/store");

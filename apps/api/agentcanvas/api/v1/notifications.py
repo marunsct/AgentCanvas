@@ -1,6 +1,7 @@
 """Where an organisation's approval notifications go (E-6, Settings > Organisation > Notifications): e-mail, a Slack
-incoming webhook and a signed webhook of its own. Admins only (`deps.required_role`): the webhook's address and
-whether a Slack address is set are shown, the Slack address and the signing secret never are."""
+incoming webhook and a signed webhook of its own; and whether each project's weekly run digest goes there too
+(F-11). Admins only (`deps.required_role`): the webhook's address and whether a Slack address is set are shown, the
+Slack address and the signing secret never are."""
 
 from __future__ import annotations
 
@@ -33,6 +34,7 @@ class NotificationsOut(BaseModel):
     slack: bool = Field(description="a Slack incoming webhook is set (its address is never shown)")
     webhook_url: str | None
     webhook_secret_set: bool
+    digest: bool = Field(default=False, description="each project's weekly run digest also goes to these channels")
     updated_at: datetime | None = None
 
 
@@ -50,6 +52,7 @@ class NotificationsIn(BaseModel):
     slack_url: str | None = Field(None, max_length=500)
     webhook_url: str | None = Field(None, max_length=2000)
     webhook_secret: str | None = Field(None, min_length=notifier.SECRET_MIN, max_length=200)
+    digest: bool | None = None
 
 
 def _out(row: OrgNotifier | None, smtp: bool) -> NotificationsOut:
@@ -61,7 +64,7 @@ def _out(row: OrgNotifier | None, smtp: bool) -> NotificationsOut:
     return NotificationsOut(
         email=EmailOut(enabled=row.email, to=list(row.email_to or []), available=smtp),
         slack=row.slack_url is not None, webhook_url=row.webhook_url,
-        webhook_secret_set=row.webhook_secret is not None, updated_at=row.updated_at,
+        webhook_secret_set=row.webhook_secret is not None, digest=row.digest, updated_at=row.updated_at,
     )  # fmt: skip
 
 
@@ -87,12 +90,14 @@ async def put_notifications(
         raise Conflict("this server has no mail server: ask its operator to set AGENTCANVAS_SMTP_HOST and _FROM")
     row = await session.get(OrgNotifier, user.org_id, with_for_update=True, populate_existing=True)
     if row is None:
-        row = OrgNotifier(org_id=user.org_id, email=False, email_to=[])
+        row = OrgNotifier(org_id=user.org_id, email=False, email_to=[], digest=False)
         session.add(row)
     f = await request.app.state.keyring.fernet(session, user.org_id)
     made: str | None = None
     if "email" in sent:
         row.email = bool(body.email)
+    if "digest" in sent:
+        row.digest = bool(body.digest)
     if "email_to" in sent:
         row.email_to = list(dict.fromkeys(e.strip() for e in body.email_to or []))
     if "slack_url" in sent:
@@ -115,7 +120,7 @@ async def put_notifications(
     # what changed, never an address (it may hold a token) or the secret
     note(request, target=f"org_id={user.org_id}", changed=sorted(sent), email=row.email,
          slack=row.slack_url is not None, webhook_host=urlsplit(row.webhook_url).hostname if row.webhook_url else None,
-         secret_made=made is not None)  # fmt: skip
+         secret_made=made is not None, digest=row.digest)  # fmt: skip
     return NotificationsSaved(**_out(row, notifier.smtp_ready(settings)).model_dump(), webhook_secret=made)
 
 

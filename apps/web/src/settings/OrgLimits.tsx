@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { apiFetch } from "../api/client";
 import type { OrgSettingsOut } from "../api/generated";
-import { useCan } from "../api/session";
+import { useCanOrg } from "../api/session";
 import { toast } from "../ui/dialog";
 
 type Own = Record<string, number | boolean | null>;
@@ -30,7 +30,7 @@ const shown = (key: string, v: number | boolean | undefined) =>
 
 export function OrgLimits() {
   const qc = useQueryClient();
-  const admin = useCan("admin");
+  const admin = useCanOrg("admin");
   const q = useQuery({ queryKey: ["org-settings"], queryFn: () => apiFetch<OrgSettingsOut>("/org/settings") });
   const [draft, setDraft] = useState<Own>({});
   useEffect(() => { if (q.data) setDraft({ ...(q.data.limits.own as Own) }); }, [q.data]);

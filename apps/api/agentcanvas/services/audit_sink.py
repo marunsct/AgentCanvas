@@ -50,6 +50,7 @@ SECURITY_ACTIONS = frozenset({
     "publish", "unpublish", "rotate_key",  # workflows published to an environment, their keys
     "create_deployment_key", "revoke_deployment_key",
     "rotate_callback_secret",  # the secret that signs a deployment's run callbacks
+    "put_deployment_oauth",  # who may sign in to a deployment's MCP and A2A endpoints, and with which issuer
     "update_share", "regenerate_share",  # public share links of deployments
     "create_trigger", "enable_trigger",  # webhooks and schedules: a way in that runs workflows without a person
     "put_secret", "delete_secret",  # project secrets
@@ -59,6 +60,7 @@ SECURITY_ACTIONS = frozenset({
     "edit_state",  # a conversation's state changed by hand, past what was approved
     "stop_all_runs",  # the organisation's kill switch
     "set_member", "remove_member", "accept_invitation",  # members and roles (dev and oidc modes)
+    "put_project_member", "delete_project_member",  # who works in a project, with what role
     "put_org_settings", "create_policy", "replace_policy", "delete_policy",  # organisation settings and policies
     "put_notifications",  # where approval notifications (and what they say) go
     "delete_project", "delete_workflow", "erase",  # deletions that cannot be undone (memory erasure)
@@ -78,6 +80,7 @@ SECURITY_ACTIONS = frozenset({
     "export_member", "export_end_user", "api_export_end_user",  # and access (E-7)
     "create_org_export", "create_org_export_link", "download_org_export",  # the organisation's data leaving
     "audit_outbox_retried", "audit_outbox_discarded",  # undelivered entries sent again or dropped (command line)
+    "update_system_record",  # a deployment's AI-system record: its risk class, owner and purpose
 })  # fmt: skip
 
 FORWARDED, FORWARD_FAILED, FORWARD_DEAD, OUTBOX = (

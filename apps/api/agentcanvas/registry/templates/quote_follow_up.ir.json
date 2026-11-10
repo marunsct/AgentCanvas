@@ -1,0 +1,222 @@
+{
+  "ir_version": "1.1",
+  "id": "tpl_quote_follow_up",
+  "name": "Quote with a follow-up",
+  "description": "Drafts a quote for a customer, then waits up to three days for their reply (an event with the customer's id). If nobody replies, it writes a friendly reminder.",
+  "state": {
+    "channels": [
+      {
+        "name": "customer",
+        "description": "The customer's id, e.g. their email address: the reply event carries it as its key",
+        "io": "in"
+      },
+      {
+        "name": "request",
+        "description": "What the customer asked for",
+        "io": "in"
+      },
+      {
+        "name": "quote",
+        "io": "out"
+      },
+      {
+        "name": "reply",
+        "type": {
+          "type": "object"
+        },
+        "description": "What ended the wait: the reply event, or timed_out",
+        "io": "out"
+      },
+      {
+        "name": "reminder",
+        "io": "out"
+      },
+      {
+        "name": "status",
+        "io": "out"
+      }
+    ]
+  },
+  "resources": [
+    {
+      "id": "r_model",
+      "type": "model.chat",
+      "name": "writer_model",
+      "config": {
+        "model": "anthropic:claude-sonnet-5-5"
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_quote",
+      "type": "core.llm",
+      "name": "draft_quote",
+      "label": "Draft the quote",
+      "config": {
+        "prompt": "Write a short, clear quote for this customer request:\n\n{{ state.request }}",
+        "output": "quote"
+      }
+    },
+    {
+      "id": "n_wait",
+      "type": "core.wait",
+      "name": "wait_for_reply",
+      "label": "Wait for their reply",
+      "config": {
+        "mode": "event",
+        "event": "quote.replied",
+        "event_key": "{{ state.customer }}",
+        "timeout": "3d",
+        "output": "reply"
+      }
+    },
+    {
+      "id": "n_replied",
+      "type": "core.router",
+      "name": "replied",
+      "label": "Did they reply?",
+      "config": {
+        "cases": [
+          {
+            "when": "state.reply.timed_out == true",
+            "route": "no_reply"
+          }
+        ],
+        "default": "replied"
+      }
+    },
+    {
+      "id": "n_remind",
+      "type": "core.llm",
+      "name": "write_reminder",
+      "label": "Write a reminder",
+      "config": {
+        "prompt": "The customer has not answered this quote for three days. Write a friendly two-sentence reminder.\n\n{{ state.quote }}",
+        "output": "reminder"
+      }
+    },
+    {
+      "id": "n_done",
+      "type": "core.set",
+      "name": "mark_replied",
+      "label": "Mark as answered",
+      "config": {
+        "values": {
+          "status": "the customer replied"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e0",
+      "kind": "flow",
+      "source": {
+        "node": "START"
+      },
+      "target": {
+        "node": "n_quote"
+      }
+    },
+    {
+      "id": "e1",
+      "kind": "flow",
+      "source": {
+        "node": "n_quote"
+      },
+      "target": {
+        "node": "n_wait"
+      }
+    },
+    {
+      "id": "e2",
+      "kind": "flow",
+      "source": {
+        "node": "n_wait"
+      },
+      "target": {
+        "node": "n_replied"
+      }
+    },
+    {
+      "id": "e3",
+      "kind": "flow",
+      "source": {
+        "node": "n_replied",
+        "port": "route:no_reply"
+      },
+      "target": {
+        "node": "n_remind"
+      }
+    },
+    {
+      "id": "e4",
+      "kind": "flow",
+      "source": {
+        "node": "n_replied",
+        "port": "route:replied"
+      },
+      "target": {
+        "node": "n_done"
+      }
+    },
+    {
+      "id": "e5",
+      "kind": "flow",
+      "source": {
+        "node": "n_remind"
+      },
+      "target": {
+        "node": "END"
+      }
+    },
+    {
+      "id": "e6",
+      "kind": "flow",
+      "source": {
+        "node": "n_done"
+      },
+      "target": {
+        "node": "END"
+      }
+    },
+    {
+      "id": "w100",
+      "kind": "wiring",
+      "source": {
+        "node": "r_model"
+      },
+      "target": {
+        "node": "n_quote",
+        "port": "model"
+      }
+    },
+    {
+      "id": "w101",
+      "kind": "wiring",
+      "source": {
+        "node": "r_model"
+      },
+      "target": {
+        "node": "n_remind",
+        "port": "model"
+      }
+    }
+  ],
+  "metadata": {
+    "gallery": {
+      "category": "Sales",
+      "tags": [
+        "wait",
+        "events",
+        "follow-up"
+      ],
+      "difficulty": "intermediate",
+      "sample_input": {
+        "customer": "ana@example.com",
+        "request": "Twenty branded notebooks, delivered in May"
+      }
+    }
+  }
+}

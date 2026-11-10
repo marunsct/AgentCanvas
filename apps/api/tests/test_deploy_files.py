@@ -91,6 +91,19 @@ def test_the_chart_signs_in_with_oidc_by_default_and_with_matura_when_asked():
 
 
 @needs_helm
+def test_the_sandbox_pods_may_run_another_image_such_as_the_browser_one():
+    """Local app connectors in the sandbox need the API image built WITH_BROWSER: only the sandbox pods run it."""
+    docs = render()
+    api_image = pod_spec(docs, "-api")["containers"][0]["image"]
+    assert pod_spec(docs, "-sandbox")["containers"][0]["image"] == api_image
+    browser = render("sandbox.image=registry.example.com/agentcanvas-api:browser")
+    assert pod_spec(browser, "-sandbox")["containers"][0]["image"] == "registry.example.com/agentcanvas-api:browser"
+    assert pod_spec(browser, "-api")["containers"][0]["image"] == api_image
+    compose = yaml.safe_load((ROOT / "infra" / "compose.prod.yml").read_text())
+    assert compose["services"]["sandbox"]["image"] == "${SANDBOX_IMAGE:-${API_IMAGE:-agentcanvas-api:latest}}"
+
+
+@needs_helm
 def test_remote_script_execution_without_the_sandbox_service_is_refused():
     bad = helm("sandbox.enabled=false")
     assert bad.returncode != 0 and "set sandbox.enabled=true" in bad.stderr
@@ -675,3 +688,22 @@ def test_entrypoint_scripts_that_set_template_variables_run_before_the_substitut
         if sets & used and dest >= "20-envsubst-on-templates.sh":
             late.append(dest)
     assert not late, f"rename to sort before 20-envsubst-on-templates.sh: {late}"
+
+
+@needs_helm
+def test_the_api_can_run_as_a_service_account_with_a_cloud_identity():
+    """AWS Bedrock and Vertex AI models (and a KMS master key) use the API pods' cloud identity: IRSA or GKE Workload
+    Identity, which is an annotation on the service account the pods run as."""
+    assert "serviceAccountName" not in pod_spec(render(), "-api") and not find(render(), "ServiceAccount", "-api")
+    docs = render(
+        "api.serviceAccount.create=true",
+        "api.serviceAccount.annotations.iam\\.gke\\.io/gcp-service-account=runs@acme.iam.gserviceaccount.com",
+    )
+    account = find(docs, "ServiceAccount", "-api")
+    assert account and account["automountServiceAccountToken"] is False
+    assert account["metadata"]["annotations"] == {"iam.gke.io/gcp-service-account": "runs@acme.iam.gserviceaccount.com"}
+    spec = pod_spec(docs, "-api")
+    assert spec["serviceAccountName"] == account["metadata"]["name"] and spec["automountServiceAccountToken"] is False
+    existing = render("api.serviceAccount.name=bedrock-caller")
+    assert pod_spec(existing, "-api")["serviceAccountName"] == "bedrock-caller"
+    assert not find(existing, "ServiceAccount", "-api")

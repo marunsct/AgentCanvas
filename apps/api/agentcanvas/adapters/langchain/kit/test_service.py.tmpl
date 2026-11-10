@@ -43,6 +43,9 @@ def _finish(client: TestClient, out: dict) -> dict:
             break
         first = out["interrupts"][0]
         value = checks.approve(first)
+        if len(out["interrupts"]) > 1:  # parallel pauses: an answer must say which one it is for
+            r = client.post(f"{BASE}/threads/{out['thread_id']}/resume", json={"value": value}, headers=AUTH)
+            assert r.status_code == 409 and "interrupt_id" in r.text, r.text
         r = client.post(f"{BASE}/threads/{out['thread_id']}/resume", json={"value": value,
                         "interrupt_id": first["id"]}, headers=AUTH)  # fmt: skip
         assert r.status_code == 200, r.text

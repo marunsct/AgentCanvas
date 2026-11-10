@@ -75,6 +75,8 @@ def {{ fn }}(resources: ac.Resources | None = None, checkpointer=None, store=Non
     builder.add_node({{ n.name | py }}, ac.passthrough, {{ meta }})
 {%- elif n.type == "core.human_input" %}
     builder.add_node({{ n.name | py }}, ac.human_input_node(node_id={{ n.id | py }}, prompt={{ n.config.prompt | py }}, output={{ n.config.output | py }}, response_schema={{ n.config.get("response_schema") | pp }}), {{ meta }})
+{%- elif n.type == "core.wait" %}
+    builder.add_node({{ n.name | py }}, ac.wait_node(node_id={{ n.id | py }}{% for k, v in wait_settings(n.config).items() %}, {{ k }}={{ v | py }}{% endfor %}), {{ meta }})
 {%- elif n.type == "core.approval" %}
     builder.add_node({{ n.name | py }}, ac.approval_node(node_id={{ n.id | py }}, show={{ n.config.show | py }}, output={{ n.config.output | py }}), {{ meta }})
 {%- elif n.type.startswith("core.memory_") %}

@@ -32,12 +32,13 @@ from agentcanvas.api.v1.model_choices import ModelOption, ready_chat_models
 from agentcanvas.api.v1.runs import _context as run_context
 from agentcanvas.api.v1.workspace import _off_loop
 from agentcanvas.copilot import settings as copilot_settings
+from agentcanvas.copilot.ask_runs import ask_runs
 from agentcanvas.copilot.pack import Pack, build_pack
-from agentcanvas.copilot.runs import RunAccess
+from agentcanvas.copilot.runs import RunAccess, RunFinder
 from agentcanvas.copilot.service import CopilotTurn, diff
 from agentcanvas.copilot.settings import CopilotSettings, ResolvedModel
 from agentcanvas.copilot.tools import ToolContext, carry_pending
-from agentcanvas.db.models import CopilotConversation
+from agentcanvas.db.models import CopilotConversation, WorkflowRow
 from agentcanvas.db.repositories import ProjectRepo, WorkflowRepo
 from agentcanvas.errors import Conflict, Forbidden, InvalidInput, NotFound, TooManyRequests
 from agentcanvas.ids import new_id
@@ -47,6 +48,7 @@ from agentcanvas.observability import counted_stream
 from agentcanvas.registry import Registry, billed_tokens, default_registry
 from agentcanvas.runtime.runner import tokens_of, usage_cost
 from agentcanvas.services.knowledge import KnowledgeService
+from agentcanvas.services.run_search import FoundRun
 from agentcanvas.services.testcases import Expect, TestCaseService
 from agentcanvas.services.workflows import WorkflowService, WorkflowView, list_templates
 from agentcanvas.settings import Settings
@@ -367,7 +369,8 @@ async def _start_turn(
 
     ctx = ToolContext(
         workflow=view.workflow, registry=registry, templates=templates, validate=validate, brief=conv.brief,
-        runs=runs, secret_names=sorted(request.app.state.projects.secrets.get(project_id, {})),
+        runs=runs, run_finder=RunFinder(request.app.state.run_search, project_id),
+        secret_names=sorted(request.app.state.projects.secrets.get(project_id, {})),
         allow_real_runs=body.allow_real_runs, workspace=request.app.state.projects.workspace(project_id),
         knowledge=knowledge_bases,
     )  # fmt: skip
@@ -925,3 +928,82 @@ async def code_help(
                               usage.get("output_tokens", 0))  # fmt: skip
     text, code = split_reply(str(reply.get("content") or ""), body.action)
     return CodeHelpOut(text=text, code=code, model=model.model, usage=tokens_of(usage))
+
+
+# ------------------------------------------------------------- F-11: Ask about runs ----
+ASKS_PER_MINUTE = 10  # questions one person asks the Runs page's Ask box, on every server together
+
+
+class RunAskIn(BaseModel):
+    question: str = Field(min_length=1, max_length=1000, description='e.g. "failed runs about refunds last week"')
+    workflow_id: str | None = Field(None, description="keep the searches to this workflow (the page's filter)")
+
+
+class RunAskOut(BaseModel):
+    answer: str = Field(description="the Copilot's answer in a few sentences; empty when `error` says why")
+    runs: list[FoundRun] = Field(description="the runs its searches returned, in the order they were found")
+    searches: list[dict[str, Any]] = Field(description="each search's filters and how many runs matched them")
+    error: str | None = None
+    model: str
+    usage: dict[str, int]
+    cost_usd: float | None = Field(None, description="what the answer cost, where the model's price is known")
+
+
+@router.post("/projects/{project_id}/runs/ask", response_model=RunAskOut)
+async def ask_about_runs(
+    project_id: str,
+    body: RunAskIn,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings_dep),
+    user: CurrentUser = Depends(current_user),
+) -> RunAskOut:
+    """Ask the Copilot about the project's runs (the Runs page's Ask box): it searches them with `search_runs` only
+    and answers in a few sentences, with the runs it found. Nothing is kept. Counts against the spending caps."""
+    project = await ProjectRepo(session).require(project_id)
+    cs = copilot_settings.load(project.settings)
+    if not cs.enabled:
+        raise Forbidden("the Copilot is switched off for this project")
+    workflow: tuple[str, str] | None = None
+    if body.workflow_id:
+        row = await session.get(WorkflowRow, body.workflow_id)
+        if row is None or row.project_id != project_id:
+            raise NotFound(f"workflow '{body.workflow_id}' not found")
+        workflow = (row.id, row.name)
+    await request.app.state.ratelimit.hit((f"runs-ask:{user.id}", ASKS_PER_MINUTE))
+    caps = request.app.state.spend_caps
+    await caps.refuse(project_id)
+    svc = _service(request, session, settings)
+    registry = svc.registry(project_id) or default_registry()
+    stand_in = Workflow(id=f"wf_runs_{project_id}", name="Runs")  # no workflow is open: the project's model decides
+    try:
+        model = copilot_settings.resolve(
+            cs, project.settings or {}, stand_in, registry, await svc.policies(project_id), "ask"
+        )
+    except InvalidInput as exc:
+        if "needs a model" not in str(exc):
+            raise
+        raise InvalidInput(
+            "the Copilot needs a model: finish first-run setup or choose one in the project's Copilot settings"
+        ) from None
+    await session.commit()  # no transaction held open while the model answers
+    factory = getattr(request.app.state, "resources_factory", None)
+    resources = (
+        factory(f"copilot-runs:{project_id}", stand_in) if factory else request.app.state.projects.resources(project_id)
+    )
+    finder = RunFinder(request.app.state.run_search, project_id)
+    usage: dict[str, int] = {}
+    try:
+        out = await ask_runs(
+            request.app.state.models, resources, model, finder, body.question.strip(), usage=usage,
+            token_cap=cs.token_cap, workflow=workflow,
+        )  # fmt: skip
+    finally:  # a failed call may have used tokens too
+        cost = usage_cost(model.model, usage) if usage else None
+        if usage:
+            await caps.record(project_id, "copilot", cost, usage.get("input_tokens", 0),
+                              usage.get("output_tokens", 0))  # fmt: skip
+    return RunAskOut(
+        answer=out["answer"], runs=[FoundRun.model_validate(r) for r in finder.found[:50]], searches=out["searches"],
+        error=out["error"], model=model.model, usage=tokens_of(usage), cost_usd=cost,
+    )  # fmt: skip

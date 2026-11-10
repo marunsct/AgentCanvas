@@ -11,6 +11,7 @@ import asyncio
 import json
 import time
 from collections.abc import AsyncIterator
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any, Literal, cast
 
@@ -23,7 +24,7 @@ from sqlalchemy.orm import defer
 
 from agentcanvas.adapters.spi import ThreadStateAbility, require, supports
 from agentcanvas.api.audit import note, payload_hash
-from agentcanvas.api.deps import RANK, CurrentUser, current_user, get_session, get_settings_dep
+from agentcanvas.api.deps import RANK, CurrentUser, current_user, get_session, get_settings_dep, project_access
 from agentcanvas.db.models import (
     Deployment,
     InterruptTask,
@@ -43,7 +44,7 @@ from agentcanvas.runtime.runner import CANCELLED_BY_USER, RunHandle, Runner
 from agentcanvas.runtime.tracing import web_url
 from agentcanvas.runtime.trajectory import compact
 from agentcanvas.runtime.types import ResumeSpec, ThreadState, is_tool_recording
-from agentcanvas.services import approvers, org_settings
+from agentcanvas.services import approvers, org_settings, timers
 from agentcanvas.services.explain import explain
 from agentcanvas.services.redeploy import thread_version
 from agentcanvas.services.run_search import RunSearchResult, RunSearchService
@@ -99,7 +100,11 @@ class RunRequest(DebugOptions):
 
 class ResumeRequest(DebugOptions):
     value: Any = None
-    interrupt_id: str | None = None
+    interrupt_id: str | None = Field(
+        None,
+        max_length=200,
+        description="the pause this answers (an id from the run's interrupts); may be left out only while one waits",
+    )
     stream: bool = True
 
 
@@ -359,7 +364,8 @@ async def start_run(
         context=_context(wf, body.context, user),
         durability=body.durability,
         user_id=user.id,
-        service_connection=user.role == "admin",  # the organisation's service connection is the admins'
+        # the organisation's service connection is its admins', not a project admin's (E-10)
+        service_connection=user.org_role == "admin",
         priority=body.priority,
         **_debug(wf, body, body.mode),
     )
@@ -426,7 +432,7 @@ async def cancel_run(
 ) -> dict[str, Any]:
     """Stop a run. One running on this instance stops now. Requests are spread over the replicas, so the run may be
     running on another one: it is marked in the database and that instance stops it at its next heartbeat
-    (`pending`, within `AGENTCANVAS_HANDOVER_INTERVAL_S`)."""
+    (`pending`, within `AGENTCANVAS_HANDOVER_INTERVAL_S`). A run paused at a Wait step is cancelled at once."""
     return await stop_run(session, r, run_id)
 
 
@@ -455,6 +461,9 @@ async def stop_run(session: AsyncSession, r: Runner, run_id: str) -> dict[str, A
     if cancelled:
         thread_id = await session.scalar(select(Run.thread_id).where(Run.id == run_id))
         await session.execute(update(Thread).where(Thread.id == thread_id).values(status="idle"))
+    else:  # paused at a Wait step (F-10): its wait ends here, so no timer or event continues it
+        waits = await timers.waiting_items(session, [run_id])
+        cancelled = bool(await timers.end_waits(session, waits, CANCELLED_BY_USER))
     await session.commit()
     return {"cancelled": cancelled, "pending": False}
 
@@ -497,6 +506,7 @@ def _utc(t: datetime) -> datetime:
 
 @router.get("/threads", response_model=ThreadPage)
 async def list_threads(
+    request: Request,
     workflow_id: str | None = None,
     project_id: str | None = Query(None, description="only this project's conversations"),
     status: str | None = None,
@@ -507,12 +517,14 @@ async def list_threads(
     session: AsyncSession = Depends(get_session),
     user: CurrentUser = Depends(current_user),
 ) -> ThreadPage:
-    """Conversations (threads) newest first, each with its workflow's name and a summary of its runs."""
+    """Conversations (threads) newest first, each with its workflow's name and a summary of its runs: of the projects
+    the caller sees."""
+    seen = (await project_access(request, session, user)).project_filter()
     q = (
         select(Thread, WorkflowRow.name)
         .join(WorkflowRow, WorkflowRow.id == Thread.workflow_id)
         .join(Project, Project.id == WorkflowRow.project_id)
-        .where(Project.org_id == user.org_id)
+        .where(Project.org_id == user.org_id, seen)
     )
     if workflow_id:
         q = q.where(Thread.workflow_id == workflow_id)
@@ -531,7 +543,7 @@ async def list_threads(
             select(Thread.id)
             .join(WorkflowRow, WorkflowRow.id == Thread.workflow_id)
             .join(Project, Project.id == WorkflowRow.project_id)
-            .where(Thread.id == cursor, Project.org_id == user.org_id)
+            .where(Thread.id == cursor, Project.org_id == user.org_id, seen)
         )
         if known is None:
             raise InvalidInput(f"unknown cursor '{cursor}'")
@@ -728,20 +740,18 @@ async def resume_thread(
         # reviewers answer what the run asks; pins and scripted replies would let them drive its tools
         raise Forbidden(f"your role '{user.role}' can resume but not with debug pins, mocks or dry runs")
     t = await _thread(session, thread_id)
-    asked = select(InterruptTask).where(InterruptTask.thread_id == t.id, InterruptTask.status == "pending")
-    if body.interrupt_id:
-        asked = asked.where(InterruptTask.id == body.interrupt_id)
-    tasks = list((await session.scalars(asked)).all())
+    task = await approvers.answered(session, t.id, body.interrupt_id)  # the named pause, else the only one
+    tasks = [task] if task else []
     await _not_your_own(session, settings, user, t, tasks)
     await approvers.check(session, tasks, _decider(user), t.created_by)
     wf, target_kw = await _thread_target(session, settings, t)
-    note(request, interrupt_id=body.interrupt_id, payload_sha256=payload_hash(body.value))
+    note(request, interrupt_id=task.id if task else None, payload_sha256=payload_hash(body.value))
     h = await r.start(
         wf,
         thread_id=thread_id,
-        resume=ResumeSpec(body.value, body.interrupt_id),
+        resume=ResumeSpec(body.value, task.id if task else None),
         user_id=user.id,
-        service_connection=user.role == "admin",
+        service_connection=user.org_role == "admin",
         mode="debug" if body.pins or body.mocks or body.dry_run else "normal",
         **_debug(wf, body, "debug"),
         **target_kw,
@@ -874,6 +884,9 @@ async def _stop_elsewhere(session: AsyncSession, thread_id: str, timeout_s: floa
 
 
 # ------------------------------------------------------------------- inbox ----
+WAITS_ON_ITS_OWN = "it continues on its own when its time comes or its event arrives"
+
+
 def _intr(
     x: InterruptTask,
     workflow_id: str | None = None,
@@ -910,6 +923,7 @@ def _intr(
 
 @router.get("/inbox", response_model=list[InterruptOut], tags=["inbox"])
 async def inbox(
+    request: Request,
     status: Literal["pending", "decided", "expired"] = "pending",
     workflow_id: str | None = None,
     limit: int = Query(100, ge=1, le=500),
@@ -917,12 +931,15 @@ async def inbox(
     settings: Settings = Depends(get_settings_dep),
     user: CurrentUser = Depends(current_user),
 ) -> list[InterruptOut]:
+    """What waits for a person (or was decided), of the projects the caller sees, with whether they may decide each:
+    by their role in its project."""
+    access = await project_access(request, session, user)
     q = (
         select(InterruptTask, Thread.workflow_id, WorkflowRow.name, Project, Thread.created_by)
         .join(Thread, Thread.id == InterruptTask.thread_id)
         .join(WorkflowRow, WorkflowRow.id == Thread.workflow_id)
         .join(Project, Project.id == WorkflowRow.project_id)
-        .where(InterruptTask.status == status, Project.org_id == user.org_id)
+        .where(InterruptTask.status == status, Project.org_id == user.org_id, access.project_filter())
     )
     if workflow_id:
         q = q.where(Thread.workflow_id == workflow_id)
@@ -936,16 +953,20 @@ async def inbox(
     me = await approvers.member(session, _decider(user)) if rows and status == "pending" else None
     own_ok = (await org_settings.of_org(session, settings, user.org_id)).approve_own_runs if me else True
 
-    def refused(x: InterruptTask, started_by: str | None) -> str | None:
+    def refused(x: InterruptTask, project_id: str, started_by: str | None) -> str | None:
+        if x.kind == "timer":  # waiting, but not for a person
+            return WAITS_ON_ITS_OWN
         if me is None:
             return None
-        if RANK.get(user.role, -1) < RANK["reviewer"]:
+        role = access.role_in(project_id) or "viewer"
+        if RANK.get(role, -1) < RANK["reviewer"]:
             return "your role cannot decide"
         if not own_ok and (x.requested_by or started_by) == user.id:
             return "your organisation does not let you approve or answer a run you started"
-        return approvers.refusal(approvers.Approvers.of(x.approvers), x.assignee_role, me, x.requested_by or started_by)
+        policy = approvers.Approvers.of(x.approvers)
+        return approvers.refusal(policy, x.assignee_role, replace(me, role=role), x.requested_by or started_by)
 
-    return [_intr(x, wid, name, irs.get(wid), project, refused(x, by)) for x, wid, name, project, by in rows]
+    return [_intr(x, wid, name, irs.get(wid), p, refused(x, p.id, by)) for x, wid, name, p, by in rows]
 
 
 async def _not_your_own(
@@ -980,6 +1001,8 @@ async def decide(
     note(request, kind=task.kind, payload_sha256=payload_hash(body.value))
     if task.status != "pending":
         raise Conflict(f"inbox item '{interrupt_id}' is already {task.status}")
+    if task.kind == "timer":
+        raise Conflict(f"this item is a Wait step: {WAITS_ON_ITS_OWN} (Stop cancels it)")
     t = await _thread(session, task.thread_id)
     await _not_your_own(session, settings, user, t, [task])
     await approvers.check(session, [task], _decider(user), t.created_by)

@@ -1,0 +1,89 @@
+{
+  "type": "core.wait",
+  "kind": "runtime",
+  "label": "Wait",
+  "category": "Flow control",
+  "icon": "hourglass",
+  "color": "#64748B",
+  "description": "Pauses the workflow for a while, until a time, or until an event arrives (with a time limit), then continues on its own. Nothing runs while it waits, and the wait survives restarts.",
+  "outputs": [
+    {
+      "name": "next",
+      "type": "Flow",
+      "description": "Where to go once the wait is over: connect the next step, or Finish."
+    }
+  ],
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "mode": {
+        "type": "string",
+        "title": "Wait",
+        "enum": ["for", "until", "event"],
+        "default": "for",
+        "description": "For a while: a duration from when the run gets here. Until a time: a date and time. Until an event: an event sent to the project, or the time limit, whichever comes first."
+      },
+      "duration": {
+        "type": "string",
+        "title": "How long",
+        "format": "wait_duration",
+        "minLength": 1,
+        "maxLength": 200,
+        "description": "e.g. 3d, 2h 30m, 90 minutes or PT45M; or a template such as {{ state.delay }}. Up to a year."
+      },
+      "until": {
+        "type": "string",
+        "title": "Until",
+        "format": "wait_time",
+        "minLength": 1,
+        "maxLength": 200,
+        "description": "e.g. 2026-12-01T09:00 (in the time zone below) or 2026-12-01T09:00:00Z; or a template such as {{ state.follow_up_at }}. A time already past does not wait."
+      },
+      "timezone": {
+        "type": "string",
+        "title": "Time zone",
+        "maxLength": 64,
+        "description": "For a time without an offset, e.g. Europe/Berlin. Empty: UTC."
+      },
+      "event": {
+        "type": "string",
+        "title": "Event",
+        "pattern": "^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)+$",
+        "maxLength": 200,
+        "description": "The event type that ends the wait, e.g. invoice.paid. Send it to the project's events (POST /v1/projects/{project}/events)."
+      },
+      "event_key": {
+        "type": "string",
+        "title": "Only the event with this key",
+        "format": "template",
+        "maxLength": 500,
+        "description": "e.g. {{ state.invoice_id }}: only an event whose data has this \"key\" ends the wait. Empty: any event of that type ends every run waiting for it."
+      },
+      "timeout": {
+        "type": "string",
+        "title": "Time limit",
+        "format": "wait_duration",
+        "minLength": 1,
+        "maxLength": 200,
+        "description": "How long to wait for the event, e.g. 3d. When it runs out, the run continues with timed_out true."
+      },
+      "output": {
+        "type": "string",
+        "title": "Save what ended the wait in",
+        "format": "channel",
+        "description": "Optional. The data field that receives {timed_out, event, woke_at}: route on state.<field>.timed_out after it."
+      }
+    }
+  },
+  "channel_fields": [
+    "output"
+  ],
+  "template_fields": [
+    "duration",
+    "until",
+    "event_key",
+    "timeout"
+  ],
+  "interrupts": true
+}

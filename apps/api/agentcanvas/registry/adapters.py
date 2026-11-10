@@ -25,7 +25,9 @@ DEFAULT_ADAPTERS = (  # S25-S36
     "langchain,openai_agents,crewai,google_adk,pydantic_ai,agno,microsoft_agent_framework,strands,llamaindex,mastra"
 )
 
-Ability = Literal["thread_state", "time_travel", "memory_store", "mcp_inspect", "breakpoints", "agent_designs"]
+Ability = Literal[
+    "thread_state", "time_travel", "memory_store", "mcp_inspect", "breakpoints", "agent_designs", "browser_tools"
+]
 Support = Literal["native", "emulated", "unsupported"]
 
 ABILITY_LABEL: dict[str, str] = {
@@ -35,6 +37,7 @@ ABILITY_LABEL: dict[str, str] = {
     "mcp_inspect": "browsing an app connector's tools",
     "breakpoints": "breakpoints in debug runs",
     "agent_designs": "agents designed for other frameworks (mixed flows)",
+    "browser_tools": "tools that run in the caller's application (AG-UI front-end tools)",
 }
 
 

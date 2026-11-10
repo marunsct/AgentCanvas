@@ -14,7 +14,8 @@
     "memory_store",
     "mcp_inspect",
     "breakpoints",
-    "agent_designs"
+    "agent_designs",
+    "browser_tools"
   ],
   "nodes": {
     "crewai.*": "unsupported",

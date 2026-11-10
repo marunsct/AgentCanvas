@@ -379,7 +379,9 @@ CREATE TABLE public.deployment (
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     key_prefix text,
     callback_secret text,
-    tool_drift jsonb
+    tool_drift jsonb,
+    oauth jsonb,
+    system_record jsonb
 );
 
 ALTER TABLE ONLY public.deployment FORCE ROW LEVEL SECURITY;
@@ -423,6 +425,26 @@ CREATE TABLE public.deployment_share (
 );
 
 ALTER TABLE ONLY public.deployment_share FORCE ROW LEVEL SECURITY;
+
+--
+-- Name: digest_notice; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.digest_notice (
+    id character varying NOT NULL,
+    org_id character varying NOT NULL,
+    digest_id character varying NOT NULL,
+    channel text NOT NULL,
+    status text DEFAULT 'pending'::text NOT NULL,
+    attempts integer DEFAULT 0 NOT NULL,
+    next_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    last_error text,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    sent_at timestamp with time zone,
+    CONSTRAINT digest_notice_status CHECK ((status = ANY (ARRAY['pending'::text, 'sent'::text, 'failed'::text, 'dropped'::text])))
+);
+
+ALTER TABLE ONLY public.digest_notice FORCE ROW LEVEL SECURITY;
 
 --
 -- Name: eval_alert; Type: TABLE; Schema: public; Owner: -
@@ -596,8 +618,12 @@ CREATE TABLE public.interrupt_task (
     noticed text,
     escalate_at timestamp with time zone,
     escalated_at timestamp with time zone,
-    CONSTRAINT interrupt_kind CHECK ((kind = ANY (ARRAY['tool_approval'::text, 'approval'::text, 'input'::text]))),
-    CONSTRAINT interrupt_status CHECK ((status = ANY (ARRAY['pending'::text, 'decided'::text, 'expired'::text])))
+    due_at timestamp with time zone,
+    wait_event text,
+    wait_key text,
+    claimed_until timestamp with time zone,
+    CONSTRAINT interrupt_kind CHECK ((kind = ANY (ARRAY['tool_approval'::text, 'approval'::text, 'input'::text, 'timer'::text]))),
+    CONSTRAINT interrupt_status CHECK ((status = ANY (ARRAY['pending'::text, 'decided'::text, 'expired'::text, 'cancelled'::text])))
 );
 
 ALTER TABLE ONLY public.interrupt_task FORCE ROW LEVEL SECURITY;
@@ -975,7 +1001,8 @@ CREATE TABLE public.org_notifier (
     slack_url bytea,
     webhook_secret bytea,
     updated_by character varying,
-    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    digest boolean DEFAULT false NOT NULL
 );
 
 ALTER TABLE ONLY public.org_notifier FORCE ROW LEVEL SECURITY;
@@ -1078,6 +1105,24 @@ CREATE TABLE public.project (
 ALTER TABLE ONLY public.project FORCE ROW LEVEL SECURITY;
 
 --
+-- Name: project_member; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.project_member (
+    id character varying NOT NULL,
+    project_id character varying NOT NULL,
+    user_id character varying,
+    group_id character varying,
+    role text NOT NULL,
+    created_by text,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT project_member_principal CHECK (((user_id IS NULL) <> (group_id IS NULL))),
+    CONSTRAINT project_member_role CHECK ((role = ANY (ARRAY['admin'::text, 'builder'::text, 'reviewer'::text, 'viewer'::text])))
+);
+
+ALTER TABLE ONLY public.project_member FORCE ROW LEVEL SECURITY;
+
+--
 -- Name: rate_window; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1168,6 +1213,20 @@ CREATE TABLE public.run_callback (
 );
 
 ALTER TABLE ONLY public.run_callback FORCE ROW LEVEL SECURITY;
+
+--
+-- Name: run_digest; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.run_digest (
+    id character varying NOT NULL,
+    project_id character varying NOT NULL,
+    week_start timestamp with time zone NOT NULL,
+    summary jsonb NOT NULL,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+ALTER TABLE ONLY public.run_digest FORCE ROW LEVEL SECURITY;
 
 --
 -- Name: run_score; Type: TABLE; Schema: public; Owner: -
@@ -1651,6 +1710,13 @@ ALTER TABLE ONLY public.deployment_share
     ADD CONSTRAINT deployment_share_token_key UNIQUE (token);
 
 --
+-- Name: digest_notice digest_notice_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.digest_notice
+    ADD CONSTRAINT digest_notice_pkey PRIMARY KEY (id);
+
+--
 -- Name: eval_alert eval_alert_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1973,6 +2039,27 @@ ALTER TABLE ONLY public.presence
     ADD CONSTRAINT presence_pkey PRIMARY KEY (workflow_id, session_id);
 
 --
+-- Name: project_member project_member_group; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.project_member
+    ADD CONSTRAINT project_member_group UNIQUE (project_id, group_id);
+
+--
+-- Name: project_member project_member_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.project_member
+    ADD CONSTRAINT project_member_pkey PRIMARY KEY (id);
+
+--
+-- Name: project_member project_member_user; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.project_member
+    ADD CONSTRAINT project_member_user UNIQUE (project_id, user_id);
+
+--
 -- Name: project project_org_id_name_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2013,6 +2100,20 @@ ALTER TABLE ONLY public.release_gate
 
 ALTER TABLE ONLY public.run_callback
     ADD CONSTRAINT run_callback_pkey PRIMARY KEY (run_id);
+
+--
+-- Name: run_digest run_digest_once; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.run_digest
+    ADD CONSTRAINT run_digest_once UNIQUE (project_id, week_start);
+
+--
+-- Name: run_digest run_digest_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.run_digest
+    ADD CONSTRAINT run_digest_pkey PRIMARY KEY (id);
 
 --
 -- Name: run run_pkey; Type: CONSTRAINT; Schema: public; Owner: -
@@ -2203,6 +2304,12 @@ CREATE INDEX audit_anchor_org_idx ON public.audit_anchor USING btree (org_id, id
 CREATE INDEX audit_org_id_idx ON public.audit_log USING btree (org_id, id);
 
 --
+-- Name: audit_org_target_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX audit_org_target_idx ON public.audit_log USING btree (org_id, target, id);
+
+--
 -- Name: audit_org_time_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2251,6 +2358,24 @@ CREATE INDEX deployment_key_deployment_idx ON public.deployment_key USING btree 
 CREATE INDEX deployment_version_idx ON public.deployment USING btree (version_id);
 
 --
+-- Name: digest_notice_digest_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX digest_notice_digest_idx ON public.digest_notice USING btree (digest_id);
+
+--
+-- Name: digest_notice_due_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX digest_notice_due_idx ON public.digest_notice USING btree (status, next_at);
+
+--
+-- Name: digest_notice_org_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX digest_notice_org_idx ON public.digest_notice USING btree (org_id);
+
+--
 -- Name: eval_alert_one_open; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2275,10 +2400,22 @@ CREATE INDEX event_log_project_idx ON public.event_log USING btree (project_id, 
 CREATE INDEX experiment_status_idx ON public.experiment USING btree (status, heartbeat_at);
 
 --
+-- Name: interrupt_due_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX interrupt_due_idx ON public.interrupt_task USING btree (due_at) WHERE ((status = 'pending'::text) AND (due_at IS NOT NULL));
+
+--
 -- Name: interrupt_escalate_idx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX interrupt_escalate_idx ON public.interrupt_task USING btree (escalate_at) WHERE (escalate_at IS NOT NULL);
+
+--
+-- Name: interrupt_event_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX interrupt_event_idx ON public.interrupt_task USING btree (wait_event) WHERE ((status = 'pending'::text) AND (wait_event IS NOT NULL));
 
 --
 -- Name: interrupt_pending_idx; Type: INDEX; Schema: public; Owner: -
@@ -2527,6 +2664,18 @@ CREATE INDEX personal_token_owner_idx ON public.personal_token USING btree (org_
 CREATE INDEX presence_seen_idx ON public.presence USING btree (workflow_id, seen_at);
 
 --
+-- Name: project_member_group_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX project_member_group_idx ON public.project_member USING btree (group_id);
+
+--
+-- Name: project_member_user_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX project_member_user_idx ON public.project_member USING btree (user_id);
+
+--
 -- Name: project_workspace_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2543,6 +2692,12 @@ CREATE INDEX run_callback_deployment_idx ON public.run_callback USING btree (dep
 --
 
 CREATE INDEX run_callback_due_idx ON public.run_callback USING btree (next_at) WHERE (status = 'pending'::text);
+
+--
+-- Name: run_digest_week_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX run_digest_week_idx ON public.run_digest USING btree (week_start);
 
 --
 -- Name: run_live_idx; Type: INDEX; Schema: public; Owner: -
@@ -2820,6 +2975,20 @@ ALTER TABLE ONLY public.deployment
 
 ALTER TABLE ONLY public.deployment
     ADD CONSTRAINT deployment_workflow_id_fkey FOREIGN KEY (workflow_id) REFERENCES public.workflow(id) ON DELETE CASCADE;
+
+--
+-- Name: digest_notice digest_notice_digest_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.digest_notice
+    ADD CONSTRAINT digest_notice_digest_id_fkey FOREIGN KEY (digest_id) REFERENCES public.run_digest(id) ON DELETE CASCADE;
+
+--
+-- Name: digest_notice digest_notice_org_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.digest_notice
+    ADD CONSTRAINT digest_notice_org_id_fkey FOREIGN KEY (org_id) REFERENCES public.organization(id) ON DELETE CASCADE;
 
 --
 -- Name: eval_alert eval_alert_deployment_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -3137,6 +3306,27 @@ ALTER TABLE ONLY public.presence
     ADD CONSTRAINT presence_workflow_id_fkey FOREIGN KEY (workflow_id) REFERENCES public.workflow(id) ON DELETE CASCADE;
 
 --
+-- Name: project_member project_member_group_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.project_member
+    ADD CONSTRAINT project_member_group_id_fkey FOREIGN KEY (group_id) REFERENCES public.scim_group(id) ON DELETE CASCADE;
+
+--
+-- Name: project_member project_member_project_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.project_member
+    ADD CONSTRAINT project_member_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.project(id) ON DELETE CASCADE;
+
+--
+-- Name: project_member project_member_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.project_member
+    ADD CONSTRAINT project_member_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.app_user(id) ON DELETE CASCADE;
+
+--
 -- Name: project project_org_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3177,6 +3367,13 @@ ALTER TABLE ONLY public.run_callback
 
 ALTER TABLE ONLY public.run_callback
     ADD CONSTRAINT run_callback_run_id_fkey FOREIGN KEY (run_id) REFERENCES public.run(id) ON DELETE CASCADE;
+
+--
+-- Name: run_digest run_digest_project_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.run_digest
+    ADD CONSTRAINT run_digest_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.project(id) ON DELETE CASCADE;
 
 --
 -- Name: run_score run_score_deployment_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -3530,6 +3727,12 @@ CREATE POLICY agentcanvas_tenant ON public.deployment_share USING (((current_set
   WHERE ((p.id)::text = (deployment_share.deployment_id)::text)))));
 
 --
+-- Name: digest_notice agentcanvas_tenant; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY agentcanvas_tenant ON public.digest_notice USING (((current_setting('agentcanvas.all_tenants'::text, true) = 'on'::text) OR ((org_id)::text = current_setting('matura.tenant_id'::text, true))));
+
+--
 -- Name: eval_alert agentcanvas_tenant; Type: POLICY; Schema: public; Owner: -
 --
 
@@ -3704,6 +3907,14 @@ CREATE POLICY agentcanvas_tenant ON public.presence USING (((current_setting('ag
 CREATE POLICY agentcanvas_tenant ON public.project USING (((current_setting('agentcanvas.all_tenants'::text, true) = 'on'::text) OR ((org_id)::text = current_setting('matura.tenant_id'::text, true))));
 
 --
+-- Name: project_member agentcanvas_tenant; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY agentcanvas_tenant ON public.project_member USING (((current_setting('agentcanvas.all_tenants'::text, true) = 'on'::text) OR (EXISTS ( SELECT 1
+   FROM public.project p
+  WHERE ((p.id)::text = (project_member.project_id)::text)))));
+
+--
 -- Name: release_gate agentcanvas_tenant; Type: POLICY; Schema: public; Owner: -
 --
 
@@ -3726,6 +3937,14 @@ CREATE POLICY agentcanvas_tenant ON public.run USING (((current_setting('agentca
 CREATE POLICY agentcanvas_tenant ON public.run_callback USING (((current_setting('agentcanvas.all_tenants'::text, true) = 'on'::text) OR (EXISTS ( SELECT 1
    FROM public.run p
   WHERE ((p.id)::text = (run_callback.run_id)::text)))));
+
+--
+-- Name: run_digest agentcanvas_tenant; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY agentcanvas_tenant ON public.run_digest USING (((current_setting('agentcanvas.all_tenants'::text, true) = 'on'::text) OR (EXISTS ( SELECT 1
+   FROM public.project p
+  WHERE ((p.id)::text = (run_digest.project_id)::text)))));
 
 --
 -- Name: run_score agentcanvas_tenant; Type: POLICY; Schema: public; Owner: -
@@ -3932,6 +4151,12 @@ ALTER TABLE public.deployment_key ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.deployment_share ENABLE ROW LEVEL SECURITY;
 
 --
+-- Name: digest_notice; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.digest_notice ENABLE ROW LEVEL SECURITY;
+
+--
 -- Name: eval_alert; Type: ROW SECURITY; Schema: public; Owner: -
 --
 
@@ -4076,6 +4301,12 @@ ALTER TABLE public.presence ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.project ENABLE ROW LEVEL SECURITY;
 
 --
+-- Name: project_member; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.project_member ENABLE ROW LEVEL SECURITY;
+
+--
 -- Name: release_gate; Type: ROW SECURITY; Schema: public; Owner: -
 --
 
@@ -4092,6 +4323,12 @@ ALTER TABLE public.run ENABLE ROW LEVEL SECURITY;
 --
 
 ALTER TABLE public.run_callback ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: run_digest; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.run_digest ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: run_score; Type: ROW SECURITY; Schema: public; Owner: -

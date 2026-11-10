@@ -84,8 +84,13 @@ class Actions:
             {"action": "start_workflow", "workflow": workflow, "input": input or {}, "thread_id": thread_id}
         )
 
-    def resume(self, thread_id: str, value: Any = None) -> None:
-        self.recorded.append({"action": "resume", "thread_id": thread_id, "value": value})
+    def resume(self, thread_id: str, value: Any = None, *, interrupt_id: str | None = None) -> None:
+        """Answer the conversation's pause. `interrupt_id` (from an `interrupt.raised` event) names which one, and
+        must when several wait."""
+        action: dict[str, Any] = {"action": "resume", "thread_id": thread_id, "value": value}
+        if interrupt_id:
+            action["interrupt_id"] = interrupt_id
+        self.recorded.append(action)
 
     def emit(self, event_type: str, data: dict[str, Any] | None = None) -> None:
         self.recorded.append({"action": "emit", "type": event_type, "data": data or {}})

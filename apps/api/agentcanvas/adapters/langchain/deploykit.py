@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-from agentcanvas import designs
+from agentcanvas import cloudmodels, designs
 from agentcanvas.adapters.langchain.codegen import one_line
 from agentcanvas.errors import InvalidInput
 from agentcanvas.ir.contract import output_names
@@ -31,7 +31,7 @@ PYTHON_IMAGE = "python:3.12.16-slim@sha256:8523d6abeb48ceae0b7240d30c5808fc26cb7
 UV_IMAGE = "ghcr.io/astral-sh/uv:0.11.33@sha256:77280f2f771df71f90786c314fe1bbc1e023feac652969bbf139c280babf2eb7"
 POSTGRES_IMAGE = "postgres:16.15-alpine@sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab"
 CADDY_IMAGE = "caddy:2.11.7-alpine@sha256:eb4d35b7452d1ab6171fbdbe8d9275b2301dad6dad92115d91e19fb9b24d510f"
-INTERRUPTING = {"core.approval", "core.human_input"}
+INTERRUPTING = {"core.approval", "core.human_input", "core.wait"}
 AGENTS = {"core.agent", "agent.deep"}
 MEMORY = {"core.memory_recall", "core.memory_remember", "core.memory_forget", "tool.memory", "backend.store"}
 
@@ -39,7 +39,6 @@ PROVIDER_HOSTS = {
     "openai": "api.openai.com",
     "anthropic": "api.anthropic.com",
     "google_genai": "generativelanguage.googleapis.com",
-    "google_vertexai": "aiplatform.googleapis.com",
     "mistralai": "api.mistral.ai",
     "groq": "api.groq.com",
     "deepseek": "api.deepseek.com",
@@ -304,9 +303,12 @@ def facts(wf: Workflow, pkg: str, version: str, cases: list[dict[str, Any]] | No
                 env.setdefault(var, {"name": var, "kind": "model_key", "required": True,
                                      "where": f"an API key from your {label} account"})  # fmt: skip
             base = cfg.get("base_url") or LOCAL_PROVIDERS.get(provider)
+            cloud_host = cloudmodels.host(model, cfg, {})  # AWS Bedrock, Vertex AI: the block's region's address
             host = (
-                _host(str(base)) if base else (_host(PROVIDER_HOSTS[provider]) if provider in PROVIDER_HOSTS else None)
-            )
+                _host(str(base)) if base
+                else _host(f"https://{cloud_host}") if cloud_host
+                else (_host(PROVIDER_HOSTS[provider]) if provider in PROVIDER_HOSTS else None)
+            )  # fmt: skip
             if host:
                 hosts.setdefault(host[0], {"host": host[0], "port": host[1], "kind": "model",
                                            "why": f"the AI model {model}"})  # fmt: skip

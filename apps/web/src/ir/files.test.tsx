@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { accepts, fileSchema, isFileRef, isFileSchema, isImage, schemaFor, typeLabel } from "./files";
 import { triage } from "../test/fixtures";
 
-vi.mock("../api/session", () => ({ can: () => true, useCan: () => true, ME: { role: "builder" } }));
+vi.mock("../api/session", () => ({ can: () => true, canOrg: () => true, useCan: () => true, useCanOrg: () => true, ME: { role: "builder" } }));
 
 const { useEditor } = await import("../editor/store");
 const { StateDesigner } = await import("../inspector/StateDesigner");

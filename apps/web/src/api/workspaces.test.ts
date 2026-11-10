@@ -53,7 +53,7 @@ describe("Matura workspaces (TS26)", () => {
       vi.stubGlobal("fetch", vi.fn(async (url: string) =>
         url.endsWith("/workspaces") ? json(WS) : url.includes("workspace_id=w-lab") ? json([]) : json([{ id: "prj_a", name: "A" }])));
       await chooseProject();
-      await expect(chooseWorkspace("w-lab")).rejects.toThrow(/workspace 'Lab' has no projects/);
+      await expect(chooseWorkspace("w-lab")).rejects.toThrow(/workspace 'Lab' has no project you can see/);
       expect([WORKSPACE_ID, PROJECT_ID]).toEqual([null, "prj_a"]);
     } finally {
       ME.role = saved;

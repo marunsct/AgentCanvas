@@ -1,10 +1,11 @@
 /** Settings: one place for everything that is configured rather than built, by scope: this project, the organisation,
  * and the person. A section the person's role cannot change is shown read-only with a sentence saying so; a section
- * whose data their role cannot read is not listed. Old addresses (/setup, /members, /audit, /policies) lead here. */
+ * whose data their role cannot read is not listed: by their role in the project for its sections, in the organisation
+ * for the organisation's. Old addresses (/setup, /members, /audit, /policies) lead here. */
 import { lazy, Suspense } from "react";
 import { Navigate, NavLink, useParams } from "react-router";
 import { PROJECT_NAME } from "../api/queries";
-import { useCan, useMe, type Role } from "../api/session";
+import { useCan, useCanOrg, useMe, type Role } from "../api/session";
 import { CopilotSettings } from "../copilot/CopilotSettings";
 import { useUi } from "../editor/ui";
 import { TraceExportSettings } from "../observability/TraceExportSettings";
@@ -21,7 +22,9 @@ import { OrgSettings } from "./OrgSettings";
 import { MyData, OrgData } from "./OrgData";
 import { StopRuns } from "./StopRuns";
 import { KnowledgeSettings } from "./KnowledgeSettings";
+import { ProjectMembers } from "./ProjectMembers";
 import { ProjectSettings } from "./ProjectSettings";
+import { ProjectSpending } from "./ProjectSpending";
 import { SandboxSettings } from "./SandboxSettings";
 import { SecretsSettings } from "./SecretsSettings";
 import { ServerSettings } from "./ServerSettings";
@@ -43,6 +46,8 @@ export const SECTIONS: Section[] = [
   { id: "sandbox", group: "Project", label: "Sandbox", render: () => <SandboxSettings /> },
   { id: "knowledge", group: "Project", label: "Knowledge", render: () => <KnowledgeSettings /> },
   { id: "observability", group: "Project", label: "Observability", render: () => <TraceExportSettings /> },
+  { id: "project-members", group: "Project", label: "Members", render: () => <ProjectMembers /> },
+  { id: "project-spending", group: "Project", label: "Spending", read: "admin", render: () => <ProjectSpending /> },
   { id: "organisation", group: "Organisation", label: "General", render: () => <><OrgSettings /><OrgLimits /><StopRuns /><OrgData /></> },
   { id: "security", group: "Organisation", label: "Security", render: () => <OrgSecurity /> },
   { id: "members", group: "Organisation", label: "Members", render: () => <MembersPage /> },
@@ -61,9 +66,11 @@ export const SECTIONS: Section[] = [
 
 export function SettingsPage() {
   const { section } = useParams();
-  const admin = useCan("admin");
+  // a project's sections follow the role in the project, the organisation's the role in the organisation (E-10)
+  const projectAdmin = useCan("admin");
+  const orgAdmin = useCanOrg("admin");
   const org = useMe((s) => s.me.org_names?.[s.me.org_id]);
-  const visible = SECTIONS.filter((s) => s.read !== "admin" || admin);
+  const visible = SECTIONS.filter((s) => s.read !== "admin" || (s.group === "Project" ? projectAdmin : orgAdmin));
   const current = visible.find((s) => s.id === section);
   if (!current) return <Navigate to={`/settings/${visible[0].id}`} replace />;
   const groups = { Project: PROJECT_NAME, Organisation: org ?? "This organisation", You: "Only you" } as const;

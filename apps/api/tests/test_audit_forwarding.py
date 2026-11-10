@@ -35,8 +35,10 @@ ROUTINE = {
     "server_models", "test_trace_export", "test_notifications",
     "index_runs",
     # running, conversations, feedback (approvals are security events, above)
-    "start_run", "cancel_run", "api_run_cancel", "continue_thread", "fork_thread", "delete_thread", "api_feedback", "api_upload",
-    "share_feedback", "share_upload", "share_close_conversation", "a2a_endpoint", "mcp_endpoint", "send_event",
+    "start_run", "cancel_run", "api_run_cancel", "continue_thread", "fork_thread", "delete_thread", "api_feedback",
+    "api_upload",
+    "share_feedback", "share_upload", "share_close_conversation", "a2a_endpoint", "mcp_endpoint", "api_ag_ui",
+    "send_event", "ask_about_runs",
     "delete_trigger", "chat", "chat_stream", "make_workflow",
     # evaluation: datasets, test cases, evaluators, experiments, annotation, red team
     "create_dataset", "update_dataset", "delete_dataset", "add_examples", "add_runs", "add_test_cases",

@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { maturaMode } from "./auth";
 import { apiFetch } from "./client";
-import { can } from "./session";
+import { canOrg, setProjectRole, type Role } from "./session";
 import type { AdapterManifest, AgentFrameworkOut, ModelInfo, NodeManifest, ProviderInfo, SetupOut, TemplateInfo, WorkflowPage } from "./types";
 import type { InterruptOut, McpConnector, ModelOption } from "./generated";
 
@@ -38,18 +38,22 @@ export async function chooseProject(): Promise<string> {
   const saved = stored(WORKSPACE_KEY);
   const ws = WORKSPACES.find((w) => w.id === saved) ?? null;
   WORKSPACE_ID = ws?.id ?? null;
-  let projects = await apiFetch<{ id: string; name: string }[]>(
+  // `role`: the caller's role in each project (E-10); the list holds only the projects they see
+  let projects = await apiFetch<{ id: string; name: string; role?: Role | null }[]>(
     ws ? `/projects?workspace_id=${encodeURIComponent(ws.id)}` : "/projects");
   if (projects.length === 0) {
     const where = ws ? `the workspace '${ws.name}'` : "your organisation";
-    if (!can("builder")) throw new Error(`${where} has no projects yet; ask a builder or admin to create one`);
+    if (!canOrg("builder")) {
+      throw new Error(`${where} has no project you can see yet; ask an admin to add you to one, or a builder to create one`);
+    }
     const body = ws ? { name: `${ws.name} project`, workspace_id: ws.id } : { name: "Default project" };
-    projects = [await apiFetch<{ id: string; name: string }>("/projects", { method: "POST", json: body })];
+    projects = [await apiFetch<{ id: string; name: string; role?: Role | null }>("/projects", { method: "POST", json: body })];
   }
   const chosen = projects.find((p) => p.id === stored(PROJECT_KEY)) ?? projects[0];
   PROJECT_ID = chosen.id;
   PROJECT_NAME = chosen.name;
   store(PROJECT_KEY, PROJECT_ID);
+  setProjectRole(chosen.role);
   return PROJECT_ID;
 }
 

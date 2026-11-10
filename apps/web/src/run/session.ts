@@ -148,6 +148,18 @@ export async function cancelRun() {
   if (runId) await apiFetch(`/runs/${runId}/cancel`, { method: "POST" });
 }
 
+/** Stop a run paused at a Wait step: the wait is cancelled and so is the run (nothing wakes it later). */
+export async function stopWaiting() {
+  const { runId } = useRun.getState();
+  if (!runId) return;
+  try {
+    const { cancelled } = await apiFetch<{ cancelled: boolean }>(`/runs/${runId}/cancel`, { method: "POST" });
+    useRun.setState({ interrupts: [], interrupt: null, error: cancelled ? "Stopped: the run's wait was cancelled" : "This run is no longer waiting" });
+  } catch (e) {
+    useRun.setState((s) => ({ warnings: [...s.warnings, `Could not stop the wait: ${(e as Error).message}`] }));
+  }
+}
+
 export async function forkRun(checkpointId: string, opts: { values?: Record<string, unknown>; asNode?: string; copy?: boolean }) {
   const { threadId } = useRun.getState();
   if (!threadId) return;

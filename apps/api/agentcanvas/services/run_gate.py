@@ -18,9 +18,9 @@ from agentcanvas.ir.models import Workflow
 from agentcanvas.settings import Settings
 from agentcanvas.validation.engine import validate
 
-# host execution in the hosted edition or on a sandboxing server, private networks there, local MCP processes,
-# imports outside the workspace
-SECURITY_CODES = frozenset({"E041", "E042", "E043", "E080"})
+# host execution in the hosted edition or on a sandboxing server, private networks there, local MCP processes (and,
+# in the hosted edition, any but the sandbox's own), imports outside the workspace
+SECURITY_CODES = frozenset({"E041", "E042", "E043", "E046", "E080"})
 CACHE_SIZE = 1024
 
 
@@ -50,6 +50,7 @@ class RunGate:
             edition=settings.edition,
             allow_local_mcp=settings.allow_local_mcp,
             isolated=settings.isolates_workspace_code,
+            sandbox_mcp=settings.sandbox_mcp,
         )
         return [d.model_dump() for d in found if d.severity == "error" and d.code in SECURITY_CODES]
 
@@ -60,7 +61,8 @@ class RunGate:
         # imports from outside the workspace): a passed check holds for this code only (R-11). The code's revision
         # names it; without one the registry object does (CPython reuses a freed object's id, so the entry holds it)
         code = self.revision(wf) if self.revision else str(id(registry))
-        key = f"{settings.edition}:{settings.allow_local_mcp}:{settings.isolates_workspace_code}:{ir_hash(wf)}:{code}"
+        switches = f"{settings.allow_local_mcp}:{settings.sandbox_mcp}:{settings.isolates_workspace_code}"
+        key = f"{settings.edition}:{switches}:{ir_hash(wf)}:{code}"
         if key in self._passed and (self.revision or self._passed[key] is registry):
             self._passed.move_to_end(key)
             return

@@ -30,7 +30,7 @@ import { MoreMenu } from "./MoreMenu";
 import { HelpDrawer, useFirstVisitHelp } from "../help/HelpDrawer";
 import { useEditor } from "./store";
 import { recallView } from "./viewMemory";
-import { useCan, useMe } from "../api/session";
+import { projectRole, useCan, useMe } from "../api/session";
 import { type DockTab, useUi } from "./ui";
 import { SIMPLE_DOCK, SIMPLE_TABS } from "./simple";
 import { PersonMenu } from "../app/AppShell";
@@ -46,7 +46,7 @@ export function SaveState({ saving, unsaved }: { saving: boolean; unsaved: strin
 
 export function EditorPage() {
   const canBuild = useCan("builder");
-  const role = useMe((s) => s.me.role);
+  const role = useMe((s) => projectRole(s.me));
   const { id } = useParams();
   const [params] = useSearchParams();
   const wf = useEditor((s) => s.wf);

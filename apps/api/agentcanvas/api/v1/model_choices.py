@@ -3,6 +3,8 @@ Copilot's model menu, knowledge bases): a model is offered only when it can answ
 fails for want of a key or a running server.
 
 - a hosted model when its provider's key is a project secret or a server variable;
+- a model in your own cloud account (AWS Bedrock, Google Vertex AI) when it has credentials and the server a default
+  region;
 - a local model (Ollama, LM Studio, vLLM, llama.cpp) when its server lists it right now;
 - the project's OpenAI-compatible model when it has a base URL.
 
@@ -22,6 +24,7 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from agentcanvas import cloudmodels
 from agentcanvas.api.deps import get_session
 from agentcanvas.api.v1.setup import list_server_models
 from agentcanvas.db.repositories import ProjectRepo
@@ -57,6 +60,14 @@ def _has_key(p: ProviderInfo, secrets: dict[str, str]) -> bool:
     return bool(p.key_env and (p.key_env in secrets or os.environ.get(p.key_env)))
 
 
+def _cloud_ready(model: str, secrets: dict[str, str], hosted: bool) -> bool:
+    """A model in your own cloud account answers with credentials (the project's, or the server's identity outside
+    the hosted edition) and the server's default region (a menu sets no region of its own)."""
+    return not cloudmodels.credentials_problem(model, secrets, hosted=hosted) and not cloudmodels.region_problem(
+        model, {}
+    )
+
+
 async def _served(
     request: Request, providers: dict[str, ProviderInfo], secrets: dict[str, str], base_url_for: BaseUrlFor
 ) -> list[tuple[ProviderInfo, str]]:
@@ -88,13 +99,17 @@ async def ready_chat_models(
     providers = _providers()
     secrets = request.app.state.projects.secrets.get(project_id, {})
     demo = bool(getattr(request.app.state, "demo_models", False))
+    hosted = request.app.state.settings.edition == "hosted"
     ready: list[str] = []
     listed = [m.id for m in registry.models() if m.retires is None]  # a retiring model is not offered for new work
     for model in dict.fromkeys(listed + [m for m in configured if m]):
         p = providers.get(model.partition(":")[0])
         if p is None or (p.local and not demo):
             continue
-        if demo or _has_key(p, secrets) or (p.base_url_required and base_url_for(p.id)):
+        if cloudmodels.cloud_of(model):
+            if demo or _cloud_ready(model, secrets, hosted):
+                ready.append(model)
+        elif demo or _has_key(p, secrets) or (p.base_url_required and base_url_for(p.id)):
             ready.append(model)
     if not demo:
         served = await _served(request, providers, secrets, base_url_for)

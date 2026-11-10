@@ -11,6 +11,10 @@ import { paletteTypes } from "../editor/simple";
 import { useUi } from "../editor/ui";
 import { onActivate } from "./keys";
 
+/** The gallery marks connectors whose program the sandbox's browser image comes with (the hosted edition allows
+ *  only those). Not in the generated types yet. */
+const runsInSandbox = (c: McpConnector): boolean => Boolean((c as McpConnector & { sandboxable?: boolean }).sandboxable);
+
 interface WorkspaceItem {
   key: string;
   type: string;
@@ -115,7 +119,7 @@ export function Palette() {
               <small className="blurb" id={`palette-blurb-connector-${c.id}`}>
                 {c.description}
                 {(c.secrets ?? []).length > 0 && ` · needs ${(c.secrets ?? []).map((x) => x.name).join(", ")}`}
-                {c.local && " · local edition"}
+                {c.local && (runsInSandbox(c) ? " · starts a program, also in the sandbox" : " · starts a program")}
                 {c.auth === "oauth" && " · you sign in with Connect"}
               </small>
             </div>

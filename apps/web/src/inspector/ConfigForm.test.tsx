@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { manifests, triage } from "../test/fixtures";
 
-vi.mock("../api/session", () => ({ can: () => true, ME: { role: "builder" } }));
+vi.mock("../api/session", () => ({ can: () => true, canOrg: () => true, ME: { role: "builder" } }));
 vi.mock("../api/client", () => ({ ApiError: class extends Error {}, apiFetch: vi.fn(() => new Promise(() => undefined)) }));
 
 const { useEditor } = await import("../editor/store");

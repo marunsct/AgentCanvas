@@ -1,12 +1,14 @@
-/** Decision card for a pending interrupt (build-guide/06 §9): tool approval, approval, or input request. */
+/** Decision card for a pending interrupt (build-guide/06 §9): tool approval, approval, or input request; a Wait step
+ * (kind "timer") only says what it waits for, since nobody decides it. */
 import Form from "@rjsf/core";
 import { BUTTON_TEMPLATES, withItemDefaults } from "../ui/rjsfTemplates";
 import { validator } from "../ui/validator";
 import { useState } from "react";
+import { waitingFor } from "../inspector/wait";
 
 export interface PendingInterrupt {
   id: string;
-  kind: "tool_approval" | "approval" | "input" | string;
+  kind: "tool_approval" | "approval" | "input" | "timer" | string;
   payload: unknown;
 }
 
@@ -35,8 +37,11 @@ const HINT: Record<string, string> = {
   input: "The run continues with what you send.",
 };
 
-export function DecisionCard({ intr, onDecide, busy }: { intr: PendingInterrupt; onDecide: (value: unknown) => void; busy?: boolean }) {
+export function DecisionCard({ intr, onDecide, busy, onStop }: {
+  intr: PendingInterrupt; onDecide: (value: unknown) => void; busy?: boolean; onStop?: () => void;
+}) {
   const payload = (intr.payload ?? {}) as Record<string, unknown>;
+  if (intr.kind === "timer") return <WaitCard payload={payload} onStop={onStop} busy={busy} />;
   return (
     <div className="interrupt-card" role="group" aria-label={intr.kind === "input" ? "Input needed" : "Approval needed"}>
       <b>{TITLE[intr.kind] ?? (intr.kind === "input" ? "Input needed" : "Approval needed")}</b>{" "}
@@ -46,6 +51,17 @@ export function DecisionCard({ intr, onDecide, busy }: { intr: PendingInterrupt;
         : intr.kind === "approval"
           ? <ValueApproval value={payload.value} onDecide={onDecide} busy={busy} />
           : <InputRequest payload={payload} onDecide={onDecide} busy={busy} />}
+    </div>
+  );
+}
+
+/** A run paused at a Wait step: it continues on its own; Stop (builders) cancels it. */
+function WaitCard({ payload, onStop, busy }: { payload: Record<string, unknown>; onStop?: () => void; busy?: boolean }) {
+  return (
+    <div className="interrupt-card waiting" role="group" aria-label="Waiting">
+      <b>Waiting</b> <small className="muted">Not for a person: the run continues on its own.</small>
+      <p data-testid="wait-for">Waits {waitingFor(payload)}.</p>
+      {onStop && <button type="button" disabled={busy} onClick={onStop}>■ Stop waiting</button>}
     </div>
   );
 }

@@ -181,7 +181,7 @@ only the base URL and the key:
 |---|---|
 | `POST /v1/deployments/<name>/runs/wait` | Runs the workflow; returns the answer, or the questions it is waiting on |
 | `POST /v1/deployments/<name>/runs/stream` | The same run as Server-Sent Events |
-| `POST /v1/deployments/<name>/threads/<id>/resume` | Answers an approval or a question |
+| `POST /v1/deployments/<name>/threads/<id>/resume` | Answers an approval or a question: `{"value": ..., "interrupt_id": ...}`. The id may be left out while one pause waits; with several waiting (steps on parallel branches) the call is refused with `409` |
 | `POST /v1/deployments/<name>/runs/<id>/feedback` | A thumbs up or down (logged, and written to `FEEDBACK_FILE` if set) |
 | `GET /healthz`, `GET /docs` | Health and the interactive API page |
 

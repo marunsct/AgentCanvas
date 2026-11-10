@@ -25,6 +25,7 @@ import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, Header, Request, Response
 from fastapi.responses import JSONResponse
@@ -44,7 +45,10 @@ from agentcanvas.api.v1.deployments import (
     _result,
     _start,
     api_result,
+    bound_end_user,
+    oauth_resource,
     own_thread,
+    signed_in,
 )
 from agentcanvas.api.v1.runs import stop_run
 from agentcanvas.db.models import Deployment, InterruptTask, Run, Thread, WorkflowVersion
@@ -62,12 +66,13 @@ from agentcanvas.ir.models import Workflow
 from agentcanvas.runtime import nesting
 from agentcanvas.runtime.runner import RunHandle
 from agentcanvas.runtime.types import ResumeSpec
-from agentcanvas.services import approvers
+from agentcanvas.services import approvers, deployment_oauth
 from agentcanvas.services.disclosure import AI_HEADER
 from agentcanvas.services.run_results import ResultRepo
 from agentcanvas.settings import Settings
 
 router = APIRouter(tags=["agent protocols"])
+well_known = APIRouter(tags=["agent protocols"])  # at the server's root, where RFC 9728 puts resource metadata
 
 # 2026-07-28 is "modern": every request carries its version in `_meta`, no `initialize`, no sessions. The older ones are
 # "legacy" (an `initialize` handshake); this server speaks both, choosing by how the client opens (dual-era)
@@ -133,14 +138,40 @@ def tool_name(wf: Workflow) -> str:
 
 
 def _people_decide(interrupt: dict[str, Any], wf: Workflow | None) -> bool:
-    """The pause's step names who decides it and does not let the caller answer (E-6): it waits in the Inbox."""
+    """The caller cannot answer the pause: its step names who decides it (E-6, it waits in the Inbox), or it is a
+    Wait step (F-10, it continues on its own)."""
+    if _waits(interrupt):
+        return True
     stored = approvers.node_approvers(wf).get(interrupt.get("canvas_node_id") or "") if wf is not None else None
     return approvers.caller_refusal(approvers.Approvers.of(stored)) is not None
+
+
+def _waits(interrupt: dict[str, Any]) -> bool:
+    return interrupt.get("kind") == "timer"
+
+
+def _at_wait(res: ApiResult) -> bool:
+    """The run is paused at Wait steps only: it continues on its own, so its task counts as working."""
+    return res.status == "interrupted" and bool(res.interrupts) and all(_waits(i) for i in res.interrupts)
+
+
+def _waiting_for(interrupt: dict[str, Any]) -> str:
+    """What a Wait step waits for, in a few words."""
+    found = interrupt.get("payload")
+    payload: dict[str, Any] = found if isinstance(found, dict) else {}
+    due = payload.get("due_at") or "its time"
+    if payload.get("event"):
+        key = f" with key {payload['key']}" if payload.get("key") else ""
+        return f"for the event {payload['event']}{key}, until {due} at most"
+    return f"until {due}"
 
 
 def _describe_pause(interrupts: list[dict[str, Any]], wf: Workflow | None = None) -> str:
     lines = []
     for i in interrupts:
+        if _waits(i):
+            lines.append(f"- it waits {_waiting_for(i)} (interrupt_id {i.get('id')}), then continues on its own")
+            continue
         payload = i.get("payload")
         what = (
             (payload.get("question") or payload.get("message") or payload.get("title"))
@@ -156,7 +187,9 @@ def _describe_pause(interrupts: list[dict[str, Any]], wf: Workflow | None = None
 
 
 def _next_step(interrupts: list[dict[str, Any]], wf: Workflow | None, answer: str) -> str:
-    """What the caller can do about a pause: answer it, or wait for the people who decide it."""
+    """What the caller can do about a pause: answer it, or wait for the people who decide it or for its time."""
+    if interrupts and all(_waits(i) for i in interrupts):
+        return "It continues on its own; you cannot answer it. Read its result later with the run's id."
     if interrupts and all(_people_decide(i, wf) for i in interrupts):
         return "It waits for a person to decide it in AgentCanvas; you cannot answer it."
     return answer
@@ -184,12 +217,10 @@ def answer_value(interrupt: dict[str, Any] | None, approve: bool | None, text: s
 async def _pending(
     request: Request, session: AsyncSession, thread_id: str, interrupt_id: str | None
 ) -> dict[str, Any] | None:
-    """The thread's pending interrupt (to shape a simple answer): from the inbox table, which every API replica
-    shares, else from a recent run in this process."""
-    q = select(InterruptTask).where(InterruptTask.thread_id == thread_id, InterruptTask.status == "pending")
-    if interrupt_id:
-        q = q.where(InterruptTask.id == interrupt_id)
-    row = await session.scalar(q.order_by(InterruptTask.created_at.desc()).limit(1))
+    """The interrupt an answer is for (to shape a simple answer): the one named, else the only one waiting (several
+    waiting and none named is refused). From the inbox table, which every API replica shares, else from a recent run
+    in this process. The caller has checked the thread is its own: a refusal lists the ids that wait."""
+    row = await approvers.answered(session, thread_id, interrupt_id)
     if row is not None:
         return {"id": row.id, "kind": row.kind, "payload": row.payload}
     for h in reversed(list(request.app.state.runner.handles.values())):
@@ -227,8 +258,8 @@ async def _resume_run(
     labels: dict[str, str] | None = None,
 ) -> RunHandle:
     """Answer a pause of the deployment's conversation: the run that goes on (no connection held while it works)."""
-    await own_thread(session, dep, thread_id)
-    await approvers.check_pending(session, thread_id, iid, approvers.CALLER)
+    await own_thread(session, dep, thread_id, bound_end_user(request, dep))
+    iid = await approvers.check_pending(session, thread_id, iid, approvers.CALLER)
     wf, version_id = await _continue_on(session, dep, wf, thread_id)
     h = await request.app.state.runner.start(
         wf,
@@ -278,7 +309,8 @@ def _mcp_tools(wf: Workflow, c: Contract, caller: Caller = LEGACY) -> list[dict[
                 "name": "answer",
                 "title": "Answer a paused run",
                 "description": "Continue a run that paused for an approval or a question. Set approve for an "
-                "approval, text for a question (or a reason when rejecting); value sends the raw resume value.",
+                "approval, text for a question (or a reason when rejecting); value sends the raw resume value. "
+                "When several pauses wait, interrupt_id names the one you answer.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -299,7 +331,9 @@ def _mcp_tools(wf: Workflow, c: Contract, caller: Caller = LEGACY) -> list[dict[
 def _tool_result(res: ApiResult, result_url: str | None = None, wf: Workflow | None = None) -> dict[str, Any]:
     data = res.model_dump(exclude_none=True)
     if res.status == "interrupted":
-        then = _next_step(res.interrupts, wf, "Call `answer`.")
+        several = len(res.interrupts) > 1  # parallel pauses: each answer names the one it is for
+        then = _next_step(res.interrupts, wf, "Call `answer` once for each, with its interrupt_id." if several
+                          else "Call `answer`.")  # fmt: skip
         text = f"The run paused (thread_id {res.thread_id}):\n{_describe_pause(res.interrupts, wf)}\n{then}"
     elif res.status == "success":
         text = json.dumps(res.output, ensure_ascii=False, indent=1)
@@ -350,6 +384,8 @@ async def _mcp_call(
             return await _answer_call(request, dep, wf, h, str(name), args, caller)
         if name == "answer" and c.pauses:
             thread_id, iid = str(args.get("thread_id") or ""), args.get("interrupt_id")
+            iid = str(iid) if iid else None
+            await own_thread(session, dep, thread_id)  # before anything about its pauses is said
             pending = await _pending(request, session, thread_id, iid)
             value = answer_value(pending, args.get("approve"), args.get("text"), args.get("value"))
             h = await _resume_run(request, session, dep, wf, thread_id, value, iid)
@@ -398,9 +434,12 @@ def _call_result(
 
 def _presented_key(request: Request) -> str:
     """The hash of the deployment key this call was made with: a request state is bound to that key, so another of
-    the deployment's keys (E-8), or this one once revoked, cannot answer the pause it asks about."""
+    the deployment's keys (E-8), or this one once revoked, cannot answer the pause it asks about. A person signed in
+    with OAuth (E-11) is bound by who they are instead, as their token is refreshed while they answer."""
     from agentcanvas.services.deployments import hash_key
 
+    if (who := signed_in(request)) is not None:
+        return hash_key(f"oauth:{who.user_id}")
     raw = request.headers.get("authorization") or ""
     return hash_key(raw.split(" ", 1)[1].strip() if raw.lower().startswith("bearer ") else raw)
 
@@ -563,9 +602,10 @@ def _namespace(request: Request) -> str:
     return host if all(x.isdigit() for x in labels) else ".".join(reversed(labels))
 
 
-def server_card(request: Request, dep_id: str, wf: Workflow, semver: str) -> dict[str, Any]:
+def server_card(request: Request, dep_id: str, wf: Workflow, semver: str, oauth: bool = False) -> dict[str, Any]:
     """The deployment's MCP Server Card (SEP-2127): who it is and where to connect, read before connecting. Its
     tools are not listed (clients list them once connected), and the key is only described, never included."""
+    what = "Bearer and an OAuth access token or the deployment's key" if oauth else "Bearer and the deployment's key"
     return {
         "$schema": SERVER_CARD_SCHEMA,
         "name": f"{_namespace(request)}/{tool_name(wf)}",
@@ -576,7 +616,7 @@ def server_card(request: Request, dep_id: str, wf: Workflow, semver: str) -> dic
             "type": "streamable-http",
             "url": api_url(request, "mcp_endpoint", dep_id=dep_id),
             "supportedProtocolVersions": list(MCP_VERSIONS),
-            "headers": [{"name": "Authorization", "description": "Bearer and the deployment's key",
+            "headers": [{"name": "Authorization", "description": what,
                          "isRequired": True, "isSecret": True, "placeholder": "Bearer ac_..."}],
         }],
     }  # fmt: skip
@@ -594,8 +634,9 @@ def _marking(method: str) -> dict[str, str] | None:
 async def mcp_server_card(dep_id: str, request: Request, session: AsyncSession = Depends(get_session)) -> Response:
     """The deployment's MCP Server Card, at the place the MCP Server Card extension reserves for it
     (`<streamable-http-url>/server-card`). Public, like the A2A card: discovery happens before authentication."""
-    _, wf, semver = await _deployment(session, dep_id)
-    return _card_response(request, server_card(request, dep_id, wf, semver), SERVER_CARD_TYPE, cors=True)
+    dep, wf, semver = await _deployment(session, dep_id)
+    card = server_card(request, dep_id, wf, semver, oauth=dep.oauth is not None)
+    return _card_response(request, card, SERVER_CARD_TYPE, cors=True)
 
 
 @router.post("/deployments/{dep_id}/mcp", name="mcp_endpoint")
@@ -609,7 +650,7 @@ async def mcp_endpoint(
     """The deployment as a remote MCP server (Streamable HTTP; every response is a single JSON message)."""
     if (refused := _mcp_transport_refusal(request, settings)) is not None:
         return refused
-    dep, wf = await _caller(request, session, dep_id, authorization)
+    dep, wf = await _caller(request, session, dep_id, authorization, oauth="mcp_endpoint")
     try:
         msg = await _rpc(request)
     except RpcError as e:
@@ -708,7 +749,10 @@ async def _mcp_task(
                        {"requiredCapabilities": {"extensions": {mcp_input.TASKS: {}}}})  # fmt: skip
     task_id = params.get("taskId")
     q = select(Run.id, Run.thread_id, Run.started_at).join(Thread, Thread.id == Run.thread_id)
-    task = (await session.execute(q.where(Run.id == str(task_id), Thread.deployment_id == dep.id))).first()
+    q = q.where(Run.id == str(task_id), Thread.deployment_id == dep.id)
+    if (mine := bound_end_user(request, dep)) is not None:  # a signed-in person polls only their own tasks
+        q = q.where(Thread.end_user == mine)
+    task = (await session.execute(q)).first()
     if not isinstance(task_id, str) or task is None:
         raise RpcError(-32602, "Failed to retrieve task: Task not found")
     of_task = or_(Run.id == task_id, Run.labels["mcp_task"].as_string() == task_id)
@@ -727,11 +771,12 @@ async def _mcp_task(
         newest = select(Run.id).where(Run.thread_id == task.thread_id).order_by(Run.started_at.desc(), Run.id.desc())
         found = await results.of(await session.scalar(newest.limit(1)) or latest.id, dep.id)
     res = api_result(found) if found else ApiResult(run_id=latest.id, thread_id=task.thread_id, status="error")
-    if method == "tasks/cancel":  # an acknowledgement: a run that works stops, wherever it runs
-        if res.status == "running":
+    if method == "tasks/cancel":  # an acknowledgement: a run that works (or is at a Wait step) stops, wherever it runs
+        if res.status == "running" or _at_wait(res):
             await stop_run(session, request.app.state.runner, res.run_id)
         return {}
-    asked = res.interrupts[0] if res.status == "interrupted" and res.interrupts and caller.ask else None
+    askable = [i for i in res.interrupts if not _waits(i)] if res.status == "interrupted" else []
+    asked = askable[0] if askable and caller.ask else None
     key = f"{res.run_id}:{asked['id']}" if asked else None  # unique over the task: each pause is a new run's
     if method == "tasks/update":
         responses = params.get("inputResponses")
@@ -748,6 +793,8 @@ async def _mcp_task(
                            "lastUpdatedAt": changed.isoformat(), "ttlMs": None, "pollIntervalMs": POLL_MS}  # fmt: skip
     if res.status == "running":
         return {**out, "status": "working", "statusMessage": "waiting for a run slot" if latest.queued else "running"}
+    if _at_wait(res):
+        return {**out, "status": "working", "statusMessage": f"waiting {_waiting_for(res.interrupts[0])}"}
     if asked is not None:
         return {**out, "status": "input_required", "statusMessage": "waiting for a person",
                 "inputRequests": {key: mcp_input.form(asked, wf.name)}}  # fmt: skip
@@ -773,20 +820,47 @@ async def _deployment(session: AsyncSession, dep_id: str) -> tuple[Deployment, W
     return dep, Workflow.model_validate(version.ir), version.semver
 
 
-def agent_card(wf: Workflow, semver: str, url: str, version: str | None = None) -> dict[str, Any]:
+@dataclass(frozen=True)
+class CardSignIn:
+    """What an agent card says about OAuth sign-in (E-11): where to get a token, and for what."""
+
+    issuer: str
+    scopes: list[str]
+    audience: str
+
+    @property
+    def discovery(self) -> str:
+        return self.issuer.rstrip("/") + "/.well-known/openid-configuration"
+
+    @property
+    def description(self) -> str:
+        scopes = f", with the scopes {' '.join(self.scopes)}" if self.scopes else ""
+        return f"An OAuth access token from {self.issuer} for the audience {self.audience}{scopes}."
+
+
+def agent_card(
+    wf: Workflow, semver: str, url: str, version: str | None = None, oauth: CardSignIn | None = None
+) -> dict[str, Any]:
     """The agent card: A2A 1.0's shape for a client that asks for 1.x (`A2A-Version`), else 0.3's, which also lists
-    the 1.0 interface (`supportedInterfaces`) so a 1.0 client reading it without the header finds it."""
-    card = _card_v03(wf, semver, url)
+    the 1.0 interface (`supportedInterfaces`) so a 1.0 client reading it without the header finds it. With OAuth
+    sign-in, either the key or an access token will do (two security requirements: one of them must hold)."""
+    card = _card_v03(wf, semver, url, oauth)
     interfaces = [{"url": url, "protocolBinding": "JSONRPC", "protocolVersion": A2A_V1},
                   {"url": url, "protocolBinding": "JSONRPC", "protocolVersion": "0.3"}]  # fmt: skip
     if not _v1(version):
         return {**card, "supportedInterfaces": interfaces}
     drop = ("protocolVersion", "url", "preferredTransport", "securitySchemes", "security")
+    schemes: dict[str, Any] = {"deploymentKey": {"httpAuthSecurityScheme": {"scheme": "bearer"}}}
+    required: list[dict[str, Any]] = [{"schemes": {"deploymentKey": {"list": []}}}]
+    if oauth is not None:
+        schemes["oauth"] = {"openIdConnectSecurityScheme": {"openIdConnectUrl": oauth.discovery,
+                                                            "description": oauth.description}}  # fmt: skip
+        required.append({"schemes": {"oauth": {"list": list(oauth.scopes)}}})
     return {
         **{k: v for k, v in card.items() if k not in drop},
         "supportedInterfaces": interfaces,
-        "securitySchemes": {"deploymentKey": {"httpAuthSecurityScheme": {"scheme": "bearer"}}},
-        "securityRequirements": [{"schemes": {"deploymentKey": {"list": []}}}],
+        "securitySchemes": schemes,
+        "securityRequirements": required,
     }
 
 
@@ -794,8 +868,14 @@ def _v1(version: str | None) -> bool:
     return bool(version) and str(version).strip().split(".")[0] == "1"
 
 
-def _card_v03(wf: Workflow, semver: str, url: str) -> dict[str, Any]:
+def _card_v03(wf: Workflow, semver: str, url: str, oauth: CardSignIn | None = None) -> dict[str, Any]:
     c = contract(wf)
+    schemes: dict[str, Any] = {"deploymentKey": {"type": "http", "scheme": "bearer"}}
+    security: list[dict[str, list[str]]] = [{"deploymentKey": []}]
+    if oauth is not None:
+        schemes["oauth"] = {"type": "openIdConnect", "openIdConnectUrl": oauth.discovery,
+                            "description": oauth.description}  # fmt: skip
+        security.append({"oauth": list(oauth.scopes)})
     fields = ", ".join(c.input) or "none"
     return {
         "protocolVersion": A2A_VERSION,
@@ -820,8 +900,8 @@ def _card_v03(wf: Workflow, semver: str, url: str) -> dict[str, Any]:
                 "outputModes": ["application/json"],
             }
         ],
-        "securitySchemes": {"deploymentKey": {"type": "http", "scheme": "bearer"}},
-        "security": [{"deploymentKey": []}],
+        "securitySchemes": schemes,
+        "security": security,
     }
 
 
@@ -831,10 +911,48 @@ async def a2a_card(dep_id: str, request: Request, session: AsyncSession = Depend
     """The deployment's A2A agent card. Public, as A2A clients read it before they authenticate: it names the
     workflow and its input fields; running it needs the key. Cached as A2A 1.0 section 8.6 asks; its shape depends
     on `A2A-Version`, so caches keep one per version."""
-    _, wf, semver = await _deployment(session, dep_id)
+    dep, wf, semver = await _deployment(session, dep_id)
     url = api_url(request, "a2a_endpoint", dep_id=dep_id)  # as callers reach it, e.g. behind nginx's /api
-    card = agent_card(wf, semver, url, request.headers.get("a2a-version"))
+    card = agent_card(wf, semver, url, request.headers.get("a2a-version"), _card_sign_in(request, dep, url))
     return _card_response(request, card, "application/json", vary="A2A-Version")
+
+
+def _card_sign_in(request: Request, dep: Deployment, url: str) -> CardSignIn | None:
+    cfg = deployment_oauth.config(dep.oauth)
+    issuer = deployment_oauth.issuer_of(cfg, request.app.state.settings) if cfg else None
+    if cfg is None or issuer is None:
+        return None
+    return CardSignIn(issuer=issuer, scopes=cfg.scopes, audience=cfg.audience or url)
+
+
+ENDPOINT_PATH = re.compile(r"/v1/deployments/([^/]+)/(mcp|a2a)")
+
+
+@well_known.get(deployment_oauth.WELL_KNOWN + "/{resource_path:path}", include_in_schema=False)
+async def protected_resource(
+    resource_path: str, request: Request, session: AsyncSession = Depends(get_session)
+) -> Response:
+    """The protected resource metadata (RFC 9728) of a deployment's MCP or A2A endpoint that takes OAuth sign-in:
+    which authorization server issues its tokens and which scopes they need. Public, as clients read it before they
+    sign in; only a deployment with OAuth on has one, at the path of the endpoint's public address."""
+    path = "/" + resource_path
+    found = ENDPOINT_PATH.search(path)
+    dep = await session.get(Deployment, found[1]) if found and path.endswith(found[0]) else None
+    cfg = deployment_oauth.config(dep.oauth) if dep is not None and dep.active else None
+    issuer = deployment_oauth.issuer_of(cfg, request.app.state.settings) if cfg else None
+    if found is None or dep is None or cfg is None or issuer is None:
+        raise NotFound("no protected resource here")
+    resource = oauth_resource(request, "mcp_endpoint" if found[2] == "mcp" else "a2a_endpoint", dep.id)
+    if urlsplit(resource).path != path:  # the metadata of an address callers do not use (RFC 9728 section 3.3)
+        raise NotFound("no protected resource here")
+    version = await session.get(WorkflowVersion, dep.version_id)
+    doc: dict[str, Any] = {"resource": resource, "authorization_servers": [issuer],
+                           "bearer_methods_supported": ["header"]}  # fmt: skip
+    if cfg.scopes:  # RFC 9728: a parameter without values is left out
+        doc["scopes_supported"] = list(cfg.scopes)
+    if version is not None:
+        doc["resource_name"] = Workflow.model_validate(version.ir).name
+    return _card_response(request, doc, "application/json", cors=True)
 
 
 def _parts(message: dict[str, Any]) -> tuple[dict[str, Any], str | None]:
@@ -872,12 +990,16 @@ def _input_from(message: dict[str, Any], c: Contract) -> dict[str, Any]:
 def _task(res: ApiResult, task_id: str, wf: Workflow | None = None) -> dict[str, Any]:
     state = {"success": "completed", "interrupted": "input-required", "running": "working",
              "cancelled": "canceled"}.get(res.status, "failed")  # fmt: skip
+    if _at_wait(res):
+        state = "working"  # at a Wait step: nothing is asked of the caller
     status: dict[str, Any] = {"state": state, "timestamp": datetime.now(UTC).isoformat()}
     if res.status == "interrupted":
         status["message"] = _agent_message(
             task_id, res.thread_id,
             f"Paused:\n{_describe_pause(res.interrupts, wf)}\n"
-            + _next_step(res.interrupts, wf, "Reply to this task to continue."),
+            + _next_step(res.interrupts, wf, 'Reply to this task once for each, with a data part {"interrupt_id": '
+                         '"..."} naming the one you answer.' if len(res.interrupts) > 1
+                         else "Reply to this task to continue."),
             {"interrupts": res.interrupts},
         )  # fmt: skip
     elif state == "failed":
@@ -918,11 +1040,11 @@ def _v1_task(task: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-async def _task_thread(session: AsyncSession, dep: Deployment, task_id: str) -> Thread:
-    """The conversation of a task (a task is named after the run that started it)."""
+async def _task_thread(session: AsyncSession, dep: Deployment, task_id: str, end_user: str | None) -> Thread:
+    """The conversation of a task (a task is named after the run that started it); a signed-in caller's own only."""
     q = select(Thread).join(Run, Thread.id == Run.thread_id)
     thread = await session.scalar(q.where(Run.id == task_id, Thread.deployment_id == dep.id))
-    if thread is None:
+    if thread is None or (end_user is not None and thread.end_user != end_user):
         raise RpcError(TASK_NOT_FOUND, f"task '{task_id}' not found")
     return thread
 
@@ -939,17 +1061,18 @@ async def _a2a_send(
     task_id = message.get("taskId")
     if task_id:  # the answer to a paused task
         task_id = str(task_id)
-        thread = await _task_thread(session, dep, task_id)
-        pending = await _pending(request, session, thread.id, None)
-        if thread.status != "interrupted" or pending is None:
+        thread = await _task_thread(session, dep, task_id, bound_end_user(request, dep))
+        data, text = _parts(message)
+        named = str(data["interrupt_id"]) if data.get("interrupt_id") else None  # one of several pauses
+        pending = await _pending(request, session, thread.id, named) if thread.status == "interrupted" else None
+        if pending is None:
             raise RpcError(-32602, f"task '{task_id}' is not waiting for input; send a new message (with contextId "
                            f"'{thread.id}' to continue the conversation)")  # fmt: skip
-        data, text = _parts(message)
         approve = data.get("approve") if isinstance(data.get("approve"), bool) else None
         if approve is None and text is not None and pending.get("kind") in ("approval", "tool_approval"):
             approve = text.strip().lower() in YES
         value = answer_value(pending, approve, text, data.get("value"))
-        res = await _resume(request, session, dep, wf, thread.id, value, None, labels={"a2a_task": task_id})
+        res = await _resume(request, session, dep, wf, thread.id, value, named, labels={"a2a_task": task_id})
         return _task(res, task_id, wf)
     fields = _input_from(message, contract(wf))
     context_id = message.get("contextId")
@@ -972,7 +1095,7 @@ async def _a2a_get(request: Request, session: AsyncSession, dep: Deployment, par
 
 
 async def _task_result(request: Request, session: AsyncSession, dep: Deployment, task_id: str) -> ApiResult:
-    thread = await _task_thread(session, dep, task_id)
+    thread = await _task_thread(session, dep, task_id, bound_end_user(request, dep))
     # the newest run that is the task or answered it, found in SQL: a long conversation has many runs
     task_run = or_(Run.id == task_id, Run.labels["a2a_task"].as_string() == task_id)
     q = select(Run.id).where(Run.thread_id == thread.id, task_run)
@@ -985,10 +1108,11 @@ async def _task_result(request: Request, session: AsyncSession, dep: Deployment,
 async def _a2a_cancel(
     request: Request, session: AsyncSession, dep: Deployment, params: dict[str, Any]
 ) -> dict[str, Any]:
-    """Stop a working task, wherever its run runs; one that ended, or waits for an answer, cannot be cancelled."""
+    """Stop a working task (or one at a Wait step), wherever its run runs; one that ended, or waits for an answer,
+    cannot be cancelled."""
     task_id = str(params.get("id") or "")
     res = await _task_result(request, session, dep, task_id)
-    if res.status != "running":
+    if res.status != "running" and not _at_wait(res):  # a task at a Wait step is working too
         state = "waits for an answer" if res.status == "interrupted" else "has ended"
         raise RpcError(TASK_NOT_CANCELABLE, f"task '{task_id}' {state}: only a working task can be cancelled")
     runner = request.app.state.runner
@@ -1027,7 +1151,7 @@ async def a2a_endpoint(
 ) -> Response:
     """The deployment as an A2A agent (JSON-RPC): A2A 1.0's methods (`SendMessage`, `GetTask`, …) and 0.3's
     (`message/send`, `tasks/get`), told apart by name as the reference SDK does."""
-    dep, wf = await _caller(request, session, dep_id, authorization)
+    dep, wf = await _caller(request, session, dep_id, authorization, oauth="a2a_endpoint")
     id_: Any = None
     try:
         msg = await _rpc(request)

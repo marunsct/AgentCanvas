@@ -14,7 +14,7 @@ import type { WF } from "../ir/model";
 import { formatMetrics, useRun } from "./runStore";
 import { useUi } from "../editor/ui";
 import { testCaseFromRun } from "../release/testcases";
-import { cancelRun, continueRun, debugAids, resumeRun, startRun } from "./session";
+import { cancelRun, continueRun, debugAids, resumeRun, startRun, stopWaiting } from "./session";
 import { promptDialog } from "../ui/dialog";
 import { FilePicker } from "../ui/FilePicker";
 import { isFileSchema, type FileRef } from "../ir/files";
@@ -138,7 +138,8 @@ export function RunPanel() {
         </button>
       )}
       {!run.running && run.interrupts.map((intr) => (
-        <DecisionCard key={intr.id} intr={intr} busy={run.starting || !can("reviewer")} onDecide={(v) => void resumeRun(v, intr.id)} />
+        <DecisionCard key={intr.id} intr={intr} busy={run.starting || !can("reviewer")} onDecide={(v) => void resumeRun(v, intr.id)}
+          onStop={builder ? () => void stopWaiting() : undefined} />
       ))}
       {Object.keys(run.output).length > 0 && !chat && (
         <>

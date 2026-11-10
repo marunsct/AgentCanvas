@@ -47,6 +47,7 @@ class EventResult:
     type: str
     status: str  # handled | ignored | error | dry_run
     handlers: list[HandlerResult]
+    woke: list[str] = field(default_factory=list)  # runs continued from a Wait step that waited for this event
 
 
 class EventService:
@@ -54,6 +55,7 @@ class EventService:
         self.db = db
         self.runner = runner
         self.projects = projects
+        self.timers: Any = None  # services/timers.py, when the server runs it: events end Wait steps
 
     # ------------------------------------------------------------------ schemas ----
     def schema(self, project_id: str, event_type: str) -> dict[str, Any] | None:
@@ -95,11 +97,18 @@ class EventService:
                     r.runs += await self._perform(project_id, action, user_id, depth)
                 except Exception as exc:  # noqa: BLE001 - one failing action must not lose the others
                     r.error = f"{action.get('action')}: {exc}"
-        if quiet and not results:
+        woke = [] if dry_run or source == "lifecycle" else await self._wake(project_id, event, user_id, depth)
+        if quiet and not results and not woke:
             return EventResult(event_id=None, type=event_type, status="ignored", handlers=[])
         matched = [r for r in results if r.matched and not r.skipped]
         status = (
-            "dry_run" if dry_run else "error" if any(r.error for r in results) else "handled" if matched else "ignored"
+            "dry_run"
+            if dry_run
+            else "error"
+            if any(r.error for r in results)
+            else "handled"
+            if matched or woke
+            else "ignored"
         )
         if not dry_run:
             async with self.db.sessionmaker() as s:
@@ -115,7 +124,19 @@ class EventService:
                     )
                 )
                 await s.commit()
-        return EventResult(event_id=None if dry_run else event_id, type=event_type, status=status, handlers=results)
+        return EventResult(
+            event_id=None if dry_run else event_id, type=event_type, status=status, handlers=results, woke=woke
+        )
+
+    async def _wake(self, project_id: str, event: dict[str, Any], user_id: str | None, depth: int) -> list[str]:
+        """Continue the runs a Wait step paused for this event (one level deeper, like a resume); their run ids."""
+        if self.timers is None or depth >= MAX_DEPTH:
+            return []
+        try:
+            return await self.timers.wake_event(project_id, event, user_id=user_id, depth=depth + 1)
+        except Exception:  # the handlers' work stands; the waits keep waiting (their time limit still runs)
+            log.exception("events.wake_failed", project_id=project_id, type=event.get("type"))
+            return []
 
     async def _run_handler(
         self, project_id: str, h: dict[str, Any], event: dict[str, Any], dry_run: bool
@@ -209,10 +230,11 @@ class EventService:
                     ver = await thread_version(s, thread_id, ver)
                     ir, target = ver.ir, {"deployment_id": dep.id, "version_id": ver.id}
                 # a handler answers like the caller of a published workflow: not a step that names its deciders
-                await approvers.check_pending(s, thread_id, None, approvers.CALLER)
+                named = str(action["interrupt_id"]) if action.get("interrupt_id") else None
+                iid = await approvers.check_pending(s, thread_id, named, approvers.CALLER)
             PROJECT_OF[row.id] = project_id  # the run's lifecycle events reach this project's handlers
             h = await self.runner.start(
-                Workflow.model_validate(ir), thread_id=thread_id, resume=ResumeSpec(action.get("value")),
+                Workflow.model_validate(ir), thread_id=thread_id, resume=ResumeSpec(action.get("value"), iid),
                 user_id=user_id, origin="event", event_depth=depth + 1, **target,
             )  # fmt: skip
             return [h.run_id]
@@ -251,8 +273,15 @@ class EventService:
         if h.origin == "test":
             return  # saved test cases run without side effects on the project's handlers
         project_id = PROJECT_OF.get(h.workflow_id)
-        if project_id is None or not self.projects.has_handlers(project_id):
-            return  # cheap: no workspace (or no events/ code) -> nothing can subscribe
+        if project_id is None:
+            return
+        if not self.projects.has_handlers(project_id):  # cheap: no workspace (or no events/ code): no handlers,
+            depth = getattr(h, "event_depth", 0)  # but a Wait step may wait for an event the run emitted
+            for e in h.emitted:
+                event = {"id": new_id("evt"), "type": str(e["ac_event"]), "data": dict(e.get("data") or {}),
+                         "source": "run"}  # fmt: skip
+                await self._wake(project_id, event, None, depth)
+            return
         base = {
             "workflow_id": h.workflow_id,
             "workflow_name": h.workflow_name,

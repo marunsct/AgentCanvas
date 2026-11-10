@@ -36,6 +36,7 @@ from agentcanvas.api.scim import router as scim_router
 from agentcanvas.api.shutdown import WindDown
 from agentcanvas.api.v1 import router as v1_router
 from agentcanvas.api.v1 import runs as runs_module
+from agentcanvas.api.v1.protocols import well_known as well_known_router
 from agentcanvas.db.repositories import DEV_ORG, retire_dev_user, seed_dev
 from agentcanvas.db.rls import bypasses_policies, sees_no_rows
 from agentcanvas.db.session import Database
@@ -52,6 +53,7 @@ from agentcanvas.security.kms import Keyring
 from agentcanvas.services import audit_sink, oauth, routing
 from agentcanvas.services import projects as projects_module
 from agentcanvas.services.callbacks import CallbackJob
+from agentcanvas.services.digest import DigestJob
 from agentcanvas.services.events import EventService
 from agentcanvas.services.experiments import ExperimentJob
 from agentcanvas.services.files import FileStore
@@ -70,6 +72,7 @@ from agentcanvas.services.run_gate import RunGate
 from agentcanvas.services.run_search import RunSearchService
 from agentcanvas.services.secrets import SecretCache, encoded_forms
 from agentcanvas.services.spend_caps import SpendCaps
+from agentcanvas.services.timers import TimerJob
 from agentcanvas.services.trace_export import Exporter, TraceExportHook
 from agentcanvas.services.triggers import CronScheduler
 from agentcanvas.settings import Settings, get_settings
@@ -294,6 +297,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # E-2: deployment runs' completion callbacks, delivered by every server
             app.state.callbacks = CallbackJob(db, runner, app.state.keyring, public_only=settings.edition == "hosted")
             runner.finish_hooks.append(app.state.callbacks.on_run_finished)
+            if settings.sandbox_mcp:  # a run's app connector sandboxes stop when it ends
+                from agentcanvas.sandbox.mcp import SESSIONS
+
+                SESSIONS.limit = settings.sandbox_mcp_sessions
+
+                async def stop_connectors(h: Any, *_: Any) -> None:
+                    await SESSIONS.end("run", h.run_id)
+
+                runner.finish_hooks.append(stop_connectors)
             app.state.cron = CronScheduler(db, runner, app.state.keyring, catchup_s=settings.cron_catchup_s)
             app.state.ratelimit = RateLimiter(db)
             app.state.retention = RetentionJob(
@@ -309,6 +321,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 return await runs_module.handover_target(s, settings, thread_id, version_id)
 
             app.state.notifier = NotifierJob(db, app.state.keyring, settings)
+            # F-10: Wait steps continue when due, or when their event arrives (on the version that paused)
+            app.state.timers = TimerJob(db, runner, handover_target)
+            app.state.events.timers = app.state.timers
+            # F-11: each project's weekly run digest, made once by whichever server claims it
+            app.state.digests = DigestJob(
+                db, settings.digest_interval_s, lambda project_id: app.state.projects.secrets.get(project_id, {}),
+                app.state.notifier,
+            )  # fmt: skip
+            app.state.notifier.rounds.append(app.state.digests.deliver)  # sent through the approval channels
             app.state.handover = HandoverJob(
                 db, runner, handover_target, settings.handover_interval_s, settings.orphan_after_s
             )
@@ -316,8 +337,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if settings.env != "test":  # tests drive the schedulers with explicit ticks
                 app.state.experiments.start()
                 app.state.cron.start()
+                app.state.timers.start()
                 app.state.retention.start()
                 app.state.notifier.start()
+                app.state.digests.start()
                 app.state.offboarding.start()
                 app.state.crawl.start()
                 app.state.handover.start()
@@ -350,8 +373,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 app.state.presence.close()  # endless streams end: uvicorn's wait for connections need not last
                 await app.state.experiments.stop()  # before the drain: its runs are handed over with the rest
                 await app.state.cron.stop()
+                await app.state.timers.stop()
                 await app.state.retention.stop()
                 await app.state.notifier.stop()
+                await app.state.digests.stop()
                 await app.state.offboarding.stop()
                 await app.state.crawl.stop()
                 await app.state.secrets.stop()
@@ -470,6 +495,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(v1_router)
     app.include_router(scim_router)  # /scim/v2: the organisation's SCIM token (G-13)
+    app.include_router(well_known_router)  # deployments' OAuth protected resource metadata (E-11, RFC 9728)
     return app
 
 

@@ -78,6 +78,15 @@ api:
   # needs to write elsewhere
   readOnlyRootFilesystem: true
   podAnnotations: {}
+  # the API pods' Kubernetes service account, for a cloud identity without keys (AWS Bedrock and Vertex AI models, a
+  # KMS master key): create one with the annotation of AWS IRSA
+  # (eks.amazonaws.com/role-arn: arn:aws:iam::<account>:role/<role>) or GKE Workload Identity
+  # (iam.gke.io/gcp-service-account: <name>@<project>.iam.gserviceaccount.com); for EKS Pod Identity, associate the
+  # role with its name. Or name an existing one (create: false). Neither: the namespace's default service account
+  serviceAccount:
+    create: false
+    name: ""          # default with create: <release>-agentcanvas-api
+    annotations: {}
   nodeSelector: {}
   tolerations: []
   affinity: {}
@@ -87,6 +96,10 @@ api:
 sandbox:
   enabled: true
   replicas: 4  # each pod runs one call at a time (calls of different projects never share a pod at once)
+  # the sandbox pods' image (empty: the API image). For local app connectors in the sandbox (config.extraEnv
+  # AGENTCANVAS_SANDBOX_MCP: "true"), the API image built with --build-arg WITH_BROWSER=true, which adds Node.js,
+  # Chromium and the gallery's sandbox connectors (docs/user-guide/deploy.md)
+  image: ""
   # run workspace code on nodes of its own (e.g. a tainted pool), away from the API and other tenants' data
   nodeSelector: {}
   tolerations: []

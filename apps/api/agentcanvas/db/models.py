@@ -141,6 +141,29 @@ class Project(Base):
     created_at: Mapped[datetime] = _now()
 
 
+class ProjectMember(Base):
+    """Who works in a project, with what role (E-10): one person (`user_id`) or one SCIM group (`group_id`, its
+    members). With the organisation's projects private, only organisation admins and these see the project; otherwise
+    a binding can only give someone more than their organisation role there (services/project_access.py)."""
+
+    __tablename__ = "project_member"
+    __table_args__ = (
+        CheckConstraint("role IN ('admin','builder','reviewer','viewer')", name="project_member_role"),
+        CheckConstraint("(user_id IS NULL) <> (group_id IS NULL)", name="project_member_principal"),
+        UniqueConstraint("project_id", "user_id", name="project_member_user"),
+        UniqueConstraint("project_id", "group_id", name="project_member_group"),
+        Index("project_member_user_idx", "user_id"),
+        Index("project_member_group_idx", "group_id"),
+    )
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("project.id", ondelete="CASCADE"))
+    user_id: Mapped[str | None] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"))
+    group_id: Mapped[str | None] = mapped_column(ForeignKey("scim_group.id", ondelete="CASCADE"))
+    role: Mapped[str] = mapped_column(Text)
+    created_by: Mapped[str | None] = mapped_column(Text)  # who added it (a user id)
+    created_at: Mapped[datetime] = _now()
+
+
 class WorkflowRow(Base):
     __tablename__ = "workflow"
     id: Mapped[str] = mapped_column(String, primary_key=True)
@@ -214,6 +237,12 @@ class Deployment(Base):
     # app connector name -> the tools its runs left out because the server changed them since publishing (E-4):
     # {"added", "changed", "outcome", "unpinned", "run_id", "seen_at"}; shown in the editor, cleared on publish
     tool_drift: Mapped[dict[str, Any] | None] = mapped_column(Json)
+    # OAuth sign-in for its MCP and A2A endpoints (E-11, services/deployment_oauth.py): {"issuer", "audience",
+    # "scopes"}; NULL: off, only its keys work
+    oauth: Mapped[dict[str, Any] | None] = mapped_column(Json)
+    # its AI-system record (services/system_record.py): purpose, owner_id, risk_class, risk_rationale,
+    # data_categories, end_user_facing, review_date, updated_by, updated_at; NULL until someone fills it in
+    system_record: Mapped[dict[str, Any] | None] = mapped_column(Json)
 
 
 class DeploymentKey(Base):
@@ -464,6 +493,23 @@ class ModelSpend(Base):
     cost_usd: Mapped[Decimal] = mapped_column(Numeric(14, 6), server_default=text("0"), default=Decimal(0))
 
 
+class RunDigest(Base):
+    """A project's weekly run digest (F-11): what the week's runs did (failure groups, spend, latency, the most
+    flagged runs), made once per project and UTC week (Monday to Monday) by whichever server inserts it first: the
+    unique key is the claim. It goes with its project; digests older than a year are deleted."""
+
+    __tablename__ = "run_digest"
+    __table_args__ = (
+        UniqueConstraint("project_id", "week_start", name="run_digest_once"),
+        Index("run_digest_week_idx", "week_start"),  # deleting old ones
+    )
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("project.id", ondelete="CASCADE"))
+    week_start: Mapped[datetime] = mapped_column(UtcDateTime())
+    summary: Mapped[dict[str, Any]]
+    created_at: Mapped[datetime] = _now()
+
+
 class RunSearch(Base):
     """G-10: a finished run's input and answer, embedded for "find conversations where …". One row per run; it goes
     with its run (retention, deleting the conversation or the workflow). `model` is the embedding model that made
@@ -500,8 +546,8 @@ class Presence(Base):
 class InterruptTask(Base):
     __tablename__ = "interrupt_task"
     __table_args__ = (
-        CheckConstraint("kind IN ('tool_approval','approval','input')", name="interrupt_kind"),
-        CheckConstraint("status IN ('pending','decided','expired')", name="interrupt_status"),
+        CheckConstraint("kind IN ('tool_approval','approval','input','timer')", name="interrupt_kind"),
+        CheckConstraint("status IN ('pending','decided','expired','cancelled')", name="interrupt_status"),
         Index("interrupt_pending_idx", "status", "created_at"),
         Index("interrupt_thread_idx", "thread_id"),  # deleting a conversation or a run (cascade, retention)
         Index("interrupt_run_idx", "run_id"),
@@ -511,6 +557,20 @@ class InterruptTask(Base):
             "escalate_at",
             postgresql_where=text("escalate_at IS NOT NULL"),
             sqlite_where=text("escalate_at IS NOT NULL"),
+        ),
+        # what the timer job wakes next (services/timers.py): only Wait steps still waiting
+        Index(
+            "interrupt_due_idx",
+            "due_at",
+            postgresql_where=text("status = 'pending' AND due_at IS NOT NULL"),
+            sqlite_where=text("status = 'pending' AND due_at IS NOT NULL"),
+        ),
+        # the event waits an event of one type may wake (services/events.py)
+        Index(
+            "interrupt_event_idx",
+            "wait_event",
+            postgresql_where=text("status = 'pending' AND wait_event IS NOT NULL"),
+            sqlite_where=text("status = 'pending' AND wait_event IS NOT NULL"),
         ),
     )
     id: Mapped[str] = mapped_column(String, primary_key=True)  # LangGraph interrupt id
@@ -532,12 +592,18 @@ class InterruptTask(Base):
     created_at: Mapped[datetime] = _now()
     decided_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
     # which announcement of it the notifier claimed (services/notifier.py): NULL not yet, "waiting" (or "off": its
-    # organisation sends none, "quiet": a draft run its starter watches)
+    # organisation sends none, "quiet": a draft run its starter watches, "timer": a Wait step, nobody to tell)
     noticed: Mapped[str | None] = mapped_column(Text)
     # escalation (services/notifier.py): when its step's "escalate after" runs out (NULL: at the approval expiry, if
     # the step escalates at all), and when it was escalated to `assignee_role` (its expiry counts from then)
     escalate_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
     escalated_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
+    # a Wait step (kind "timer", services/timers.py): when it is due (an event wait's timeout), the event type and key
+    # that wake it sooner, and until when one server holds it while it starts the run that continues
+    due_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
+    wait_event: Mapped[str | None] = mapped_column(Text)
+    wait_key: Mapped[str | None] = mapped_column(Text)
+    claimed_until: Mapped[datetime | None] = mapped_column(UtcDateTime())
 
 
 class ApprovalNotice(Base):
@@ -564,6 +630,29 @@ class ApprovalNotice(Base):
     sent_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
 
 
+class DigestNotice(Base):
+    """One weekly run digest to send on one channel (F-11), an outbox like `ApprovalNotice`: claimed by one server
+    at a time, retried with backoff until it is sent or gives up."""
+
+    __tablename__ = "digest_notice"
+    __table_args__ = (
+        CheckConstraint("status IN ('pending','sent','failed','dropped')", name="digest_notice_status"),
+        Index("digest_notice_due_idx", "status", "next_at"),
+        Index("digest_notice_digest_idx", "digest_id"),
+        Index("digest_notice_org_idx", "org_id"),  # deleting an organisation
+    )
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    org_id: Mapped[str] = mapped_column(ForeignKey("organization.id", ondelete="CASCADE"))
+    digest_id: Mapped[str] = mapped_column(ForeignKey("run_digest.id", ondelete="CASCADE"))
+    channel: Mapped[str] = mapped_column(Text)  # email | slack | webhook
+    status: Mapped[str] = mapped_column(Text, server_default=text("'pending'"), default="pending")
+    attempts: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    next_at: Mapped[datetime] = _now()  # due from then; a claim moves it on by a lease
+    last_error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = _now()
+    sent_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
+
+
 class OrgNotifier(Base):
     """Where an organisation's approval notifications go (Settings > Organisation > Notifications). The Slack address
     and the webhook's signing secret are encrypted with the organisation's data key, like project secrets."""
@@ -575,6 +664,8 @@ class OrgNotifier(Base):
     webhook_url: Mapped[str | None] = mapped_column(Text)
     slack_url: Mapped[bytes | None] = mapped_column(LargeBinary)  # encrypted: the address holds Slack's token
     webhook_secret: Mapped[bytes | None] = mapped_column(LargeBinary)  # encrypted: signs what the webhook gets
+    # each project's weekly run digest goes to the same channels too (an organisation's opt-in)
+    digest: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     updated_by: Mapped[str | None] = mapped_column(ForeignKey("app_user.id", ondelete="SET NULL"))
     updated_at: Mapped[datetime] = mapped_column(
         UtcDateTime(), server_default=text("CURRENT_TIMESTAMP"), onupdate=func.now(), nullable=False
@@ -1030,7 +1121,11 @@ class Trigger(Base):
 
 class AuditLog(Base):
     __tablename__ = "audit_log"
-    __table_args__ = (Index("audit_org_time_idx", "org_id", "created_at"), Index("audit_org_id_idx", "org_id", "id"))
+    __table_args__ = (
+        Index("audit_org_time_idx", "org_id", "created_at"),
+        Index("audit_org_id_idx", "org_id", "id"),
+        Index("audit_org_target_idx", "org_id", "target", "id"),  # what happened to one thing (system records)
+    )
     id: Mapped[int] = mapped_column(BigId, primary_key=True, autoincrement=True)
     org_id: Mapped[str | None] = mapped_column(ForeignKey("organization.id"))
     actor_id: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"))

@@ -142,6 +142,45 @@ UPSTREAM = (
 )
 
 
+async def test_the_docker_egress_proxy_starts_from_the_files_it_is_given(tmp_path, monkeypatch):
+    """The `docker` mode runs the proxy from files mounted into a plain Python image: they must be all it imports.
+    Here its `docker run` is replayed with this Python and those files at the same paths."""
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    from agentcanvas.sandbox import docker_egress
+
+    calls: list[tuple[str, ...]] = []
+
+    async def docker(*args: str) -> tuple[int, str]:
+        calls.append(args)
+        return (1, "") if args[0] in ("network", "inspect") and args[1] == "inspect" else (0, "")
+
+    monkeypatch.setattr(docker_egress, "_docker", docker)
+    monkeypatch.setattr(docker_egress, "_ready", {})
+    await docker_egress.ensure(Settings(script_execution="docker", secret_key="d" * 64))
+    run = list(next(c for c in calls if c[0] == "run"))
+    image = run.index("python:3.12-slim")
+    for i, a in enumerate(run[:image]):
+        if a == "-v":
+            src, dst, _ = run[i + 1].split(":")
+            target = tmp_path / dst.lstrip("/")  # a path the command names is replayed under tmp_path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(Path(src).read_bytes())
+    workdir = tmp_path / (run[run.index("-w") + 1].lstrip("/") if "-w" in run else "")
+    # the interpreter without this virtual environment, which would find the installed agentcanvas instead
+    argv = [os.path.join(sys.base_prefix, "bin", "python3"), *run[image + 2 :]]
+    assert argv[-2:] == ["--port", "3128"]
+    env = {"PATH": os.environ.get("PATH", ""), "AGENTCANVAS_EGRESS_SECRET": "s" * 32}
+    out = subprocess.run(
+        [*argv[:-2], "--help"], cwd=workdir, env=env, capture_output=True, text=True, timeout=60, check=False
+    )
+    assert out.returncode == 0, out.stderr  # e.g. ModuleNotFoundError: No module named 'agentcanvas'
+    assert "egress proxy" in out.stdout
+
+
 @pytest.mark.skipif(not _docker_ready(), reason="needs a Docker daemon (CI has one)")
 async def test_docker_code_reaches_only_the_listed_hosts(tmp_path):
     """The real thing: the sandbox container sits on the internal network, the proxy container is the only way out.
@@ -199,7 +238,10 @@ async def test_settings_reads_and_writes_the_sandbox_policy(app, api_client):
     """Settings > Sandbox: the policy as a form, and what this server does with it (here: in-process, dev)."""
     url = "/v1/projects/prj_default/sandbox"
     first = (await api_client.get(url)).json()
-    assert first["policy"] == {"egress": [], "inject": [], "timeout_s": 30.0, "memory_mb": 512}
+    assert first["policy"] == {
+        "egress": [], "inject": [], "timeout_s": 30.0, "memory_mb": 512,
+        "mcp": {"memory_mb": 1024, "idle_s": 300.0, "lifetime_s": 1800.0},
+    }  # fmt: skip
     assert first["mode"] == "inprocess" and not first["enforces_egress"] and not first["refuses_egress"]
     saved = await api_client.put(url, json={"egress": ["api.github.com", "*.googleapis.com:443"], "timeout_s": 60})
     assert saved.status_code == 200, saved.text
@@ -208,7 +250,14 @@ async def test_settings_reads_and_writes_the_sandbox_policy(app, api_client):
     assert [p["code"] for p in out["problems"]] == ["W082"]  # in-process code cannot be limited: said, in dev
     text = (await api_client.get("/v1/projects/prj_default/files/sandbox.json")).json()["content"]
     assert json.loads(text) == {"egress": ["api.github.com", "*.googleapis.com:443"], "timeout_s": 60.0}
-    for bad in ({"egress": ["https://api.github.com/x"]}, {"timeout_s": 0}, {"egres": []}, {"egress": ["x"] * 101}):
+    # app connector limits written in the file stay when the form (which does not show them) saves
+    await api_client.put("/v1/projects/prj_default/files/sandbox.json", json={"content": '{"mcp": {"idle_s": 60}}'})
+    kept = await api_client.put(url, json={"egress": ["api.github.com"]})
+    assert kept.json()["policy"]["mcp"]["idle_s"] == 60 and kept.json()["policy"]["egress"] == ["api.github.com"]
+    text = (await api_client.get("/v1/projects/prj_default/files/sandbox.json")).json()["content"]
+    assert json.loads(text) == {"egress": ["api.github.com"], "mcp": {"idle_s": 60.0}}
+    for bad in ({"egress": ["https://api.github.com/x"]}, {"timeout_s": 0}, {"egres": []}, {"egress": ["x"] * 101},
+                {"mcp": {"lifetime_s": 0}}, {"mcp": {"memory_mb": 64}}):  # fmt: skip
         assert (await api_client.put(url, json=bad)).status_code == 422, bad
     await api_client.put("/v1/projects/prj_default/files/sandbox.json", json={"content": "{nope"})
     broken = (await api_client.get(url)).json()
@@ -234,8 +283,8 @@ async def test_the_api_can_hand_the_sandbox_the_proxys_address_so_the_sandbox_ne
     (ws / "sandbox.json").write_text(json.dumps({"egress": ["api.github.com"]}))
     base = {"script_execution": "remote", "sandbox_url": "http://sandbox", "sandbox_token": TOKEN,
             "egress_proxy": "localhost:3128", "egress_secret": SECRET}  # fmt: skip
-    named = await SandboxRunner(Settings(**base), ws, {})._egress(load_policy(ws), "remote")
-    resolved = await SandboxRunner(Settings(**base, egress_proxy_resolve=True), ws, {})._egress(
+    named = await SandboxRunner(Settings(**base), ws, {}).egress(load_policy(ws), "remote")
+    resolved = await SandboxRunner(Settings(**base, egress_proxy_resolve=True), ws, {}).egress(
         load_policy(ws), "remote"
     )
     assert named and named.endswith("@localhost:3128")

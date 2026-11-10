@@ -4,7 +4,7 @@
  * The API's generated types do not have these routes yet: the narrow types below stand in for them. */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiDownload, apiFetch } from "../api/client";
-import { useCan, useMe } from "../api/session";
+import { useCanOrg, useMe } from "../api/session";
 import { confirmDialog, promptDialog, toast } from "../ui/dialog";
 
 export interface OrgExport {
@@ -23,7 +23,7 @@ const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : "")
 const mb = (n: number | null) => (n == null ? "" : `${(n / 1024 / 1024).toFixed(1)} MB`);
 
 export function OrgData() {
-  const admin = useCan("admin");
+  const admin = useCanOrg("admin");
   const name = useMe((s) => s.me.org_names?.[s.me.org_id]) ?? "";
   const qc = useQueryClient();
   const exports = useQuery({

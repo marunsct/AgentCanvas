@@ -82,6 +82,14 @@ def _resource(pr: PlannedResource, plan: Plan, resources: ac.Resources, objs: di
     raise ValueError(f"unsupported resource type {r.type}")  # pragma: no cover - rejected by the validator
 
 
+WAIT_SETTINGS = ("mode", "duration", "until", "timezone", "event", "event_key", "timeout", "output")
+
+
+def wait_settings(cfg: dict[str, Any]) -> dict[str, Any]:
+    """A Wait step's settings as `ac.wait_node` takes them (the generated code passes the same): the ones it has."""
+    return {"mode": "for", **{k: cfg[k] for k in WAIT_SETTINGS if cfg.get(k) not in (None, "")}}
+
+
 GUARDS = {"guard.pii", "guard.injection", "guard.moderation", "guard.schema"}
 
 
@@ -185,6 +193,9 @@ def build_from_plan(plan: Plan, resources: ac.Resources, checkpointer=None, stor
     registry = _registry(resources) if resources.dry_run is not None else None
     for pr in plan.resources:
         objs[pr.resource.name] = _resource(pr, plan, resources, objs)
+    # the caller's application's tools and context (AG-UI): every agent is offered them, after its own middleware
+    client = getattr(resources, "client_tools", None) or getattr(resources, "client_context", None)
+    extra = [ac.client_tools_middleware(resources.client_tools, resources.client_context)] if client else []
 
     for p in plan.nodes:
         n, cfg = p.node, p.node.config
@@ -212,7 +223,7 @@ def build_from_plan(plan: Plan, resources: ac.Resources, checkpointer=None, stor
                 tools=wired("tools"),
                 system_prompt=cfg.get("system_prompt", ""),
                 approve_tools=cfg.get("approve_tools"),
-                middleware=wired("middleware"),
+                middleware=[*wired("middleware"), *extra],
                 response_format=cfg.get("response_format"),
                 files=ac.file_fields(plan.channels, cfg.get("files")),
                 read_file=getattr(resources, "files", None),
@@ -223,7 +234,7 @@ def build_from_plan(plan: Plan, resources: ac.Resources, checkpointer=None, stor
                 model=wired("model")[0],
                 tools=wired("tools"),
                 system_prompt=cfg.get("system_prompt", ""),
-                middleware=wired("middleware"),
+                middleware=[*wired("middleware"), *extra],
                 subagents=wired("subagents"),
                 backends=wired("backend"),
                 planning=cfg.get("planning", True),
@@ -266,6 +277,8 @@ def build_from_plan(plan: Plan, resources: ac.Resources, checkpointer=None, stor
             fn = ac.human_input_node(
                 node_id=n.id, prompt=cfg["prompt"], output=cfg["output"], response_schema=cfg.get("response_schema")
             )
+        elif n.type == "core.wait":
+            fn = ac.wait_node(node_id=n.id, **wait_settings(cfg))
         elif n.type in MEMORY_OPS:
             fn = ac.memory_node(
                 op=MEMORY_OPS[n.type],

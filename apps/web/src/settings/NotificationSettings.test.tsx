@@ -38,6 +38,15 @@ describe("Settings › Organisation › Notifications", () => {
     expect((screen.getByLabelText("Slack webhook address") as HTMLInputElement).value).toBe(""); // never shown back
   });
 
+  it("opts in to weekly run digests (off until an admin ticks it)", async () => {
+    renderIt();
+    const box = await screen.findByLabelText("send weekly run digests") as HTMLInputElement;
+    expect(box.checked).toBe(false);
+    fireEvent.click(box);
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Save" })); });
+    expect(apiFetch).toHaveBeenCalledWith("/org/notifications", { method: "PUT", json: { digest: true } });
+  });
+
   it("sends a test and says how each channel went", async () => {
     renderIt();
     fireEvent.change(await screen.findByLabelText("Slack webhook address"), { target: { value: "https://hooks.slack.com/services/T/B/x" } });

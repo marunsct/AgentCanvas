@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { apiFetch } from "../api/client";
 import type { ClientsOut, ConnectionOut } from "../api/generated";
-import { useCan } from "../api/session";
+import { useCanOrg } from "../api/session";
 import { confirmDialog, toast } from "../ui/dialog";
 import { QueryStatus } from "../ui/QueryStatus";
 import { ago } from "../ui/time";
@@ -14,7 +14,7 @@ const WHOSE = (c: ConnectionOut) => (c.owner === "you" ? "You" : c.owner === "se
 
 export function ConnectionsSettings() {
   const qc = useQueryClient();
-  const admin = useCan("admin");
+  const admin = useCanOrg("admin");
   const list = useConnections();
   const remove = useMutation({
     mutationFn: (id: string) => apiFetch(`/connections/${encodeURIComponent(id)}`, { method: "DELETE" }),

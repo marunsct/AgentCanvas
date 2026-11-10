@@ -32,6 +32,65 @@ accepting switches to the new organisation, and AgentCanvas opens the one used l
 
 Buttons for actions your role can't take are hidden.
 
+Everyone has a role in the organisation, and may have a different one in some projects (see
+[Projects and their members](#projects-and-their-members)). The organisation role decides the organisation's own
+pages; the project role decides everything inside the project:
+
+| What | Decided by | Needs |
+|---|---|---|
+| Seeing a project's workflows, runs, conversations, datasets, files and deployments | project role | viewer |
+| Answering its Inbox items and review queues | project role | reviewer |
+| Building, running, testing and publishing its workflows; its secrets, files, sandbox and models | project role | builder |
+| Its release gates, publishing over a failed gate, its members and its [spending caps](settings.md#spending-caps) | project role | admin |
+| Renaming or deleting a project, moving it to another workspace, sending its traces elsewhere | organisation role | admin |
+| Creating a project | organisation role | builder |
+| Members, policies, security, notifications, spending, audit log, SCIM, single sign-on groups, the organisation's data | organisation role | admin |
+| Making API tokens | organisation role | any (a token's role is at most yours) |
+
+## Projects and their members
+
+By default every member of the organisation sees every project, with their organisation role. A project can also have
+**members** of its own: people of the organisation, or groups your identity provider pushes over
+[SCIM](#provisioning-from-your-directory-scim), each with a role in that project. Its admins (and the organisation's) manage them in
+**Settings › Project › Members**: type an email (someone already in the organisation) or a SCIM group's name, pick a
+role and click **Add**; change a role in the list, or **Remove** someone. On the API,
+`PUT /v1/projects/{id}/members {"email": "ana@example.com", "role": "builder"}` adds someone already in the
+organisation, or changes their role (`{"group": "Support", "role": "reviewer"}` for a SCIM group, by its name);
+`GET /v1/projects/{id}/members` lists them and `DELETE /v1/projects/{id}/members/{member id}` removes one.
+
+What a membership gives depends on the organisation's setting **Projects are private** (Settings › Organisation ›
+Security, or `security.private_projects` of `PUT /v1/org/settings`):
+
+- **Off** (the default; existing installations stay as they were): everyone sees every project with their
+  organisation role, and a project membership can only **raise** it there. An organisation viewer who is a builder of
+  one project builds there and only reads the others.
+- **On**: organisation admins see every project, as admins. Anyone else sees only the projects they are a member of,
+  directly or through a SCIM group, with the **highest** of those memberships as their role there. Every other
+  project, and everything in it (workflows, runs, conversations, deployments, secrets, files, datasets, Inbox items),
+  answers as if it did not exist, in the app and on the API. The project picker, the Runs page and the Inbox list only
+  what they see, and [approval notifications](settings.md#approval-notifications) e-mailed to the people who may decide
+  go only to those who see the project, by their role there (the organisation's team address, Slack channel and
+  webhook still get every project's, as their admin chose).
+
+A project role may be **above** the person's organisation role: an organisation viewer can be the admin of one
+project. It applies to that project only; the organisation's pages keep the organisation role, and so does the
+organisation's [service connection](agents-and-connectors.md) for app connectors (only organisation admins' runs use
+it). A personal API token
+never does more than the role it was made with, in any project.
+
+- Whoever creates a project while projects are private becomes its admin; otherwise they could not see it.
+- Before switching it on, add each team to its projects: people who belong to no project then see none (the app says
+  so) until an admin adds them.
+- Someone removed from the organisation leaves its projects too: inviting them back gives them none of their old
+  project memberships. A SCIM group removed by the provider takes its memberships with it, and leaving a group takes
+  what it gave. Invitations can be added to projects before the person first signs in.
+- Adding, changing and removing members are in the audit log (`put_project_member`, `delete_project_member`) and
+  forwarded with the other security events; so is switching the setting (`put_org_settings`). Changing project
+  members and opening every project again need a real sign-in (an API token cannot).
+- Groups are SCIM groups: groups that only appear in the sign-in token's claim (see [Roles from groups](#roles-from-groups))
+  cannot be added to a project.
+- In Matura mode, who sees what comes from Matura: project members and private projects are not offered.
+
 ## Members
 
 ![Members page](img/members.png)

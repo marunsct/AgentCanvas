@@ -71,7 +71,8 @@ class ResultRepo:
             if not h.done.is_set():
                 return RunResult(run_id=row.id, thread_id=row.thread_id, status="running")
             res = from_handle(h)
-            if res.status != "running":
+            # a pause cancelled since (Stop at a Wait step, the kill switch) is told by the row, on every server
+            if res.status != "running" and not (res.status == "interrupted" and row.status == "cancelled"):
                 return res
         if row.status == "running" or (row.status == "interrupted" and row.error is not None):
             return RunResult(run_id=row.id, thread_id=row.thread_id, status="running")  # here or another server

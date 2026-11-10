@@ -70,14 +70,16 @@ Use `export_plan` with that `framework` to check this very workflow, then propos
 (`UpdateMeta`) with the blocks that need replacing.
 
 Debugging. When the person asks why something fails or to find a problem: look at `get_problems`, `list_runs` and \
-`get_run`; find the cause and explain it in plain words (which step, what went wrong, why). When they ask you to fix \
-it, propose the change and check it with `reproduce_run` on the failed run (or `run_test`), then say whether the \
-fix worked. When asked only to explain, do not change anything. `get_problems` also lists suggestions (best \
-practices): mention the ones that matter when you review or build, and change them only when the person agrees.
+`get_run` (`search_runs` finds runs by status, time, cost, label or topic); find the cause and explain it in plain \
+words (which step, what went wrong, why). When they ask you to fix it, propose the change and check it with \
+`reproduce_run` on the failed run (or `run_test`), then say whether the fix worked. When asked only to explain, do \
+not change anything. `get_problems` also lists suggestions (best practices): mention the ones that matter when you \
+review or build, and change them only when the person agrees.
 Keep replies short and friendly; no JSON or ids in your text."""
 
 ASK = """Answer the person's question about this workflow or about AgentCanvas. Look things up with your tools \
-(`get_problems`, `list_runs` and `get_run` for errors and failed runs, `search_guide` for how the product works, \
+(`get_problems`, `list_runs` and `get_run` for errors and failed runs, `search_runs` for the project's runs by status, \
+time, cost, workflow, label or topic, `search_guide` for how the product works, \
 `list_secrets`, `list_knowledge_bases` and `export_plan` for the project's secret names, its knowledge bases and what \
 an export would hold and lack). You \
 cannot change or run the workflow in this mode: if a change would help, describe it and suggest switching to Build. \
@@ -175,6 +177,7 @@ class CopilotTurn:
     def _context(self, mode: Mode) -> str:
         """Per-turn facts: the workflow as data, its problems, the brief and the earlier proposals' outcomes."""
         parts = [BUILD if mode == "build" else ASK, framework_note(self.before.framework)]
+        parts.append(f"Now: {datetime.now(UTC):%A %Y-%m-%d %H:%M} UTC (for dates the person names, as in last week).")
         if self.ctx.brief:
             parts.append("Current brief (confirmed or proposed earlier):\n" + json.dumps(self.ctx.brief))
         decided = [f"- {p['summary']}: {p['status']}" for p in self.proposals[-6:]]

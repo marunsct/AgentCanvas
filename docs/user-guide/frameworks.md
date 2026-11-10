@@ -385,7 +385,8 @@ steps or knowledge bases, a small Python helper in `python/` runs them with `pyt
 Some features need the framework's help: reading and editing a conversation's saved state, run history and replay
 from an earlier step, long-term memory, browsing an app connector's tools, and breakpoints. When a workflow's
 framework cannot do one of them, AgentCanvas says so plainly instead of failing; switch the workflow to LangGraph
-to use it.
+to use it. The [Wait](widgets.md#wait) block is LangGraph only too: it needs checkpoints the server can wake days
+later, and the other frameworks keep a paused run as one piece of JSON with no due time (P001 on the block says so).
 
 Which frameworks a server offers is `AGENTCANVAS_ADAPTERS` (comma-separated, default
 `langchain,openai_agents,crewai,google_adk,pydantic_ai,agno,microsoft_agent_framework,strands,llamaindex,mastra`).

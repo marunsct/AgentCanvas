@@ -9,7 +9,7 @@ const types = Array.from({ length: 20 }, (_, i) => ({ type: `t.${i}`, label: `Wi
 const addElement = vi.fn();
 vi.mock("../api/queries", async (original) => ({ ...(await original<object>()), useNodeTypes: () => ({ data: types }) }));
 vi.mock("../canvas/Canvas", () => ({ addElement: (...a: unknown[]) => addElement(...a) }));
-vi.mock("../api/session", () => ({ can: () => true, useCan: () => true, useMe: () => "", ME: { role: "builder" } }));
+vi.mock("../api/session", () => ({ can: () => true, canOrg: () => true, useCan: () => true, useCanOrg: () => true, useMe: () => "", ME: { role: "builder" } }));
 vi.mock("../api/client", () => ({ ApiError: class extends Error {}, apiFetch: vi.fn(() => new Promise(() => undefined)) }));
 
 const { CommandPalette } = await import("./CommandPalette");

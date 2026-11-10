@@ -1,6 +1,6 @@
 # Template gallery
 
-On **Home**, under **…or start from a template**, the gallery holds 37 ready-to-run workflows for common jobs, at
+On **Home**, under **…or start from a template**, the gallery holds 38 ready-to-run workflows for common jobs, at
 three levels: **beginner**, **intermediate** and **advanced**. Search by name, description or tag (for example
 `email`, `sql` or `approval`), pick a level, or click a category chip to narrow the list. Each card shows the
 category, a short description, tags, how many blocks the workflow has, its level and what else it adds to your
@@ -64,6 +64,7 @@ fields. Templates that pause for a person (an approval or a tool call) show the 
 |---|---|---|
 | **Lead qualification** | Scores an inbound lead (need, budget, timeline) as structured output; hot leads get a drafted first email, the rest go to the nurture list. | intermediate |
 | **Product description writer** | Writes shop-ready product copy (headline, description, bullet points, SEO keywords) from a list of facts, as structured output. | beginner |
+| **Quote with a follow-up** | Drafts a quote, then [waits](widgets.md#wait) up to three days for the customer's reply: send the event `quote.replied` with the customer's id as its `key`. If nobody replies, it writes a friendly reminder. | intermediate |
 | **Lead scoring with research** | Your own scoring block rates each lead; for a hot lead an agent looks the company up with Python tools from the workspace and drafts a first email. Adds the block, the tools, a dataset, evaluators and tests. | advanced |
 
 ## Data extraction
@@ -116,6 +117,9 @@ fields. Templates that pause for a person (an approval or a tool call) show the 
 - **Human approval.** Approval workflow, Support triage, Email reply with approval, Blog post writer, Resume
   screening, Incident summary and Policy compliance check pause for a person; answer in the Run tab or the
   [Inbox](run-and-debug.md).
+- **Waiting.** Quote with a follow-up pauses at a Wait step until the customer's reply event arrives or three days
+  pass, then continues on its own ([Waiting runs](run-and-debug.md#waiting-runs)). In the Run tab it shows as
+  *Waiting*; send `{"type": "quote.replied", "data": {"key": "<the customer>"}}` on the **Events** page to try the reply.
 - **Structured output.** Data extraction, Product description writer, Lead qualification, Meeting notes and action
   items and Resume screening return validated JSON in the `structured_response` field.
 - **Web access.** Web research agent can call Wikipedia's public search API; each call waits for your approval

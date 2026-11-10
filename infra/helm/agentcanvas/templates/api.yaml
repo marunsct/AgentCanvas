@@ -32,7 +32,10 @@ spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets: {{ toYaml . | nindent 8 }}
       {{- end }}
-      automountServiceAccountToken: false   # the API never calls the Kubernetes API
+      {{- with include "agentcanvas.apiServiceAccount" . }}
+      serviceAccountName: {{ . }}
+      {{- end }}
+      automountServiceAccountToken: false   # the API never calls the Kubernetes API (IRSA and Workload Identity need no token)
       securityContext:
         {{- include "agentcanvas.podSecurity" . | nindent 8 }}
         fsGroup: 10001

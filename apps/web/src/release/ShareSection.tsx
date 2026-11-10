@@ -43,6 +43,15 @@ export function ShareSection({ deployment }: { deployment: DeploymentOut }) {
     seeded.current = deployment.id;
     seed(share.data);
   }, [share.data, deployment.id]);
+  // the default wording changes with the deployment's system record: follow it unless the notice is being reworded
+  const served = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    const now = share.data?.ai_notice;
+    if (now === undefined) return;
+    const before = served.current; // read now: the updater below runs after the ref has moved on
+    if (before !== undefined && now !== before) setAiNotice((typed) => (typed === before ? now : typed));
+    served.current = now;
+  }, [share.data?.ai_notice]);
   const save = useMutation({
     mutationFn: (body: Record<string, unknown>) =>
       apiFetch<ShareOut>(`/deployments/${deployment.id}/share`, { method: "PUT", json: body }),

@@ -17,7 +17,7 @@ const runs: Record<string, { id: string; status: string }[]> = {
 };
 const apiFetch = vi.hoisted(() => vi.fn());
 vi.mock("../api/client", () => ({ ApiError: class extends Error {}, apiFetch }));
-vi.mock("../api/session", () => ({ can: () => true, useCan: () => true, ME: { role: "builder" } }));
+vi.mock("../api/session", () => ({ can: () => true, canOrg: () => true, useCan: () => true, useCanOrg: () => true, ME: { role: "builder" } }));
 apiFetch.mockImplementation(async (path: string) => {
   if (path.startsWith("/threads?")) return { items: state.threads, next_cursor: null };
   if (/^\/threads\/[^/]+\/runs$/.test(path)) return runs[path.split("/")[2]];

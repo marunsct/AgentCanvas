@@ -20,6 +20,8 @@ import { Activity } from "lucide-react";
 import { Fragment } from "react";
 import { TrajectoryView } from "../run/TrajectoryView";
 import { RunSearch } from "./RunSearch";
+import { RunAsk } from "./RunAsk";
+import { RunDigest } from "./RunDigest";
 
 const STATUS: Record<string, { label: string; tone: Tone }> = {
   idle: { label: "done", tone: "ok" },
@@ -69,6 +71,8 @@ export function RunsPage() {
   return (
     <div className="page runs-page">
       <PageHeader title="Runs" description="Every conversation with this project's workflows: from the editor, the API, triggers and share links." />
+      <RunDigest />
+      <RunAsk workflowId={workflow || undefined} />
       <RunSearch workflowId={workflow || undefined} />
       <div className="row gap wrap list-tools">
         <select aria-label="filter by status" value={status} onChange={(e) => { setStatus(e.target.value); setPicked([]); }}>

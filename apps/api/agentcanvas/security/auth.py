@@ -72,6 +72,11 @@ def check_auth_settings(settings: Settings) -> None:
             "its database password and keys in reach: set it to remote (the sandbox service), docker or langsmith, "
             "or AGENTCANVAS_ALLOW_UNISOLATED_SCRIPTS=true when only people you trust edit workspaces"
         )
+    if settings.sandbox_mcp and settings.script_execution not in ("docker", "remote"):
+        raise RuntimeError(
+            "AGENTCANVAS_SANDBOX_MCP runs local app connectors in the sandbox, which needs "
+            f"AGENTCANVAS_SCRIPT_EXECUTION=docker or remote (it is {settings.script_execution})"
+        )
     if settings.script_execution == "remote" and not (settings.sandbox_url and settings.sandbox_token):
         raise RuntimeError(
             "AGENTCANVAS_SCRIPT_EXECUTION=remote needs AGENTCANVAS_SANDBOX_URL and AGENTCANVAS_SANDBOX_TOKEN"

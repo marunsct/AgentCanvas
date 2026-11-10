@@ -43,6 +43,30 @@ and the Run tab shows **Approval needed** with the value under review.
   a published deployment (API keys, share links) are answered by their callers as before, unless the step names who
   decides it (below).
 
+### Several pauses at once
+
+Steps on parallel branches can pause together, for example two **Ask for approval** steps side by side. Each one is
+its own Inbox item and is answered on its own, in either order. Each branch goes on as soon as its step is answered,
+and the run finishes after the last answer. An answer always names the pause it is for (its `interrupt_id`, which is
+listed in the run's `interrupts` and on the Inbox item), so it can never reach the other pause:
+
+- The Inbox and the Run tab name the pause for you.
+- `POST /v1/threads/{thread}/resume` and the deployment API's `POST /v1/deployments/{id}/threads/{thread}/resume`
+  take `interrupt_id`. You may leave it out only while one pause waits. With two or more waiting, a request without
+  it is refused (409) with the waiting ids in `pending`, and nothing runs.
+- An MCP client's `answer` tool takes `interrupt_id` the same way. A client that shows forms is asked about one pause
+  at a time.
+- An A2A reply names the pause in a data part, `{"interrupt_id": "..."}`. The task's status message lists the ids.
+- The share-link page sends the id of the question the visitor answers. An event handler passes it with
+  `act.resume(thread_id, value, interrupt_id=event.data["interrupt_id"])`; the `interrupt.raised` event carries it.
+- An answer for a pause that is no longer waiting is refused: 404 for an unknown id, 409 for one already decided.
+  On LangGraph workflows the engine checks this as well (strict resume). An answer it cannot place fails the run
+  with *the answer is for a question this conversation no longer asks*. Nothing is applied, and the item goes back
+  to the Inbox.
+
+The other frameworks ask one question at a time even when steps run in parallel, so the same calls work there
+unchanged.
+
 ### Who may decide
 
 Each **Ask for approval** and **Ask a person** step, and each **AI Agent** and **Planning Agent** with tools that need
@@ -76,6 +100,41 @@ decides a pause that already waits. In the Inbox each item says who decides it (
 Finance*) and, when you cannot, why; its buttons are then off. A helper agent's tool approvals follow the setting of its
 Planning Agent. Steps inside a subgraph keep their own setting. AgentCanvas checks it; code exported from the workflow
 does not (I011).
+
+## Waiting runs
+
+A run that reaches a [Wait](widgets.md#wait) step pauses until its time comes or its event arrives, then continues on
+its own. Nothing runs while it waits: no server, model or connection is held, and the wait survives restarts and
+redeploys. Every API server checks every few seconds for waits that are due, and each wait is continued by exactly one
+of them; the run goes on with the workflow version it paused on, as the person who started it (while they are still a
+member of the organisation).
+
+- **Nobody answers a wait.** Unlike an approval, a Wait step cannot be decided in the Run tab, the Inbox or through the
+  API (409): only its time or its event ends it. A new message on the conversation leaves the wait behind: it ends
+  and never wakes the run that moved on.
+- **Events.** Send the event to the project, `POST /v1/projects/{project}/events` with
+  `{"type": "invoice.paid", "data": {"key": "INV-42", ...}}`, or from a run or an event handler (`emit`). The waits in
+  that project for that type, with that key (or with none), continue with the event; the response lists the runs it
+  continued under `woke`. Events of another project never reach them. A wait whose conversation is running something
+  else at that moment keeps waiting for its time limit.
+- **Test runs do not wait.** Saved test cases, experiments, Copilot test runs and dry runs pass through Wait steps at
+  once (an event wait counts as timed out), with `skipped: true` in what the step saves. To try the event path, pin
+  the Wait step's output.
+- **Stop.** The Run tab and the Inbox show the step as **Waiting** (not for a person), with what it waits for and
+  until when, in your time. A builder's **■ Stop waiting** there (or `POST /v1/runs/{run_id}/cancel`, or a
+  deployment's cancel) ends the wait and cancels the run, and the organisation's [kill switch](settings.md) cancels the
+  waiting runs in its scope too; nothing wakes them later.
+- **Callers.** Nobody is notified about a wait: there is nothing to decide. Through a
+  deployment's API, MCP or A2A, a run at a Wait step comes back `interrupted` with an interrupt of kind `timer` (its
+  `payload` says `due_at`, and `event` and `key` for an event wait); the caller cannot answer it and reads the result
+  later. An MCP or A2A task stays *working* meanwhile, and cancelling it stops the run. A share link's visitor is told
+  the conversation continues on its own.
+- **Retention.** A waiting conversation is kept until its wait is due, however far away that is (at most a year); the
+  approval expiry (90 days) counts from the due time, so a run the server never managed to continue is cancelled then.
+- If the run cannot continue when due (the workflow draft has errors, the organisation is at a spending cap), it is
+  tried again every few minutes; if its workflow or deployment is gone, the run is cancelled with the reason.
+- **Exports** run the same step, but the exported service has no timer job: your scheduler resumes the conversation
+  at `due_at` (`POST .../threads/{thread}/resume` with `{"value": {"timed_out": false, "event": null}}`, or the event).
 
 ## Breakpoints
 
@@ -121,6 +180,39 @@ Timeline. Narrow it with the workflow filter below.
 - The index follows your data: deleting a conversation, or the organisation's retention period, removes its search
   entry, and nobody sees another organisation's runs. Secret values are masked before anything is embedded, but with
   a hosted embedding model the masked text of inputs and answers is sent to that provider, as with a knowledge base.
+
+## Weekly digest
+
+**Weekly digest** at the top of the **Runs** page sums up the week before (Monday to Sunday, UTC), with the change on
+the week before that when that week had runs too:
+
+- how many runs there were, how many failed and what they spent;
+- how long they took: typically (the median) and at the 95th percentile;
+- why runs failed, grouped: errors that differ only in numbers or quoted values count as one, with the workflows they
+  happened in and a link to the newest such run;
+- the runs flagged most: failing evaluator scores, thumbs-down feedback and review queue items;
+- the busiest workflows, when there are several.
+
+**This week so far** computes the same for the current week on the spot (not compared: the week is not over). The server makes each week's digest once
+it is over, for projects that had runs in it; test and experiment runs are left out, and no model is asked. A digest
+holds counts, workflow names and shortened errors (numbers and quoted values taken out, secret values masked), never
+what a run was asked or answered. An admin can also have every project's digest sent to the organisation's
+notification channels (e-mail, Slack, a webhook): see [Approval notifications](settings.md#approval-notifications).
+
+## Ask about runs
+
+The **Ask** box above the search takes a question in plain words, such as *failed runs about refunds last week over
+$0.10* or *which workflow cost the most yesterday?*, and the [Copilot](copilot.md) answers it in a few sentences with
+the runs it found listed underneath (click one to open it in the Timeline). It turns the question into filters
+(status, when the run started, cost, workflow, a label the API caller set, and a topic ranked like the search above)
+and shows them under the answer, so you can tell what it looked for; the runs themselves come from the database, not
+from the model. With the workflow filter set, it keeps to that workflow.
+
+- Everyone who can see the Runs page may ask, viewers included. Nothing is saved: no conversation, no change.
+- It uses the Copilot's model (the question model when one is set in the Copilot settings), and what it sends the
+  model is the question and the runs' status, errors, costs and snippets. Each answer's cost is shown under it and
+  counts against the [spending caps](settings.md#spending-caps); one person can ask ten questions a minute.
+- Test and experiment runs are left out. When the Copilot is switched off for the project, the box says so.
 
 ## Explain
 

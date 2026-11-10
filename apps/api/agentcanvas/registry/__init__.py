@@ -259,3 +259,47 @@ def load_gallery() -> dict[str, Any]:
     """The curated MCP connector gallery (S15): `{"version": 1, "connectors": [...]}`."""
     path = HERE / "mcp_gallery.json"
     return json.loads(path.read_text()) if path.exists() else {"version": 1, "connectors": []}
+
+
+@cache
+def _gallery() -> dict[str, Any]:
+    return load_gallery()
+
+
+def _launch(args: list[Any]) -> int:
+    """How many of a gallery command's leading arguments name what it runs (its flags and the package)."""
+    for i, a in enumerate(args):
+        if not str(a).startswith("-"):
+            return i + 1
+    return len(args)
+
+
+def _package(args: list[Any]) -> str:
+    """The package a command starts, without its version (`-y @playwright/mcp@0.0.83` -> `@playwright/mcp`,
+    `mcp-server-git==2026.8.18` -> `mcp-server-git`)."""
+    package = next((str(a) for a in args if not str(a).startswith("-")), "").split("==")[0]
+    head, sep, _ = package[1:].rpartition("@")
+    return package[0] + head if sep else package
+
+
+def gallery_connector(config: dict[str, Any], *, sandboxable: bool = False) -> dict[str, Any] | None:
+    """The gallery entry a local (stdio) connector's settings start, or None. `sandboxable`: only entries marked to
+    run in the sandbox, started with the same command, flags and package at its exact version first (the arguments
+    after are the builder's: `--headless`, a viewport); otherwise any entry with that command and package."""
+    command, args = config.get("command"), list(config.get("args") or [])
+    for c in _gallery()["connectors"]:
+        gallery = c["config"]
+        if sandboxable and not c.get("sandboxable"):
+            continue
+        if gallery.get("transport") != "stdio" or gallery.get("command") != command:
+            continue
+        lead = list(gallery.get("args") or [])[: _launch(list(gallery.get("args") or []))]
+        if args[: len(lead)] == lead if sandboxable else _package(args) == _package(lead) != "":
+            return c
+    return None
+
+
+def sandboxable_connector(config: dict[str, Any]) -> dict[str, Any] | None:
+    """The gallery entry marked to run in the sandbox that a local connector's settings start (`gallery_connector`),
+    at the package's exact version, or None."""
+    return gallery_connector(config, sandboxable=True)

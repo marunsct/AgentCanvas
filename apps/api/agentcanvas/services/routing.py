@@ -24,6 +24,7 @@ import os
 from datetime import UTC, datetime
 from typing import Any
 
+from agentcanvas import cloudmodels
 from agentcanvas.db.repositories import PolicyRepo
 from agentcanvas.ir.models import Workflow
 from agentcanvas.registry import ModelInfo, Registry
@@ -62,8 +63,11 @@ def price(info: ModelInfo | None) -> float | None:
     return info.price_in_per_mtok + info.price_out_per_mtok
 
 
-def unready(model: str, config: dict[str, Any], registry: Registry, secrets: dict[str, str], demo: bool) -> str | None:
-    """Why `model` cannot answer for this block right now; None when it can."""
+def unready(
+    model: str, config: dict[str, Any], registry: Registry, secrets: dict[str, str], demo: bool, hosted: bool = False
+) -> str | None:
+    """Why `model` cannot answer for this block right now; None when it can. A model in your own cloud account needs
+    credentials (in the hosted edition, the project's own) and a region: the block's, when it is of the same cloud."""
     provider = registry.provider(model.partition(":")[0])
     if provider is None:
         return "its provider is not known here"
@@ -76,6 +80,16 @@ def unready(model: str, config: dict[str, Any], registry: Registry, secrets: dic
         return None
     if provider.local:
         return "local models are not chosen by price (their server may be down); list it among the backup models"
+    own = cloudmodels.cloud_of(str(config.get("model", "")))
+    if own and config.get("region") and cloudmodels.cloud_of(model) != own:  # where the block's prompts may go
+        return f"the block keeps its prompts in its {cloudmodels.LABEL[own]} region, which this model is not in"
+    if cloud := cloudmodels.cloud_of(model):
+        if cloud == own == "aws" and cloudmodels.wider_reach(model, str(config["model"])):
+            return "it may serve requests from more places than the block's own model"
+        settings = {"region": config.get("region")} if own == cloud else {}
+        return cloudmodels.region_problem(model, settings) or cloudmodels.credentials_problem(
+            model, secrets, hosted=hosted
+        )
     own_key = config.get("api_key") or config.get("base_url")  # the block's own key or address, for its own provider
     if (
         (own_key and str(config.get("model", "")).partition(":")[0] == provider.id)
@@ -94,9 +108,13 @@ ADDRESS_HINTS = ("url", "endpoint", "api_base", "host", "client", "proxy")  # as
 def switch(config: dict[str, Any], model: str) -> None:
     """Make `model` the block's model. A model of another provider gets that provider's own key and address, as
     backup models do: the block's key and address (its own provider's, or a proxy's) are dropped."""
-    if model.partition(":")[0] != str(config.get("model", "")).partition(":")[0]:
+    own = str(config.get("model", ""))
+    if model.partition(":")[0] != own.partition(":")[0]:
         for k in [k for k in config if k in OWN_KEYS or any(h in k.lower() for h in ADDRESS_HINTS)]:
             del config[k]
+    if cloudmodels.cloud_of(model) != cloudmodels.cloud_of(own):  # a region and project are one cloud's
+        for k in cloudmodels.BLOCK_ONLY:
+            config.pop(k, None)
     config["model"] = model
 
 
@@ -117,7 +135,13 @@ def _errors(wf: Workflow, policies: list[Policy], registry: Registry) -> set[tup
 
 
 def route(
-    wf: Workflow, registry: Registry, secrets: dict[str, str], policies: list[Policy], *, demo: bool = False
+    wf: Workflow,
+    registry: Registry,
+    secrets: dict[str, str],
+    policies: list[Policy],
+    *,
+    demo: bool = False,
+    hosted: bool = False,
 ) -> tuple[Workflow, list[dict[str, Any]]]:
     """The workflow with each routed block's model chosen, and one note per block: its name, the model chosen, and
     every candidate with the reason it was not (ready, allowed, or dearer than the one chosen)."""
@@ -125,7 +149,7 @@ def route(
         return wf, []
     data = wf.model_dump(mode="json")
     notes: list[dict[str, Any]] = []
-    _route(data, "", registry, secrets, policies, demo, notes)
+    _route(data, "", registry, secrets, policies, demo, notes, hosted)
     return Workflow.model_validate(data), notes
 
 
@@ -137,6 +161,7 @@ def _route(
     policies: list[Policy],
     demo: bool,
     notes: list[dict[str, Any]],
+    hosted: bool = False,
 ) -> None:
     for r in data.get("resources") or []:
         config = r.get("config") or {}
@@ -149,7 +174,7 @@ def _route(
         considered: list[dict[str, Any]] = []
         viable: list[tuple[bool, float, int, str]] = []
         for i, model in enumerate(dict.fromkeys(candidates(config))):
-            why = unready(model, config, registry, secrets, demo)
+            why = unready(model, config, registry, secrets, demo, hosted)
             if why is None and policies and _errors(_swapped(data, r["id"], model), policies, registry) - baseline:
                 why = "an organisation policy does not allow it"
             if why is not None:
@@ -174,7 +199,7 @@ def _route(
     for n in data.get("nodes") or []:
         inner = (n.get("config") or {}).get("workflow")
         if n.get("type") == "core.subgraph" and isinstance(inner, dict):
-            _route(inner, f"{path}{n.get('name')}/", registry, secrets, policies, demo, notes)
+            _route(inner, f"{path}{n.get('name')}/", registry, secrets, policies, demo, notes, hosted)
 
 
 async def route_run(app: Any, session: Any, wf: Workflow, project_id: str) -> tuple[Workflow, list[dict[str, Any]]]:
@@ -185,5 +210,5 @@ async def route_run(app: Any, session: Any, wf: Workflow, project_id: str) -> tu
     return route(
         wf, app.state.projects.registry(project_id), app.state.projects.secrets.get(project_id, {}),
         [Policy.model_validate(row, from_attributes=True) for row in rows],
-        demo=bool(getattr(app.state, "demo_models", False)),
+        demo=bool(getattr(app.state, "demo_models", False)), hosted=app.state.settings.edition == "hosted",
     )  # fmt: skip

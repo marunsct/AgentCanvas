@@ -25,7 +25,7 @@
         ],
         "title": "Transport",
         "default": "http",
-        "description": "stdio starts a local process: local edition + admin setting only (E042)"
+        "description": "stdio starts a program: on the server (local edition) or in the sandbox, once an admin allows it (E042, E046)"
       },
       "url": {
         "type": "string",
@@ -116,6 +116,15 @@
             }
           ]
         }
+      },
+      "session": {
+        "enum": [
+          "run",
+          "thread"
+        ],
+        "title": "Keep the program (sandbox)",
+        "default": "run",
+        "description": "When the program runs in the sandbox: run = a fresh one for each run; thread = the same one for a conversation's runs (a browser keeps its pages), until it is idle for a while"
       },
       "on_tool_change": {
         "enum": [

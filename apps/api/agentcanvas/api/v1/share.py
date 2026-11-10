@@ -61,6 +61,7 @@ from agentcanvas.services.share import (
     ai_notice,
     answer_text,
     attach_shape,
+    default_ai_notice,
     frame_ancestors,
     input_shape,
     question_of,
@@ -109,7 +110,7 @@ async def _share_out(session: AsyncSession, share: DeploymentShare | None, dep: 
         path=f"/s/{share.token}" if share.token else None,
         title=share.title or wf.name, greeting=share.greeting, suggestions=list(share.suggestions or []),
         input_field=share.input_field, input=input_shape(wf, share.input_field), inputs=text_inputs(wf),
-        frame_origins=list(share.frame_origins or []), ai_notice=ai_notice(share), updated_at=share.updated_at,
+        frame_origins=list(share.frame_origins or []), ai_notice=ai_notice(share, dep), updated_at=share.updated_at,
     )  # fmt: skip
 
 
@@ -147,7 +148,7 @@ async def update_share(
         wf = await _pinned(session, dep)
         if body.input_field not in text_inputs(wf):
             raise InvalidInput(f"'{body.input_field}' is not a text input of the published version")
-    share = await ShareService(session).update(dep_id, body, user.id)
+    share = await ShareService(session).update(dep_id, body, user.id, default_ai_notice(dep))
     return await _share_out(session, share, dep)
 
 
@@ -189,7 +190,9 @@ class ShareRunIn(BaseModel):
 
 class ShareResumeIn(BaseModel):
     visitor: Visitor
-    interrupt_id: str | None = None
+    interrupt_id: str | None = Field(
+        None, max_length=200, description="the question this answers; may be left out only while one waits"
+    )
     approve: bool | None = Field(None, description="not used: approvals cannot be given on a share link")
     text: str | None = Field(None, max_length=20_000, description="the answer to a question")
 
@@ -214,11 +217,11 @@ async def _open(request: Request, session: AsyncSession, token: str, count: bool
 @public_router.get("/share/{token}", response_model=ShareInfo)
 async def share_info(token: str, request: Request, session: AsyncSession = Depends(get_session)) -> ShareInfo:
     """What a chat page shows before the first message. 404 when the link is off or the deployment unpublished."""
-    share, _, wf = await _open(request, session, token, count=False)
+    share, dep, wf = await _open(request, session, token, count=False)
     return ShareInfo(
         title=share.title or wf.name, greeting=share.greeting, suggestions=list(share.suggestions or []),
         input=input_shape(wf, share.input_field), attachments=attach_shape(wf),
-        frame_origins=list(share.frame_origins or []), ai_notice=ai_notice(share),
+        frame_origins=list(share.frame_origins or []), ai_notice=ai_notice(share, dep),
     )  # fmt: skip
 
 
@@ -346,6 +349,8 @@ async def _visitor_context(session: AsyncSession, dep: Deployment, wf: Workflow,
 
 
 APPROVAL_WAIT = "This needs approval from the people who run this assistant before it can continue."
+# a Wait step: the run continues later with no visitor connected, so this transcript does not show what follows
+WAIT_NOTE = "This assistant waits before it goes on, and does the rest on its own later; that is not shown here."
 GUARD_PREFIX = "guard."
 STREAMED = ("core.llm", "core.agent")  # steps whose written text is the answer when they finish the run
 
@@ -406,7 +411,12 @@ def _visitor_events(h: RunHandle, runner: Any, shape: InputShape, wf: Workflow, 
                     for i in paused
                     if (i.get("kind") or "input") == "input"
                 ]
-                answer = APPROVAL_WAIT if paused and not interrupts else answer_text(ev.get("output"), shape)
+                waits = paused and all(i.get("kind") == "timer" for i in paused)
+                answer = (
+                    WAIT_NOTE if waits
+                    else APPROVAL_WAIT if paused and not interrupts
+                    else answer_text(ev.get("output"), shape)
+                )  # fmt: skip
                 question = interrupts[0] if interrupts else None
                 await record({
                     "role": "assistant", "run_id": h.run_id, "question": question,
@@ -490,16 +500,18 @@ async def share_resume(
     pending = await _pending(request, session, thread_id, body.interrupt_id)
     if pending is None:
         raise InvalidInput("this conversation is not waiting for an answer")
+    if pending.get("kind") == "timer":
+        raise InvalidInput(f"this conversation is at a wait step and cannot be answered. {WAIT_NOTE}")
     if (pending.get("kind") or "input") != "input":
         raise InvalidInput(
             "this conversation is waiting for approval from the people who run this assistant; it cannot be "
             "approved from a share link"
         )
-    await approvers.check_pending(session, thread_id, pending.get("id"), approvers.CALLER)
+    iid = await approvers.check_pending(session, thread_id, body.interrupt_id, approvers.CALLER)
     value = answer_value(pending, None, body.text, None)
     wf, version_id = await _continue_on(session, dep, wf, thread_id)
     h = await request.app.state.runner.start(
-        wf, thread_id=thread_id, resume=ResumeSpec(value, pending.get("id")), deployment_id=dep.id,
+        wf, thread_id=thread_id, resume=ResumeSpec(value, iid), deployment_id=dep.id,
         version_id=version_id, decided_by=None, labels={"channel": "share"},
     )  # fmt: skip
     await ShareService(session).record(thread_id, {"role": "user", "text": (body.text or "").strip()})

@@ -3,11 +3,11 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { apiFetch } from "../api/client";
 import { PROJECT_ID, PROJECT_NAME, switchProject } from "../api/queries";
-import { useCan } from "../api/session";
+import { useCanOrg } from "../api/session";
 import { confirmDialog, promptDialog, toast } from "../ui/dialog";
 
 export function ProjectSettings() {
-  const admin = useCan("admin");
+  const admin = useCanOrg("admin");
   const [name, setName] = useState(PROJECT_NAME);
   const projects = useQuery({ queryKey: ["projects", "all"], queryFn: () => apiFetch<{ id: string; name: string }[]>("/projects") });
   const rename = useMutation({

@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const admin = vi.hoisted(() => ({ is: true }));
 const apiFetch = vi.hoisted(() => vi.fn());
 vi.mock("../api/client", () => ({ ApiError: class extends Error {}, apiFetch }));
-vi.mock("../api/session", () => ({ can: () => admin.is, useCan: () => admin.is, ME: { role: "admin" } }));
+vi.mock("../api/session", () => ({ can: () => admin.is, canOrg: () => admin.is, useCan: () => admin.is, useCanOrg: () => admin.is, ME: { role: "admin" } }));
 
 const none = { allow_local_mcp: null, approve_own_runs: null, rate_limit_per_deployment: null, rate_limit_per_webhook: null, rate_limit_per_project: null,
   rate_limit_per_share_client: null, max_concurrent_runs: null, max_token_days: null, audit_retention_days: null, memory_retention_days: null };

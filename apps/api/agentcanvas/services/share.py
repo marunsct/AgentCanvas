@@ -38,6 +38,8 @@ MAX_SUGGESTIONS = 6
 MAX_TRANSCRIPT = 200  # messages kept per saved conversation; older ones drop off
 # the chat page and widget always show an AI notice (AI Act Art. 50(1)): a link may reword it, never remove it
 DEFAULT_AI_NOTICE = "You are chatting with an AI assistant. Answers can be wrong."
+# the default for a deployment whose AI-system record says its end users are only the organisation's own staff
+INTERNAL_AI_NOTICE = "You are using an AI assistant. Answers can be wrong: check them before you rely on them."
 MAX_AI_NOTICE = 200
 
 
@@ -67,9 +69,17 @@ def clean_origin(value: str) -> str:
     return origin
 
 
-def ai_notice(share: DeploymentShare | None) -> str:
+def default_ai_notice(dep: Deployment | None) -> str:
+    """The notice wording when nobody reworded it: the internal one when the deployment's AI-system record says its
+    end users are only the organisation's own staff, else the public one."""
+    if dep is not None and (dep.system_record or {}).get("end_user_facing") is False:
+        return INTERNAL_AI_NOTICE
+    return DEFAULT_AI_NOTICE
+
+
+def ai_notice(share: DeploymentShare | None, dep: Deployment | None = None) -> str:
     """What the link's chat page says to tell visitors they are chatting with an AI."""
-    return (share.ai_notice if share is not None else "") or DEFAULT_AI_NOTICE
+    return (share.ai_notice if share is not None else "") or default_ai_notice(dep)
 
 
 def frame_ancestors(share: DeploymentShare | None) -> str:
@@ -252,7 +262,10 @@ class ShareService:
                     raise
         return share
 
-    async def update(self, dep_id: str, body: ShareSettingsIn, user_id: str) -> DeploymentShare:
+    async def update(
+        self, dep_id: str, body: ShareSettingsIn, user_id: str, default_notice: str = DEFAULT_AI_NOTICE
+    ) -> DeploymentShare:
+        """`default_notice`: the deployment's default wording; saving it keeps the notice following the default."""
         share = await self.ensure(dep_id)
         if body.enabled is not None:
             share.enabled = body.enabled
@@ -267,7 +280,7 @@ class ShareService:
         if body.frame_origins is not None:
             share.frame_origins = body.frame_origins
         if body.ai_notice is not None:
-            share.ai_notice = "" if body.ai_notice == DEFAULT_AI_NOTICE else body.ai_notice
+            share.ai_notice = "" if body.ai_notice == default_notice else body.ai_notice
         share.updated_by = user_id
         await self.s.commit()
         await self.s.refresh(share)

@@ -163,7 +163,7 @@ counts, never the content; exports are recorded too, though reads otherwise are 
 
 | Request | How |
 |---|---|
-| A person's own data (Art. 15 and 20) | `GET /v1/me/export`, for anyone signed in: their account and memberships, and in the organisation they act in their API tokens (never the secret), app-connector sign-ins, Copilot chats, the conversations they started with each run's input, answer and steps, their approval decisions, long-term memories, files and audit entries, as one JSON file |
+| A person's own data (Art. 15 and 20) | `GET /v1/me/export`, for anyone signed in: their account and memberships, and in the organisation they act in the projects they were added to, their API tokens (never the secret), app-connector sign-ins, Copilot chats, the conversations they started with each run's input, answer and steps, their approval decisions, long-term memories, files and audit entries, as one JSON file |
 | A member's data, for an admin answering a request | `GET /v1/org/members/{user_id}/export`: the same, limited to this organisation (other memberships are not shown) |
 | A deployment end user's data | `POST /v1/org/end-users/export` (admins; body `user_id`, optional `deployment_id`, `reason`) or `POST /v1/deployments/{id}/end-users/export` with the deployment's key: their conversations, long-term memories and the names and sizes of the files their runs used |
 | Erase a member (Art. 17) | `POST /v1/org/members/{user_id}/erase`: removes them with their tokens, sign-ins, memories and Copilot chats (and, if asked, the conversations they started), and pseudonymises their account when they belong to no other organisation ([Members](accounts.md#members)) |
@@ -197,8 +197,10 @@ an AI system generates must be marked as such in a machine-readable way (systems
 2 December 2026). What AgentCanvas does by default:
 
 - **Disclosure.** The share-link chat page and the chat widget always show an AI notice under the message box,
-  which builders may reword per link but not remove; the widget's button is named *AI assistant* unless your site
-  names it otherwise ([Share as an app or a chat widget](publish.md#share-as-an-app-or-a-chat-widget)).
+  which builders may reword per link but not remove (a deployment whose
+  [AI-system record](publish.md#ai-system-record) says it serves only your own staff gets wording for colleagues);
+  the widget's button is named *AI assistant* unless your site names it otherwise
+  ([Share as an app or a chat widget](publish.md#share-as-an-app-or-a-chat-widget)).
 - **Marking.** Every answer a deployment gives through its API, MCP, A2A or share link has the header
   `X-AI-Generated: true`, and API results carry `generated_by` with the models that answered
   ([Call a deployment](publish.md#call-a-deployment)).
@@ -207,6 +209,27 @@ What stays yours: deciding whether your use is high-risk (Annex III) or needs mo
 fakes and AI-written text published on matters of public interest, keeping the mark when you pass content on, and
 telling people about AI in channels AgentCanvas does not render (your own app built on the API, emails or messages
 your workflow sends).
+
+## AI-system inventory
+
+ISO/IEC 42001 (Annex A: impact assessment, lifecycle records, event logs), NIST AI 600-1 (governance, pre-deployment
+testing, third-party models) and the EU AI Act's deployer duties all ask you to keep an inventory of your AI systems:
+what each is for, who answers for it, how risky it is, which models and providers it uses and what testing backs it.
+In AgentCanvas each deployment has an [AI-system record](publish.md#ai-system-record) that does most of that work:
+
+| An auditor asks | The record answers from |
+|---|---|
+| What is it for, who owns it, how risky is it? | The purpose, owner, risk class and rationale people write |
+| What data does it handle, and for whom? | The data categories and whether it faces the public |
+| Which models and providers (subprocessors)? | The published version's model blocks, backups, app connectors, web APIs, remote agents, judge models and trace export |
+| What changed, and who released it? | The version, its changes since the one before, and the audit log's publish entries |
+| What stops it misbehaving? | Safety steps, agent add-ons, the budget, the organisation's policies, approval steps and the steps nobody approves |
+| What evidence was it tested on? | The release gate, the latest experiment and red-team run, online evaluators' scores |
+| How long is its data kept? | Conversation, audit and memory retention, approval expiry, trace redaction |
+
+A record marked high risk without evaluation evidence or an approval step gets a note, not an error: whether a use is
+high-risk under Annex III, and what it then needs, stays your decision. The record is evidence for your own
+assessment, not a conformity assessment.
 
 ## Reporting a vulnerability
 

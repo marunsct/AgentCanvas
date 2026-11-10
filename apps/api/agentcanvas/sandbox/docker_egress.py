@@ -20,6 +20,11 @@ NETWORK = "agentcanvas-sandbox"
 CONTAINER = "agentcanvas-egress"
 PORT = 3128
 PROXY_FILE = Path(__file__).with_name("egress.py")
+# the proxy and the one module it imports, mounted at their package paths (namespace packages: no __init__ runs)
+PROXY_FILES = {
+    PROXY_FILE: "/egress/agentcanvas/sandbox/egress.py",
+    Path(__file__).parent.parent / "security" / "addresses.py": "/egress/agentcanvas/security/addresses.py",
+}
 _ready: dict[str, str] = {}  # secret fingerprint -> address, once checked in this process
 _lock = asyncio.Lock()
 
@@ -46,7 +51,9 @@ async def ensure(settings: Settings) -> str:
     """The proxy's address on the sandbox network (`agentcanvas-egress:3128`), starting it when needed."""
     key = secret(settings)
     private = "1" if settings.egress_allow_private else "0"
-    fingerprint = hashlib.sha256(f"{key}:{private}".encode()).hexdigest()[:16]
+    source = hashlib.sha256(b"".join(f.read_bytes() for f in PROXY_FILES)).hexdigest()
+    # a new secret, setting or proxy code replaces the container
+    fingerprint = hashlib.sha256(f"{key}:{private}:{source}".encode()).hexdigest()[:16]
     if fingerprint in _ready:
         return _ready[fingerprint]
     async with _lock:
@@ -66,8 +73,9 @@ async def ensure(settings: Settings) -> str:
                 "--restart", "unless-stopped", "--user", "65534:65534", "--read-only", "--cap-drop", "ALL",
                 "--security-opt", "no-new-privileges", "--memory", "256m", "--pids-limit", "256",
                 "-e", f"AGENTCANVAS_EGRESS_SECRET={key}", "-e", f"AGENTCANVAS_EGRESS_ALLOW_PRIVATE={private}",
-                "-v", f"{PROXY_FILE}:/egress.py:ro",
-                settings.sandbox_image, "python", "-I", "/egress.py", "--port", str(PORT),
+                *[a for src, dst in PROXY_FILES.items() for a in ("-v", f"{src}:{dst}:ro")], "-w", "/egress",
+                # -m puts the working directory (only these files) first on the path; -E -s: nothing else is added
+                settings.sandbox_image, "python", "-E", "-s", "-m", "agentcanvas.sandbox.egress", "--port", str(PORT),
             )  # fmt: skip
             if code != 0:
                 raise EgressUnavailable(f"could not start the egress proxy container: {out[-300:]}")

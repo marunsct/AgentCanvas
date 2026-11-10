@@ -13,7 +13,7 @@ const docs = [
 const apiFetch = vi.fn(async (path: string, _init?: unknown) =>
   path.endsWith("/documents") ? docs : path.endsWith("/knowledge") ? [kb] : []);
 vi.mock("../api/client", () => ({ ApiError: class extends Error {}, apiFetch }));
-vi.mock("../api/session", () => ({ can: () => true, useCan: () => true, ME: { role: "builder" } }));
+vi.mock("../api/session", () => ({ can: () => true, canOrg: () => true, useCan: () => true, useCanOrg: () => true, ME: { role: "builder" } }));
 
 const { KnowledgePage } = await import("./KnowledgePage");
 

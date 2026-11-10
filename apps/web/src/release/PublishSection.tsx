@@ -1,5 +1,6 @@
 /** Publish (M6-T4): pre-publish checklist, the API key (shown once), deployments with their keys (E-8), rotate /
- * unpublish, the secret that signs their run callbacks (shown once), and their share links (S23). */
+ * unpublish, the secret that signs their run callbacks (shown once), their share links (S23) and their AI-system
+ * records (E-13). */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { ApiError, apiFetch } from "../api/client";
@@ -8,7 +9,9 @@ import { can } from "../api/session";
 import { useEditor } from "../editor/store";
 import { ConnectSection } from "./ConnectSection";
 import { DeploymentKeys } from "./DeploymentKeys";
+import { DeploymentOAuth } from "./DeploymentOAuth";
 import { ShareSection } from "./ShareSection";
+import { SystemRecordSection } from "./SystemRecordSection";
 import { confirmDialog, promptDialog } from "../ui/dialog";
 
 export function PublishSection({ wfId }: { wfId: string }) {
@@ -110,7 +113,7 @@ export function PublishSection({ wfId }: { wfId: string }) {
       {checks && (
         <ul className="checklist small" data-testid="publish-checklist">
           {checks.map((c) => (
-            <li key={c.name}>{c.ok ? "✅" : "❌"} <b>{c.name}</b> — {c.detail}
+            <li key={c.name}>{!c.ok ? "❌" : c.name === "system record" && (c.items ?? []).length > 0 ? "ℹ️" : "✅"} <b>{c.name}</b> — {c.detail}
               {(c.items ?? []).length > 0 && <ul>{(c.items ?? []).map((i) => <li key={i}>{i}</li>)}</ul>}</li>
           ))}
         </ul>
@@ -143,8 +146,10 @@ export function PublishSection({ wfId }: { wfId: string }) {
               {d.active && can("builder") && <button type="button" className="small danger" onClick={() => void unpublish(d)}>Unpublish</button>}
             </div>
             {d.active && can("builder") && <DeploymentKeys deployment={d} onNewKey={(k) => setKey({ deployment: d.id, key: k })} />}
+            {d.active && can("builder") && <DeploymentOAuth deployment={d} />}
             {d.active && <ConnectSection deployment={d} apiKey={key?.deployment === d.id ? key.key : undefined} />}
             {d.active && can("builder") && <ShareSection deployment={d} />}
+            <SystemRecordSection deployment={d} />
           </li>
         ))}
       </ul>

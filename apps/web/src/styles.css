@@ -944,6 +944,11 @@ label.button:has(+ input:focus-visible) { outline: 2px solid var(--accent); outl
 .share-box code { display: block; overflow-wrap: anywhere; }
 .share-box label.share-toggle { font-weight: 400; display: flex; align-items: center; }
 .share-box code.inline { display: inline; }
+.record-notes { margin: 6px 0; padding-left: 18px; color: var(--warn); }
+.record-form { border: 0; padding: 0; margin: 0; min-width: 0; }
+.record-categories { border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 10px 8px; margin: 8px 0; }
+.record-categories legend { font-weight: 600; padding: 0 4px; }
+.share-box .record-categories label.row { font-weight: 400; display: flex; align-items: center; margin: 2px 0; }
 
 /* Knowledge Studio (S24) */
 .kb-create { margin: 8px 0 16px; }
@@ -1252,6 +1257,10 @@ ul.plain.files { max-height: none; }
 
 /* run search (G-10) */
 .run-search { margin-bottom: 12px; }
+.run-digest { margin-bottom: 12px; }
+.run-digest > summary { cursor: pointer; }
+.run-digest h4 { margin: 10px 0 4px; }
+.run-ask-text { margin: 6px 0; }
 .run-hits { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .run-snippet { margin: 2px 0 0; white-space: pre-wrap; max-height: 90px; overflow: auto; }
 

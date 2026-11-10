@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { apiFetch } from "../api/client";
 import type { OrgSettingsOut, TokenCreated, TokenOut } from "../api/generated";
-import { useCan, useMe, type Role } from "../api/session";
+import { useCanOrg, useMe, type Role } from "../api/session";
 import { confirmDialog, toast } from "../ui/dialog";
 import { QueryStatus } from "../ui/QueryStatus";
 import { ago, exact } from "../ui/time";
@@ -34,7 +34,7 @@ export function tokenState(t: Pick<TokenOut, "revoked_at" | "expires_at">, now =
 export function ApiTokens() {
   const qc = useQueryClient();
   const mine = useMe((s) => s.me.role);
-  const admin = useCan("admin");
+  const admin = useCanOrg("admin");
   const list = useQuery({ queryKey: ["tokens", "me"], queryFn: () => apiFetch<TokenOut[]>("/me/tokens") });
   const everyone = useQuery({
     queryKey: ["tokens", "org"], queryFn: () => apiFetch<TokenOut[]>("/org/tokens"), enabled: admin,

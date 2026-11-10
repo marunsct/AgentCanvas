@@ -29,7 +29,7 @@ spec:
       {{- include "agentcanvas.spread" (dict "root" . "component" "sandbox") | nindent 6 }}
       containers:
         - name: sandbox
-          image: {{ include "agentcanvas.image" (dict "root" . "component" "api") }}
+          image: {{ .Values.sandbox.image | default (include "agentcanvas.image" (dict "root" . "component" "api")) }}
           imagePullPolicy: {{ .Values.image.api.pullPolicy }}
           command: ["uvicorn", "agentcanvas.sandbox.service:app", "--host", "0.0.0.0", "--port", "8090"]
           ports:

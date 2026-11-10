@@ -66,6 +66,25 @@ describe("ShareSection (S23)", () => {
     await waitFor(() => expect((server.share as { ai_notice?: string }).ai_notice).toBe("Sie chatten mit einer KI."));
   });
 
+  it("follows a new default notice unless the builder is rewording it", async () => {
+    const PUBLIC = "You are chatting with an AI assistant. Answers can be wrong.";
+    const STAFF = "You are using an AI assistant. Answers can be wrong: check them before you rely on them.";
+    server.share = {
+      deployment_id: "d1", enabled: true, greeting: "", input: { field: "q", chat: false }, input_field: "q", inputs: ["q"],
+      path: "/s/t", suggestions: [], title: "T", token: "t", frame_origins: [], ai_notice: PUBLIC,
+    } as unknown as ShareOut;
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={qc}><ShareSection deployment={deployment} /></QueryClientProvider>);
+    const notice = await screen.findByLabelText("AI notice") as HTMLInputElement;
+    server.share = { ...server.share, ai_notice: STAFF } as ShareOut; // the system record now says: staff only
+    await act(async () => { await qc.invalidateQueries({ queryKey: ["share", "d1"] }); });
+    await waitFor(() => expect(notice.value).toBe(STAFF));
+    fireEvent.change(notice, { target: { value: "Ein KI-Assistent." } });
+    server.share = { ...server.share, ai_notice: PUBLIC } as ShareOut;
+    await act(async () => { await qc.invalidateQueries({ queryKey: ["share", "d1"] }); });
+    expect(notice.value).toBe("Ein KI-Assistent."); // what is being typed stays
+  });
+
   it("picks the input messages go to, or leaves it to the server", async () => {
     server.share = {
       deployment_id: "d1", enabled: true, greeting: "", input: { field: "question", chat: false }, input_field: null,

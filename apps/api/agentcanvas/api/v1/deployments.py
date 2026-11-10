@@ -18,7 +18,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agentcanvas.api.audit import note, payload_hash
-from agentcanvas.api.deps import CurrentUser, current_user, get_session
+from agentcanvas.api.deps import CurrentUser, current_user, get_session, get_settings_dep
 from agentcanvas.api.urls import api_url
 from agentcanvas.api.v1.files import FileOut, file_out, file_service, read_upload
 from agentcanvas.api.v1.gates import gate_for
@@ -39,7 +39,7 @@ from agentcanvas.db.models import (
     Thread,
     WorkflowVersion,
 )
-from agentcanvas.errors import Conflict, Forbidden, InvalidInput, NotFound
+from agentcanvas.errors import Conflict, Forbidden, InvalidInput, NotFound, Unauthorized
 from agentcanvas.ids import new_id
 from agentcanvas.ir.commands import UpdateResource
 from agentcanvas.ir.contract import breaking_changes, contract
@@ -47,9 +47,9 @@ from agentcanvas.ir.models import Workflow
 from agentcanvas.runtime import nesting
 from agentcanvas.runtime.runner import RunHandle
 from agentcanvas.runtime.types import ResumeSpec
-from agentcanvas.services import annotation, approvers, callbacks, gates, networks
+from agentcanvas.services import annotation, approvers, callbacks, deployment_oauth, gates, networks, system_record
 from agentcanvas.services.data_subjects import end_user_label
-from agentcanvas.services.deployments import Check, DeploymentService
+from agentcanvas.services.deployments import KEY_PREFIX, Check, DeploymentService
 from agentcanvas.services.disclosure import AI_HEADER, GeneratedBy, marked
 from agentcanvas.services.projects import PROJECT_OF
 from agentcanvas.services.redeploy import thread_version
@@ -57,6 +57,7 @@ from agentcanvas.services.run_results import ResultRepo, RunResult, from_handle
 from agentcanvas.services.testcases import TestCaseService
 from agentcanvas.services.versions import VersionService
 from agentcanvas.services.workflows import WorkflowService
+from agentcanvas.settings import Settings
 from agentcanvas.validation.policies import CODES as POLICY_CODES
 
 router = APIRouter(tags=["deployments"])
@@ -86,6 +87,7 @@ class DeploymentOut(BaseModel):
         description="app connector -> the tools its runs leave out because the server changed them since publishing "
         "(added, changed, outcome); cleared when the workflow is published again",
     )
+    oauth: bool = Field(False, description="people may also sign in to its MCP and A2A endpoints with OAuth")
 
 
 class PublishOut(BaseModel):
@@ -135,7 +137,7 @@ def _dep(d: Deployment, v: WorkflowVersion, key_prefix: str | None) -> Deploymen
     return DeploymentOut(
         id=d.id, environment=d.environment, version_id=v.id, semver=v.semver, key_prefix=key_prefix,
         active=d.active, created_at=d.created_at, endpoint=f"/v1/deployments/{d.id}/runs/wait",
-        tool_drift=d.tool_drift,
+        tool_drift=d.tool_drift, oauth=d.oauth is not None,
     )  # fmt: skip
 
 
@@ -190,6 +192,8 @@ async def publish(
     deps = DeploymentService(session)
     checks = await deps.checklist(wf, errors, set(projects.secrets.get(project_id, {})), run_tests, policies=broken)
     checks.append(await _contract_check(session, wf_id, body.environment, wf))
+    if (record := await _record_check(session, wf_id, body.environment, wf, user.org_id)) is not None:
+        checks.append(record)
     gate = await gate_for(session, wf_id, body.environment)
     commit = await workspace_commit(request, session, wf_id)
     if gate is not None and all(c.ok for c in checks):  # an evaluation is costly: only when nothing else failed
@@ -220,6 +224,7 @@ async def publish(
         created_by=user.id, reuse_unchanged=True,
     )  # fmt: skip
     dep, key = await deps.publish(view.row, body.environment, version, created_by=user.id)
+    note(request, environment=body.environment, version=version.semver, deployment=dep.id)  # the record's history
     prefix = (await deps.newest_prefixes([dep.id])).get(dep.id)
     out = PublishOut(deployment=_dep(dep, version, prefix), api_key=key, checklist=checks)
     out.git = await sync_after_version(request, session, wf_id, version, "publish")  # G-14: never fails the publish
@@ -254,6 +259,19 @@ async def _contract_check(session: AsyncSession, wf_id: str, environment: str, w
     ]
     detail = f"{len(breaking)} breaking change(s) vs v{live.semver}" if breaking else f"compatible with v{live.semver}"
     return Check(name="contract", ok=True, detail=detail, items=[c.message for c in breaking])
+
+
+async def _record_check(session: AsyncSession, wf_id: str, environment: str, wf: Workflow, org_id: str) -> Check | None:
+    """Informational (E-13): the reminders of the environment's AI-system record, once someone has filled it in (a
+    high-risk system without evaluation evidence or an approval step, an owner who left, a review date passed)."""
+    dep = await session.scalar(
+        select(Deployment).where(Deployment.workflow_id == wf_id, Deployment.environment == environment)
+    )
+    if dep is None or not dep.system_record:
+        return None
+    notes = await system_record.notes_at_publish(session, dep, wf, org_id)
+    detail = f"{len(notes)} note(s); publishing goes ahead" if notes else "nothing to note"
+    return Check(name="system record", ok=True, detail=detail, items=notes)
 
 
 @router.get("/workflows/{wf_id}/deployments", response_model=list[DeploymentOut])
@@ -326,6 +344,107 @@ async def rotate_callback_secret(
     return CallbackSecretOut(callback_secret=await callbacks.set_secret(session, request.app.state.keyring, dep))
 
 
+SCOPE = Annotated[str, StringConstraints(pattern=r"^[\x21\x23-\x5b\x5d-\x7e]{1,200}$")]  # RFC 6749 scope-token
+
+
+class OAuthIn(BaseModel):
+    enabled: bool = Field(description="people may sign in to the MCP and A2A endpoints; the keys keep working")
+    issuer: str | None = Field(
+        None, max_length=2000, description="the authorization server (its `iss`); none: the one people sign in with"
+    )
+    audience: str | None = Field(
+        None, max_length=2000,
+        description="also accepted as the token's audience besides the endpoint's own address (an identity provider "
+        "that cannot issue tokens for an address, e.g. api://agentcanvas)",
+    )  # fmt: skip
+    scopes: list[SCOPE] = Field(
+        default_factory=lambda: [deployment_oauth.DEFAULT_SCOPE], max_length=20,
+        description="the scopes a token must have, every one (empty: none)",
+    )  # fmt: skip
+
+
+class OAuthOut(BaseModel):
+    enabled: bool
+    issuer: str | None = Field(description="the issuer set for this deployment (none: the server's)")
+    authorization_server: str | None = Field(description="the issuer tokens must come from")
+    audience: str | None
+    scopes: list[str]
+    mcp_resource: str = Field(description="the MCP endpoint's resource identifier: its tokens' audience")
+    a2a_resource: str = Field(description="the A2A endpoint's resource identifier: its tokens' audience")
+    mcp_metadata: str = Field(description="the MCP endpoint's protected resource metadata (RFC 9728)")
+    a2a_metadata: str = Field(description="the A2A endpoint's protected resource metadata")
+
+
+def oauth_resource(request: Request, route: str, dep_id: str) -> str:
+    """The resource identifier of a deployment's MCP or A2A endpoint: its public address. Tokens are bound to it, so
+    in production it must not come from the request's Host header (a token issued for another server, replayed with
+    that server's name as Host, would match): AGENTCANVAS_PUBLIC_URL is required there."""
+    s: Settings = request.app.state.settings
+    if not s.public_url and (s.env in ("staging", "prod") or s.edition == "hosted"):
+        raise Conflict("OAuth sign-in needs AGENTCANVAS_PUBLIC_URL: access tokens are bound to the public address")
+    return api_url(request, route, dep_id=dep_id)
+
+
+def _oauth_out(request: Request, dep: Deployment) -> OAuthOut:
+    cfg = deployment_oauth.config(dep.oauth)
+    mcp = api_url(request, "mcp_endpoint", dep_id=dep.id)
+    a2a = api_url(request, "a2a_endpoint", dep_id=dep.id)
+    settings = request.app.state.settings
+    issuer = deployment_oauth.issuer_of(cfg, settings) if cfg else settings.oidc_issuer
+    return OAuthOut(
+        enabled=cfg is not None, issuer=cfg.issuer if cfg else None, authorization_server=issuer,
+        audience=cfg.audience if cfg else None, scopes=cfg.scopes if cfg else [deployment_oauth.DEFAULT_SCOPE],
+        mcp_resource=mcp, a2a_resource=a2a,
+        mcp_metadata=deployment_oauth.metadata_url(mcp), a2a_metadata=deployment_oauth.metadata_url(a2a),
+    )  # fmt: skip
+
+
+def access_tokens(request: Request) -> deployment_oauth.AccessTokens:
+    tokens = getattr(request.app.state, "access_tokens", None)
+    if tokens is None:
+        tokens = request.app.state.access_tokens = deployment_oauth.AccessTokens(request.app.state.settings)
+    return tokens
+
+
+@router.get("/deployments/{dep_id}/oauth", response_model=OAuthOut)
+async def get_deployment_oauth(dep_id: str, request: Request, session: AsyncSession = Depends(get_session)) -> OAuthOut:
+    """Whether people may sign in to the deployment's MCP and A2A endpoints with OAuth, and the addresses a client
+    and the identity provider need."""
+    return _oauth_out(request, await DeploymentService(session).require(dep_id))
+
+
+@router.put("/deployments/{dep_id}/oauth", response_model=OAuthOut)
+async def put_deployment_oauth(
+    dep_id: str,
+    body: OAuthIn,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings_dep),
+) -> OAuthOut:
+    """Let people sign in to the deployment's MCP and A2A endpoints with an access token from the identity provider
+    (OAuth 2.1, the MCP authorization spec), or stop it. The keys keep working either way. Turning it on checks that
+    the issuer's signing keys can be loaded (502 otherwise)."""
+    svc = DeploymentService(session)
+    await svc.require(dep_id)
+    if not body.enabled:
+        dep = await svc.set_oauth(dep_id, None)
+        note(request, enabled=False)
+        return _oauth_out(request, dep)
+    issuer = deployment_oauth.check_issuer_url(body.issuer) if body.issuer and body.issuer.strip() else None
+    effective = issuer or settings.oidc_issuer
+    if not effective:
+        raise InvalidInput("name the issuer: this server has no sign-in issuer (AGENTCANVAS_OIDC_ISSUER) to use")
+    if "offline_access" in body.scopes:  # a client asks for refresh tokens itself; it is not the resource's to require
+        raise InvalidInput("offline_access is not a scope a deployment can require")
+    oauth_resource(request, "mcp_endpoint", dep_id)  # refused in production without a public address
+    await access_tokens(request).check(effective)
+    audience = body.audience.strip() if body.audience and body.audience.strip() else None
+    cfg = deployment_oauth.OAuthConfig(issuer=issuer, audience=audience, scopes=list(dict.fromkeys(body.scopes)))
+    dep = await svc.set_oauth(dep_id, cfg.model_dump())
+    note(request, enabled=True, issuer=effective, audience=audience, scopes=cfg.scopes)
+    return _oauth_out(request, dep)
+
+
 @router.delete("/deployments/{dep_id}", status_code=204)
 async def unpublish(dep_id: str, session: AsyncSession = Depends(get_session)) -> Response:
     await DeploymentService(session).unpublish(dep_id)
@@ -353,7 +472,11 @@ class ApiRunIn(BaseModel):
 
 class ApiResumeIn(BaseModel):
     value: Any = None
-    interrupt_id: str | None = None
+    interrupt_id: str | None = Field(
+        None,
+        max_length=200,
+        description="the pause this answers (an id from the run's interrupts); may be left out only while one waits",
+    )
     callback_url: str | None = Field(default=None, max_length=2000, description=CALLBACK_HELP)
 
 
@@ -370,15 +493,79 @@ class ApiResult(BaseModel):
 
 
 async def _caller(
-    request: Request, session: AsyncSession, dep_id: str, authorization: str | None
+    request: Request, session: AsyncSession, dep_id: str, authorization: str | None, oauth: str | None = None
 ) -> tuple[Deployment, Workflow]:
     """The key's deployment and workflow, after counting the request against the deployment's and the project's
     rate limits (429 when over). The organisation's IP allow-list comes first, so a caller outside it cannot even
-    learn whether a key is valid."""
+    learn whether a key is valid. `oauth`: the route (MCP or A2A) whose callers may also sign in with an access
+    token when the deployment allows it (E-11)."""
     await networks.check_deployment(request, session, dep_id, "deployment key")
-    dep, wf = await DeploymentService(session).authenticate(dep_id, authorization)
+    svc = DeploymentService(session)
+    dep = await session.get(Deployment, dep_id) if oauth else None
+    cfg = deployment_oauth.config(dep.oauth) if dep is not None and dep.active else None
+    if oauth and dep is not None and cfg is not None:
+        dep, wf = await _signed_in(request, svc, dep, cfg, oauth, authorization)
+    else:
+        dep, wf = await svc.authenticate(dep_id, authorization)
     await count_call(request, session, dep, wf)
     return dep, wf
+
+
+async def _signed_in(
+    request: Request,
+    svc: DeploymentService,
+    dep: Deployment,
+    cfg: deployment_oauth.OAuthConfig,
+    route: str,
+    authorization: str | None,
+) -> tuple[Deployment, Workflow]:
+    """A call of an endpoint that takes OAuth: a deployment key as always, else an access token for this endpoint.
+    Every refusal names where to sign in (`WWW-Authenticate`, RFC 9728), so a client can find it on its own."""
+    scheme, _, token = (authorization or "").partition(" ")
+    token = token.strip() if scheme.lower() == "bearer" else ""
+    try:
+        resource = oauth_resource(request, route, dep.id)
+    except Conflict as exc:  # the public address was unset since: keys still work, access tokens cannot be checked
+        if token.startswith(KEY_PREFIX):
+            return await svc.authenticate(dep.id, authorization)
+        raise Unauthorized(exc.detail) from None
+    meta = deployment_oauth.metadata_url(resource)
+    ask = deployment_oauth.challenge(meta, cfg.scopes)
+    if not token:
+        raise Unauthorized("sign in: send Authorization: Bearer <access token or deployment key>", challenge=ask)
+    if token.startswith(KEY_PREFIX):
+        try:
+            return await svc.authenticate(dep.id, authorization)
+        except Unauthorized as exc:
+            raise Unauthorized(exc.detail, challenge=ask) from None
+    issuer = deployment_oauth.issuer_of(cfg, request.app.state.settings)
+    if issuer is None:
+        raise Unauthorized("this deployment's sign-in has no issuer: set one in its OAuth settings", challenge=ask)
+    audiences = [resource, *([cfg.audience] if cfg.audience else [])]
+    try:
+        who = await access_tokens(request).verify(token, issuer=issuer, audiences=audiences, scopes=cfg.scopes)
+    except deployment_oauth.InvalidToken as exc:
+        bad = deployment_oauth.challenge(meta, cfg.scopes, "invalid_token", exc.detail)
+        raise Unauthorized(exc.detail, challenge=bad) from None
+    except deployment_oauth.InsufficientScope as exc:
+        bad = deployment_oauth.challenge(meta, cfg.scopes, "insufficient_scope", exc.detail)
+        raise Forbidden(exc.detail, challenge=bad) from None
+    wf = await svc.pinned(dep)
+    request.state.signed_in = who
+    note(request, caller="oauth", end_user=who.user_id)
+    return dep, wf
+
+
+def signed_in(request: Request) -> deployment_oauth.SignedIn | None:
+    """The person who signed in with OAuth to call the deployment (E-11); None for a key holder."""
+    return getattr(request.state, "signed_in", None)
+
+
+def bound_end_user(request: Request, dep: Deployment) -> str | None:
+    """The end user a signed-in caller is: they may continue only their own conversations. None for a key holder,
+    who acts for the deployment's owner and may continue any of its conversations."""
+    who = signed_in(request)
+    return end_user_label(dep.id, who.user_id) if who else None
 
 
 async def count_call(
@@ -427,10 +614,12 @@ async def _start(
     """Start a run of the deployment. `caller`: the deployment and workflow its key already unlocked (and counted
     against the rate limits) in this request."""
     dep, wf = caller or await _caller(request, session, dep_id, auth)
+    if (who := signed_in(request)) is not None:  # a signed-in person is the run's end user, whatever the body says
+        body = body.model_copy(update={"user_id": who.user_id})
     version_id = dep.version_id
     callback = await _callback_url(request, session, dep, body.callback_url)
     if body.thread_id:
-        await own_thread(session, dep, body.thread_id)
+        await own_thread(session, dep, body.thread_id, bound_end_user(request, dep))
         wf, version_id = await _continue_on(session, dep, wf, body.thread_id)
     h = await request.app.state.runner.start(
         wf, thread_id=body.thread_id, input=body.input, context=await _api_context(session, dep, wf, body),
@@ -456,11 +645,12 @@ async def _add_callback(session: AsyncSession, dep: Deployment, h: RunHandle, ur
         await session.commit()
 
 
-async def own_thread(session: AsyncSession, dep: Deployment, thread_id: str) -> Thread:
+async def own_thread(session: AsyncSession, dep: Deployment, thread_id: str, end_user: str | None = None) -> Thread:
     """A conversation this deployment started. Any other (unknown, another deployment's, another organisation's)
-    is the same 404, so a key holder cannot learn which thread ids exist elsewhere (S-6)."""
+    is the same 404, so a key holder cannot learn which thread ids exist elsewhere (S-6). `end_user`: a signed-in
+    caller's, who may continue only the conversations they started (another person's is the same 404)."""
     t = await session.scalar(select(Thread).where(Thread.id == thread_id, Thread.deployment_id == dep.id))
-    if t is None:
+    if t is None or (end_user is not None and t.end_user != end_user):
         raise NotFound(f"thread '{thread_id}' not found for this deployment")
     return t
 
@@ -720,11 +910,12 @@ async def api_resume(
     response.headers.update(AI_HEADER)
     await own_thread(session, dep, thread_id)
     note(request, interrupt_id=body.interrupt_id, payload_sha256=payload_hash(body.value))
-    await approvers.check_pending(session, thread_id, body.interrupt_id, approvers.CALLER)
+    iid = await approvers.check_pending(session, thread_id, body.interrupt_id, approvers.CALLER)
+    note(request, interrupt_id=iid)  # the pause it answers, also when the caller named none
     callback = await _callback_url(request, session, dep, body.callback_url)
     wf, version_id = await _continue_on(session, dep, wf, thread_id)
     h = await request.app.state.runner.start(
-        wf, thread_id=thread_id, resume=ResumeSpec(body.value, body.interrupt_id),
+        wf, thread_id=thread_id, resume=ResumeSpec(body.value, iid),
         deployment_id=dep.id, version_id=version_id, caller_run_id=nesting.caller(request.headers.get(nesting.HEADER)),
     )  # fmt: skip
     await _add_callback(session, dep, h, callback)

@@ -28,7 +28,7 @@ vi.mock("../api/client", () => {
     }),
   };
 });
-vi.mock("../api/session", () => ({ can: () => true, ME: { role: "builder" } }));
+vi.mock("../api/session", () => ({ can: () => true, canOrg: () => true, ME: { role: "builder" } }));
 
 const { useEditor } = await import("../editor/store");
 const { useCopilot } = await import("./copilot");

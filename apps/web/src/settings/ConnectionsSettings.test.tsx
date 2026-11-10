@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const calls: { path: string; init?: { method?: string; json?: unknown } }[] = [];
 let admin = true;
-vi.mock("../api/session", () => ({ useCan: () => admin }));
+vi.mock("../api/session", () => ({ useCan: () => admin, useCanOrg: () => admin }));
 vi.mock("../ui/dialog", () => ({ toast: vi.fn(), confirmDialog: vi.fn(async () => true) }));
 vi.mock("../api/client", () => ({
   apiFetch: vi.fn(async (path: string, init?: { method?: string; json?: unknown }) => {

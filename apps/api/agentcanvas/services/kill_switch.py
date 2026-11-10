@@ -5,19 +5,23 @@ instance stops its marked runs at once; every other instance stops its own at it
 interval, 10 s by default). A marked run whose instance is gone is cancelled by the hand-over sweep instead of
 continuing elsewhere, and a run already waiting to be handed over is cancelled here. New runs are not refused: to
 keep a deployment from taking more, stop it on its page as well.
+
+A run paused at a Wait step (F-10) runs nowhere either: its wait is cancelled here, and the run with it, so no timer
+or event continues it later.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agentcanvas.db.models import Project, Run, Thread, WorkflowRow
+from agentcanvas.db.models import InterruptTask, Project, Run, Thread, WorkflowRow
 from agentcanvas.runtime.runner import STOPPED_BY_ADMIN
+from agentcanvas.services.timers import end_waits
 
 MAX_RUNS = 10_000  # runs marked by one press; a press again marks the rest
 
@@ -26,6 +30,7 @@ MAX_RUNS = 10_000  # runs marked by one press; a press again marks the rest
 class Stopped:
     running: list[str]  # marked: their instances stop them (this one at once)
     handed_over: list[str]  # were waiting for another instance to continue them: cancelled now
+    waiting: list[str] = field(default_factory=list)  # were paused at a Wait step: cancelled now
 
 
 async def stop_runs(
@@ -67,7 +72,20 @@ async def stop_runs(
         if res.rowcount == 1:  # type: ignore[attr-defined]
             await session.execute(update(Thread).where(Thread.id == thread_id).values(status="idle"))
             handed.append(run_id)
+    waits = (
+        select(InterruptTask.id)
+        .join(Thread, Thread.id == InterruptTask.thread_id)
+        .join(WorkflowRow, WorkflowRow.id == Thread.workflow_id)
+        .join(Project, Project.id == WorkflowRow.project_id)
+        .where(Project.org_id == org_id, InterruptTask.status == "pending", InterruptTask.kind == "timer")
+        .limit(MAX_RUNS)
+    )
+    if deployment_id is not None:
+        waits = waits.where(Thread.deployment_id == deployment_id)
+    if workflow_id is not None:
+        waits = waits.where(Thread.workflow_id == workflow_id)
+    waited = await end_waits(session, list((await session.scalars(waits)).all()), STOPPED_BY_ADMIN)
     await session.commit()
     for run_id in running:  # the ones running here stop now; the others at their instance's next heartbeat
         await runner.cancel(run_id, STOPPED_BY_ADMIN)
-    return Stopped(running, handed)
+    return Stopped(running, handed, waited)

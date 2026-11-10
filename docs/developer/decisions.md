@@ -10,6 +10,70 @@ Merging, deleting branches and anything outward-facing stay with you: work is de
 - No version bump or tag (yours to decide); `CHANGELOG.md` "Unreleased" and `HARDENING.md` are kept current.
 - Prefer checks that grow with the product (driven by the OpenAPI document or the template list) over lists to maintain.
 
+## 2026-11-10 (the rest of the roadmap)
+
+### E-10 to E-13 and the re-scoped F items, built together
+Per-project access, OAuth for deployment MCP and A2A, Bedrock and Vertex AI, the AI-system record, LangGraph strict
+resume, AG-UI 1.0, the Wait block, Copilot run search and the weekly digest, and stdio MCP servers in the sandbox were
+built in parallel and merged on `claude/hardening-9`. What is left of each is in `hardening.md`.
+
+### Three ways of answering a pause, one rule
+Strict resume (an answer names its pause), AG-UI (several answers at once, and tool calls the caller's application
+runs, which have no Inbox item) and the Wait block (only its time or event ends it) all changed how the runner marks a
+pause answered. They were merged into one `_decide_interrupts`: an answer is matched to its Inbox item through
+`approvers.answered`; an AG-UI tool call passes only when the paused run asked for exactly it; a Wait step refuses any
+answer but its own wake; an answer naming nothing goes to the one other pause beside a Wait step. *Reverse:* the
+function in `runtime/runner.py`.
+
+### Diagnostic codes are claimed once
+The cloud models and the Wait block both took E024 and W028; the Wait block's became E097 and W096.
+
+### Judgment calls inside these items
+
+- A deployment key still acts for the deployment's owner and may continue any end user's conversation, signed-in ones
+  included; only signed-in callers are bound to their own. To bind keys too, pass the thread's owner check for key
+  callers in own_thread.
+- A configured audience is accepted besides the endpoint's address (not instead), so RFC 8707 clients and fixed-audience
+  IdPs (Entra, Okta) both work; drop the resource from `audiences` in _signed_in to accept only the configured one.
+- The deployment API (runs/wait and the rest) still takes keys only; to accept tokens there, pass an oauth route from
+  its callers of _caller.
+- The fields live on the deployment (one record per environment), not the workflow, since staging and prod can differ in
+  risk and audience; the evidence is read at request time rather than snapshotted, so it cannot go stale. To snapshot it
+  at publish instead, store build()'s output on the version.
+- HTML rather than a server-made PDF, so the API needs no PDF library and the browser's print gives the PDF; add a
+  renderer in system_record_doc.render if a PDF file is required.
+- LangGraph's strict resume is enabled through its config key `__pregel_strict_resume` (imported from
+  langgraph._internal, no public name in 1.2.20); to reverse, drop that line in the LangGraph adapter.
+- An unanswered front-end tool call expires after AGENTCANVAS_APPROVAL_EXPIRY_DAYS rather than a setting of its own;
+  give it one in services/retention.py `expire_tool_calls` if operators want a shorter wait.
+- AG-UI events echo the caller's threadId and runId (AgentCanvas's run id is in RUN_STARTED/RUN_FINISHED metadata and
+  `x-run-id`); only the answer steps' text and tool calls are streamed, like share links. To stream every step, pass all
+  AI steps as `shown` in api/v1/agui.py.
+- Vertex AI prices are recorded at the regional or multi-region endpoint's price (global is 10% less), because the
+  region is a block setting and not part of the model id: budgets err on the safe side. Reverse by pricing by region in
+  runner.price.
+- The hosted edition never uses the server's own AWS or Google Cloud identity for a tenant's model; self-hosted servers
+  do, for every project (like a provider key in the server's environment). Reverse in nodes.public_only_args.
+- A Wait step can never be answered by a person or a caller (409); only its time or its event ends it. A builder who
+  wants to skip a wait in a draft has to Stop it and run again. Reverse by letting builders resume a draft
+  conversation's timer with ResumeSpec(wake=True) from a new endpoint.
+- Digest notifications carry counts, spend, latency, failure-group sizes and workflow names, not the errors' text (an
+  error can hold what a run was given), like approval notices never carry what a run asks; to send the reasons too, add
+  them in DigestMessage.lines and payload.
+- The connector sandbox is kept per run by default and per conversation only when the block asks for it, because a
+  browser session is state the next run may not expect; a conversation continued on another API server starts a fresh
+  program (the sessions are per server). Reverse by changing the `session` default in mcp.server.json.
+- A hosted connector matches a gallery entry by command, leading flags and exact package version, so the image and the
+  gallery cannot drift apart silently; to allow more, mark the entry sandboxable and install it in the browser image.
+- Only exact `npx package@version` commands are mapped to the installed copy, so a gallery bump without an image rebuild
+  fails visibly instead of running another version; uvx connectors are not installed in the image yet.
+- A project role is not capped by the organisation role (an organisation viewer can be one project's builder or admin,
+  as in GitHub and LangSmith), so a project admin is possible without being an organisation admin; an API token stays
+  capped at its own role everywhere. With private projects off, a binding only raises a role. To cap instead, make
+  Access.role_in return the weaker of the binding and member_role.
+- A principal is two nullable foreign keys (user_id, group_id, exactly one set) rather than a kind plus a free id, so
+  deleting a user or a SCIM group deletes its bindings in the database.
+
 ## 2026-11-10 (enterprise controls)
 
 ### The enterprise controls came before the remaining product items

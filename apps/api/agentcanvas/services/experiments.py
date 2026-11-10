@@ -255,7 +255,7 @@ def _spread(done: Sequence[Any], name: str) -> float | None:
     return round(sum(sds) / len(sds), 4) if sds else None
 
 
-def _reason(text: str | None) -> str:
+def failure_reason(text: str | None) -> str:
     """A comment or error with what differs between runs (numbers, quoted values) taken out, so alike ones group."""
     t = " ".join((text or "").split())[:300]
     t = re.sub(r"'[^']*'|\"[^\"]*\"", "…", t)
@@ -280,19 +280,19 @@ def failures(done: Sequence[Any], specs: list[dict[str, Any]]) -> list[FailureGr
     # in example order, whatever order the database returned them in: the same examples and sample every time
     for r in sorted(done, key=lambda r: (r.example_id, getattr(r, "repetition", 0) or 0)):
         if r.run_status != "success":
-            add(None, _reason(getattr(r, "error", None) or r.run_status), r.example_id)
+            add(None, failure_reason(getattr(r, "error", None) or r.run_status), r.example_id)
             continue
         for x in r.scores or []:
             if x["evaluator"] in kinds and not x["passed"]:
                 comment = str(x.get("comment") or "")
                 if x["score"] is None:
-                    add(x["evaluator"], f"could not score: {_reason(comment)}", r.example_id)
+                    add(x["evaluator"], f"could not score: {failure_reason(comment)}", r.example_id)
                 elif kinds[x["evaluator"]] == "classifier":  # "chose rude (0.80): …": grouped by the category
-                    add(x["evaluator"], _reason(comment.split(":", 1)[0]), r.example_id, comment[:300])
+                    add(x["evaluator"], failure_reason(comment.split(":", 1)[0]), r.example_id, comment[:300])
                 elif kinds[x["evaluator"]] in FREE_TEXT:
                     add(x["evaluator"], "scored below its threshold", r.example_id, comment[:300])
                 else:
-                    add(x["evaluator"], _reason(comment), r.example_id)
+                    add(x["evaluator"], failure_reason(comment), r.example_id)
     return sorted(groups.values(), key=lambda g: (-g.runs, g.evaluator or "", g.reason))[:FAILURE_GROUPS]
 
 

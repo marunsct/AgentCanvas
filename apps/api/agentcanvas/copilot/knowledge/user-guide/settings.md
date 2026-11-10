@@ -26,22 +26,26 @@ for a phone (the rest of the app is a desktop tool; the editor is usable on a ph
 ## Settings
 
 **Settings** groups everything that is configured rather than built, by who it applies to. Sections your role
-cannot change are shown read-only, with a sentence saying who can; sections your role cannot read are not listed.
+cannot change are shown read-only, with a sentence saying who can; sections your role cannot read are not listed. For
+the Project sections that is your role in the project, which can differ from your role in the organisation
+([Projects and their members](accounts.md#projects-and-their-members)); the person menu shows both when they differ.
 
 | Section | What it holds | Who changes it |
 |---|---|---|
-| Project › **General** | The project's name and id; deleting the project with everything in it (you type its name to confirm; an organisation keeps at least one project) | admins |
+| Project › **General** | The project's name and id; deleting the project with everything in it (you type its name to confirm; an organisation keeps at least one project) | organisation admins |
 | Project › **Models** | The project's model and its key (the first-run screen), and the [default model for each purpose](models.md#which-model-is-used-when-nothing-names-one): judges, simulated users, knowledge embeddings | builders |
 | Project › **Copilot** | Whether the Copilot is on, its model (the project's, or a separate one with its own address and key), a model for questions, privacy, the project notes it always reads, its token limit | builders |
 | Project › **Secrets** | API keys and passwords workflows use; values are write-only. Deleting one asks first | builders |
 | Project › **Sandbox** | Time and memory limits for workspace code, and the hosts it may reach, where the server can enforce that ([Workspace › Sandbox](workspace.md#sandbox)) | builders |
 | Project › **Knowledge** | How new knowledge bases split their documents (by heading, paragraph, sentence or fixed windows; passage size; overlap). Existing knowledge bases keep their own ([Knowledge](knowledge.md#chunking-and-embeddings)) | builders |
-| Project › **Observability** | Sending traces to Langfuse, Phoenix or any OpenTelemetry collector | admins |
-| Organisation › **General** | The organisation's name, how long conversations are kept (the server's default, a number of days, or forever), and the **Environments** workflows can be published to (publishing to a name not on the list is refused). Below it, **Limits and policies**: this organisation's own setting for local MCP servers, approving your own runs, the four rate limits, how many runs may be in flight at once, the longest an API token may live, and how long the audit log and long-term memories are kept (see below). Last, **Stop all runs**: the kill switch for an emergency; every run in flight in the organisation stops within about 10 seconds on every server (runs waiting to be handed over are cancelled), with a reason kept in the audit log. It does not refuse new runs: stop a deployment on its page for that. `POST /v1/org/runs/stop` takes the same `reason`, and optionally a `deployment_id` or `workflow_id` to stop only those runs. At the bottom, **The organisation's data**: export everything as a zip, and delete the organisation (below) | admins |
+| Project › **Observability** | Sending traces to Langfuse, Phoenix or any OpenTelemetry collector | organisation admins |
+| Project › **Members** | The people and SCIM groups of this project, each with a role here; whether only they (and organisation admins) see it is the organisation's **Projects are private** setting ([Projects and their members](accounts.md#projects-and-their-members)) | the project's admins |
+| Project › **Spending** | This project's [spending caps](#spending-caps) a day and a month, what it spent today and this month, and the organisation's caps that bind it too | the project's admins |
+| Organisation › **General** | The organisation's name, how long conversations are kept (the server's default, a number of days, or forever), and the **Environments** workflows can be published to (publishing to a name not on the list is refused). Below it, **Limits and policies**: this organisation's own setting for local MCP servers, approving your own runs, the four rate limits, how many runs may be in flight at once, the longest an API token may live, and how long the audit log and long-term memories are kept (see below). Last, **Stop all runs**: the kill switch for an emergency; every run in flight in the organisation stops within about 10 seconds on every server (runs waiting to be handed over, and runs paused at a [Wait](widgets.md#wait) step, are cancelled), with a reason kept in the audit log. It does not refuse new runs: stop a deployment on its page for that. `POST /v1/org/runs/stop` takes the same `reason`, and optionally a `deployment_id` or `workflow_id` to stop only those runs. At the bottom, **The organisation's data**: export everything as a zip, and delete the organisation (below) | admins |
 | Organisation › **Spending** | What the organisation's runs cost over a date range (the last 30 days to start with; **Last 7 / 30 / 90 days** buttons), in total and by project, by workflow, by person and by deployment, with runs, tokens, answers taken from the cache and answers from backup models. A person is whoever started the conversation; runs from deployments, schedules and events are listed as no person, and the deployment table shows which deployment (the workflow and its environment) they came through, with the rest listed as not through a deployment. Cost counts models with a price. What the Copilot and AI judges spent is listed apart, under **Outside runs** (it is not in the runs' total). Conversations deleted since (by hand or by the retention period) still count, by the hour their runs started. The same report is `GET /v1/org/spending?since=&until=`. Above it, **Spending caps**: one row for the organisation and one per project, each with its cap a day and a month (empty: no cap; **Save** on the row), how much of it is used today and this month, and below them the **Alert at** percent and the latest cap alerts (see [Spending caps](#spending-caps)) | admins |
-| Organisation › **Security** | The **allowed networks** the organisation may be used from: sign-ins, API tokens, deployment keys, share links and SCIM ([Allowed networks](accounts.md#allowed-networks)); whether members must sign in with a second factor ([Multi-factor sign-in](accounts.md#multi-factor-sign-in)) | admins |
+| Organisation › **Security** | The **allowed networks** the organisation may be used from: sign-ins, API tokens, deployment keys, share links and SCIM ([Allowed networks](accounts.md#allowed-networks)); whether members must sign in with a second factor ([Multi-factor sign-in](accounts.md#multi-factor-sign-in)); whether **projects are private** (seen only by organisation admins and each project's own members, [Projects and their members](accounts.md#projects-and-their-members)) | admins |
 | Organisation › **Members**, **Policies**, **Audit log** | See [Organisations, roles and policies](accounts.md) | admins |
-| Organisation › **Notifications** | Who is told that an approval or a question waits in the Inbox ([Notifications](#approval-notifications)): e-mail to the people who may decide, a Slack channel, a signed webhook. **Send a test** tries each one | admins |
+| Organisation › **Notifications** | Who is told that an approval or a question waits in the Inbox ([Notifications](#approval-notifications)): e-mail to the people who may decide, a Slack channel, a signed webhook; and whether each project's weekly run digest goes there too. **Send a test** tries each one | admins |
 | Organisation › **Server** | How this server is set up (sign-in, where workspace code runs, frameworks offered, limits, retention), each with the environment variable an operator sets it with. Read-only | admins can read |
 | You › **Appearance** | Your colour theme, and whether the editor opens in Simple or Full mode (both saved with your account) | you |
 | You › **Keyboard shortcuts** | Every shortcut of the editor and the canvas (Ctrl/⌘+K opens the command palette) | read only |
@@ -180,6 +184,18 @@ announced unless their step names who decides them (you are watching the run), n
 same settings are `GET` and `PUT /v1/org/notifications` (admins; only what you send changes, `null` removes the Slack
 address or the webhook) and `POST /v1/org/notifications/test`.
 
+**Weekly run digests** (off until an admin ticks **Send each project's weekly run digest here too**): each project's
+[weekly digest](run-and-debug.md#weekly-digest) also goes to these channels once it is made, on Monday after the
+week ends. It says how many runs there were, how many failed, what they spent, how long they took, how many runs each
+kind of failure hit and in which workflows, and which workflows' runs were flagged most, with a link to the Runs
+page; never the errors' text or what a run was asked or answered. E-mail goes to the addresses listed above, else to
+every admin and builder (at most 100, in Bcc). The webhook gets `{"type": "digest.weekly", "id", "digest_id",
+"organisation_id", "project": {"id", "name"}, "week_start", "week_end", "runs", "failed", "failure_rate", "cost_usd",
+"tokens", "latency_p50_ms", "latency_p95_ms", "failure_groups": [{"runs", "workflows"}], "flagged": [{"run_id",
+"thread_id", "workflow_id", "workflow_name", "flags"}], "workflows", "url"}`, signed the same way
+(`X-AgentCanvas-Event: digest.weekly`). Failures are retried like approval notifications; switching the digest off
+drops the ones not sent yet. In the API it is `"digest": true` on the same `PUT /v1/org/notifications`.
+
 
 ### Spending caps
 
@@ -190,8 +206,11 @@ are the administrator's: what the whole organisation, or one project, may spend 
 (`PUT /v1/projects/{id}/spending-caps {"max_cost_usd_day": 50, "max_cost_usd_month": 800}`; `null` removes one). A
 project's cap is never above the organisation's (the save is refused), and the organisation's caps bind every project
 too. An operator can cap every organisation of the server with `AGENTCANVAS_MAX_COST_USD_DAY` and
-`AGENTCANVAS_MAX_COST_USD_MONTH`; an organisation can then only set a lower cap. Only admins set or see caps, and
-every change is in the audit log.
+`AGENTCANVAS_MAX_COST_USD_MONTH`; an organisation can then only set a lower cap. Only admins set or see caps: the
+organisation's admins all of them, and a project's own admins ([project members](accounts.md#projects-and-their-members)
+with the admin role) their project's, in **Settings › Project › Spending** or with
+`GET /v1/projects/{id}/spending-caps` (its caps, the organisation's that bind it, and what it spent today and this
+month). Every change is in the audit log.
 
 What counts: every run of the organisation or project, whatever started it (the editor's draft and debug runs, test
 cases, experiments, deployments, share links, schedules, webhooks and event handlers), at the cost of models with a

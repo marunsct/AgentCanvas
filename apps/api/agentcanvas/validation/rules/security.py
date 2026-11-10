@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 
+from agentcanvas.registry import sandboxable_connector
 from agentcanvas.security.imports import is_allowed_import_path
 from agentcanvas.validation.analysis import node_side_effects
 from agentcanvas.validation.engine import Diagnostic, ValidationContext, error, info, rule, warning
@@ -81,6 +82,23 @@ def local_mcp(ctx: ValidationContext) -> Iterator[Diagnostic]:
                 "sandboxed execution",
                 node_id=r.id,
             )
+        if local and ctx.edition == "hosted":  # never on the shared server; in the sandbox, only what it comes with
+            if not ctx.sandbox_mcp:
+                yield error(
+                    "E046",
+                    f"'{r.name}' starts a program, which the hosted edition runs only in the sandbox, and this server "
+                    "does not run app connectors there",
+                    node_id=r.id,
+                )
+            elif sandboxable_connector(r.config) is None:
+                yield error(
+                    "E046",
+                    f"'{r.name}' is not one of the gallery's connectors that run in the sandbox (its command, flags or "
+                    "package differ); the hosted edition runs only those",
+                    node_id=r.id,
+                    path="config.args",
+                    hint="add it again from App connectors, then change only the arguments after its package",
+                )
 
 
 @rule

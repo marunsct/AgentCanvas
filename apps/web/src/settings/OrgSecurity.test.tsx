@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const sent: unknown[] = [];
 let security = {
   allowed_networks: ["10.0.0.0/8"], your_address: "10.1.2.3", networks_ignored: false,
-  require_mfa: false, mfa_available: true, your_sign_in_is_mfa: true,
+  require_mfa: false, mfa_available: true, your_sign_in_is_mfa: true, private_projects: false,
 };
 vi.mock("../api/client", () => ({
   apiFetch: vi.fn(async (_path: string, init?: { method?: string; json?: { security: { allowed_networks: string[]; require_mfa?: boolean } } }) => {
@@ -18,7 +18,7 @@ vi.mock("../api/client", () => ({
   }),
 }));
 let admin = true;
-vi.mock("../api/session", () => ({ useCan: () => admin }));
+vi.mock("../api/session", () => ({ useCan: () => admin, useCanOrg: () => admin }));
 vi.mock("../ui/dialog", () => ({ toast: () => {} }));
 
 const { OrgSecurity, networkLines } = await import("./OrgSecurity");
@@ -30,7 +30,7 @@ function show() {
 
 afterEach(() => {
   cleanup(); sent.length = 0; admin = true;
-  security = { ...security, allowed_networks: ["10.0.0.0/8"], require_mfa: false, your_sign_in_is_mfa: true };
+  security = { ...security, allowed_networks: ["10.0.0.0/8"], require_mfa: false, your_sign_in_is_mfa: true, private_projects: false };
 });
 
 describe("OrgSecurity (E-8)", () => {
@@ -65,6 +65,17 @@ describe("OrgSecurity (E-8)", () => {
     show();
     expect(((await screen.findByTestId("require-mfa")) as HTMLInputElement).disabled).toBe(true);
     expect(screen.getByText(/sign in with a second factor first/)).toBeTruthy();
+  });
+
+  it("makes projects private, sending it only when it changed (E-10)", async () => {
+    show();
+    const box = await screen.findByTestId("private-projects") as HTMLInputElement;
+    expect(box.checked).toBe(false);
+    expect(screen.getByText(/Every member sees every project/)).toBeTruthy();
+    fireEvent.click(box);
+    expect(screen.getByText(/Add each team to its projects first/)).toBeTruthy();
+    await act(async () => { fireEvent.click(screen.getByText("Save")); });
+    expect(sent).toEqual([{ security: { allowed_networks: ["10.0.0.0/8"], private_projects: true } }]);
   });
 
   it("is read-only for everyone but admins", async () => {

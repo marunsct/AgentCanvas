@@ -62,8 +62,8 @@ groups:
           summary: Backup models are answering model calls; a model provider may be down
           runbook: docs/user-guide/operations.md#runbooks
       - alert: AgentCanvasBackgroundJobFailing
-        # hand-over, cron triggers, retention, crawls, experiments, secrets sync, online metrics, Matura feed: a round
-        # that raised is only logged by the job, so the counter is what can page
+        # hand-over, cron triggers, Wait steps, retention, crawls, experiments, secrets sync, online metrics, Matura
+        # feed: a round that raised is only logged by the job, so the counter is what can page
         expr: sum by (job) (increase(agentcanvas_job_failures_total[15m])) > 0
         for: 15m
         labels: { severity: ticket }

@@ -53,28 +53,31 @@ left of them:
 | E-7 | Matura's tenant-deleted event wired to the purge; legal hold; crypto-shredding (spec 18's claim is still untrue); exports of very large organisations to object storage | M |
 | E-8 | Drop the old `deployment.api_key_hash` and `key_prefix` columns (kept for rolling upgrades); a lifetime cap for deployment keys; `auth_time` freshness for admin writes and an idle-session timeout | S |
 | E-9 | Project admins setting their own project's caps (after E-10); stopping a Copilot turn or a judge mid-way at a cap | S |
-| E-10 | **Access per project:** project members (people and SCIM groups) with a role each; custom permission sets after | M/L |
-| E-11 | **OAuth 2.1 for the deployment MCP and A2A endpoints** (RFC 9728 protected-resource metadata; Enterprise-Managed Authorization, ID-JAG) | M |
-| E-12 | **AWS Bedrock and Google Vertex AI providers** | M |
-| E-13 | **An AI-system record per deployment** (purpose, owner, risk class, models, evaluation evidence, approvals), exportable | M |
+| E-10 | ~~**Access per project**~~ done 2026-11-10 (project members with roles, private projects, project admins). Left: groups only from the sign-in token's claim; per-project notification channels; custom permission sets | | M |
+| E-11 | ~~**OAuth 2.1 for the deployment MCP and A2A endpoints**~~ done 2026-11-10 (RFC 9728 metadata, JWT access tokens, per-person end users). Left: tokens on the REST deployment API; introspection (RFC 7662) and DPoP; who may call by SCIM group | | M |
+| E-12 | ~~**AWS Bedrock and Google Vertex AI providers**~~ done 2026-11-10 (chat models, region per block, IRSA and Workload Identity). Left: their embedding models; a region picker; credential variables in exported deploy kits | | M |
+| E-13 | ~~**An AI-system record per deployment**~~ done 2026-11-10 (fields, evidence, Markdown and HTML export). Left: a policy preset requiring owner and risk class in prod; a snapshot at each publish; kill-switch and key history in it | | M |
 
 ### F. Product (re-scoped)
 
 | Id | Item | Why | Size |
 |---|---|---|---|
 | F-1 | ~~**MCP 2026-07-28 for paused and long runs**~~ done 2026-11-10: a pause asks the person through form elicitation (MRTR, a signed single-use `requestState` bound to the key used), long or queued runs become Tasks (`tasks/get`, `tasks/update`, `tasks/cancel`) on any replica. Left: `notifications/tasks`, URL-mode elicitation for reviewer-only pauses | Tasks became a Final extension and MRTR replaced server-initiated elicitation in 2026-07-28 | M |
-| F-3b | **LangGraph strict resume:** resume by interrupt id everywhere (Inbox, API, MCP, A2A, share) | The pins of F-3 are done (decisions.md 2026-11-09); two parallel interrupts must be answerable separately | S |
-| F-8 | **AG-UI 1.0 endpoint for deployments,** as a translator on the official `ag-ui-protocol` 1.0 package; also gives FR-X-03 (tools run in the user's browser) | AG-UI 1.0 is stable since 2026-09-17 (run outcome on RUN_FINISHED, resume entries, REASONING events) | M |
+| F-3b | ~~**LangGraph strict resume**~~ done 2026-11-10 (every resume path names its pause; parallel pauses answer separately). Left: a withdrawn state for an Inbox item LangGraph moved past; the Agent Spec flow kit | | S |
+| F-8 | ~~**AG-UI 1.0 endpoint for deployments**~~ done 2026-11-10 (official package, front-end tools, several answers at once). Left: files in user messages; MESSAGES_SNAPSHOT; front-end tools on frameworks other than LangGraph; OAuth on this endpoint | | M |
 | F-9 | **Where people work:** actionable approvals in Slack and email first (with E-6); Teams through A2A and Microsoft Agent 365 (Bot Framework is end-of-life) once E-11 lands; a Slack conversational app last | Re-scoped from "publish to Slack, Teams or email", which was three products | M |
-| F-10 | **A durable Wait block** (`core.wait`: for a duration, until a time, or until an event), resumed by the scheduler | Replaces "agents schedule their own follow-ups", a persistence path for prompt injection | S |
-| F-11 | **A Copilot `search_runs` tool with structured filters, and a weekly digest** per project | Replaces a separate natural-language parser; reuses run search and the failure grouping | S |
-| F-13 | **Stdio MCP servers in the sandbox** (Playwright MCP first) behind the egress allow-list | Replaces a bespoke browser block; also unlocks filesystem, git and DevTools servers in hosted and production | M |
+| F-10 | ~~**A durable Wait block**~~ done 2026-11-10 (duration, time, event; Stop and the kill switch cancel it). Left: other frameworks; the Run tab following the run a wake starts | | S |
+| F-11 | ~~**Copilot `search_runs` and a weekly digest**~~ done 2026-11-10 (Ask box on Runs, digest sent to the notification channels on opt-in). Left: a time zone and send day per organisation; per-project opt-in | | S |
+| F-13 | ~~**Stdio MCP servers in the sandbox**~~ done 2026-11-10 (per run or per conversation, a browser image with Playwright MCP). Left: screenshots as run files; more sandboxable gallery entries; keeping a conversation's browser on one server | | M |
 | F-14 | **Live co-editing; voice** | N-3 and the audio part of N-4; large, after the rest | L |
 
 Done: F-2 (2026-11-09), F-4, F-5, F-6, F-7 (2026-11-09; F-5's queue redesigned 2026-11-10), F-3's pin bumps
 (2026-11-09). F-12 became E-7 and E-10.
 
 ## 2a. Left over from the 2026-11-08 fixes
+
+- **Deletes right after a run:** a run's finish hooks and its search indexing write after `RUN_FINISHED` reaches the client; on Postgres a delete of the workflow or conversation at that moment can lose a deadlock to them (seen once in a test that deleted rows directly; the API's delete paths stop runs first but do not wait for their hooks). Retry the delete on `DeadlockDetected`, or have the delete paths wait for the thread's last run's hooks.
+- **Web types:** narrow local types written before the generated ones existed remain in `ProjectMembers.tsx`, `ProjectSpending.tsx`, `RunAsk.tsx`, `RunDigest.tsx`, `DeploymentOAuth.tsx` and `SystemRecordSection.tsx` too; swap them for `generated.ts` types.
 
 - **Service connection:** a builder can still use the organisation's service connection by publishing and running the deployment (inherent in builders being allowed to publish). A schedule's own input may use any of the project's files.
 - **Thread ids** stay one namespace across organisations: whether an id is taken is visible, not by whom (namespacing would change what callers get back).

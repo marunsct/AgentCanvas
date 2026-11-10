@@ -23,9 +23,11 @@
     "knowledge.search": "emulated",
     "mw.model_call_limit": "emulated",
     "core.decide": "emulated",
+    "core.wait": "unsupported",
     "*": "unsupported"
   },
   "notes": {
+    "core.wait": "a Wait step needs saved checkpoints that a scheduler can wake days later: run this workflow on LangGraph (Framework in the workflow settings)",
     "core.set": "a function node that returns the fields it sets",
     "core.router": "a function node that yields Event(route=...) with the same CEL rules; the workflow's edges map each route to its blocks",
     "core.join": "a JoinNode that waits for every branch, then the block",

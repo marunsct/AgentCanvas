@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { maturaMode } from "../api/auth";
 import { apiDownload, apiFetch } from "../api/client";
-import { orgPortalUrl, useCan, useMe, type Role } from "../api/session";
+import { orgPortalUrl, useCanOrg, useMe, type Role } from "../api/session";
 import { QueryStatus } from "../ui/QueryStatus";
 import type { MemberOut as Member } from "../api/generated";
 import { confirmDialog, promptDialog, toast } from "../ui/dialog";
@@ -55,7 +55,7 @@ export function MembersPage() {
     erase.mutate({ id: m.user_id, reason: reason.trim(), conversations });
   };
   const me = useMe((s) => s.me);
-  const admin = useCan("admin") && !maturaMode();
+  const admin = useCanOrg("admin") && !maturaMode();
   const portal = orgPortalUrl("members");
   const error = (set.error ?? remove.error ?? erase.error ?? exportData.error) as Error | null;
   return (

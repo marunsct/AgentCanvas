@@ -7,7 +7,7 @@ const admin = vi.hoisted(() => ({ is: true }));
 const apiFetch = vi.hoisted(() => vi.fn());
 const dialog = vi.hoisted(() => ({ promptDialog: vi.fn(), toast: vi.fn() }));
 vi.mock("../api/client", () => ({ ApiError: class extends Error {}, apiFetch }));
-vi.mock("../api/session", () => ({ can: () => admin.is, useCan: () => admin.is, ME: { role: "admin" } }));
+vi.mock("../api/session", () => ({ can: () => admin.is, canOrg: () => admin.is, useCan: () => admin.is, useCanOrg: () => admin.is, ME: { role: "admin" } }));
 vi.mock("../ui/dialog", () => dialog);
 
 const { StopRuns } = await import("./StopRuns");

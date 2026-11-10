@@ -208,6 +208,7 @@ Node types are namespaced: `core.*` (portable across adapters) and dialects such
 | `W073` | warning | Append-heavy channel without `DeltaChannel` in a long-running chat workflow |
 | `E041` | error | Host-executing backend (`LocalShellBackend`, `FilesystemBackend`) in a hosted environment (v0.6) |
 | `E042` | error | Local/stdio MCP target without `allow_local_mcp` and sandboxed execution (v0.6) |
+| `E046` | error | Hosted edition: a stdio MCP server that does not run in the sandbox (`sandbox_mcp` off) or is not a gallery entry marked `sandboxable` (same command, flags and package version) |
 | `E074` | error | Channel storage mode changed (delta ↔ full) while the previous version has live threads (v0.6) |
 | `E080` | error | `import_path` outside workspace packages (`scripts.`, `tools.`, `nodes.`; `examples.` in dev only) |
 | `E081` | error | Event handler references a field missing from the event schema (v0.6) |
@@ -223,6 +224,7 @@ Node types are namespaced: `core.*` (portable across adapters) and dialects such
 | `P003` | info | Workflow portability: compiles on N of M installed adapters |
 | `W001` | warning | Cycle without guard (router exit, counter, or explicit `recursion_limit` override) |
 | `W002` | warning | MCP tool with `destructive_hint` not behind approval (from the tools cached by "Browse tools") |
+| `W028` | warning | An agent can call a gallery connector's acting tools (`acts`: a browser's click, type, upload) without approval |
 | `W003` | warning | Channel written but never read |
 | `W013` | warning | Join with fewer than two incoming branches (S5) |
 | `W015` | warning | USD budget set but a model (or one of its backup models) has no catalog price (its calls are not counted) (S6, S26) |

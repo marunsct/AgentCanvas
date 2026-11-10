@@ -177,7 +177,11 @@ class HandoverJob:
         keep = ("input", "mode", "breakpoints_before", "breakpoints_after", "durability", "checkpoint_id", "pins",
                 "mocks", "dry_run", "user_id", "service_connection")  # fmt: skip
         out = {k: pending[k] for k in keep if k in pending}
-        out["resume"] = ResumeSpec(value=resume["value"], interrupt_id=resume.get("interrupt_id")) if resume else None
+        out["resume"] = (
+            ResumeSpec(value=resume["value"], interrupt_id=resume.get("interrupt_id"), wake=bool(resume.get("wake")))
+            if resume
+            else None
+        )
         out["project_files"] = True  # its files were checked when it was first started
         return out
 

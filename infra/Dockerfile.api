@@ -4,8 +4,9 @@
 # Runs as uid 10001. Migrations: `python -m agentcanvas.db.migrate` (the compose `migrate` service, the Helm hook Job).
 # Base images are pinned by digest (Dependabot proposes updates weekly). To pull one from a mirror, replace the
 # exact reference: --build-context 'python:3.12-slim@sha256:<digest>=docker-image://mirror.gcr.io/library/python@sha256:<digest>'
-# Mastra (step 8) is built from the Node.js image only when asked for
+# Mastra (step 8) and the sandbox's browser (step 9) are built from the Node.js image only when asked for
 ARG WITH_MASTRA=false
+ARG WITH_BROWSER=false
 FROM ghcr.io/astral-sh/uv:0.13@sha256:96f40d3904aad8d0bd010539001d36c8e2188b981e1334471a90c4a1d93bb490 AS uv
 
 FROM python:3.14-slim@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170 AS python
@@ -17,14 +18,19 @@ WORKDIR /app
 # the cloud KMS clients for a master key in AGENTCANVAS_KMS_KEY=aws:/gcp: (about 60 MB for both). Both by default, so
 # the image starts with either; a build that keeps its master key in a file can leave them out: --build-arg KMS=""
 ARG KMS="aws gcp"
+# the model providers in your own cloud account: AWS Bedrock (aws, about 60 MB with numpy) and Claude on Google Vertex
+# AI (gcp, about 105 MB). Both by default; a server that uses neither can leave them out: --build-arg MODELS=""
+ARG MODELS="aws gcp"
 # 1) dependencies only (cached until the lockfile changes)
 COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev --no-install-project \
-    $(for k in $KMS; do printf -- '--extra kms-%s ' "$k"; done)
+    $(for k in $KMS; do printf -- '--extra kms-%s ' "$k"; done) \
+    $(for m in $MODELS; do printf -- '--extra models-%s ' "$m"; done)
 # 2) the application
 COPY . .
 RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev \
-    $(for k in $KMS; do printf -- '--extra kms-%s ' "$k"; done)
+    $(for k in $KMS; do printf -- '--extra kms-%s ' "$k"; done) \
+    $(for m in $MODELS; do printf -- '--extra models-%s ' "$m"; done)
 # 3)-7) optional frameworks, each in a Python environment of its own so its workflows run here: name them in
 #   FRAMEWORKS (space- or comma-separated ids, or "all"), e.g. --build-arg FRAMEWORKS="crewai google_adk" (the Docker
 #   app: `make docker-up`, all by default), or with the older WITH_<ID>=true arguments. Without them those workflows can
@@ -82,6 +88,22 @@ FROM python AS mastra-false
 RUN mkdir -p /opt/mastra
 FROM mastra-${WITH_MASTRA} AS mastra
 
+# 9) optional: local app connectors in the sandbox (AGENTCANVAS_SANDBOX_MCP): Node.js, the gallery's connectors that
+#   run in the sandbox (agentcanvas/sandbox/connectors, pinned by its lockfile) and Chromium for Playwright MCP, in
+#   /opt/mcp-servers: --build-arg WITH_BROWSER=true, about 950 MB more on disk (Chromium, Node.js and the connectors
+#   595 MB, Chromium's system libraries and fonts 350 MB). Run the sandbox service from that image (or name it in
+#   AGENTCANVAS_SANDBOX_MCP_IMAGE for the docker mode); the API itself does not need it.
+FROM node:22.18.0-bookworm-slim@sha256:752ea8a2f758c34002a0461bd9f1cee4f9a3c36d48494586f60ffce1fc708e0e AS browser-true
+WORKDIR /opt/mcp-servers
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/mcp-servers/browsers
+COPY agentcanvas/sandbox/connectors/package.json agentcanvas/sandbox/connectors/package-lock.json ./
+#   Chromium itself, not its headless shell: Playwright MCP's "chromium" browser is the full one
+RUN npm ci --no-audit --no-fund --loglevel=error && mkdir bin && cp /usr/local/bin/node bin/node \
+    && node node_modules/playwright/cli.js install --no-shell chromium
+FROM python AS browser-false
+RUN mkdir -p /opt/mcp-servers
+FROM browser-${WITH_BROWSER} AS browser
+
 FROM python AS runtime
 # git: project workspaces are git repositories (M5-T1); upgrade: OS security fixes newer than the base image (M8-T6);
 # tesseract: OCR for scanned PDFs and pictures in knowledge bases. English is included; add languages at build time
@@ -97,6 +119,12 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
 #   from /app/.venv, which uv built; leaving pip out also leaves out what scanners flag in its vendored copies
 COPY --from=build --chown=app:app /app /app
 COPY --from=mastra --chown=app:app /opt/mastra /opt/mastra
+# the connectors and their browser belong to root: a connector's program cannot change them (step 9)
+COPY --from=browser /opt/mcp-servers /opt/mcp-servers
+ARG WITH_BROWSER=false
+RUN if [ "$WITH_BROWSER" = "true" ]; then \
+      /opt/mcp-servers/bin/node /opt/mcp-servers/node_modules/playwright/cli.js install-deps chromium \
+      && rm -rf /var/lib/apt/lists/*; fi
 WORKDIR /app
 # what this image is: the release (kept equal to pyproject.toml by a test) and the commit it was built from, pass it
 # with --build-arg GIT_SHA=$(git rev-parse HEAD). The API reports both (GET /v1/version, Settings > About, the
@@ -110,6 +138,12 @@ ENV PATH=/app/.venv/bin:/opt/mastra/bin:$PATH \
     AGENTCANVAS_GIT_SHA=${GIT_SHA} \
     AGENTCANVAS_IN_DOCKER=1 \
     AGENTCANVAS_MASTRA_DIR=/opt/mastra \
+    # the sandbox starts `npx <package>@<version>` from /opt/mcp-servers when it is installed there (step 9), and
+    # Playwright MCP uses that Chromium, writing its files to /tmp (a connector's working directory is read-only)
+    AC_MCP_SERVERS=/opt/mcp-servers \
+    PLAYWRIGHT_BROWSERS_PATH=/opt/mcp-servers/browsers \
+    PLAYWRIGHT_MCP_BROWSER=chromium \
+    PLAYWRIGHT_MCP_OUTPUT_DIR=/tmp/playwright-mcp \
     PYTHONUNBUFFERED=1 \
     AGENTCANVAS_WORKSPACES_DIR=/data/workspaces \
     AGENTCANVAS_LOG_JSON=true \

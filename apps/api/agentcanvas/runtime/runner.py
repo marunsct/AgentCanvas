@@ -46,9 +46,9 @@ from agentcanvas.runtime.admission import Admission, Priority, QueueTimeout, pri
 from agentcanvas.runtime.identity import CURRENT, RunIdentity
 from agentcanvas.runtime.tracing import trace_ref
 from agentcanvas.runtime.trajectory import compact
-from agentcanvas.runtime.types import REPLAYABLE, ResumeSpec, RunMode, RunSpec
+from agentcanvas.runtime.types import CLIENT_TOOL, REPLAYABLE, ResumeSpec, RunMode, RunSpec
 from agentcanvas.services import offboarding
-from agentcanvas.services.approvers import escalate_at, node_approvers
+from agentcanvas.services.approvers import answered, escalate_at, node_approvers
 from agentcanvas.services.files import DEFAULT_MAX_BYTES, FileService
 from agentcanvas.services.secrets import masker
 from agentcanvas.services.spend_caps import SpendCaps, SpendCapStop, periods
@@ -500,6 +500,8 @@ class Runner:
         handed_over: bool = False,
         caller_run_id: str | None = None,
         end_user: str | None = None,
+        client_tools: list[dict[str, Any]] | None = None,
+        client_context: list[dict[str, str]] | None = None,
     ) -> RunHandle:
         """Start a run. `context=None` reuses the context of the last run on `context_from` (default: this thread).
         A deployment's run takes only files given to that deployment (`visitor_hash`: a share link's visitor, whose
@@ -510,7 +512,8 @@ class Runner:
         hand-over continues, whose place in that queue it keeps; `handed_over`: started by the hand-over;
         `caller_run_id`: the run of the organisation that called this deployment run (it takes no place in the
         queue while that run holds a slot: runtime/nesting.py). `end_user`: the deployment API's end user a new
-        conversation belongs to (kept for erasure and export requests)."""
+        conversation belongs to (kept for erasure and export requests). `client_tools` and `client_context`: the
+        tools the caller's application runs itself and what it tells the agents (AG-UI, `RunSpec`)."""
         if self.draining:
             raise Unavailable("this server is restarting; retry the request", retry_after=5)
         adapter = self.adapter_for(wf)
@@ -601,10 +604,20 @@ class Runner:
                 decided: list[str] = []
                 requested_by = user_id
                 if resume is not None:
-                    decided = await self._decide_interrupts(s, thread_id, resume, decided_by or user_id)
+                    who = decided_by or (None if resume.wake else user_id)  # a Wait step's time came: nobody
+                    decided, resume = await self._decide_interrupts(s, thread_id, resume, who)
                     # an answer continues the request of whoever asked, not of who answered
                     asked_by = select(InterruptTask.requested_by).where(InterruptTask.id.in_(decided))
                     requested_by = next((u for u in (await s.scalars(asked_by)).all() if u), None)
+                elif not fresh and (input is not None or checkpoint_id is not None):
+                    # a new message (or a replay) leaves the step the conversation waited at: its Wait steps end
+                    # rather than wake a run that has moved on
+                    await s.execute(
+                        update(InterruptTask)
+                        .where(InterruptTask.thread_id == thread_id, InterruptTask.status == "pending")
+                        .where(InterruptTask.kind == "timer")
+                        .values(status="cancelled", decided_at=datetime.now(UTC))
+                    )
                 await s.commit()
         except IntegrityError as exc:
             self.active_by_thread.pop(thread_id, None)
@@ -634,6 +647,8 @@ class Runner:
             user_id=user_id,
             service_connection=service_connection or deployment_id is not None,
             pin_tools=deployment_id is not None or origin == "trigger",
+            client_tools=list(client_tools or []),
+            client_context=list(client_context or []),
             labels={
                 k: v
                 for k, v in {"origin": origin, "deployment_id": deployment_id, "version_id": version_id}.items()
@@ -671,35 +686,75 @@ class Runner:
         q = select(Run.context).where(Run.thread_id == thread_id).order_by(Run.id.desc()).limit(1)
         return (await s.scalar(q)) or {}
 
-    async def _decide_interrupts(self, s: Any, thread_id: str, resume: ResumeSpec, decided_by: str | None) -> list[str]:
-        """Mark the answered Inbox items decided; returns their ids."""
-        pending = select(InterruptTask.id).where(
-            InterruptTask.thread_id == thread_id, InterruptTask.status == "pending"
-        )
-        if resume.interrupt_id:
-            pending = pending.where(InterruptTask.id == resume.interrupt_id)
-        ids = list((await s.scalars(pending)).all())
-        if not ids:  # the question expired unanswered (retention.py): its run was cancelled and must not go on
-            expired = select(InterruptTask.id).where(
-                InterruptTask.thread_id == thread_id, InterruptTask.status == "expired"
+    async def _decide_interrupts(
+        self, s: Any, thread_id: str, resume: ResumeSpec, decided_by: str | None
+    ) -> tuple[list[str], ResumeSpec]:
+        """Mark the answered Inbox items decided; returns their ids (none for a breakpoint) and the resume naming
+        them: the engine is always told which pause an answer is for (strict resume), so parallel pauses answer
+        separately. `resume.by_id`: several pauses answered together, each with its own answer (AG-UI). A Wait step
+        (kind "timer") is ended only by its time or its event (`resume.wake`): nobody can answer it, and an answer
+        that names nothing goes to the one other pause waiting, never to a Wait step."""
+
+        def decision(value: Any) -> dict[str, Any]:
+            return value if isinstance(value, dict) else {"value": value}
+
+        now = datetime.now(UTC)
+        if resume.wake:
+            row = await s.get(InterruptTask, resume.interrupt_id) if resume.interrupt_id else None
+            if row is None or row.kind != "timer" or row.status != "pending":
+                raise Conflict("this Wait step is no longer waiting")
+            pairs: list[tuple[str | None, Any]] = [(row.id, resume.value)]
+        elif resume.by_id:
+            pairs = list(resume.value.items())
+        else:
+            pairs = [(resume.interrupt_id, resume.value)]
+            if not resume.interrupt_id:  # names nothing: the one pause a person may answer, beside any Wait steps
+                waiting = (InterruptTask.thread_id == thread_id, InterruptTask.status == "pending")
+                kinds = (await s.execute(select(InterruptTask.id, InterruptTask.kind).where(*waiting))).all()
+                others = [i for i, kind in kinds if kind != "timer"]
+                if len(others) < len(kinds):  # a Wait step waits too
+                    if len(others) != 1:
+                        raise Conflict(
+                            "this conversation also waits at a Wait step: name the item to answer (interrupt_id)"
+                            if others
+                            else "this run is at a Wait step: it continues on its own when the time comes or its "
+                            "event arrives, and cannot be answered (Stop cancels it)"
+                        )
+                    pairs = [(others[0], resume.value)]
+        ids: list[str] = []
+        for asked, value in pairs:
+            row = await s.get(InterruptTask, asked) if asked else None
+            if asked and row is None and await self._client_tool_call(s, thread_id, asked):
+                continue  # a tool call the caller's application answers (AG-UI): no Inbox item to decide
+            if row is not None and row.kind == "timer" and not resume.wake:
+                raise Conflict(
+                    "this run's wait was cancelled, and the run with it"
+                    if row.status == "cancelled"
+                    else "this run is at a Wait step: it continues on its own when the time comes or its event "
+                    "arrives, and cannot be answered (Stop cancels it)"
+                )
+            task = await answered(s, thread_id, asked)  # unknown, decided or expired: refused with the reason
+            if task is None:  # a breakpoint: nothing waits in the Inbox
+                continue
+            res = await s.execute(
+                update(InterruptTask)
+                .where(InterruptTask.id == task.id, InterruptTask.status == "pending")
+                .values(status="decided", decision=decision(value), decided_by=decided_by, decided_at=now)
             )
-            if resume.interrupt_id:
-                expired = expired.where(InterruptTask.id == resume.interrupt_id)
-            else:  # what the conversation's last run asked (not this new one): an older expiry does not stop a
-                # later breakpoint
-                ended = (Run.thread_id == thread_id, Run.status != "running")
-                last = select(Run.id).where(*ended).order_by(Run.id.desc()).limit(1)
-                expired = expired.where(InterruptTask.run_id == last.scalar_subquery())
-            if await s.scalar(expired.limit(1)):
-                raise Conflict("this approval expired: nobody answered it in time, and its run was cancelled")
-        q = update(InterruptTask).where(InterruptTask.id.in_(ids), InterruptTask.status == "pending")
-        decision = resume.value if isinstance(resume.value, dict) else {"value": resume.value}
-        res = await s.execute(
-            q.values(status="decided", decision=decision, decided_by=decided_by, decided_at=datetime.now(UTC))
-        )
-        if resume.interrupt_id and res.rowcount == 0 and await s.get(InterruptTask, resume.interrupt_id):
-            raise Conflict(f"inbox item '{resume.interrupt_id}' was already decided")  # a concurrent decision won
-        return ids
+            if res.rowcount == 0:  # type: ignore[attr-defined]
+                raise Conflict(f"inbox item '{task.id}' was already decided")  # a concurrent decision won
+            ids.append(task.id)
+        if resume.by_id or not ids:
+            return ids, resume
+        return ids, replace(resume, interrupt_id=ids[0])
+
+    @staticmethod
+    async def _client_tool_call(s: Any, thread_id: str, interrupt_id: str) -> bool:
+        """Whether the conversation's last run paused for this tool call of the caller's application (AG-UI)."""
+        paused = (Run.thread_id == thread_id, Run.status == "interrupted")  # not the run being started to answer it
+        q = select(Run.interrupts).where(*paused).order_by(Run.started_at.desc(), Run.id.desc())
+        asked = await s.scalar(q.limit(1)) or []
+        return any(isinstance(i, dict) and i.get("id") == interrupt_id and i.get("kind") == CLIENT_TOOL for i in asked)
 
     async def _tool_drift(self, h: RunHandle, spec: RunSpec, warning: dict[str, Any]) -> None:
         """An app connector's server changed tools this run's version pinned (E-4): the deployment keeps it for the
@@ -990,13 +1045,15 @@ class Runner:
                     if thread_status in ("error", "idle"):
                         await s.execute(update(Thread).where(Thread.id == h.thread_id).values(status="interrupted"))
                 for intr in interrupts:
+                    if intr.get("kind") == CLIENT_TOOL:  # the caller's application answers it: not an Inbox item
+                        continue
                     asked = {
                         "run_id": h.run_id, "canvas_node_id": intr.get("canvas_node_id") or "", "kind": intr["kind"],
                         "payload": _as_object(intr["payload"]), "requested_by": h.requested_by,
                         "approvers": h.approvers.get(intr.get("canvas_node_id") or ""), "assignee_role": None,
                         "noticed": None,  # announced again when asked again
                         "escalate_at": escalate_at(h.approvers.get(intr.get("canvas_node_id") or "")),
-                        "escalated_at": None,
+                        "escalated_at": None, **_waiting(intr),
                     }  # fmt: skip
                     row = await s.get(InterruptTask, intr["id"])
                     if row is None:
@@ -1007,6 +1064,16 @@ class Runner:
                             .where(InterruptTask.id == intr["id"])
                             .values(status="pending", decision=None, decided_by=None, decided_at=None, **asked)
                         )
+                if status in ("success", "interrupted") and not h.drained:
+                    # the run reported every pause its conversation still has: a Wait step it left behind (a time
+                    # that passed while another branch waited) must not wake the conversation later
+                    left = (InterruptTask.thread_id == h.thread_id, InterruptTask.status == "pending")
+                    await s.execute(
+                        update(InterruptTask)
+                        .where(*left, InterruptTask.kind == "timer")
+                        .where(InterruptTask.id.not_in([i["id"] for i in interrupts]))
+                        .values(status="cancelled", decided_at=datetime.now(UTC))
+                    )
                 s.add_all(rubric_scores(h))
                 await s.commit()
         except Exception:
@@ -1304,7 +1371,11 @@ class Runner:
 def _pending(h: RunHandle, spec: RunSpec) -> dict[str, Any]:
     """What a waiting run was started with: no checkpoint holds it before the run takes a slot, so a hand-over
     starts the run again with it (services/redeploy.py)."""
-    resume = {"value": spec.resume.value, "interrupt_id": spec.resume.interrupt_id} if spec.resume else None
+    resume = (
+        {"value": spec.resume.value, "interrupt_id": spec.resume.interrupt_id, "wake": spec.resume.wake}
+        if spec.resume
+        else None
+    )
     return _plain(
         {
             "input": spec.input, "resume": resume, "decided": h.decided, "mode": spec.mode,
@@ -1331,6 +1402,24 @@ def _title(input: dict[str, Any] | None) -> str | None:
 
 def _as_object(payload: Any) -> dict[str, Any]:
     return payload if isinstance(payload, dict) else {"value": payload}
+
+
+def _waiting(intr: dict[str, Any]) -> dict[str, Any]:
+    """A Wait step's Inbox columns (services/timers.py): when it is due and the event that wakes it sooner. It is
+    nobody's to decide or be told about."""
+    if intr.get("kind") != "timer":
+        return {"due_at": None, "wait_event": None, "wait_key": None, "claimed_until": None}
+    payload = _as_object(intr.get("payload"))
+    try:
+        due = datetime.fromisoformat(str(payload.get("due_at")))
+    except ValueError:  # the step always names one; a payload without it is due now rather than never
+        due = datetime.now(UTC)
+    key = payload.get("key")
+    return {
+        "due_at": due if due.tzinfo else due.replace(tzinfo=UTC), "wait_event": payload.get("event") or None,
+        "wait_key": None if key in (None, "") else str(key), "claimed_until": None, "approvers": None,
+        "escalate_at": None, "noticed": "timer",
+    }  # fmt: skip
 
 
 def _is_drift(value: Any) -> bool:

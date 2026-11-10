@@ -1,7 +1,8 @@
 """Spending caps per organisation and per project (OWASP LLM10, unbounded consumption).
 
 Workflow budgets are set, and removed, by whoever builds the workflow, and bind only that workflow. These caps are
-the administrator's: what the whole organisation, or one project, may spend a UTC day and a calendar month (UTC).
+the administrators': what the whole organisation (its admins), or one project (its admins too, services/
+project_access.py), may spend a UTC day and a calendar month (UTC).
 
 - The organisation's caps are among its limits (`max_cost_usd_day`, `max_cost_usd_month` in services/org_settings.py),
   within the server's own (`AGENTCANVAS_MAX_COST_USD_DAY`, `_MONTH`, the operator's cap for every organisation).

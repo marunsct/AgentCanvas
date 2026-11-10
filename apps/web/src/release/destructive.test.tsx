@@ -25,7 +25,7 @@ vi.mock("../api/client", () => ({
     return [];
   }),
 }));
-vi.mock("../api/session", () => ({ can: () => true, useCan: () => true, ME: { role: "admin" } }));
+vi.mock("../api/session", () => ({ can: () => true, canOrg: () => true, useCan: () => true, useCanOrg: () => true, ME: { role: "admin" } }));
 
 const { useEditor } = await import("../editor/store");
 const { TestsPanel } = await import("./TestsPanel");

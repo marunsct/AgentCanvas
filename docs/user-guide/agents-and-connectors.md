@@ -82,9 +82,13 @@ which shows what will be sent on an approval card; a rejection skips the agent.
 
 ## Call a workflow from other agents
 
-[Publish](publish.md) the workflow, then open **Versions** → the deployment → **Use from other agents (MCP, A2A)**.
-The panel shows the addresses and a ready-to-paste Claude Desktop setting. Both use the deployment's API key, the
-same one as the [deployment API](publish.md), with the same rate limits.
+[Publish](publish.md) the workflow, then open **Versions** → the deployment → **Use from other agents and front ends
+(MCP, A2A, AG-UI)**. The panel shows the addresses and a ready-to-paste Claude Desktop setting. All use the
+deployment's API key, the same one as the [deployment API](publish.md), with the same rate limits. The AG-UI address
+is for CopilotKit-style front ends: see [Connect a CopilotKit-style front end](publish.md#connect-a-copilotkit-style-front-end-ag-ui).
+A builder can also let people sign in to the MCP and A2A agents with the organisation's identity provider instead
+([Sign-in with OAuth](publish.md#sign-in-with-oauth-mcp-and-a2a)): then each person is their own end user, with their
+own memories and conversations.
 
 ### As an MCP server
 
@@ -93,7 +97,7 @@ same one as the [deployment API](publish.md), with the same rate limits.
 | Address | `https://<your AgentCanvas>/api/v1/deployments/<id>/mcp` |
 | Transport | Streamable HTTP (every answer is one JSON message; no server-sent stream) |
 | Protocol | MCP `2026-07-28` (no handshake: `server/discover`, the version in each request) and the earlier revisions back to `2024-11-05` for clients that open with `initialize` |
-| Sign-in | `Authorization: Bearer <deployment key>` |
+| Sign-in | `Authorization: Bearer <deployment key>`, or an OAuth access token when the deployment allows it (the MCP authorization spec: a `401` names the protected resource metadata, RFC 9728) |
 | Tools | one tool named after the workflow, with the workflow's input fields; plus `answer` when the workflow can pause for a person and the client cannot show forms (see below) |
 
 **Claude Desktop** connects to remote servers through [`mcp-remote`](https://www.npmjs.com/package/mcp-remote)
@@ -114,6 +118,13 @@ same one as the [deployment API](publish.md), with the same rate limits.
 Clients that support remote MCP servers with headers (Cursor, VS Code, agent frameworks such as LangChain's MCP
 adapter or the OpenAI Agents SDK) take the address and the header directly.
 
+With [OAuth sign-in](publish.md#sign-in-with-oauth-mcp-and-a2a) on, clients that follow the MCP authorization spec
+(Claude's custom connectors, ChatGPT, VS Code and others) need only the address: they find the identity provider
+from the `401`, sign the person in and send their access token. The identity provider must let the client
+register (Client ID Metadata Documents, dynamic client registration, or a client you register for it there). Nobody
+pastes a key, and every person's runs, memories and conversations are their own. A client that can only send a
+fixed header keeps using a key.
+
 Each deployment also has an **MCP Server Card** at `https://<your AgentCanvas>/api/v1/deployments/<id>/mcp/server-card`
 (no key needed): its name, version, address and the header it needs, for registries and clients that discover servers
 before connecting. It never contains the key. Its name is the public host reversed and the workflow's tool name
@@ -125,11 +136,14 @@ When a run pauses for an approval or a question, who answers depends on the clie
   form (approve or reject with a comment, or the answer to the question, shaped by the question's answer schema)
   and sends the answer back by retrying the call, and the run goes on. The calling model never answers for the
   person, so it cannot approve its own tool calls; these clients get no `answer` tool. The form's answer is tied
-  to the deployment key that started the call, to that call and its arguments, and to 15 minutes; a pause is
+  to the deployment key that started the call (or, for a person signed in with OAuth, to that person, so their
+  token may be refreshed meanwhile), to that call and its arguments, and to 15 minutes; a pause is
   answered once. Declining an approval rejects it; closing the form leaves the run waiting (it can still be
   answered in the **Inbox**). Each answer that leads to another pause asks again.
 - **Other clients**: the tool's answer says the run paused and gives a `thread_id`; the calling agent continues
-  it with `answer` (`approve: true` or `false`, or `text` for a question).
+  it with `answer` (`approve: true` or `false`, or `text` for a question). When several pauses wait at once
+  (steps on parallel branches), the answer lists each with its `interrupt_id`, and each `answer` call names the
+  one it answers; one without an id is refused while several wait.
 
 To continue a conversation, pass the `thread_id` of the earlier run to the workflow's tool.
 
@@ -140,7 +154,8 @@ for a slot in the run queue, the tool call answers with a `taskId` (the run's id
 `cancelled`; `tasks/cancel` stops the run on whichever server runs it. A task whose run pauses for a person shows
 `input_required` with the form (for clients that show forms; the answer goes back with `tasks/update`), else it
 completes with the paused result, like a call without tasks. Tasks are polled with the deployment key and only
-the deployment's own runs are found, so a task id alone grants nothing. Any server answers.
+the deployment's own runs are found, so a task id alone grants nothing; a person signed in with OAuth finds only
+their own tasks. Any server answers.
 
 Other clients wait up to 5 minutes for the run. A longer run answers `running` with its `run_id` and the address
 of its result (`GET /v1/deployments/<id>/runs/<run_id>` with the deployment key, see
@@ -152,13 +167,15 @@ of its result (`GET /v1/deployments/<id>/runs/<run_id>` with the deployment key,
 |---|---|
 | Agent card | `https://<your AgentCanvas>/api/v1/deployments/<id>/a2a/.well-known/agent-card.json` (no key needed to read it) |
 | Endpoint | `https://<your AgentCanvas>/api/v1/deployments/<id>/a2a` (JSON-RPC: A2A 1.0 with the header `A2A-Version: 1.0`, and A2A 0.3) |
-| Sign-in | `Authorization: Bearer <deployment key>` |
+| Sign-in | `Authorization: Bearer <deployment key>`, or an OAuth access token for the A2A endpoint when the deployment allows it |
 
 - `message/send` runs the workflow. A **data** part gives the input fields; a **text** part goes to the workflow's
   text field (one named `message`, `question`, `query`, `input`, `text`, `request`, `prompt` or `ticket`, or its
   only text input). The answer is a task whose artifact holds the output.
 - A pause becomes the `input-required` state. Send the answer to the same task (`taskId`): "yes" or "no" for an
-  approval, or the answer to a question.
+  approval, or the answer to a question. When several pauses wait at once, the status message lists them with
+  their ids; add a data part `{"interrupt_id": "..."}` to each reply to say which one it answers (a reply without
+  one is refused while several wait).
 - `contextId` continues a conversation; `tasks/get` reads a task again, with its output or what it waits for,
   from whichever server answers: the result is kept with the run, not only in the memory of the server that ran it.
 - A2A 1.0 clients use `SendMessage` and `GetTask` (the same behaviour, in 1.0's form: `TASK_STATE_COMPLETED`,
@@ -170,6 +187,12 @@ of its result (`GET /v1/deployments/<id>/runs/<run_id>` with the deployment key,
 - Not supported: streaming (`message/stream`, `SendStreamingMessage`) and push notifications.
 - The agent card (and the MCP Server Card) may be cached for five minutes and carry an `ETag`: a republished
   deployment's new card reaches clients that cache it within that time.
+- With [OAuth sign-in](publish.md#sign-in-with-oauth-mcp-and-a2a) on, the card's `securitySchemes` lists an OpenID
+  Connect scheme (`openIdConnectUrl`: the issuer's discovery document) beside the key, with the scopes the
+  deployment requires; either one will do. Its description names the audience the token must have (the A2A
+  endpoint's address, or the deployment's audience), which is what Microsoft 365 Copilot and Agent 365 ask for when
+  you connect an A2A agent under Entra ID. The issuer must publish an OpenID Connect discovery document for A2A
+  clients; a person signed in this way finds only their own tasks and conversations.
 
 Runs started over MCP or A2A are ordinary runs of the deployment: they appear under **Runs**, count towards online
 evaluation and keep their conversations.
@@ -183,13 +206,47 @@ into an agent, and use **Browse tools** to pick tools.
 - **Keys.** Connectors that need a key name the secret they read, such as `GITHUB_MCP_AUTH`. Add it under
   **Settings › Secrets**. Where a server expects `Authorization: Bearer <token>`, store the whole value,
   including `Bearer `.
-- **Local connectors** start a program on the AgentCanvas server (`npx` or `uvx`). They work only in the local
-  edition, after an admin turns on *local MCP servers*, and need Node.js or uv on the server.
+- **Local connectors** start a program (`npx` or `uvx`) that the agent talks to over its input and output. An
+  admin must allow them first (*local MCP servers*). On a local install the program runs on the AgentCanvas server,
+  which needs Node.js or uv. On a production or hosted server it runs in the sandbox instead, once the operator
+  turns that on: see [Local connectors in the sandbox](#local-connectors-in-the-sandbox).
 - **Sign-in only.** A few apps (Linear, Atlassian…) accept only an interactive sign-in (OAuth). Select the block and click
   **Connect** to sign in with your own account; see [Sign-in per person](#sign-in-per-person).
 
 Each entry was checked against npm, PyPI or the official MCP registry when the gallery was built; its tooltip says
 what it needs.
+
+### Local connectors in the sandbox
+
+When the server runs local connectors in the sandbox (`AGENTCANVAS_SANDBOX_MCP=true`, with the sandbox service or
+Docker running workspace code; see [Deploy](deploy.md#local-app-connectors-in-the-sandbox)), the connector's program
+never runs on the AgentCanvas server:
+
+- It starts in a sandbox of its own, with the project's files (read-only with Docker) and only the environment
+  variables you set on the block (their secrets included); never the server's keys or another project's files.
+- It reaches only the hosts of the project's [egress list](workspace.md#sandbox) (`sandbox.json`), through the
+  egress proxy; with no list it has no network at all. A browser connector needs the sites it should open on the
+  list (`*.example.com` for a whole domain).
+- It gets the memory and time limits of the `mcp` section of `sandbox.json` (1 GB, stopped after 5 idle minutes
+  and after 30 minutes in any case, by default), one CPU and a bounded number of processes.
+- **Keep the program** on the block says how long it lives: **run** (the default) starts a fresh one for each run
+  and stops it when the run ends; **thread** keeps the same one for a conversation's runs, so a browser keeps its
+  pages and sign-ins between messages, until it is idle or reaches its time limit. A conversation continued on
+  another server, or after the program stopped, starts a fresh one.
+- Browse tools starts the program once to list its tools, then stops it.
+
+The hosted edition runs local connectors only this way, and only the gallery's connectors that run in the sandbox
+(the block list says **also in the sandbox**): those the sandbox's browser image comes with, such as **Browser
+(Playwright)**. A connector you set up by hand, or a gallery one whose command, flags or package version you
+changed, is refused there (**E046**); arguments after the package (`--headless`, a viewport size) are yours to
+change.
+
+A browser lets an agent act on sites for someone: a page it reads can try to talk it into submitting a form or
+buying something. To let it click, type or upload only with a person's say-so, add the browser's acting tools
+(`browser_click`, `browser_type`, `browser_fill_form`, `browser_select_option`, `browser_press_key`,
+`browser_file_upload`, `browser_evaluate`) to **Tools that need approval** on the agent; reading pages
+(`browser_navigate`, `browser_snapshot`) needs no approval. The canvas warns (**W028**) about each of those tools an
+agent can use without approval, wherever the browser runs.
 
 ### Published tools are pinned
 
@@ -233,9 +290,11 @@ one shared key. Each person connects their own account, once:
    - **service**: the organisation's service connection, which an admin connects with **Connect the service account** on
      the same block. Use it for schedules, webhooks and deployments, and when the app account should be shared on purpose.
      A draft run that a builder starts in the editor does not use it (that would lend the admin's account to every
-     builder): publish the workflow, to a test environment if you like, and run it there. Admins' own runs, and a
-     deployment's runs resumed from the inbox, do use it.
-3. **Browse tools** uses your own connection (or the service one, when the block is set to it and you are an admin).
+     builder): publish the workflow, to a test environment if you like, and run it there. Organisation admins' own runs,
+     and a deployment's runs resumed from the inbox, do use it; an admin of one project only
+     ([project members](accounts.md#projects-and-their-members)) is a builder here.
+3. **Browse tools** uses your own connection (or the service one, when the block is set to it and you are an
+   organisation admin).
 
 Behind the scenes AgentCanvas follows the MCP authorization standard against whatever server the block points at: it finds
 the server's sign-in settings itself, uses the server's client-metadata-document support or registers itself with the
