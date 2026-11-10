@@ -1,5 +1,5 @@
 /** The Wait block (`core.wait`) in the Inspector: which settings its way of waiting uses, and what a duration or a
- * time typed in means. The parsing mirrors the API's `agentcanvas/waits.py`; the server checks again (E024). */
+ * time typed in means. The parsing mirrors the API's `agentcanvas/waits.py`; the server checks again (E097). */
 
 type Schema = Record<string, unknown>;
 
