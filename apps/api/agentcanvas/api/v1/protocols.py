@@ -138,14 +138,40 @@ def tool_name(wf: Workflow) -> str:
 
 
 def _people_decide(interrupt: dict[str, Any], wf: Workflow | None) -> bool:
-    """The pause's step names who decides it and does not let the caller answer (E-6): it waits in the Inbox."""
+    """The caller cannot answer the pause: its step names who decides it (E-6, it waits in the Inbox), or it is a
+    Wait step (F-10, it continues on its own)."""
+    if _waits(interrupt):
+        return True
     stored = approvers.node_approvers(wf).get(interrupt.get("canvas_node_id") or "") if wf is not None else None
     return approvers.caller_refusal(approvers.Approvers.of(stored)) is not None
+
+
+def _waits(interrupt: dict[str, Any]) -> bool:
+    return interrupt.get("kind") == "timer"
+
+
+def _at_wait(res: ApiResult) -> bool:
+    """The run is paused at Wait steps only: it continues on its own, so its task counts as working."""
+    return res.status == "interrupted" and bool(res.interrupts) and all(_waits(i) for i in res.interrupts)
+
+
+def _waiting_for(interrupt: dict[str, Any]) -> str:
+    """What a Wait step waits for, in a few words."""
+    found = interrupt.get("payload")
+    payload: dict[str, Any] = found if isinstance(found, dict) else {}
+    due = payload.get("due_at") or "its time"
+    if payload.get("event"):
+        key = f" with key {payload['key']}" if payload.get("key") else ""
+        return f"for the event {payload['event']}{key}, until {due} at most"
+    return f"until {due}"
 
 
 def _describe_pause(interrupts: list[dict[str, Any]], wf: Workflow | None = None) -> str:
     lines = []
     for i in interrupts:
+        if _waits(i):
+            lines.append(f"- it waits {_waiting_for(i)} (interrupt_id {i.get('id')}), then continues on its own")
+            continue
         payload = i.get("payload")
         what = (
             (payload.get("question") or payload.get("message") or payload.get("title"))
@@ -161,7 +187,9 @@ def _describe_pause(interrupts: list[dict[str, Any]], wf: Workflow | None = None
 
 
 def _next_step(interrupts: list[dict[str, Any]], wf: Workflow | None, answer: str) -> str:
-    """What the caller can do about a pause: answer it, or wait for the people who decide it."""
+    """What the caller can do about a pause: answer it, or wait for the people who decide it or for its time."""
+    if interrupts and all(_waits(i) for i in interrupts):
+        return "It continues on its own; you cannot answer it. Read its result later with the run's id."
     if interrupts and all(_people_decide(i, wf) for i in interrupts):
         return "It waits for a person to decide it in AgentCanvas; you cannot answer it."
     return answer
@@ -743,11 +771,12 @@ async def _mcp_task(
         newest = select(Run.id).where(Run.thread_id == task.thread_id).order_by(Run.started_at.desc(), Run.id.desc())
         found = await results.of(await session.scalar(newest.limit(1)) or latest.id, dep.id)
     res = api_result(found) if found else ApiResult(run_id=latest.id, thread_id=task.thread_id, status="error")
-    if method == "tasks/cancel":  # an acknowledgement: a run that works stops, wherever it runs
-        if res.status == "running":
+    if method == "tasks/cancel":  # an acknowledgement: a run that works (or is at a Wait step) stops, wherever it runs
+        if res.status == "running" or _at_wait(res):
             await stop_run(session, request.app.state.runner, res.run_id)
         return {}
-    asked = res.interrupts[0] if res.status == "interrupted" and res.interrupts and caller.ask else None
+    askable = [i for i in res.interrupts if not _waits(i)] if res.status == "interrupted" else []
+    asked = askable[0] if askable and caller.ask else None
     key = f"{res.run_id}:{asked['id']}" if asked else None  # unique over the task: each pause is a new run's
     if method == "tasks/update":
         responses = params.get("inputResponses")
@@ -764,6 +793,8 @@ async def _mcp_task(
                            "lastUpdatedAt": changed.isoformat(), "ttlMs": None, "pollIntervalMs": POLL_MS}  # fmt: skip
     if res.status == "running":
         return {**out, "status": "working", "statusMessage": "waiting for a run slot" if latest.queued else "running"}
+    if _at_wait(res):
+        return {**out, "status": "working", "statusMessage": f"waiting {_waiting_for(res.interrupts[0])}"}
     if asked is not None:
         return {**out, "status": "input_required", "statusMessage": "waiting for a person",
                 "inputRequests": {key: mcp_input.form(asked, wf.name)}}  # fmt: skip
@@ -959,6 +990,8 @@ def _input_from(message: dict[str, Any], c: Contract) -> dict[str, Any]:
 def _task(res: ApiResult, task_id: str, wf: Workflow | None = None) -> dict[str, Any]:
     state = {"success": "completed", "interrupted": "input-required", "running": "working",
              "cancelled": "canceled"}.get(res.status, "failed")  # fmt: skip
+    if _at_wait(res):
+        state = "working"  # at a Wait step: nothing is asked of the caller
     status: dict[str, Any] = {"state": state, "timestamp": datetime.now(UTC).isoformat()}
     if res.status == "interrupted":
         status["message"] = _agent_message(
@@ -1075,10 +1108,11 @@ async def _task_result(request: Request, session: AsyncSession, dep: Deployment,
 async def _a2a_cancel(
     request: Request, session: AsyncSession, dep: Deployment, params: dict[str, Any]
 ) -> dict[str, Any]:
-    """Stop a working task, wherever its run runs; one that ended, or waits for an answer, cannot be cancelled."""
+    """Stop a working task (or one at a Wait step), wherever its run runs; one that ended, or waits for an answer,
+    cannot be cancelled."""
     task_id = str(params.get("id") or "")
     res = await _task_result(request, session, dep, task_id)
-    if res.status != "running":
+    if res.status != "running" and not _at_wait(res):  # a task at a Wait step is working too
         state = "waits for an answer" if res.status == "interrupted" else "has ended"
         raise RpcError(TASK_NOT_CANCELABLE, f"task '{task_id}' {state}: only a working task can be cancelled")
     runner = request.app.state.runner

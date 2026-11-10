@@ -879,6 +879,9 @@ async def _stop_elsewhere(session: AsyncSession, thread_id: str, timeout_s: floa
 
 
 # ------------------------------------------------------------------- inbox ----
+WAITS_ON_ITS_OWN = "it continues on its own when its time comes or its event arrives"
+
+
 def _intr(
     x: InterruptTask,
     workflow_id: str | None = None,
@@ -942,6 +945,8 @@ async def inbox(
     own_ok = (await org_settings.of_org(session, settings, user.org_id)).approve_own_runs if me else True
 
     def refused(x: InterruptTask, started_by: str | None) -> str | None:
+        if x.kind == "timer":  # waiting, but not for a person
+            return WAITS_ON_ITS_OWN
         if me is None:
             return None
         if RANK.get(user.role, -1) < RANK["reviewer"]:
@@ -985,6 +990,8 @@ async def decide(
     note(request, kind=task.kind, payload_sha256=payload_hash(body.value))
     if task.status != "pending":
         raise Conflict(f"inbox item '{interrupt_id}' is already {task.status}")
+    if task.kind == "timer":
+        raise Conflict(f"this item is a Wait step: {WAITS_ON_ITS_OWN} (Stop cancels it)")
     t = await _thread(session, task.thread_id)
     await _not_your_own(session, settings, user, t, [task])
     await approvers.check(session, [task], _decider(user), t.created_by)

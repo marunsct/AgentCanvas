@@ -123,6 +123,11 @@ member of the organisation).
 - **Stop.** A builder's **Stop** on the run (`POST /v1/runs/{run_id}/cancel`, or a deployment's cancel) ends the wait
   and cancels the run, and the organisation's [kill switch](settings.md) cancels the waiting runs in its scope too;
   nothing wakes them later.
+- **Callers.** In the Inbox a wait shows as waiting, not for a person, and nobody is notified about it. Through a
+  deployment's API, MCP or A2A, a run at a Wait step comes back `interrupted` with an interrupt of kind `timer` (its
+  `payload` says `due_at`, and `event` and `key` for an event wait); the caller cannot answer it and reads the result
+  later. An MCP or A2A task stays *working* meanwhile, and cancelling it stops the run. A share link's visitor is told
+  the conversation continues on its own.
 - **Retention.** A waiting conversation is kept until its wait is due, however far away that is (at most a year); the
   approval expiry (90 days) counts from the due time, so a run the server never managed to continue is cancelled then.
 - If the run cannot continue when due (the workflow draft has errors, the organisation is at a spending cap), it is

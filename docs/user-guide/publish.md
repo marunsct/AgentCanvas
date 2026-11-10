@@ -350,7 +350,9 @@ written (when the workflow has a safety block, the answer appears once it has pa
 conversation** starts over. Thumbs up and down go to the run's feedback, like feedback sent through the API (a
 thumbs-down can put the run in an annotation queue). If the workflow asks a question, the visitor answers it in the
 chat. Approvals are not the visitor's to give: the chat says the conversation waits for approval, and it waits in
-your inbox. Nor is a question whose step names who answers it, unless that step lets the caller answer too. Each visitor's address has its own rate limit (`AGENTCANVAS_RATE_LIMIT_PER_SHARE_CLIENT`, 30 a minute by default).
+your inbox. Nor is a question whose step names who answers it, unless that step lets the caller answer too. A run
+that reaches a [Wait](widgets.md#wait) step tells the visitor it does the rest on its own later; that part does not
+appear in the chat (read it on the Runs page). Each visitor's address has its own rate limit (`AGENTCANVAS_RATE_LIMIT_PER_SHARE_CLIENT`, 30 a minute by default).
 
 **Files.** When the published version has a *file* or *image* input ([File and image fields](canvas.md#file-and-image-fields)),
 the chat page shows an **Attach a file** box above the message line (drag and drop works too; an image shows a

@@ -349,6 +349,8 @@ async def _visitor_context(session: AsyncSession, dep: Deployment, wf: Workflow,
 
 
 APPROVAL_WAIT = "This needs approval from the people who run this assistant before it can continue."
+# a Wait step: the run continues later with no visitor connected, so this transcript does not show what follows
+WAIT_NOTE = "This assistant waits before it goes on, and does the rest on its own later; that is not shown here."
 GUARD_PREFIX = "guard."
 STREAMED = ("core.llm", "core.agent")  # steps whose written text is the answer when they finish the run
 
@@ -409,7 +411,12 @@ def _visitor_events(h: RunHandle, runner: Any, shape: InputShape, wf: Workflow, 
                     for i in paused
                     if (i.get("kind") or "input") == "input"
                 ]
-                answer = APPROVAL_WAIT if paused and not interrupts else answer_text(ev.get("output"), shape)
+                waits = paused and all(i.get("kind") == "timer" for i in paused)
+                answer = (
+                    WAIT_NOTE if waits
+                    else APPROVAL_WAIT if paused and not interrupts
+                    else answer_text(ev.get("output"), shape)
+                )  # fmt: skip
                 question = interrupts[0] if interrupts else None
                 await record({
                     "role": "assistant", "run_id": h.run_id, "question": question,
@@ -493,6 +500,8 @@ async def share_resume(
     pending = await _pending(request, session, thread_id, body.interrupt_id)
     if pending is None:
         raise InvalidInput("this conversation is not waiting for an answer")
+    if pending.get("kind") == "timer":
+        raise InvalidInput(f"this conversation is at a wait step and cannot be answered. {WAIT_NOTE}")
     if (pending.get("kind") or "input") != "input":
         raise InvalidInput(
             "this conversation is waiting for approval from the people who run this assistant; it cannot be "

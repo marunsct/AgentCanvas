@@ -394,3 +394,70 @@ async def test_retention_keeps_a_wait_until_it_is_due_and_expires_one_that_never
     assert await retention.expire_approvals(datetime(2027, 9, 1, tzinfo=UTC)) == 1  # the timer job never managed it
     run = await finished(app, "th_wait")
     assert run.status == "cancelled" and "Wait step was due" in (run.error or "")
+
+
+# ------------------------------------------------------------------------------- Inbox and protocols ---
+async def test_the_inbox_shows_a_wait_as_waiting_not_for_a_person(app, api_client):
+    _, item = await paused(
+        app, api_client, {"mode": "event", "event": "invoice.paid", "event_key": "k", "timeout": "1d"}
+    )
+    [shown] = (await api_client.get("/v1/inbox")).json()
+    assert shown["id"] == item.id and shown["kind"] == "timer" and shown["may_decide"] is False
+    assert "continues on its own" in shown["why_not"] and shown["payload"]["event"] == "invoice.paid"
+    assert await app.state.notifier.announce(datetime.now(UTC)) == 0  # nobody is told: there is nothing to decide
+
+
+def test_callers_are_told_a_wait_continues_on_its_own():
+    from agentcanvas.api.v1.protocols import _describe_pause, _next_step
+
+    pause = {
+        "id": "i1",
+        "kind": "timer",
+        "payload": {"due_at": "2026-12-01T09:00:00+00:00", "event": "a.b", "key": "7"},
+    }
+    assert "waits for the event a.b with key 7, until 2026-12-01T09:00:00+00:00 at most" in _describe_pause([pause])
+    assert "continues on its own" in _next_step([pause], None, "Call `answer`.")
+
+
+async def test_a_share_link_visitor_is_told_the_conversation_waits(app, api_client):
+    from test_protocols import _publish
+    from test_share import ADA, say, share_on
+    from test_share import events as share_events
+
+    dep, _ = await _publish(api_client, await make(api_client, wait_ir({"duration": "1h", "output": "woke"})))
+    token = (await share_on(api_client, dep))["token"]
+    evs = share_events((await say(api_client, token, "hi")).text)
+    done = evs[-1]
+    assert done["status"] == "interrupted" and done["interrupts"] == [], done
+    assert "does the rest on its own later" in done["answer"]  # not "needs approval": nobody decides a wait
+    resume = f"/v1/share/{token}/threads/{evs[0]['threadId']}/resume"
+    refused = await api_client.post(resume, json={"visitor": ADA, "text": "go on"})
+    assert refused.status_code == 422 and "at a wait step and cannot be answered" in refused.text
+
+
+async def test_an_a2a_task_at_a_wait_step_is_working_and_can_be_cancelled(app, api_client):
+    from test_protocols import _publish, rpc
+    from test_publish import bearer
+
+    wf = await make(api_client, wait_ir({"duration": "1h", "output": "woke"}))
+    dep, key = await _publish(api_client, wf)
+    url, auth = f"/v1/deployments/{dep}/a2a", bearer(key)
+    msg = {"message": {"role": "user", "messageId": "m1", "parts": [{"kind": "data", "data": {"out": "x"}}]}}
+    task = (await api_client.post(url, json=rpc("message/send", msg), headers=auth)).json()["result"]
+    assert task["status"]["state"] == "working", task
+    said = task["status"]["message"]["parts"][0]["text"]
+    assert "continues on its own" in said and "until" in said
+    gone = (await api_client.post(url, json=rpc("tasks/cancel", {"id": task["id"]}), headers=auth)).json()
+    assert gone["result"]["status"]["state"] == "canceled", gone
+
+
+async def test_an_mcp_caller_is_told_the_run_waits_and_cannot_answer_it(app, api_client):
+    from test_protocols import _publish, rpc
+    from test_publish import bearer
+
+    dep, key = await _publish(api_client, await make(api_client, wait_ir({"duration": "1h", "output": "woke"})))
+    url, auth = f"/v1/deployments/{dep}/mcp", bearer(key)
+    [tool] = (await api_client.post(url, json=rpc("tools/list"), headers=auth)).json()["result"]["tools"]
+    res = await api_client.post(url, json=rpc("tools/call", {"name": tool["name"], "arguments": {}}), headers=auth)
+    said = res.json()["result"]["content"][0]["text"]
+    assert "it waits until" in said and "continues on its own; you cannot answer it" in said, said
