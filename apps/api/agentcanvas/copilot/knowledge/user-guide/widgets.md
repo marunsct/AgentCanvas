@@ -15,7 +15,7 @@ brackets; it is what the saved workflow and the generated code use, and it never
 | Block | What it does |
 |---|---|
 | **Ask AI** (`core.llm`) | Sends your instructions (the prompt) to an AI model and saves its reply in a data field. Insert data with `{{ state.<field> }}`. Needs an **AI model** plugged into `model`. |
-| **AI Agent** (`core.agent`) | An AI that can use tools on its own, step by step, until the task is done (LangChain `create_agent`). It reads and writes the conversation (the `messages` field). Plug an *AI model* into `model`, tools into `tools` and add-ons into `middleware`. Settings: instructions (system prompt), **Tools that need approval** (a person approves, edits or rejects each call), and **structured output**: design a response schema with **+ Field** and the final answer is validated and written to `structured_response`. |
+| **AI Agent** (`core.agent`) | An AI that can use tools on its own, step by step, until the task is done (LangChain `create_agent`). It reads and writes the conversation (the `messages` field). Plug an *AI model* into `model`, tools into `tools` and add-ons into `middleware`. Settings: instructions (system prompt), **Tools that need approval** (a person approves, edits or rejects each call) and who may approve them ([Who may decide](run-and-debug.md#who-may-decide)), and **structured output**: design a response schema with **+ Field** and the final answer is validated and written to `structured_response`. |
 | **Planning Agent** (`agent.deep`) | A stronger agent for big, multi-step jobs: it writes a plan, keeps notes in files and can hand work to helper agents (`create_deep_agent`). |
 | **Helper Agent** *(add-on, `agent.subagent`)* | A specialist a Planning Agent can hand a task to with its `task` tool. Fill in **When to use it**. |
 
@@ -45,8 +45,8 @@ not receive file fields yet.
 
 | Block | What it does |
 |---|---|
-| **Ask for approval** (`core.approval`) | Pauses until a person approves or rejects, optionally editing the value shown. The decision (true/false) goes to a data field. |
-| **Ask a person** (`core.human_input`) | Pauses and asks a person a question (a form when a response schema is set); the answer goes to a data field. |
+| **Ask for approval** (`core.approval`) | Pauses until a person approves or rejects, optionally editing the value shown. The decision (true/false) goes to a data field. **Who may decide** names roles, groups or people ([Run and debug](run-and-debug.md#who-may-decide)). |
+| **Ask a person** (`core.human_input`) | Pauses and asks a person a question (a form when a response schema is set); the answer goes to a data field. **Who may answer** works like an approval's. |
 
 ## Flow control
 

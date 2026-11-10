@@ -116,6 +116,10 @@
       "what": "Two file storages are set up for the same place.",
       "fix": "Remove one, or give them different folders."
     },
+    "E037": {
+      "what": "A step lets whoever calls the published workflow answer, and also keeps the person who started the run from deciding. The caller is the one who started it, so the two contradict each other.",
+      "fix": "Untick one of the two under “Who may decide”."
+    },
     "E041": {
       "what": "This block runs code on the server, which is only allowed when you run AgentCanvas yourself.",
       "fix": "Use it in a local install, or replace it with a Web API tool."
@@ -127,6 +131,10 @@
     "E043": {
       "what": "A tool or remote agent is allowed to reach private or internal network addresses, which the hosted service never allows.",
       "fix": "Turn off \"Allow private network\" on it, and give it a public address instead."
+    },
+    "E045": {
+      "what": "Publishing pins an app connector’s tools as you reviewed them, so a server that changes later cannot reach the published agent. This connector’s tools were never listed, so there is nothing to pin.",
+      "fix": "Select the connector, click Browse tools and check its tools (untick the ones the agent should not have), then publish."
     },
     "E050": {
       "what": "A password or API key is typed straight into a setting, where others could see it.",
@@ -163,6 +171,10 @@
     "I010": {
       "what": "This block uses a feature that may still change upstream.",
       "fix": "Nothing to do; just be aware it may change in a future version."
+    },
+    "I011": {
+      "what": "This step names who may decide it. AgentCanvas checks that before the run continues; code exported from the workflow does not.",
+      "fix": "Nothing to do for runs on AgentCanvas. If you run the export elsewhere, check who answers its pauses in your own code."
     },
     "P001": {
       "what": "The workflow's framework cannot run this block (or the framework is not installed on this server).",
@@ -260,6 +272,10 @@
       "what": "The workflow’s budget stops runs on AgentCanvas, but an export of this workflow does not enforce some of its limits: the exported code runs past them.",
       "fix": "Keep the limit for runs on AgentCanvas. Before running the export elsewhere, set a spending cap at the model provider, or check the limits the message names in your own code (GAPS.md lists them)."
     },
+    "W027": {
+      "what": "This agent names who may approve its tool calls, but none of its tools needs approval, so it never asks anyone.",
+      "fix": "Add the tools that need a person’s approval, or clear “Who may approve its tool calls”."
+    },
     "W021": {
       "what": "A header or environment value that looks like a key is typed in as plain text. Runs work, but an export would write it into the code, so exports refuse it.",
       "fix": "Store it as a project secret (Workspace \u2192 Secrets) and pick it from the list instead."
@@ -267,6 +283,10 @@
     "W023": {
       "what": "The provider stops serving this model on the day shown; after it, every call to it fails.",
       "fix": "Pick a newer model from the list before that day (the provider names a successor)."
+    },
+    "W045": {
+      "what": "An app connector’s server added or changed tools since this workflow was published. The deployment leaves those tools out (or stops), because nobody reviewed them.",
+      "fix": "Select the connector, click Browse tools and review what changed. If you trust it, publish again: the new version pins the tools as they are now."
     },
     "W095": {
       "what": "This goes against a recommended organisation rule.",

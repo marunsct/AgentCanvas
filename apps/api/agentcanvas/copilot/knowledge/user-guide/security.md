@@ -83,6 +83,12 @@ has no row-level security.
 - **Programmatic access**: personal API tokens act as their owner with the lower of the two roles; each published
   deployment has its own API key, which can be rotated; public calls are rate-limited per deployment, webhook,
   project and share-link visitor ([API tokens](accounts.md#api-tokens)).
+- **Allowed networks**: an admin can accept the organisation's requests only from listed networks, for every kind of
+  credential, sign-ins, API tokens, deployment keys, share links and SCIM alike
+  ([Allowed networks](accounts.md#allowed-networks)).
+- **Multi-factor sign-in**: the operator can require an authentication level or method (`acr`, `amr`) for every
+  sign-in, and an admin can require a second factor of the organisation's members; a sign-in without it is sent back
+  to the identity provider ([Multi-factor sign-in](accounts.md#multi-factor-sign-in)).
 
 ## Workspace code and the sandbox
 
@@ -98,9 +104,24 @@ user unless the operator explicitly allows it ([Sandbox](workspace.md#sandbox)).
 Every successful change is recorded: who made it (a person, a token, a deployment key or SCIM), what it touched,
 when and from which address. Approvals record a hash of exactly what was approved. Reads and failed attempts are
 not recorded. Admins read it under **Settings › Audit log** ([Audit log](accounts.md#audit-log)); rows are kept 400
-days by default (`AGENTCANVAS_AUDIT_RETENTION_DAYS`). Security-relevant entries (publishing, keys, secrets,
-approvals, members, settings and policies) can also be forwarded to Matura as signed events
+days by default (`AGENTCANVAS_AUDIT_RETENTION_DAYS`). Security-relevant entries (publishing, keys, share links,
+secrets, approvals, members, settings and policies, the kill switch, deletions), or every entry, can also be
+forwarded to your SIEM as signed CloudEvents or to Splunk's HTTP Event Collector, reliably: they are queued in the
+database with the entry and retried until delivered
 ([Security events and audit forwarding](deploy.md#security-events-and-audit-forwarding)).
+
+The audit log is tamper-evident. Each organisation's entries form a hash chain: every entry stores the SHA-256 hash
+of its own contents together with the previous entry's hash, so an entry that is edited, deleted or slipped in
+afterwards breaks the chain. Admins check it with `GET /v1/org/audit/verify`, which recomputes every hash and lists
+the first entries that do not match (`changed`, `missing` or `unchained`); operators check every organisation with
+`python -m agentcanvas.audit verify`, which exits with 1 when a chain is broken (run it from a scheduled job to be
+alerted). Retention deletes the oldest entries without breaking the chain: it records where the chain now starts.
+Entries written before the chain existed have no hash and are counted as `unchained` at the start. On Postgres,
+when the API connects as its own role (`agentcanvas_app`, [Database isolation](deploy.md#database-isolation)),
+the database itself refuses to let the API change or delete audit entries; retention deletes old ones through a
+function that can do only that. Forwarded entries
+carry their `row_hash` and `prev_hash`, so the copy in your SIEM also shows if someone with full database access
+rewrote the whole chain; compare the `head_hash` that verifying reports with the last forwarded entry's `row_hash`.
 
 ## Third parties your data reaches
 
@@ -131,11 +152,24 @@ below is the services **you** choose, each of which processes data under your ow
 
 Details are in [Retention, restore and disaster recovery](operations.md#retention-restore-and-disaster-recovery).
 
-**Erasing one person's data** has no single action yet. Today an admin can: remove the person from the organisation
-(Settings › Members, or through SCIM); delete their conversations on the **Runs** page; erase their memory
-namespace on the **Memory** page ([The Memory page](memory.md#the-memory-page)); and remove what they added to
-datasets, knowledge bases and workspaces. Their account record (email and name) stays, and so do their audit-log
-entries until the audit log's retention removes them; removing either sooner needs direct access to the database.
+**Erasing one person's data** is one action for a member ([Your data](#your-data)). What they added to datasets,
+knowledge bases and workspaces is the project's and stays; remove it by hand if it names them.
+
+## Your data
+
+What AgentCanvas offers to answer data-protection requests (GDPR Art. 15, 17, 20 and 28(3)(g)) and to return or
+delete an organisation's data when it leaves. Every action is for admins and is recorded in the audit log with
+counts, never the content; exports are recorded too, though reads otherwise are not.
+
+| Request | How |
+|---|---|
+| A person's own data (Art. 15 and 20) | `GET /v1/me/export`, for anyone signed in: their account and memberships, and in the organisation they act in their API tokens (never the secret), app-connector sign-ins, Copilot chats, the conversations they started with each run's input, answer and steps, their approval decisions, long-term memories, files and audit entries, as one JSON file |
+| A member's data, for an admin answering a request | `GET /v1/org/members/{user_id}/export`: the same, limited to this organisation (other memberships are not shown) |
+| A deployment end user's data | `POST /v1/org/end-users/export` (admins; body `user_id`, optional `deployment_id`, `reason`) or `POST /v1/deployments/{id}/end-users/export` with the deployment's key: their conversations, long-term memories and the names and sizes of the files their runs used |
+| Erase a member (Art. 17) | `POST /v1/org/members/{user_id}/erase`: removes them with their tokens, sign-ins, memories and Copilot chats (and, if asked, the conversations they started), and pseudonymises their account when they belong to no other organisation ([Members](accounts.md#members)) |
+| Erase a deployment's end user (Art. 17) | by the `user_id` the deployment API was sent: `POST /v1/org/end-users/erase` (admins; one deployment or every one) or `POST /v1/deployments/{id}/end-users/erase` with the deployment's key, so your own systems can answer the request. Their conversations, long-term memories and the files their runs used are deleted. The audit log names them by a hash of the id ([Call a deployment](publish.md#call-a-deployment)) |
+| Return the organisation's data (Art. 20, end of contract) | `POST /v1/org/export`: a zip of NDJSON files with every kind of data, the attached files and the workspaces, without credentials, built in the background, downloaded once through a link that works for 15 minutes and deleted after 24 hours (`AGENTCANVAS_ORG_EXPORT_KEEP_HOURS`) ([Exporting the organisation](settings.md#exporting-the-organisation)) |
+| Delete the whole organisation (end of contract) | `DELETE /v1/org`: suspended at once, deleted for good after a grace period of 7 days (`AGENTCANVAS_ORG_DELETION_GRACE_DAYS`), which an admin can take back until then ([Deleting the organisation](settings.md#deleting-the-organisation)) |
 
 ## Backups and recovery
 
@@ -155,8 +189,31 @@ evidence AgentCanvas provides for your own assessments (GDPR, SOC 2, ISO 27001).
 The terms under which AgentCanvas and the code it exports may be used have not been published yet: the repository
 has no licence file. Ask the maintainers before you rely on any rights to it.
 
+## EU AI Act
+
+When you publish an agent to people in the EU, Article 50 of the AI Act applies to you as its provider or deployer:
+people must be told they are interacting with an AI system unless it is obvious (since 2 August 2026), and content
+an AI system generates must be marked as such in a machine-readable way (systems already on the market have until
+2 December 2026). What AgentCanvas does by default:
+
+- **Disclosure.** The share-link chat page and the chat widget always show an AI notice under the message box,
+  which builders may reword per link but not remove; the widget's button is named *AI assistant* unless your site
+  names it otherwise ([Share as an app or a chat widget](publish.md#share-as-an-app-or-a-chat-widget)).
+- **Marking.** Every answer a deployment gives through its API, MCP, A2A or share link has the header
+  `X-AI-Generated: true`, and API results carry `generated_by` with the models that answered
+  ([Call a deployment](publish.md#call-a-deployment)).
+
+What stays yours: deciding whether your use is high-risk (Annex III) or needs more than Article 50, labelling deep
+fakes and AI-written text published on matters of public interest, keeping the mark when you pass content on, and
+telling people about AI in channels AgentCanvas does not render (your own app built on the API, emails or messages
+your workflow sends).
+
 ## Reporting a vulnerability
 
 Report it privately through GitHub's private vulnerability reporting, as the
 [security policy](https://github.com/marunsct/AgentCanvas/security/policy) describes: never in a public issue. The
 policy also lists the supported versions and how quickly reports are answered.
+
+The web server publishes the same contact at `/.well-known/security.txt` (RFC 9116), so scanners and researchers
+find it. To have reports about your installation reach your own security team instead, set `SECURITY_CONTACT` and
+`SECURITY_POLICY` on the web container ([Deploy and operate](deploy.md#essential-settings)).

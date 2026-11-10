@@ -66,6 +66,7 @@ Every error answers with a problem document ([RFC 9457](https://www.rfc-editor.o
 | `/errors/connection-required` | 409 | An app connection must be signed in first |
 | `/errors/precondition-required` | 428 | `If-Match` is missing |
 | `/errors/rate-limited` | 429 | Too many calls: wait `Retry-After` seconds |
+| `/errors/spending-cap` | 429 | The organisation or project reached a spending cap (`scope`, `period`): runs start again after `Retry-After` seconds, when the day or month ends, or once an admin raises the cap |
 | `/errors/upstream` | 502 | A model provider or another service the call needed failed |
 | `/errors/unavailable` | 503 | Something the call needs is not available right now: try again later |
 | `/errors/internal` | 500 | A bug on the server: quote `request_id` |

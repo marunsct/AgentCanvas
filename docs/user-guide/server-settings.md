@@ -27,6 +27,10 @@ Lists are JSON (`["a", "b"]`), booleans `true` or `false`. Settings whose names 
 | `AGENTCANVAS_OIDC_TRUST_EMAIL` | `False` | treat the email claim as verified when the provider sends no `email_verified` (e.g. a corporate IdP that owns the domain); leave off for providers where users choose their own email |
 | `AGENTCANVAS_OIDC_JWKS_CACHE_S` | `3600` | how long the provider's signing keys are kept before they are fetched again |
 | `AGENTCANVAS_OIDC_LEEWAY_S` | `30` | clock skew tolerated on exp/nbf/iat |
+| `AGENTCANVAS_OIDC_REQUIRED_ACR` | `[]` | what every sign-in must show about how the person signed in: an `acr` (authentication level, as the identity provider names it, e.g. Keycloak's "2") on this list, or an `amr` (methods, e.g. "mfa", "hwk") on that one. Empty (default): no requirement. A sign-in without it is asked to sign in again at the provider, with these acr_values |
+| `AGENTCANVAS_OIDC_REQUIRED_AMR` | `[]` | As the row above (one comment in settings.py covers these). |
+| `AGENTCANVAS_OIDC_MFA_ACR` | `[]` | what counts as multi-factor for an organisation that requires it (Settings > Organisation > Security): an `acr` on the first list or an `amr` on the second. Entra ID, Okta and Auth0 put "mfa" in `amr`; Keycloak needs an acr level configured (and listed here) |
+| `AGENTCANVAS_OIDC_MFA_AMR` | `['mfa']` | As the row above (one comment in settings.py covers these). |
 | `AGENTCANVAS_MATURA_URL` |  | Matura (auth_mode = matura). The API URL, app slug and client secret read the change feed; the webhook secret checks POST /v1/matura/events; the portal is where admins manage members and roles. e.g. https://matura.example.com |
 | `AGENTCANVAS_MATURA_APP` | `"agentcanvas"` | As the row above (one comment in settings.py covers these). |
 | `AGENTCANVAS_MATURA_CLIENT_SECRET` |  | As the row above (one comment in settings.py covers these). |
@@ -36,6 +40,11 @@ Lists are JSON (`["a", "b"]`), booleans `true` or `false`. Settings whose names 
 | `AGENTCANVAS_MATURA_AUDIT_URL` |  | where security-relevant audit entries are POSTed, signed with the webhook secret (placeholder until Matura has an audit ingest API); unset = kept in AgentCanvas's own audit log only |
 | `AGENTCANVAS_AUDIT_SINK_URL` |  | security-relevant audit entries, also POSTed here as signed CloudEvents (any sign-in mode); each one is also always logged as `audit.event`. The secret signs them (AgentCanvas-Signature) and is needed with the URL. |
 | `AGENTCANVAS_AUDIT_SINK_SECRET` |  | As the row above (one comment in settings.py covers these). |
+| `AGENTCANVAS_AUDIT_SPLUNK_HEC_URL` |  | security-relevant audit entries, also sent to Splunk's HTTP Event Collector: the full URL (e.g. https://splunk.example.com:8088/services/collector/event) and an HEC token, needed with the URL |
+| `AGENTCANVAS_AUDIT_SPLUNK_HEC_TOKEN` |  | As the row above (one comment in settings.py covers these). |
+| `AGENTCANVAS_AUDIT_FORWARD_ALL` | `False` | forward every audit entry (every change anyone makes), not only the security-relevant ones |
+| `AGENTCANVAS_AUDIT_FORWARD_MAX_ATTEMPTS` | `24` | a delivery that keeps failing is retried with a growing delay (up to an hour) this many times, about 15 hours in all with the default, then kept as undelivered (dead) for an operator to retry |
+| `AGENTCANVAS_AUDIT_FORWARD_INTERVAL_S` | `2.0` | how often each server looks for entries to deliver |
 | `AGENTCANVAS_MATURA_SYNC_INTERVAL_S` | `3600` | how often the change feed is read (webhooks bring changes in between) |
 | `AGENTCANVAS_BOOTSTRAP_ADMIN_EMAILS` | `[]` | emails that become admins of the default organisation on first sign-in (bootstraps an empty install) |
 | `AGENTCANVAS_ALLOW_LOCAL_MCP` | `False` | app connectors that start a local process (stdio MCP servers); local edition |
@@ -57,13 +66,17 @@ Lists are JSON (`["a", "b"]`), booleans `true` or `false`. Settings whose names 
 | `AGENTCANVAS_CORS_ORIGINS` | `['http://localhost:5173']` | browser origins allowed to call the API |
 | `AGENTCANVAS_PUBLIC_URL` |  | where people reach the web app, e.g. https://canvas.example.com: OAuth sign-ins to app connectors return to <public_url>/oauth/callback and (https only) authorization servers fetch our client metadata document from <public_url>/api/v1/oauth/client-metadata.json. Unset: the first CORS origin (the development server). |
 | `AGENTCANVAS_REFUSE_CLIENTS` | `[]` | networks whose requests get 403: the one the API shares with the sandbox service (compose: sandbox-control), so workspace code there cannot call the API from inside |
+| `AGENTCANVAS_IGNORE_ORG_NETWORKS` | `False` | an emergency switch: true ignores every organisation's IP allow-list, for an admin locked out by their own (say, their address changed). Switch it off again once the list is fixed. |
 | `AGENTCANVAS_LOG_JSON` | `False` | one JSON object per log line (for a log collector) instead of readable text |
 | `AGENTCANVAS_METRICS_ENABLED` | `True` | Prometheus at GET /metrics |
 | `AGENTCANVAS_RETENTION_DAYS` | `90` | conversations (threads, their checkpoints and runs) are deleted this many days after their last activity unless the organisation sets its own; 0 keeps them forever |
 | `AGENTCANVAS_AUDIT_RETENTION_DAYS` | `400` | audit-log rows older than this are deleted; 0 keeps them forever |
 | `AGENTCANVAS_MEMORY_RETENTION_DAYS` | `0` | long-term memories not updated for this long are deleted; 0 (default): kept |
 | `AGENTCANVAS_EVENT_DEDUP_DAYS` | `30` | an event handler's dedup values (`@on(dedup_key=...)`) are kept this many days: the same value delivered again later runs the handler again. Never longer than the organisation's conversation retention; 0 = only that |
-| `AGENTCANVAS_APPROVAL_EXPIRY_DAYS` | `90` | a decision nobody gave for this many days expires: its run is cancelled and the conversation then follows the conversation retention like any other. 0 = approvals wait forever (and keep their conversations forever) |
+| `AGENTCANVAS_APPROVAL_EXPIRY_DAYS` | `90` | a decision nobody gave for this many days expires: its run is cancelled and the conversation then follows the conversation retention like any other, unless its step escalates it to a role (then it waits as long again). 0 = approvals wait forever (and keep their conversations forever) |
+| `AGENTCANVAS_ORG_DELETION_GRACE_DAYS` | `7` | an organisation an admin deletes is suspended at once and deleted for good this many days later; until then an admin can take the deletion back |
+| `AGENTCANVAS_OFFBOARDING_INTERVAL_S` | `60` | how often each server looks for organisations due for deletion and exports to build (a server also starts an export it was asked for at once) |
+| `AGENTCANVAS_ORG_EXPORT_KEEP_HOURS` | `24` | an organisation export is kept this many hours after it is built, then deleted; it can be downloaded once |
 | `AGENTCANVAS_MEMORY_EMBEDDING` | `""` | long-term memory's semantic index: "builtin" or "<provider>:<model>"; empty (default): by words. One size of vector per server (the pgvector column), so one model for every project; a model other than the built-in or a well-known hosted one needs its size in `memory_embedding_dims` (0: measured at startup) |
 | `AGENTCANVAS_MEMORY_EMBEDDING_DIMS` | `0` | As the row above (one comment in settings.py covers these). |
 | `AGENTCANVAS_MEMORY_EMBEDDING_BASE_URL` | `""` | a local server's address (LM Studio, Ollama) for `memory_embedding` |
@@ -80,8 +93,19 @@ Lists are JSON (`["a", "b"]`), booleans `true` or `false`. Settings whose names 
 | `AGENTCANVAS_RATE_LIMIT_BY_ENVIRONMENT` | `{}` | As the row above (one comment in settings.py covers these). |
 | `AGENTCANVAS_RATE_LIMIT_PER_SHARE_CLIENT` | `30` | share links: requests per minute from one client address to one link, on top of the deployment's and project's limits, so one anonymous visitor cannot use up a deployment's whole budget |
 | `AGENTCANVAS_MAX_CONCURRENT_RUNS` | `0` | runs in flight at once in one organisation, across every server; past it a run waits in the organisation's queue (highest priority, then oldest, first). 0 = no limit. An organisation may set a lower one. |
+| `AGENTCANVAS_MAX_COST_USD_DAY` | `0` | spending caps for each organisation, in USD per UTC day and per calendar month (UTC): what all its runs (drafts, debug runs, experiments, deployments, triggers), the Copilot and AI judges spent on models with a price. At a cap, new runs are refused (429) and runs in flight stop. 0 = no cap. An organisation may set a lower one, and one per project. |
+| `AGENTCANVAS_MAX_COST_USD_MONTH` | `0` | As the row above (one comment in settings.py covers these). |
+| `AGENTCANVAS_COST_WARN_PERCENT` | `80` | the share of a spending cap, in percent, at which a cost alert is raised (reaching the cap always raises one). An organisation may choose its own. |
 | `AGENTCANVAS_MAX_TOKEN_DAYS` | `0` | the longest an API token may live, in days; 0 = no limit (a token may also never expire). An organisation may set a shorter one. |
 | `AGENTCANVAS_APPROVE_OWN_RUNS` | `True` | false: nobody may approve or answer an Inbox item raised by a run they started (four-eyes approvals). An organisation may switch it off for itself, never on when the server has it off. |
+| `AGENTCANVAS_SMTP_HOST` |  | the mail server approval notifications are sent through: its host (none: e-mail is not offered), port, how the connection is secured ("starttls", port 587; "tls", port 465; "none", only for a relay on a private network) and its sign-in. An organisation's admin switches e-mail on under Settings > Organisation > Notifications |
+| `AGENTCANVAS_SMTP_PORT` | `587` | As the row above (one comment in settings.py covers these). |
+| `AGENTCANVAS_SMTP_SECURITY` | `"starttls"` | As the row above (one comment in settings.py covers these). |
+| `AGENTCANVAS_SMTP_USERNAME` |  | As the row above (one comment in settings.py covers these). |
+| `AGENTCANVAS_SMTP_PASSWORD` |  | As the row above (one comment in settings.py covers these). |
+| `AGENTCANVAS_SMTP_FROM` |  | the sender, e.g. "AgentCanvas <approvals@example.com>"; required with a host |
+| `AGENTCANVAS_NOTIFY_INTERVAL_S` | `15` | how often each server looks for approvals to announce and for notifications to send or retry (seconds) |
+| `AGENTCANVAS_NOTIFY_ALLOW_PRIVATE` | `False` | notification webhooks (Slack, an organisation's own) may reach private addresses, e.g. an internal relay; link-local and cloud metadata addresses never |
 | `AGENTCANVAS_MAX_QUEUE_WAIT_S` | `3600` | how long a run may wait in that queue before it gives up with an error (seconds); 0 = as long as it takes |
 | `AGENTCANVAS_RETENTION_INTERVAL_S` | `3600` | how often the retention job looks for expired conversations |
 | `AGENTCANVAS_CRON_CATCHUP_S` | `3600` | a cron occurrence no scheduler ticked in (a restart, an outage) fires once when ticking resumes, if it is no older than this; 0 = only the minute a scheduler ticks in |

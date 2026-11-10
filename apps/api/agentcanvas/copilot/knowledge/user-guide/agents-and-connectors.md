@@ -94,7 +94,7 @@ same one as the [deployment API](publish.md), with the same rate limits.
 | Transport | Streamable HTTP (every answer is one JSON message; no server-sent stream) |
 | Protocol | MCP `2026-07-28` (no handshake: `server/discover`, the version in each request) and the earlier revisions back to `2024-11-05` for clients that open with `initialize` |
 | Sign-in | `Authorization: Bearer <deployment key>` |
-| Tools | one tool named after the workflow, with the workflow's input fields; plus `answer` when the workflow can pause for a person |
+| Tools | one tool named after the workflow, with the workflow's input fields; plus `answer` when the workflow can pause for a person and the client cannot show forms (see below) |
 
 **Claude Desktop** connects to remote servers through [`mcp-remote`](https://www.npmjs.com/package/mcp-remote)
 (needs Node.js). Add this to `claude_desktop_config.json` and restart Claude Desktop:
@@ -119,9 +119,32 @@ Each deployment also has an **MCP Server Card** at `https://<your AgentCanvas>/a
 before connecting. It never contains the key. Its name is the public host reversed and the workflow's tool name
 (`com.example.agents/greeter`), so set `AGENTCANVAS_PUBLIC_URL` for a stable one.
 
-When a run pauses for an approval or a question, the tool's answer says so and gives a `thread_id`; the calling
-agent continues it with `answer` (`approve: true` or `false`, or `text` for a question). To continue a
-conversation, pass the `thread_id` of the earlier run to the workflow's tool.
+When a run pauses for an approval or a question, who answers depends on the client:
+
+- **Clients that show forms** (MCP `2026-07-28` clients declaring `elicitation`): the client shows the person a
+  form (approve or reject with a comment, or the answer to the question, shaped by the question's answer schema)
+  and sends the answer back by retrying the call, and the run goes on. The calling model never answers for the
+  person, so it cannot approve its own tool calls; these clients get no `answer` tool. The form's answer is tied
+  to the deployment key that started the call, to that call and its arguments, and to 15 minutes; a pause is
+  answered once. Declining an approval rejects it; closing the form leaves the run waiting (it can still be
+  answered in the **Inbox**). Each answer that leads to another pause asks again.
+- **Other clients**: the tool's answer says the run paused and gives a `thread_id`; the calling agent continues
+  it with `answer` (`approve: true` or `false`, or `text` for a question).
+
+To continue a conversation, pass the `thread_id` of the earlier run to the workflow's tool.
+
+**Long runs.** Clients that support the MCP **Tasks** extension (they declare `io.modelcontextprotocol/tasks`;
+`server/discover` lists it) get a task instead of waiting: when the run still works after 30 seconds, or waits
+for a slot in the run queue, the tool call answers with a `taskId` (the run's id). The client then polls
+`tasks/get` (every 3 seconds is asked for), which gives `working`, `completed` with the tool's result, or
+`cancelled`; `tasks/cancel` stops the run on whichever server runs it. A task whose run pauses for a person shows
+`input_required` with the form (for clients that show forms; the answer goes back with `tasks/update`), else it
+completes with the paused result, like a call without tasks. Tasks are polled with the deployment key and only
+the deployment's own runs are found, so a task id alone grants nothing. Any server answers.
+
+Other clients wait up to 5 minutes for the run. A longer run answers `running` with its `run_id` and the address
+of its result (`GET /v1/deployments/<id>/runs/<run_id>` with the deployment key, see
+[Publish](publish.md#long-runs-start-now-read-the-result-later)).
 
 ### As an A2A agent
 
@@ -136,11 +159,15 @@ conversation, pass the `thread_id` of the earlier run to the workflow's tool.
   only text input). The answer is a task whose artifact holds the output.
 - A pause becomes the `input-required` state. Send the answer to the same task (`taskId`): "yes" or "no" for an
   approval, or the answer to a question.
-- `contextId` continues a conversation; `tasks/get` reads a task again.
+- `contextId` continues a conversation; `tasks/get` reads a task again, with its output or what it waits for,
+  from whichever server answers: the result is kept with the run, not only in the memory of the server that ran it.
 - A2A 1.0 clients use `SendMessage` and `GetTask` (the same behaviour, in 1.0's form: `TASK_STATE_COMPLETED`,
   parts without `kind`); the agent card comes in 1.0's form when read with `A2A-Version: 1.0`, and lists both
   versions either way.
-- Not supported: streaming (`message/stream`, `SendStreamingMessage`), push notifications and cancelling a task.
+- `tasks/cancel` (`CancelTask` in 1.0) stops a working task, on whichever server runs it (another server stops it
+  within a few seconds: the answer may still say `working`). A task that ended, or waits for an answer, cannot be
+  cancelled.
+- Not supported: streaming (`message/stream`, `SendStreamingMessage`) and push notifications.
 - The agent card (and the MCP Server Card) may be cached for five minutes and carry an `ETag`: a republished
   deployment's new card reaches clients that cache it within that time.
 
@@ -163,6 +190,34 @@ into an agent, and use **Browse tools** to pick tools.
 
 Each entry was checked against npm, PyPI or the official MCP registry when the gallery was built; its tooltip says
 what it needs.
+
+### Published tools are pinned
+
+An app's server can change after you reviewed its tools: a new tool appears, or a description is rewritten to steer
+the agent (a "rug pull" or tool poisoning). A published agent does not pick such changes up on its own.
+
+- **Browse tools** records, for every tool, a fingerprint of its whole description, its arguments and its
+  annotations (such as *destructive*). Publishing keeps that list with the version, narrowed by **Only these tools**.
+- Publishing refuses a connector whose tools were never browsed (**E045**; in the editor it is only a note, and
+  draft runs work). Naming tools in **Only these tools** is not enough: browse them.
+- A connector browsed before fingerprints were recorded gets them when you publish: AgentCanvas lists the server's
+  tools again and fingerprints the ones you saw. If one of them now reads differently (description, *destructive*
+  or *read-only*), publishing is refused until you browse the tools again. Tools you never saw are not added.
+- Runs of a deployment, and runs started by a schedule or webhook, offer the agent only the tools in that list, and
+  only while their fingerprint is unchanged. A tool the server added since is left out. A tool whose description,
+  arguments or annotations changed is left out too; set **When a published tool changes** to **fail** on the block
+  to stop the run instead.
+- The run shows a warning naming what was left out. Runs you start in the editor are not pinned, so you see what
+  the server offers now.
+- The editor shows the change on the block (**W045** in Problems) until you publish again, and the deployment list
+  of the API carries it as `tool_drift`. Each change is written once to the audit log (`mcp_tool_drift`, with the
+  run, the deployment and the tool names) and forwarded like other
+  [security events](deploy.md#security-events-and-audit-forwarding).
+- To accept a change, select the block, click **Browse tools**, review the tools, and publish again.
+
+A version published before tools were pinned keeps working: tools browsed then are pinned by name only, and a block
+that was never browsed offers the server's current tools, with a warning on every run (and a W045 note in the
+editor). Publish again to pin them.
 
 ### Sign-in per person
 

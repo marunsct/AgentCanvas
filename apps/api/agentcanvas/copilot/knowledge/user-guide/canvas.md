@@ -88,6 +88,10 @@ every server, and each run looks at the others' spending after every model call:
 or month budget by no more than one model call each. Conversations deleted since, by hand or by the retention
 period, still count: deleting them does not reset a budget.
 
+An admin can also cap what the whole organisation or a project spends a day and a month, whatever the workflows'
+budgets say: at such a cap the workflow's runs are refused or stop too, with an error that says which cap was
+reached (see [Spending caps](settings.md#spending-caps)).
+
 ## Structure: subgraphs and frames
 
 - **⧉ Subgraph** (or ⌘G) turns the selected steps into one *Subgraph* step with its own state. Input channels

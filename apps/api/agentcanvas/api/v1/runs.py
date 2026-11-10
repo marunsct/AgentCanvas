@@ -141,7 +141,9 @@ class RunOut(BaseModel):
     cost_usd: float = 0.0
     traced: bool = False  # GET /v1/runs/{id}/trace opens it in LangSmith
     queued: bool = Field(False, description="still waiting for a slot in the organisation's run queue (status running)")
-    callback: RunCallbackOut | None = Field(default=None, description="the completion callback a deployment run asked for")
+    callback: RunCallbackOut | None = Field(
+        default=None, description="the completion callback a deployment run asked for"
+    )
 
 
 def _run_out(run: Run) -> RunOut:
