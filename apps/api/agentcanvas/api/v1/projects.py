@@ -24,6 +24,7 @@ from agentcanvas.api.deps import (
     project_access,
     refuse_token,
 )
+from agentcanvas.api.v1.org import CapUse
 from agentcanvas.db.models import AppUser, Membership, Organization, Project, ScimGroup, WorkflowRow
 from agentcanvas.db.repositories import ProjectMemberRepo, ProjectRepo
 from agentcanvas.errors import Conflict, InvalidInput
@@ -327,6 +328,37 @@ async def put_model_defaults(
 
 
 # ------------------------------------------------------------- spending caps (Settings > Spending) ----
+class ProjectCapsOut(BaseModel):
+    own: ProjectCaps = Field(description="the project's own caps (null: none)")
+    organisation: dict[str, float | None] = Field(description="the organisation's caps, which bind the project too")
+    day: CapUse
+    month: CapUse
+
+
+@router.get("/projects/{project_id}/spending-caps", response_model=ProjectCapsOut)
+async def get_spending_caps(
+    project_id: str,
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings_dep),
+) -> ProjectCapsOut:
+    """The project's spending caps, the organisation's that bind it too, and what the project spent today and this
+    month (UTC), as the caps count it (project admins and organisation admins)."""
+    p = await ProjectRepo(session).require(project_id)
+    org = await session.get(Organization, p.org_id)
+    eff = org_settings.effective(settings, org.settings if org else None)
+    own = spend_caps.project_caps(p.settings)
+    day, month = (await spend_caps.spent_by_project(session, p.org_id)).get(p.id, (0.0, 0.0))
+    labels = {name: label for name, (label, _) in spend_caps.periods().items()}
+    return ProjectCapsOut(
+        own=ProjectCaps.model_validate(own),
+        organisation={k: eff[k] or None for k in spend_caps.CAP_FIELDS},
+        day=CapUse(period="day", period_start=labels["day"], limit_usd=own.get("max_cost_usd_day"),
+                   spent_usd=round(day, 6)),
+        month=CapUse(period="month", period_start=labels["month"], limit_usd=own.get("max_cost_usd_month"),
+                     spent_usd=round(month, 6)),
+    )  # fmt: skip
+
+
 @router.put("/projects/{project_id}/spending-caps", response_model=ProjectCaps)
 async def put_spending_caps(
     project_id: str,
@@ -335,9 +367,9 @@ async def put_spending_caps(
     session: AsyncSession = Depends(get_session),
     settings: Settings = Depends(get_settings_dep),
 ) -> ProjectCaps:
-    """Cap what the project spends a UTC day and a calendar month, in USD (admins). A field left out keeps its value,
-    null removes the cap. Never above the organisation's cap, which binds the project as well; at a cap, the
-    project's new runs are refused (429) and its runs in flight stop."""
+    """Cap what the project spends a UTC day and a calendar month, in USD (project admins and organisation admins). A
+    field left out keeps its value, null removes the cap. Never above the organisation's cap, which binds the project
+    as well; at a cap, the project's new runs are refused (429) and its runs in flight stop."""
     p = await ProjectRepo(session).require(project_id, lock=True)
     changes = body.model_dump(include=body.model_fields_set)
     org = await session.get(Organization, p.org_id)

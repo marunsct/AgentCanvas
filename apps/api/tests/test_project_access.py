@@ -308,3 +308,28 @@ async def test_approval_emails_go_only_to_people_who_see_the_project(app, triage
     assert await app.state.notifier.tick(datetime.now(UTC)) == 1
     [(to, _, _)] = wire.mails
     assert to == ["in@example.com"]  # grp@ is in the group the step names, but not in the project
+
+
+async def test_project_admins_read_and_set_their_projects_spending_caps(app, api_client, as_user):
+    team = await other_project(api_client)
+    r = await api_client.put("/v1/org/settings", json={"limits": {"max_cost_usd_month": 100}})
+    assert r.status_code == 200, r.text
+    await _member(app, "usr_cap", "cap@example.com", "viewer")
+    await _member(app, "usr_bld", "bld@example.com", "viewer")
+    await bind(api_client, team, "admin", email="cap@example.com")
+    await bind(api_client, team, "builder", email="bld@example.com")
+    as_user("usr_cap", "viewer")
+    r = await api_client.put(f"/v1/projects/{team}/spending-caps", json={"max_cost_usd_month": 500})
+    assert r.status_code == 422  # never above the organisation's
+    r = await api_client.put(f"/v1/projects/{team}/spending-caps", json={"max_cost_usd_day": 5})
+    assert r.status_code == 200, r.text
+    caps = (await api_client.get(f"/v1/projects/{team}/spending-caps")).json()
+    assert caps["own"] == {"max_cost_usd_day": 5.0, "max_cost_usd_month": None}
+    assert caps["organisation"] == {"max_cost_usd_day": None, "max_cost_usd_month": 100.0}
+    assert caps["day"]["limit_usd"] == 5.0 and caps["day"]["spent_usd"] == 0
+    assert (await api_client.get(f"/v1/projects/{MAIN}/spending-caps")).status_code == 403  # a viewer there
+    assert (await api_client.get("/v1/org/spending/caps")).status_code == 403  # the organisation's stay the admins'
+    as_user("usr_bld", "viewer")
+    assert (await api_client.get(f"/v1/projects/{team}/spending-caps")).status_code == 403
+    r = await api_client.put(f"/v1/projects/{team}/spending-caps", json={"max_cost_usd_day": None})
+    assert r.status_code == 403

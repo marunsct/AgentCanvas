@@ -202,8 +202,11 @@ are the administrator's: what the whole organisation, or one project, may spend 
 (`PUT /v1/projects/{id}/spending-caps {"max_cost_usd_day": 50, "max_cost_usd_month": 800}`; `null` removes one). A
 project's cap is never above the organisation's (the save is refused), and the organisation's caps bind every project
 too. An operator can cap every organisation of the server with `AGENTCANVAS_MAX_COST_USD_DAY` and
-`AGENTCANVAS_MAX_COST_USD_MONTH`; an organisation can then only set a lower cap. Only admins set or see caps, and
-every change is in the audit log.
+`AGENTCANVAS_MAX_COST_USD_MONTH`; an organisation can then only set a lower cap. Only admins set or see caps: the
+organisation's admins all of them, and a project's own admins ([project members](accounts.md#projects-and-their-members)
+with the admin role) their project's, in **Settings › Project › Spending** or with
+`GET /v1/projects/{id}/spending-caps` (its caps, the organisation's that bind it, and what it spent today and this
+month). Every change is in the audit log.
 
 What counts: every run of the organisation or project, whatever started it (the editor's draft and debug runs, test
 cases, experiments, deployments, share links, schedules, webhooks and event handlers), at the cost of models with a

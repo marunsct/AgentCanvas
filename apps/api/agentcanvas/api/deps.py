@@ -300,7 +300,8 @@ ROLE_EXCEPTIONS = {
     ("PATCH", "/projects/{project_id}"): "admin",  # a project's name and existence are the organisation's
     ("DELETE", "/projects/{project_id}"): "admin",  # a read: what a Search knowledge block would find (S24)
     ("PUT", "/projects/{project_id}/workspace"): "admin",  # which Matura workspace a project lives in
-    ("PUT", "/projects/{project_id}/spending-caps"): "admin",  # spending caps are the (project) admin's control
+    ("GET", "/projects/{project_id}/spending-caps"): "admin",  # spending caps are the (project) admin's control
+    ("PUT", "/projects/{project_id}/spending-caps"): "admin",
     ("PUT", "/projects/{project_id}/members"): "admin",  # who works in a project: its admins (E-10)
     ("DELETE", "/projects/{project_id}/members/{member_id}"): "admin",
 }
