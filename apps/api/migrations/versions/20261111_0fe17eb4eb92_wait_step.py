@@ -10,7 +10,7 @@ writes), and the timer job's indexes, which cover only waiting items, are built 
 committed, so the Inbox stays readable and writable during a rolling upgrade. SQLite rebuilds the table.
 
 Revision ID: 0fe17eb4eb92
-Revises: d32911f9085f
+Revises: b700c6e125be
 Create Date: 2026-11-11 09:00:00
 """
 
@@ -22,7 +22,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "0fe17eb4eb92"
-down_revision: str | None = "d32911f9085f"
+down_revision: str | None = "b700c6e125be"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

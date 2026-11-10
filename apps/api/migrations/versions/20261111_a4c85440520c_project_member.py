@@ -9,7 +9,7 @@ table (see `agentcanvas/db/rls.py`; the condition is copied here so later change
 migration).
 
 Revision ID: a4c85440520c
-Revises: d32911f9085f
+Revises: a7872ec7fc84
 Create Date: 2026-11-11 09:00:00
 """
 
@@ -21,7 +21,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "a4c85440520c"
-down_revision: str | None = "d32911f9085f"
+down_revision: str | None = "a7872ec7fc84"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

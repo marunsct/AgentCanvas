@@ -7,7 +7,7 @@ condition is copied here so later changes to that module do not rewrite this mig
 existing is rewritten or locked for long.
 
 Revision ID: 37a370ccacd7
-Revises: d32911f9085f
+Revises: 0fe17eb4eb92
 Create Date: 2026-11-12 09:00:00
 """
 
@@ -20,7 +20,7 @@ from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
 
 revision: str = "37a370ccacd7"
-down_revision: str | None = "d32911f9085f"
+down_revision: str | None = "0fe17eb4eb92"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
