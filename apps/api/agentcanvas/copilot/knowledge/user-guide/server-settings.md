@@ -54,6 +54,10 @@ Lists are JSON (`["a", "b"]`), booleans `true` or `false`. Settings whose names 
 | `AGENTCANVAS_SANDBOX_URL` |  | "remote": the sandbox service (`agentcanvas.sandbox.service`), e.g. http://sandbox:8090 |
 | `AGENTCANVAS_SANDBOX_TOKEN` |  | the bearer token the service expects |
 | `AGENTCANVAS_SANDBOX_IMAGE` | `"python:3.12-slim"` | "docker": the image workspace code runs in |
+| `AGENTCANVAS_SANDBOX_MCP` | `False` | local (stdio) app connectors run in the sandbox instead of on the API server: a sandbox of their own for each run (or conversation), with the project's sandbox.json egress list and limits. Needs script execution docker or remote, and AGENTCANVAS_ALLOW_LOCAL_MCP; the hosted edition allows only the gallery's connectors marked to run in the sandbox |
+| `AGENTCANVAS_SANDBOX_MCP_IMAGE` |  | "docker": the image connectors run in (unset: AGENTCANVAS_SANDBOX_IMAGE); it needs Python 3 and the programs the connectors start, such as the API image built with WITH_BROWSER=true |
+| `AGENTCANVAS_SANDBOX_MCP_URL` |  | "remote": a sandbox service for connectors (unset: AGENTCANVAS_SANDBOX_URL) |
+| `AGENTCANVAS_SANDBOX_MCP_SESSIONS` | `8` | connector sandboxes one API server runs at once |
 | `AGENTCANVAS_EGRESS_PROXY` |  | sandbox.json egress allow-lists (docker, remote): sandboxed code reaches the network only through this proxy (`agentcanvas.sandbox.egress`), which admits the hosts of the call's signed list. "remote": its address as the sandbox sees it (e.g. egress:3128); "docker": unset starts and uses the `agentcanvas-egress` container |
 | `AGENTCANVAS_EGRESS_PROXY_RESOLVE` | `False` | "remote": hand the sandbox the proxy's IPv4 address instead of its name, so the sandbox needs no DNS (Kubernetes: a Service's ClusterIP is the same from every pod; not in compose, where the API sees the proxy on another network) |
 | `AGENTCANVAS_EGRESS_SECRET` |  | signs each call's list; shared with the proxy (docker: derived when unset) |
@@ -108,6 +112,7 @@ Lists are JSON (`["a", "b"]`), booleans `true` or `false`. Settings whose names 
 | `AGENTCANVAS_NOTIFY_ALLOW_PRIVATE` | `False` | notification webhooks (Slack, an organisation's own) may reach private addresses, e.g. an internal relay; link-local and cloud metadata addresses never |
 | `AGENTCANVAS_MAX_QUEUE_WAIT_S` | `3600` | how long a run may wait in that queue before it gives up with an error (seconds); 0 = as long as it takes |
 | `AGENTCANVAS_RETENTION_INTERVAL_S` | `3600` | how often the retention job looks for expired conversations |
+| `AGENTCANVAS_DIGEST_INTERVAL_S` | `3600` | how often each server looks for projects whose weekly run digest (last week's failures, spend and latency, on the Runs page) is due, in seconds; 0 = no digests are made |
 | `AGENTCANVAS_CRON_CATCHUP_S` | `3600` | a cron occurrence no scheduler ticked in (a restart, an outage) fires once when ticking resumes, if it is no older than this; 0 = only the minute a scheduler ticks in |
 | `AGENTCANVAS_MAX_UPLOAD_MB` | `10` | the largest file a person may attach to a run (Run tab, share links, inline in API calls), in MB; at most 20, the largest request body the web server accepts (infra/nginx.conf) |
 | `AGENTCANVAS_MAX_PROJECT_FILES_MB` | `1024` | all of a project's attached files; 0 = no limit |

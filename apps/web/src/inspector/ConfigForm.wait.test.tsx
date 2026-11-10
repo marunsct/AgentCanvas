@@ -3,7 +3,8 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { NodeManifest } from "../api/types";
 // the API's own manifest: the generated catalog copy is refreshed separately
-import waitManifest from "../../../api/agentcanvas/registry/nodes/core.wait.json";
+// the node manifests as the web image has them (packages/ir-schema; apps/api/agentcanvas is not in its build)
+import nodeTypes from "../../../../packages/ir-schema/node-types.json";
 import { triage } from "../test/fixtures";
 
 vi.mock("../api/session", () => ({ can: () => true, ME: { role: "builder" } }));
@@ -11,7 +12,7 @@ vi.mock("../api/client", () => ({ ApiError: class extends Error {}, apiFetch: vi
 
 const { useEditor } = await import("../editor/store");
 const { ConfigForm } = await import("./ConfigForm");
-const manifest = waitManifest as unknown as NodeManifest;
+const manifest = nodeTypes.find((t) => t.type === "core.wait") as unknown as NodeManifest;
 
 afterEach(cleanup);
 
