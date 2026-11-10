@@ -8,6 +8,30 @@ The product pass ([PLAN.md](docs/developer/history/product-plan-2026-10.md): one
 review of 2026-10-29 ([HARDENING.md](docs/developer/hardening.md)); no version has been tagged for them yet.
 
 ### Security
+- The web server publishes /.well-known/security.txt naming where to report a vulnerability; SECURITY_CONTACT and
+  SECURITY_POLICY point it at your own security team.
+- Admins can limit the networks their organisation is used from, for sign-ins, API tokens, deployment keys, share links
+  and SCIM alike.
+- Operators can require an authentication level or method (acr/amr) for every sign-in, and admins can require
+  multi-factor sign-in of their organisation's members; the web app then signs in again with a second factor.
+- Admins can cap what the organisation and each project spend a day and a month; at a cap new runs of every kind are
+  refused with 429 and runs in flight stop.
+- What the Copilot and AI judges spend counts against the organisation's and project's spending caps, and the Copilot is
+  refused at a cap.
+- MCP 2026-07-28 clients that show forms ask the person to approve or answer a paused run (signed, single-use,
+  caller-bound requestState) instead of letting the calling model answer through the `answer` tool.
+- Deployment, schedule and webhook runs offer only the app connector tools that were browsed before publishing,
+  unchanged; new or changed tools are left out (or stop the run) with a warning.
+- App connector tools a server changed after publishing are written to the audit log (`mcp_tool_drift`), forwarded to
+  the audit sink, and shown on the connector in the editor until the workflow is published again.
+- Publishing refuses an app connector whose tools were never browsed (E045), and pins connectors browsed before this
+  release after checking their tools still read as browsed.
+- Stop all runs, share links, triggers, OAuth clients and connections, sandbox settings, git pushes, deletions and
+  memory erasure are now forwarded as security events.
+- The audit log is now a per-organisation hash chain; admins verify it with GET /v1/org/audit/verify and operators with
+  `python -m agentcanvas.audit verify`.
+- On Postgres the API's database role may no longer change or delete audit-log entries; retention deletes old ones
+  through an owner-only function that keeps the last day and the hash chain whole.
 - Links in Copilot and Playground answers that look like in-app paths but lead to another site (/\host) are shown as
   plain text.
 - Signing out or switching account or organisation clears the Playground conversation kept in the browser tab, so it is
@@ -166,6 +190,13 @@ review of 2026-10-29 ([HARDENING.md](docs/developer/hardening.md)); no version h
   and metadata addresses are never reached, and a list naming one is refused (HARDENING S-1).
 
 ### Fixed
+- A master key in AWS KMS or Google Cloud KMS (AGENTCANVAS_KMS_KEY=aws:… or gcp:…) works with the API image, and a
+  server without the client says which package to install instead of crashing.
+- A2A GetTask returns a finished task's output and a paused task's open questions from any API server, not only the one
+  that ran it.
+- Deleting a conversation on the local (SQLite) edition also deletes its pending approval notifications.
+- Approval notifications are indexed by organisation, so deleting an organisation does not scan them all.
+- Organisation export ids start with oex_, apart from experiments (exp_).
 - Stopped, cancelled or timed-out runs on every framework now record the tokens and cost of the model calls they made.
 - An experiment's failure summary now names the same examples every time it is read.
 - The run panel no longer keeps saying "Waiting for a free run slot" after a queued run is stopped or ends before its
@@ -760,6 +791,43 @@ review of 2026-10-29 ([HARDENING.md](docs/developer/hardening.md)); no version h
   1.9.1 and dnspython 2.9.0.
 
 ### Added
+- Deployment answers are marked as AI-generated: an X-AI-Generated header on every run answer, and generated_by with the
+  models that answered on API results and the stream's last event.
+- Deployments can have several named API keys with an optional expiry and last-used time, and rotating a key can keep
+  the old one working for an overlap.
+- The Publish panel lists each deployment's API keys, adds named keys with an expiry and revokes them one by one.
+- Settings > Spending shows each spending cap with how much of it is used, lets admins set the organisation's and each
+  project's, and lists the Copilot's and AI judges' spending.
+- Deployment callers can start a run and answer at once (POST /runs), read its result later from any server (GET
+  /runs/{run_id}) and stop it (POST /runs/{run_id}/cancel).
+- A2A tasks/cancel and CancelTask stop a working task on any server, and an MCP call past the 5-minute wait names the
+  address of its result.
+- Deployment runs can ask for a signed completion callback (callback_url), delivered at least once with retries from any
+  server, signed with a per-deployment callback secret.
+- MCP clients that support the Tasks extension get a task for a long or queued deployment run (tasks/get, tasks/update
+  for pauses, tasks/cancel), answered by any server.
+- Approval and question steps, and agent tool approvals, can name who may decide them (roles, SCIM groups, people, not
+  the person who started the run), and a published workflow's caller answers them only when the step allows it.
+- Approval notifications by e-mail, Slack and a signed webhook, set per organisation under Settings > Organisation >
+  Notifications, sent once per waiting item from one server and retried on failure.
+- An approval or question step can escalate to a role when nobody decides it, after its own number of hours or at the
+  approval expiry, instead of the run being cancelled.
+- Browse tools records a fingerprint of each app connector tool, which publishing pins.
+- Admins can delete their organisation (DELETE /v1/org): it is suspended at once and deleted for good after a grace
+  period of 7 days, which they can take back until then.
+- Admins can erase a member (POST /v1/org/members/{user_id}/erase), removing their tokens, sign-ins, memories and
+  Copilot chats, optionally their conversations, and their name and email.
+- A deployment's end user can be erased by the user_id the API was sent, with the deployment's key or by an admin (POST
+  /v1/deployments/{id}/end-users/erase, POST /v1/org/end-users/erase).
+- People can download their own data (GET /v1/me/export), and admins a member's or a deployment end user's, each export
+  recorded in the audit log.
+- Admins can export everything the organisation holds as a zip (POST /v1/org/export), downloaded once through a link
+  that works for 15 minutes.
+- Settings has the organisation's data (export everything, delete the organisation or take the deletion back), Erase and
+  Export data for members, and Download my data.
+- Audit forwarding to a SIEM is now reliable (a database outbox retried until delivered, with dead letters, metrics and
+  alerts), can go to Splunk's HTTP Event Collector, and can include every audit entry.
+- A Check integrity button on the Audit log page verifies the log's hash chain.
 - The web app serves the licences of the packages it bundles at /third-party-licenses.txt, and the images check writes a
   CycloneDX bill of materials for each image.
 - A security policy with a private way to report vulnerabilities, and a user-guide page on security, privacy and
@@ -1142,6 +1210,10 @@ review of 2026-10-29 ([HARDENING.md](docs/developer/hardening.md)); no version h
 - An e2e check that every control in the inspector has an accessible name and stays in the tab order.
 
 ### Changed
+- The shared chat page and the chat widget always show an AI notice (reworded per link, never removed), and the widget's
+  button is named "AI assistant" by default.
+- When a published workflow's step is decided by named people, its MCP result and A2A task tell the calling agent that a
+  person decides it in AgentCanvas instead of asking it to answer.
 - The web app pins pnpm exactly (10.34.9, with its hash) in package.json; the web image, CI and a developer's pnpm all
   use that version.
 - The API's development environment, tests and checks run on Python 3.14 (apps/api/.python-version), the version the API
