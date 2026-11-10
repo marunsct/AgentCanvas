@@ -30,7 +30,7 @@ from typing import Any
 from sqlalchemy import ColumnElement, or_, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agentcanvas.db.models import Organization, Project, ProjectMember, ScimGroup, ScimGroupMember
+from agentcanvas.db.models import Membership, Organization, Project, ProjectMember, ScimGroup, ScimGroupMember
 
 KEY = "private_projects"  # in `organization.settings`
 ROLES = ("viewer", "reviewer", "builder", "admin")
@@ -113,6 +113,38 @@ async def load(
     if member_role == "admin":
         return Access(member_role, await is_private(session, org_id), token_role=token_role)
     return Access(member_role, await is_private(session, org_id), await bindings(session, org_id, user_id), token_role)
+
+
+async def member_roles(session: AsyncSession, org_id: str, project_id: str) -> dict[str, str]:
+    """User id -> role in the project, for every active member of the organisation who sees it (who may be told
+    about, and decide, what waits there)."""
+    found = await session.execute(
+        select(Membership.user_id, Membership.role).where(
+            Membership.org_id == org_id, Membership.accepted.is_(True), Membership.suspended.is_(False)
+        )
+    )
+    org_roles = dict(found.tuples().all())
+    shared = not await is_private(session, org_id)
+    bound: dict[str, str] = {}
+    direct = await session.execute(
+        select(ProjectMember.user_id, ProjectMember.role).where(
+            ProjectMember.project_id == project_id, ProjectMember.user_id.is_not(None)
+        )
+    )
+    via_groups = await session.execute(
+        select(ScimGroupMember.user_id, ProjectMember.role)
+        .join(ProjectMember, ProjectMember.group_id == ScimGroupMember.group_id)
+        .where(ProjectMember.project_id == project_id)
+    )
+    for uid, role in [*direct.tuples().all(), *via_groups.tuples().all()]:
+        if uid is not None:
+            bound[uid] = stronger(bound.get(uid), role) or role
+    out: dict[str, str] = {}
+    for uid, org_role in org_roles.items():
+        role = Access(org_role, not shared, {project_id: bound[uid]} if uid in bound else {}).role_in(project_id)
+        if role is not None:
+            out[uid] = role
+    return out
 
 
 def lowest(roles: Iterable[str]) -> str:

@@ -282,3 +282,29 @@ async def test_group_bindings_go_with_their_group(app, api_client):
         await s.delete(await s.get(ScimGroup, "grp_ops"))
         await s.commit()
     assert (await api_client.get(f"/v1/projects/{team}/members")).json() == []
+
+
+async def test_approval_emails_go_only_to_people_who_see_the_project(app, triage_api, monkeypatch):  # noqa: F811
+    """A private project's waiting item is announced to its reviewers (by their role there) and the organisation's
+    admins, never to a reviewer of the organisation who is not in the project."""
+    from datetime import UTC, datetime
+
+    from test_notifier import Wire
+    from test_versions import edit_node
+
+    monkeypatch.setattr(app.state.settings, "smtp_host", "mail.example.com")
+    monkeypatch.setattr(app.state.settings, "smtp_from", "AgentCanvas <approvals@example.com>")
+    api, wf = triage_api, triage_api.wf_id
+    assert (await api.put("/v1/org/notifications", json={"email": True})).status_code == 200
+    project = (await api.get(f"/v1/workflows/{wf}")).json()["project_id"]
+    await _member(app, "usr_in", "in@example.com", "viewer")  # a reviewer of this project only
+    await _member(app, "usr_out", "out@example.com", "reviewer")  # a reviewer of the organisation, not in it
+    await _member(app, "usr_grp", "grp@example.com", "viewer", groups=("Finance",))
+    await bind(api, project, "reviewer", email="in@example.com")
+    await private(api)
+    await edit_node(api, wf, "n_ag", approvers={"roles": ["reviewer"], "groups": ["Finance"]})
+    await _waiting(api, wf, "th_mail")
+    wire = Wire(app.state.notifier)
+    assert await app.state.notifier.tick(datetime.now(UTC)) == 1
+    [(to, _, _)] = wire.mails
+    assert to == ["in@example.com"]  # grp@ is in the group the step names, but not in the project

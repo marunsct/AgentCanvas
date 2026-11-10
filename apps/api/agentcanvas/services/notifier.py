@@ -58,6 +58,7 @@ from agentcanvas.ids import new_id
 from agentcanvas.log import get_logger
 from agentcanvas.security.addresses import is_metadata, is_public
 from agentcanvas.security.kms import Keyring
+from agentcanvas.services import project_access
 from agentcanvas.services.approvers import ROLES, Approvers
 from agentcanvas.services.triggers import sign
 from agentcanvas.settings import Settings
@@ -359,26 +360,39 @@ async def escalate(s: AsyncSession, items: list[tuple[str, str, str]], now: date
 
 # -------------------------------------------------------------------------------------------------- people ---
 async def deciders_of(
-    session: AsyncSession, org_id: str, policy: Approvers, assignee_role: str | None, started_by: str | None
+    session: AsyncSession,
+    org_id: str,
+    policy: Approvers,
+    assignee_role: str | None,
+    started_by: str | None,
+    project_id: str | None = None,
 ) -> list[str]:
     """The user ids of the organisation's active members who may decide an item: those it names (with the role it
-    was escalated to), else every member with the reviewer role or above."""
-    active = (Membership.org_id == org_id, Membership.accepted.is_(True), Membership.suspended.is_(False))
-    roles = [*policy.roles, *([assignee_role] if assignee_role else [])] if policy.named else list(ROLES)
-    ids = set((await session.scalars(select(Membership.user_id).where(*active, Membership.role.in_(roles)))).all())
+    was escalated to), else every member with the reviewer role or above. Of `project_id`'s, only those who see the
+    project, by their role there (services/project_access.py): a private project's item is not sent to the rest."""
+    if project_id is not None:
+        roles = await project_access.member_roles(session, org_id, project_id)
+    else:
+        found = await session.execute(
+            select(Membership.user_id, Membership.role).where(
+                Membership.org_id == org_id, Membership.accepted.is_(True), Membership.suspended.is_(False)
+            )
+        )
+        roles = dict(found.tuples().all())
+    wanted = [*policy.roles, *([assignee_role] if assignee_role else [])] if policy.named else list(ROLES)
+    ids = {uid for uid, role in roles.items() if role in wanted}
     if policy.named and policy.people:
-        wanted = {p.strip().lower() for p in policy.people}
-        q = select(AppUser.id).join(Membership, Membership.user_id == AppUser.id)
-        ids |= set((await session.scalars(q.where(*active, func.lower(AppUser.email).in_(wanted)))).all())
+        people = {p.strip().lower() for p in policy.people}
+        q = select(AppUser.id).where(AppUser.id.in_(list(roles)), func.lower(AppUser.email).in_(people))
+        ids |= set((await session.scalars(q)).all())
     if policy.named and policy.groups:
-        wanted = {g.casefold() for g in policy.groups}
+        groups = {g.casefold() for g in policy.groups}
         q = (
             select(ScimGroupMember.user_id, ScimGroup.display_name)
             .join(ScimGroup, ScimGroup.id == ScimGroupMember.group_id)
-            .join(Membership, Membership.user_id == ScimGroupMember.user_id)
-            .where(ScimGroup.org_id == org_id, *active)
+            .where(ScimGroup.org_id == org_id)
         )
-        ids |= {uid for uid, name in (await session.execute(q)).all() if name.casefold() in wanted}
+        ids |= {uid for uid, name in (await session.execute(q)).all() if name.casefold() in groups and uid in roles}
     if policy.not_initiator and started_by:
         ids.discard(started_by)
     return sorted(ids)
@@ -606,8 +620,14 @@ class NotifierJob:
             policy = Approvers(roles=[item.assignee_role], not_initiator=policy.not_initiator)
         elif not policy.named and channels is not None and channels.email_to:
             return channels.email_to[:MAX_RECIPIENTS]  # the organisation's team address for steps naming nobody
-        started_by = item.requested_by or await s.scalar(select(Thread.created_by).where(Thread.id == item.thread_id))
-        ids = await deciders_of(s, org_id, policy, item.assignee_role, started_by)
+        thread = await s.execute(
+            select(Thread.created_by, WorkflowRow.project_id)
+            .join(WorkflowRow, WorkflowRow.id == Thread.workflow_id)
+            .where(Thread.id == item.thread_id)
+        )
+        created_by, project_id = thread.one_or_none() or (None, None)
+        started_by = item.requested_by or created_by
+        ids = await deciders_of(s, org_id, policy, item.assignee_role, started_by, project_id)
         emails = sorted({e for e in (await s.scalars(select(AppUser.email).where(AppUser.id.in_(ids)))).all() if e})
         if len(emails) > MAX_RECIPIENTS:
             log.warning("notifier.too_many_recipients", interrupt_id=interrupt_id, recipients=len(emails))

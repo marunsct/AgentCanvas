@@ -66,7 +66,9 @@ Security, or `security.private_projects` of `PUT /v1/org/settings`):
   directly or through a SCIM group, with the **highest** of those memberships as their role there. Every other
   project, and everything in it (workflows, runs, conversations, deployments, secrets, files, datasets, Inbox items),
   answers as if it did not exist, in the app and on the API. The project picker, the Runs page and the Inbox list only
-  what they see.
+  what they see, and [approval notifications](settings.md#approval-notifications) e-mailed to the people who may decide
+  go only to those who see the project, by their role there (the organisation's team address, Slack channel and
+  webhook still get every project's, as their admin chose).
 
 A project role may be **above** the person's organisation role: an organisation viewer can be the admin of one
 project. It applies to that project only; the organisation's pages keep the organisation role. A personal API token
