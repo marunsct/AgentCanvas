@@ -97,12 +97,14 @@ def test_vulnerabilities_have_a_private_channel_and_customers_a_security_page():
         assert anchor in slugs, (link, anchor)
 
 
-def test_the_guide_promises_no_rights_while_the_repository_has_no_licence():
-    """The FAQ answered "Is the generated code mine?" with "Yes", but the repository has no licence: nothing grants
-    rights to AgentCanvas or to the code it exports. Until the owner publishes one the guide must say so."""
-    if any((ROOT / name).exists() for name in ("LICENSE", "LICENSE.md", "LICENSE.txt", "COPYING")):
-        return  # then the guide states the licence instead (the owner's change)
+def test_the_guide_states_the_licence_the_repository_publishes():
+    """The FAQ once promised rights ("Is the generated code mine? Yes") while the repository had no licence. Now that
+    it has one, the guide names it and links the page that explains it."""
+    licence = (ROOT / "LICENSE").read_text()
+    assert licence.startswith("Business Source License 1.1")
     faq = (GUIDE / "faq.md").read_text()
     answer = faq.split("**Is the generated code mine?", 1)[1].split("**\n", 1)[1].split("\n\n", 1)[0]
-    assert not answer.startswith("Yes") and "licence" in answer, answer
-    assert "no licence" in (GUIDE / "security.md").read_text()
+    assert "Business Source License 1.1" in answer and "licensing.md" in answer, answer
+    for page in ("security.md", "licensing.md"):
+        assert "Business Source License 1.1" in (GUIDE / page).read_text(), page
+    assert "250" in (GUIDE / "licensing.md").read_text() and "250" in licence  # the page and the licence agree

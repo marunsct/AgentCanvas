@@ -14,6 +14,7 @@ import zipfile
 from importlib import metadata
 from pathlib import Path
 
+from agentcanvas import licensing
 from agentcanvas.designs import AGENT_FRAMEWORKS, AgentDesign, article, export_problems, generate
 from agentcanvas.errors import InvalidInput
 from agentcanvas.ir.models import SECRET_NAME, Workflow
@@ -287,6 +288,7 @@ def export_files(
 
 def export_zip(wf: Workflow, design: AgentDesign, framework: str, workspace: Path | None = None) -> tuple[str, bytes]:
     files = export_files(wf, design, framework, workspace)
+    files = licensing.with_license(files, next(iter(files)).split("/", 1)[0] + "/")  # the License goes with it
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         for rel, content in sorted(files.items()):

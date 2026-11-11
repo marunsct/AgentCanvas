@@ -4,3 +4,5 @@ description: AgentCanvas, a visual agentic workflow builder (API, web app and da
 type: application
 version: 0.2.0
 appVersion: "0.32.3"
+annotations:
+  artifacthub.io/license: BUSL-1.1

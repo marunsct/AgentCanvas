@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from agentcanvas import agentspec, designs
+from agentcanvas import agentspec, designs, licensing
 from agentcanvas.adapters.langchain.packager import canvas_only
 from agentcanvas.errors import InvalidInput
 from agentcanvas.ir.models import Workflow
@@ -207,6 +207,7 @@ def export_files(wf: Workflow, target: str) -> dict[str, str]:
 
 def export_zip(wf: Workflow, target: str) -> tuple[str, bytes]:
     files = export_files(wf, target)
+    files = licensing.with_license(files, next(iter(files)).split("/", 1)[0] + "/")  # the License goes with it
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         for path, text in sorted(files.items()):

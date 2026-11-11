@@ -3,6 +3,7 @@ name = "agentcanvas"
 version = "0.32.3"
 description = "AgentCanvas control plane and runner: visual agentic workflows compiled to LangGraph/LangChain/Deep Agents"
 requires-python = ">=3.12,<3.15"
+license = "BUSL-1.1"  # Business Source License 1.1: see LICENSE at the repository root
 # Stack "stack-2026.09" (ADR 0017), verified together on 2026-09-29 (spec doc 14)
 dependencies = [
   "langgraph>=1.2.20,<1.3",

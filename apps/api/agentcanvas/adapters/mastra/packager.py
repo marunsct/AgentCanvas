@@ -15,6 +15,7 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
+from agentcanvas import licensing
 from agentcanvas.adapters.langchain.packager import _exportable_cases, _secret_names, gaps_md, package_name
 from agentcanvas.adapters.mastra import codegen
 from agentcanvas.adapters.openai_agents.packager import model_specs
@@ -512,6 +513,7 @@ def package(
         files["python/requirements.txt"] = "".join(f"{r}\n" for r in (found.requirements if found else []))
     for rel in found.files if found else []:
         files[f"python/{rel}"] = (workspace / rel).read_bytes()  # pyright: ignore[reportOptionalOperand]
+    files = licensing.with_license(files)  # it carries AgentCanvas code: the License goes with each copy
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         for rel, content in sorted(files.items()):

@@ -19,10 +19,11 @@ on your machine unless you turn on LangSmith tracing.
 **Is the generated code mine? Can I run it without AgentCanvas?**
 You can run it without AgentCanvas: **Export** gives you a plain project (the workflow's code for its framework,
 your workspace code, pinned dependencies) with a service that answers the same API as a deployment, deploy files
-for where you run it, and guides; see [Export and deploy](export.md). Who may use, change and share it is another
-matter: AgentCanvas has not published a licence yet, neither for itself nor for the code it exports (which includes
-some of AgentCanvas's own code, such as `agentcanvas.sdk`). Until it does, ask the maintainers before you rely on
-any rights to it.
+for where you run it, and guides; see [Export and deploy](export.md). Your workflows, prompts, data and the parts of
+the export that only express them are yours. The export also carries AgentCanvas's own runtime modules and code
+templates, which stay under AgentCanvas's licence (the Business Source License 1.1, included as
+`LICENSE-AgentCanvas.txt`): running the export in production is free for individuals, small and medium organisations,
+non-profits and education, and needs a commercial licence otherwise. See [Licensing](licensing.md).
 
 **What happens if the server restarts during a run?**
 Runs are durable. Paused runs (approvals, human input) wait indefinitely; running runs are resumed from their
