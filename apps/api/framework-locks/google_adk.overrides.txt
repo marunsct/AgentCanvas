@@ -2,4 +2,4 @@
 # filelock: litellm 1.105.7 caps it below 4, but imports it only in its proxy's command line, which ADK never runs
 # (litellm 1.108 lifts the cap). 4.2.1 fixes GHSA-69hj-f68j-2879 and the other filelock advisories of October 2026.
 # Remove this file when the litellm pin moves past 1.108.
-filelock>=4.2.1
+filelock>=4.2.9
