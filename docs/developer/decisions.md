@@ -45,6 +45,20 @@ Pydantic AI, Agno and Strands all share the host (smaller exports), but it chang
 full suites. *Why:* fix what is wrong now (requirements that do not install) with the smallest change, and leave the
 optimisation as a leftover in `hardening.md`.
 
+### Dependabot's uv update no longer touches the framework locks; CrewAI's lock stays as Dependabot left it
+PR #92 (merged 2026-11-11) rewrote `apps/api/framework-locks/*.txt` in place: Google ADK got litellm 1.108.2 (held at
+1.105.7) and LlamaIndex openai 3 without httpx2, so ADK and LlamaIndex runs failed in every image built since (your
+local Docker app included: redeploy after merging). The locks are regenerated with `scripts/framework_versions.py
+lock` and `exclude-paths` keeps Dependabot out of them; the `/infra/frameworks` entry still reports new framework
+releases. CrewAI's lock was not regenerated: its pinned release (1.15.39) is younger than the script's seven-day
+cooldown, and its tests pass on the lock Dependabot wrote. *Reverse:* `framework_versions.py lock crewai` once
+1.15.39 is a week old.
+
+### The image drops the pip of CrewAI's Python instead of upgrading it
+uv's standalone CPython 3.13 bundles pip 26.2.2, whose vendored msgpack, urllib3 and setuptools fail the image scan.
+Nothing runs that pip, so removing it (and ensurepip's wheels) is smaller and lasts longer than upgrading it, and
+a new download cannot bring an old one back. *Reverse:* delete the `rm -rf` line in `infra/Dockerfile.api`.
+
 ### Stripe moves to Stripe's hosted MCP server
 `@stripe/mcp` is deprecated with no further fixes; Stripe's docs point to `https://mcp.stripe.com` with OAuth or an
 agent API key as a bearer token, the same shape as the GitHub and Apify entries. The secret is renamed
