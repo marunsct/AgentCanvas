@@ -34,6 +34,7 @@ jobs:
     steps:
       - name: Is there a key?
         id: key
+        working-directory: .  # before the checkout: apps/api does not exist yet
         run: |
           if [ -z "$ANTHROPIC_API_KEY$OPENAI_API_KEY" ]; then
             # the job ends green with every other step skipped; say so where people look, not only in the log

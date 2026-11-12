@@ -381,6 +381,22 @@ def test_the_nightly_copilot_evaluation_uses_a_listed_model_and_says_when_it_ski
     assert "title=Copilot evaluation skipped" in workflow and "GITHUB_STEP_SUMMARY" in workflow
 
 
+def test_workflow_steps_before_the_checkout_do_not_run_in_a_directory_the_checkout_makes():
+    """A job whose default working directory is inside the repository cannot run a step before actions/checkout:
+    the runner fails to start bash there (the nightly Copilot evaluation went red every night on "Is there a key?")."""
+    for path in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
+        for name, job in yaml.safe_load(path.read_text())["jobs"].items():
+            default = job.get("defaults", {}).get("run", {}).get("working-directory")
+            if not default or default == ".":
+                continue
+            for step in job["steps"]:
+                if "actions/checkout" in step.get("uses", ""):
+                    break
+                if "run" in step:
+                    where = f"{path.name}:{name}: {step.get('name', step['run'][:40])}"
+                    assert step.get("working-directory") == ".", where
+
+
 @pytest.mark.skipif(shutil.which("bash") is None, reason="no bash")
 def test_local_ci_reports_a_stage_that_left_checks_out_as_skipped_not_passed():
     script = (ROOT / "scripts" / "ci-local.sh").read_text()
