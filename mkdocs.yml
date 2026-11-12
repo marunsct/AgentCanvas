@@ -2,6 +2,7 @@
 # Two sets: the user guide (docs/user-guide) and the developer documentation (docs/developer, map in its README.md).
 site_name: AgentCanvas
 site_description: Visual agentic workflows compiled to LangGraph, the OpenAI Agents SDK, CrewAI, Google ADK, Pydantic AI, Agno, the Microsoft Agent Framework, Strands, LlamaIndex or Mastra
+site_url: https://marunsct.github.io/AgentCanvas/
 repo_url: https://github.com/marunsct/AgentCanvas
 docs_dir: docs
 theme:

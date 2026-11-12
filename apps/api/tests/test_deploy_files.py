@@ -446,7 +446,7 @@ def test_ci_runs_actions_by_commit_and_the_docs_build_with_pinned_versions():
         for line in workflow.read_text().splitlines():
             if "uses:" in line:  # a tag can be moved to other code; a commit cannot
                 assert re.search(r"@[0-9a-f]{40}  # v\d+\.\d+\.\d+", line), (workflow.name, line)
-    for path in [".github/workflows/ci.yml", "scripts/ci-local.sh", "Makefile"]:
+    for path in [".github/workflows/ci.yml", ".github/workflows/docs-site.yml", "scripts/ci-local.sh", "Makefile"]:
         text = (ROOT / path).read_text()
         assert "mkdocs-material" in text and "--with mkdocs-material " not in text, path
         assert "mkdocs==1.6.1" in text and "mkdocs-material==9.8.1" in text, path
