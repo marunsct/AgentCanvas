@@ -230,7 +230,7 @@ def test_contracts():
 
 def test_frameworks_that_clash_with_langgraph_get_their_own_environment():
     own = {f.id for f in designs.AGENT_FRAMEWORKS.values() if f.own_env}
-    assert own == {"crewai", "google_adk", "agno", "strands", "llamaindex"}  # scripts/check_part_envs.py proves it
+    assert own == {"crewai", "google_adk", "pydantic_ai", "agno", "strands"}  # scripts/check_part_envs.py proves it
 
 
 # ------------------------------------------------------------------ a real CrewAI part on the server ----

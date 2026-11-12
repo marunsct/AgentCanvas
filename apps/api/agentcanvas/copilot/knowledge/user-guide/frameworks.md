@@ -157,8 +157,8 @@ when an agent runs this way. The worker sees none of the server's keys or databa
 
 | Framework | In a mixed flow |
 |---|---|
-| OpenAI Agents SDK, Pydantic AI, Microsoft Agent Framework, Claude Agent SDK | Next to LangGraph, in the host |
-| CrewAI, Google ADK, Agno, Strands Agents, LlamaIndex | In an environment of its own |
+| OpenAI Agents SDK, LlamaIndex, Microsoft Agent Framework, Claude Agent SDK | Next to LangGraph, in the host |
+| CrewAI, Google ADK, Pydantic AI, Agno, Strands Agents | In an environment of its own |
 | Any other language | Over A2A |
 
 ## Run a workflow on the OpenAI Agents SDK

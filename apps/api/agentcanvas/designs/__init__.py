@@ -51,14 +51,15 @@ AGENT_FRAMEWORKS: dict[str, AgentFramework] = {
         AgentFramework("crewai", "CrewAI", ("crewai==1.15.39",), "crewai", "openai", own_env=True),
         AgentFramework("google_adk", "Google ADK", ("google-adk==2.14.0", "litellm==1.105.7"), "google.adk", "openai",
                        own_env=True),
-        AgentFramework("pydantic_ai", "Pydantic AI", ("pydantic-ai-slim[openai]==2.66.0",), "pydantic_ai", "openai"),
+        AgentFramework("pydantic_ai", "Pydantic AI", ("pydantic-ai-slim[openai]==2.66.0",), "pydantic_ai", "openai",
+                       own_env=True),
         AgentFramework("agno", "Agno", ("agno==3.1.12", "openai==3.46.0"), "agno", "openai", own_env=True),
         AgentFramework("strands", "Strands Agents", ("strands-agents[openai]==1.64.0", "openai==3.46.0"), "strands",
                        "openai", own_env=True),
         AgentFramework(
             "llamaindex", "LlamaIndex",
             ("llama-index-core==0.14.25", "llama-index-workflows==2.26.1", "llama-index-llms-openai-like==0.8.1"),
-            "llama_index.core", "openai", own_env=True,
+            "llama_index.core", "openai",
         ),
         AgentFramework(
             "microsoft_agent_framework", "Microsoft Agent Framework",
