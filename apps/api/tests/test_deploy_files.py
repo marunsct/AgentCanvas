@@ -540,6 +540,16 @@ def test_the_web_image_ci_and_developers_run_the_pnpm_package_json_names():
     assert "version: 10" not in workflow and workflow.count("package_json_file: apps/web/package.json") == 3
 
 
+def test_the_image_drops_the_pip_of_the_python_it_downloads_for_crewai():
+    """uv's standalone CPython 3.13 (for CrewAI, which does not support 3.14) ships pip, and pip vendors msgpack,
+    urllib3 and setuptools releases with known HIGH advisories that the image scan reports and that nothing upgrades.
+    The image installs every package with uv, so that pip and ensurepip's bundled wheels are removed."""
+    lines = (ROOT / "infra" / "Dockerfile.api").read_text().split("\nRUN ")
+    (crewai,) = [step for step in lines if "UV_PYTHON_INSTALL_DIR=/app/.python" in step]
+    assert "/app/.python/cpython-*/lib/python3.*/site-packages/pip" in crewai
+    assert "/app/.python/cpython-*/lib/python3.*/ensurepip/_bundled" in crewai
+
+
 def test_dependabot_leaves_the_framework_locks_to_their_script():
     """The weekly uv update for apps/api also rewrote the hashed requirement files in framework-locks/ (PR #92): it
     moved packages in place without the new ones they need (openai 3 without httpx2 for LlamaIndex) and past a hold
