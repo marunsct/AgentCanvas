@@ -10,6 +10,47 @@ Merging, deleting branches and anything outward-facing stay with you: work is de
 - No version bump or tag (yours to decide); `CHANGELOG.md` "Unreleased" and `HARDENING.md` are kept current.
 - Prefer checks that grow with the product (driven by the OpenAPI document or the template list) over lists to maintain.
 
+## 2026-11-12 (developer adoption)
+
+You asked how to make AgentCanvas spread among developers, then said "resume" without picking a licence direction.
+I did the work that does not depend on it and left the licence alone.
+
+### The licence is unchanged; the choice is yours
+BSL 1.1 stays. Open-core (an Apache-2.0 core and exports, enterprise features under a commercial licence) or keeping
+the BSL but licensing what an export contains under MIT/Apache-2.0 would each help adoption. A licence is a business
+and legal choice, not a judgment call to make for you. The launch kit (`~/agentcanvas-launch-kit/README.md`, outside
+the repository) writes each post so the licence line is easy to swap.
+
+### Repository settings changed through the API
+Description (the old one said "Agen"), 20 topics, Discussions on, a `licensing` label for the commercial licence form,
+and Pages set to deploy from GitHub Actions (nothing is published until `docs-site.yml` runs on main). *Why:* they
+are what a visitor sees first and are all reversible under Settings. *Not done:* the social preview image
+(`docs/assets/social-preview.png`) can only be uploaded by hand, and the homepage link waits until the site exists.
+
+### The demo is a Playwright journey, not a screen recording
+`make demo` records `apps/web/e2e/demo.spec.ts` against the fake-model server and `scripts/demo-gif.sh` converts it.
+*Why:* it can be retaken after any UI change in a minute, and it shows made-up data only. The GIF is 5.9 MB (8 fps,
+1120 px); the MP4 (1 MB) is for posts. A visible pointer is drawn in, since recorded videos have none.
+
+### GitHub Actions runners work again, and the first run found four real problems
+The CI workflow (manual only since October) passed most jobs on GitHub on 2026-11-12. What failed, all fixed here:
+the nightly Copilot evaluation's first step ran in a directory the checkout had not made yet; a Settings test whose
+fetch mock answered `[]` to everything (timing-dependent, so it only failed on the slower runner); four gallery
+connectors on npm packages deprecated since the last local `ci-full`; and Pydantic AI marked as sharing the LangGraph
+host in mixed-flow exports although its pins no longer resolve with it.
+
+### Pydantic AI moves to its own environment rather than raising the host's `openai`
+pydantic-ai-slim 2.66 needs openai 3.31 or later; the host pins 3.24.0. Raising the host's openai to 3.46 might let
+Pydantic AI, Agno and Strands all share the host (smaller exports), but it changes the API's own runtime and needs the
+full suites. *Why:* fix what is wrong now (requirements that do not install) with the smallest change, and leave the
+optimisation as a leftover in `hardening.md`.
+
+### Stripe moves to Stripe's hosted MCP server
+`@stripe/mcp` is deprecated with no further fixes; Stripe's docs point to `https://mcp.stripe.com` with OAuth or an
+agent API key as a bearer token, the same shape as the GitHub and Apify entries. The secret is renamed
+`STRIPE_MCP_AUTH` because it now holds `Bearer <key>`. *Reverse:* none needed; the old package still installs but
+gets no security fixes.
+
 ## 2026-11-10 (leftovers)
 
 ### Judgment calls in the fourth wave (delete retries, withdrawn items, generated types, OAuth everywhere, approval links)

@@ -202,6 +202,15 @@ review of 2026-10-29 ([HARDENING.md](docs/developer/hardening.md)); no version h
   and metadata addresses are never reached, and a list naming one is refused (HARDENING S-1).
 
 ### Fixed
+- A mixed-flow export with a Pydantic AI agent next to LangGraph runs it in an environment of its own: Pydantic AI
+  needs a newer `openai` package than the LangGraph host, so the export's requirements could not be installed.
+  LlamaIndex agents now run in the host.
+- The Filesystem, Memory and Sequential Thinking connectors in the gallery install the maintained 2.x releases (npm
+  deprecated the date-based ones). The Stripe connector uses Stripe's hosted MCP server with an agent API key (the
+  secret is now `STRIPE_MCP_AUTH`, holding `Bearer <key>`), since Stripe retired its local `@stripe/mcp` package.
+  Connectors already added to a workflow keep their settings; from December 2026 Stripe accepts only agent API keys.
+- The nightly Copilot evaluation on GitHub no longer fails before it starts; without a provider key it skips with a
+  notice, as intended.
 - Deleting a conversation, workflow or project the moment a run ends no longer fails on Postgres when the run's last
   writes collide with it; the delete waits for them or runs again.
 - An Inbox item whose question the conversation moved past (a state edit, going back to an earlier point, a new message)
@@ -831,6 +840,9 @@ review of 2026-10-29 ([HARDENING.md](docs/developer/hardening.md)); no version h
   1.9.1 and dnspython 2.9.0.
 
 ### Added
+- The README opens with a recorded demo and what AgentCanvas does differently; `make demo` records it again
+  (`docs/assets/demo.gif` and `demo.mp4`). The documentation is published to GitHub Pages
+  (https://marunsct.github.io/AgentCanvas/), and the repository has issue forms and a social preview image.
 - AgentCanvas has a licence: the Business Source License 1.1. Development, testing and evaluation are free for
   everyone. Production use is free for individuals, organisations under 250 people and US$50M revenue, and
   non-profit or educational non-commercial work. Anyone else, and anyone offering AgentCanvas itself as a hosted
@@ -1414,6 +1426,8 @@ review of 2026-10-29 ([HARDENING.md](docs/developer/hardening.md)); no version h
   the others at start-up.
 - Production compose needs `AGENTCANVAS_EGRESS_SECRET` (32+ random characters) in `infra/.env.prod`; a Helm install
   with `sandbox.egress.enabled` (the default) needs the key `AGENTCANVAS_EGRESS_SECRET` in its Secret.
+- Hosted edition: a Sequential Thinking connector added before this release starts the deprecated 2026.8.31 package,
+  which the sandbox no longer has, so it is refused (E046) until it is added again from App connectors.
 
 ## v0.32.3 — Session state in the web app, and a guard on framework versions
 
