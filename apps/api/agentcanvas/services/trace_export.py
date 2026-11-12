@@ -330,13 +330,15 @@ class Exporter:
 
 def emit(provider: Any, records: list[dict[str, Any]]) -> None:
     from opentelemetry import trace
+    from opentelemetry.context import Context
     from opentelemetry.trace import Status, StatusCode
 
     tracer = provider.get_tracer("agentcanvas")
     made: list[Any] = []
     for r in records:
         parent = made[r["parent"]] if r["parent"] is not None else None
-        ctx = trace.set_span_in_context(parent) if parent is not None else None
+        # the root starts a trace of its own: an empty context, not whatever span is current here (a request's)
+        ctx = trace.set_span_in_context(parent) if parent is not None else Context()
         span = tracer.start_span(r["name"], context=ctx, start_time=r["start"], attributes=r["attrs"])
         if r.get("error"):
             span.set_status(Status(StatusCode.ERROR, str(r["error"])[:500]))
