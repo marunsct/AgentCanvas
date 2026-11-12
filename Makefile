@@ -1,5 +1,5 @@
 # AgentCanvas monorepo tasks. Run `make help`.
-.PHONY: help setup crewai framework mastra infra dev-api dev-fake dev-web docker-up docker-down docker-logs ci ci-full hooks test test-api test-web e2e copilot-evals screenshots framework-versions framework-bump lint fmt schema check docs
+.PHONY: help setup crewai framework mastra infra dev-api dev-fake dev-web docker-up docker-down docker-logs ci ci-full hooks test test-api test-web e2e copilot-evals screenshots demo framework-versions framework-bump lint fmt schema check docs
 
 help:       ## show targets
 	@grep -E '^[a-z-]+:.*## ' Makefile | sed 's/:.*## /\t/'
@@ -72,6 +72,11 @@ framework-bump: ## move one framework pin everywhere it is written: make framewo
 screenshots: ## retake the pictures in docs/user-guide/img (fake-model server, made-up data)
 	d=$$(mktemp -d) && cd apps/web && DATABASE_URL="sqlite+aiosqlite:///$$d/shots.db" AGENTCANVAS_WORKSPACES_DIR="$$d/ws" \
 	  SCREENSHOTS=1 E2E_PROD=1 npx playwright test e2e/screenshots.spec.ts; rc=$$?; rm -rf "$$d"; exit $$rc
+
+demo:       ## record the README's demo, docs/assets/demo.gif and demo.mp4 (fake-model server, made-up data; needs ffmpeg)
+	d=$$(mktemp -d) && cd apps/web && DATABASE_URL="sqlite+aiosqlite:///$$d/demo.db" AGENTCANVAS_WORKSPACES_DIR="$$d/ws" \
+	  DEMO=1 E2E_PROD=1 npx playwright test e2e/demo.spec.ts --trace off --output "$$d/out" \
+	  && ../../scripts/demo-gif.sh "$$d/out/demo-demo/video.webm"; rc=$$?; rm -rf "$$d"; exit $$rc
 
 lint:       ## ruff, pyright, import contracts, tsc, oxlint
 	cd apps/api && uv run ruff check . && uv run ruff format --check . && uv run pyright && uv run lint-imports
