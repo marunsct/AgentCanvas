@@ -1,5 +1,9 @@
 # AgentCanvas
 
+[![CI](https://github.com/marunsct/AgentCanvas/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/marunsct/AgentCanvas/actions/workflows/ci.yml)
+[![Docs](https://img.shields.io/badge/docs-marunsct.github.io-4338ca)](https://marunsct.github.io/AgentCanvas/)
+[![License: BSL 1.1](https://img.shields.io/badge/license-BSL%201.1-blue)](docs/user-guide/licensing.md)
+
 **Draw an AI agent workflow, run and debug it, then take it with you as code for the framework you choose.**
 
 A visual canvas for agentic workflows: drag blocks, wire them up, press **▶ Run** and watch each step light up. Behind
