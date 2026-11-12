@@ -9,7 +9,7 @@ Files named here are in the repository's [`infra/`](https://github.com/marunsct/
 `Dockerfile.api`, `Dockerfile.web`, `nginx.conf`, `compose.prod.yml`, `.env.prod.example`, the Helm chart
 `helm/agentcanvas/`, and `docker-compose.yml` (development services only).
 
-> Verification status (S11): both images build, and `compose.prod.yml` comes up healthy with two API replicas behind nginx on Postgres; a run streams through nginx and both replicas serve. The same checks run on the developer's machine (`make ci-full`, stage `images`: `scripts/ci-images.sh`) and in the GitHub workflow's `images` job, which runs only when started by hand (Actions → ci → Run workflow); both lint and render the Helm chart.
+> Verification status (S11): both images build, and `compose.prod.yml` comes up healthy with two API replicas behind nginx on Postgres; a run streams through nginx and both replicas serve. The same checks run on the developer's machine (`make ci-full`, stage `images`: `scripts/ci-images.sh`) and in the GitHub workflow's `images` job, on every pull request and push to main; both lint and render the Helm chart.
 
 ## Environments
 

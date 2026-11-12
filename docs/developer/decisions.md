@@ -39,6 +39,12 @@ fetch mock answered `[]` to everything (timing-dependent, so it only failed on t
 connectors on npm packages deprecated since the last local `ci-full`; and Pydantic AI marked as sharing the LangGraph
 host in mixed-flow exports although its pins no longer resolve with it.
 
+### CI runs on GitHub again, for every pull request and push to main
+It was manual-only because there were no runners. They are back, and the first runs found problems that local CI
+never sees: Dependabot's pull requests (#92 broke Google ADK and LlamaIndex in the image) and contributors' pull
+requests are never run through `make ci-full`. A public repository's runs cost nothing. Turned on only after a full
+run passed on GitHub. *Reverse:* remove `push:` and `pull_request:` from `.github/workflows/ci.yml`.
+
 ### Pydantic AI moves to its own environment rather than raising the host's `openai`
 pydantic-ai-slim 2.66 needs openai 3.31 or later; the host pins 3.24.0. Raising the host's openai to 3.46 might let
 Pydantic AI, Agno and Strands all share the host (smaller exports), but it changes the API's own runtime and needs the
