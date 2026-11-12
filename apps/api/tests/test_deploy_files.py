@@ -540,6 +540,17 @@ def test_the_web_image_ci_and_developers_run_the_pnpm_package_json_names():
     assert "version: 10" not in workflow and workflow.count("package_json_file: apps/web/package.json") == 3
 
 
+def test_dependabot_leaves_the_framework_locks_to_their_script():
+    """The weekly uv update for apps/api also rewrote the hashed requirement files in framework-locks/ (PR #92): it
+    moved packages in place without the new ones they need (openai 3 without httpx2 for LlamaIndex) and past a hold
+    (litellm 1.108 for Google ADK), so every ADK and LlamaIndex run in an image built from them failed. Those files
+    come only from `scripts/framework_versions.py lock`, which resolves each framework's pins."""
+    updates = yaml.safe_load((ROOT / ".github" / "dependabot.yml").read_text())["updates"]
+    (api,) = [u for u in updates if u["package-ecosystem"] == "uv" and u["directory"] == "/apps/api"]
+    assert "framework-locks/**" in api.get("exclude-paths", [])
+    assert (ROOT / "apps" / "api" / "framework-locks").is_dir()
+
+
 def test_dependency_updates_wait_for_a_new_release_to_age_before_taking_it():
     """A hijacked release is usually found and pulled within days. Without a cooldown, that week's Dependabot pull
     request could carry it, and local CI cannot know a release is malicious before an advisory exists. Security
