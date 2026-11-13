@@ -1,0 +1,29 @@
+name: Commercial license
+description: Ask about a commercial licence for production use by a larger organisation, or for a hosted service.
+title: Commercial license
+labels: [licensing]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        [Licensing](https://github.com/marunsct/AgentCanvas/blob/main/docs/user-guide/licensing.md) explains who may
+        use AgentCanvas for free. This issue is public: leave out anything confidential, and the maintainer will
+        follow up privately.
+  - type: input
+    id: org
+    attributes:
+      label: Organisation
+    validations:
+      required: true
+  - type: textarea
+    id: use
+    attributes:
+      label: How you plan to use AgentCanvas
+      description: For example "internal workflows for about 400 employees", or "offered to our customers as part of our product".
+    validations:
+      required: true
+  - type: input
+    id: contact
+    attributes:
+      label: How to reach you privately (optional)
+      description: Leave this empty to be contacted through GitHub.

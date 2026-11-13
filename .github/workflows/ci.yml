@@ -1,7 +1,10 @@
 name: ci
-# CI runs on the developer's machine (`make ci`, `make ci-full`, scripts/ci-local.sh). This workflow is kept for
-# running the same gates on GitHub by hand (Actions tab → ci → Run workflow); add `push:`/`pull_request:` to go back.
+# The same gates as `make ci-full` (scripts/ci-local.sh), on GitHub for every pull request (a contributor's, and
+# Dependabot's, which local CI never sees) and every push to main; by hand from the Actions tab too.
 on:
+  push:
+    branches: [main]
+  pull_request:
   workflow_dispatch:
 
 permissions:

@@ -7,8 +7,14 @@ import { AppShell } from "../app/AppShell";
 import { useMe, type Role } from "../api/session";
 import { SettingsPage } from "./SettingsPage";
 
+// what a section's first request answers: its own shape where a section reads one, otherwise an empty list (a
+// section that read [] as an object crashed only when its request finished inside the test's act: on CI, not here)
+const CAPS = { own: {}, organisation: {}, day: { spent_usd: 0 }, month: { spent_usd: 0 } };
 beforeEach(() => {
-  vi.stubGlobal("fetch", vi.fn(async () => new Response("[]", { headers: { "content-type": "application/json" } })));
+  vi.stubGlobal("fetch", vi.fn(async (url: RequestInfo | URL) => {
+    const body = String(url).endsWith("/spending-caps") ? CAPS : [];
+    return new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } });
+  }));
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
@@ -51,6 +57,7 @@ describe("Settings", () => {
       loaded: true,
     });
     await act(async () => { at("/settings/project-spending"); });
+    expect(await screen.findByLabelText("Cap a day (USD)")).toBeTruthy(); // its caps arrived and the form drew them
     expect(screen.getByTestId("settings-section-project-spending")).toBeTruthy();
     expect(screen.getByTestId("settings-project-members")).toBeTruthy();
     expect(screen.queryByTestId("settings-spending")).toBeNull();

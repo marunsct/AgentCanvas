@@ -381,6 +381,22 @@ def test_the_nightly_copilot_evaluation_uses_a_listed_model_and_says_when_it_ski
     assert "title=Copilot evaluation skipped" in workflow and "GITHUB_STEP_SUMMARY" in workflow
 
 
+def test_workflow_steps_before_the_checkout_do_not_run_in_a_directory_the_checkout_makes():
+    """A job whose default working directory is inside the repository cannot run a step before actions/checkout:
+    the runner fails to start bash there (the nightly Copilot evaluation went red every night on "Is there a key?")."""
+    for path in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
+        for name, job in yaml.safe_load(path.read_text())["jobs"].items():
+            default = job.get("defaults", {}).get("run", {}).get("working-directory")
+            if not default or default == ".":
+                continue
+            for step in job["steps"]:
+                if "actions/checkout" in step.get("uses", ""):
+                    break
+                if "run" in step:
+                    where = f"{path.name}:{name}: {step.get('name', step['run'][:40])}"
+                    assert step.get("working-directory") == ".", where
+
+
 @pytest.mark.skipif(shutil.which("bash") is None, reason="no bash")
 def test_local_ci_reports_a_stage_that_left_checks_out_as_skipped_not_passed():
     script = (ROOT / "scripts" / "ci-local.sh").read_text()
@@ -430,7 +446,7 @@ def test_ci_runs_actions_by_commit_and_the_docs_build_with_pinned_versions():
         for line in workflow.read_text().splitlines():
             if "uses:" in line:  # a tag can be moved to other code; a commit cannot
                 assert re.search(r"@[0-9a-f]{40}  # v\d+\.\d+\.\d+", line), (workflow.name, line)
-    for path in [".github/workflows/ci.yml", "scripts/ci-local.sh", "Makefile"]:
+    for path in [".github/workflows/ci.yml", ".github/workflows/docs-site.yml", "scripts/ci-local.sh", "Makefile"]:
         text = (ROOT / path).read_text()
         assert "mkdocs-material" in text and "--with mkdocs-material " not in text, path
         assert "mkdocs==1.6.1" in text and "mkdocs-material==9.8.1" in text, path
@@ -522,6 +538,27 @@ def test_the_web_image_ci_and_developers_run_the_pnpm_package_json_names():
     assert "corepack install" in web and "pnpm@" not in web and "PNPM_VERSION" not in web
     workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
     assert "version: 10" not in workflow and workflow.count("package_json_file: apps/web/package.json") == 3
+
+
+def test_the_image_drops_the_pip_of_the_python_it_downloads_for_crewai():
+    """uv's standalone CPython 3.13 (for CrewAI, which does not support 3.14) ships pip, and pip vendors msgpack,
+    urllib3 and setuptools releases with known HIGH advisories that the image scan reports and that nothing upgrades.
+    The image installs every package with uv, so that pip and ensurepip's bundled wheels are removed."""
+    lines = (ROOT / "infra" / "Dockerfile.api").read_text().split("\nRUN ")
+    (crewai,) = [step for step in lines if "UV_PYTHON_INSTALL_DIR=/app/.python" in step]
+    assert "/app/.python/cpython-*/lib/python3.*/site-packages/pip" in crewai
+    assert "/app/.python/cpython-*/lib/python3.*/ensurepip/_bundled" in crewai
+
+
+def test_dependabot_leaves_the_framework_locks_to_their_script():
+    """The weekly uv update for apps/api also rewrote the hashed requirement files in framework-locks/ (PR #92): it
+    moved packages in place without the new ones they need (openai 3 without httpx2 for LlamaIndex) and past a hold
+    (litellm 1.108 for Google ADK), so every ADK and LlamaIndex run in an image built from them failed. Those files
+    come only from `scripts/framework_versions.py lock`, which resolves each framework's pins."""
+    updates = yaml.safe_load((ROOT / ".github" / "dependabot.yml").read_text())["updates"]
+    (api,) = [u for u in updates if u["package-ecosystem"] == "uv" and u["directory"] == "/apps/api"]
+    assert "framework-locks/**" in api.get("exclude-paths", [])
+    assert (ROOT / "apps" / "api" / "framework-locks").is_dir()
 
 
 def test_dependency_updates_wait_for_a_new_release_to_age_before_taking_it():

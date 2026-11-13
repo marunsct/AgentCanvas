@@ -1,31 +1,50 @@
 # AgentCanvas
 
-**Visual agentic workflow builder** — a ComfyUI-style canvas where you drag widgets, wire them up and add scripts, while the backend compiles the picture into a real, idiomatic project for the framework you pick — **LangGraph / LangChain / Deep Agents**, the OpenAI Agents SDK, CrewAI, Google ADK, Pydantic AI, Agno, Microsoft Agent Framework, Strands, LlamaIndex or Mastra (TypeScript) — that you can run, debug, test, export and deploy.
+[![CI](https://github.com/marunsct/AgentCanvas/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/marunsct/AgentCanvas/actions/workflows/ci.yml)
+[![Docs](https://img.shields.io/badge/docs-marunsct.github.io-4338ca)](https://marunsct.github.io/AgentCanvas/)
+[![License: BSL 1.1](https://img.shields.io/badge/license-BSL%201.1-blue)](docs/user-guide/licensing.md)
 
-| Documentation | For | Start with |
-|---|---|---|
-| [User guide](docs/user-guide/index.md) | People who build workflows, and whoever runs AgentCanvas for a team | [Run AgentCanvas on your computer](docs/user-guide/run-locally.md), then [Getting started](docs/user-guide/getting-started.md); operators: [Deploy and operate](docs/user-guide/deploy.md) |
-| [Developer documentation](docs/developer/README.md) | People who change AgentCanvas | [Handover](docs/developer/handover.md) (setup, conventions), [status and roadmap](docs/developer/hardening.md), [build guide](docs/developer/build-guide/README.md), [spec](docs/developer/spec/README.md), [ADRs](docs/developer/adr/README.md) |
-| [Changelog](CHANGELOG.md) | Everyone | Code at **v0.32.3** plus the unreleased changes at the top; no release has been tagged yet (tags are the owner's call) |
+**Draw an AI agent workflow, run and debug it, then take it with you as code for the framework you choose.**
 
-## What you can do
+A visual canvas for agentic workflows: drag blocks, wire them up, press **▶ Run** and watch each step light up. Behind
+the picture is a real project for **LangGraph** (with LangChain and Deep Agents), the **OpenAI Agents SDK**,
+**CrewAI**, **Google ADK**, **Pydantic AI**, **Agno**, **Microsoft Agent Framework**, **Strands**, **LlamaIndex** or
+**Mastra** (TypeScript). Switch frameworks with one setting, read the code in the **Code** tab, and export it.
 
-Build on the canvas (agents, Deep Agents, routers, map/join, subgraphs, MCP/HTTP tools, memory, knowledge bases,
-workspace scripts and custom widgets), or let the AI Copilot build and fix a workflow from a description → run and
-debug (breakpoints, time travel, Explain mode, pins/mocks, cost per step, blast radius and dry runs) → test and
-evaluate (test cases, datasets, evaluators, experiments, release gates, online evaluation) → ship (versions and
-diffs, export as a plain project for the framework you chose, publish behind an API key, as an MCP server or an A2A
-agent, as a chat page or a website widget, webhooks and cron) → govern (sign-in with your identity provider,
-organisations, roles, policies, an audit log). The [user guide](docs/user-guide/index.md) covers each.
+<p align="center">
+  <img src="docs/assets/demo.gif" width="100%"
+       alt="Picking the Support triage template, running it through a tool approval, reading its LangGraph code, then switching it to Pydantic AI and Agno">
+</p>
+
+## Why AgentCanvas
+
+- **Code you can leave with.** Every workflow compiles to an idiomatic project for the framework you pick, with the
+  small runtime it needs. Export it, read it, run it without AgentCanvas.
+- **One picture, ten frameworks.** Try the same workflow on LangGraph, CrewAI or Pydantic AI before you commit;
+  AgentCanvas says what does not carry over.
+- **Debug it like code.** Breakpoints, time travel, pinned and mocked steps, cost per step, Explain mode, dry runs
+  and tool approvals.
+- **Any model, local ones too.** Claude, GPT, Gemini, Mistral, Groq, DeepSeek, Grok, any OpenAI-compatible API, or
+  Ollama, LM Studio, vLLM and llama.cpp on your own machine. No key needed to try it: a demo model runs every template.
+- **Bring your flows.** Import Langflow, Flowise and n8n exports ([switching](docs/user-guide/switching.md)).
+- **Ship it.** Publish a workflow behind an API key, as an MCP server, an A2A agent, an AG-UI endpoint, a chat page
+  or a website widget; trigger it from webhooks and schedules.
+- **Test it.** Datasets, evaluators, experiments and release gates in the Evaluation Studio.
+- **Ready for a team when you are.** Sign-in with your identity provider, organisations, roles, approvals,
+  spending caps and an audit log.
+
+Not sure where to start? Describe what you want and the **AI Copilot** builds the workflow, or pick one of 38
+[templates](docs/user-guide/templates.md).
 
 ## Quick start with Docker
 
 ```bash
+git clone https://github.com/marunsct/AgentCanvas.git && cd AgentCanvas
 make docker-up    # Postgres (pgvector) + migrations + API + web app on http://localhost:7777
 ```
 
-The image carries every framework (several GB); `FRAMEWORKS=none WITH_MASTRA=false make docker-up` builds a small one with LangGraph and
-the OpenAI Agents SDK only.
+The image carries every framework (several GB); `FRAMEWORKS=none WITH_MASTRA=false make docker-up` builds a
+small one with LangGraph and the OpenAI Agents SDK only.
 
 Open http://localhost:7777 and choose your model on the first-run screen: Claude, GPT, Gemini, Mistral, Groq,
 DeepSeek, Grok, any OpenAI-compatible API, or a local model with Ollama, LM Studio, vLLM or llama.cpp. See
@@ -36,6 +55,7 @@ DeepSeek, Grok, any OpenAI-compatible API, or a local model with Ollama, LM Stud
 Prerequisites: Python tooling [`uv`](https://docs.astral.sh/uv/), Node 22 + pnpm 10.
 
 ```bash
+git clone https://github.com/marunsct/AgentCanvas.git && cd AgentCanvas
 make setup        # uv sync + pnpm install
 make dev-fake     # API with scripted fake models on :8000
 make dev-web      # web app on http://localhost:5173 (in another terminal)
@@ -69,6 +89,24 @@ make docs         # documentation site on http://localhost:8001
 
 The repository map, conventions and CI are in the [handover](docs/developer/handover.md); the
 [developer documentation](docs/developer/README.md) maps the rest.
+
+## Documentation
+
+| Documentation | For | Start with |
+|---|---|---|
+| [User guide](docs/user-guide/index.md) | People who build workflows, and whoever runs AgentCanvas for a team | [Run AgentCanvas on your computer](docs/user-guide/run-locally.md), then [Getting started](docs/user-guide/getting-started.md); operators: [Deploy and operate](docs/user-guide/deploy.md) |
+| [Developer documentation](docs/developer/README.md) | People who change AgentCanvas | [Handover](docs/developer/handover.md) (setup, conventions), [status and roadmap](docs/developer/hardening.md), [build guide](docs/developer/build-guide/README.md), [spec](docs/developer/spec/README.md), [ADRs](docs/developer/adr/README.md) |
+| [Changelog](CHANGELOG.md) | Everyone | Code at **v0.32.3** plus the unreleased changes at the top; no release has been tagged yet (tags are the owner's call) |
+
+## Community
+
+- **Questions, ideas and things you built:** [Discussions](https://github.com/marunsct/AgentCanvas/discussions).
+- **Bugs and feature requests:** [issues](https://github.com/marunsct/AgentCanvas/issues/new/choose).
+- **Contributing:** read [CONTRIBUTING](.github/CONTRIBUTING.md); issues labelled
+  [good first issue](https://github.com/marunsct/AgentCanvas/labels/good%20first%20issue) are a place to start.
+- **Security issues:** report them privately, as [SECURITY](.github/SECURITY.md) says.
+
+If AgentCanvas is useful to you, a ⭐ helps other developers find it.
 
 ## License
 

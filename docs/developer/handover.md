@@ -130,10 +130,10 @@ cd apps/web && CI=1 PW_CHROMIUM_PATH=$(ls -d /opt/pw-browsers/chromium-*/chrome-
 
 ## 4. CI
 
-**CI runs locally.** `make ci` (check, strict docs, audit, Helm), `make ci-full` (also framework environments, the whole API
+**CI runs locally and on GitHub.** `make ci` (check, strict docs, audit, Helm), `make ci-full` (also framework environments, the whole API
 suite **on a throwaway Postgres container** when Docker is there (SQLite otherwise, with a warning), the `frameworks`
 and `export` stages, images, e2e), `make hooks` (pre-push lint + web tests); all in `scripts/ci-local.sh`, which mirrors the
-workflow. The GitHub workflow is `workflow_dispatch` only (Actions has had no runners since 2026-10-08). The `api` stage
+workflow. The GitHub workflow runs on every pull request and push to main, and by hand (runners came back by 2026-11-12). The `api` stage
 includes the old `connectors` job (MCP gallery smoke, part environments). Only the Trivy scan and the prod-compose probes
 of `images` exist just in the workflow. Helm runs from `alpine/helm` when it is not installed. Playwright: if its
 browser build is not installed set `PW_CHROMIUM_PATH` to another Chromium; if port 8000 is taken (a running Docker app)
@@ -168,7 +168,7 @@ Agent Spec exports loaded with pyagentspec), `images` (Docker builds with every 
   (`tests/test_migration_locks.py` checks). Prefer a partial index when only some rows are read.
 - Commit messages describe the change in plain words; no model names in commits, PRs or code.
 - **Releases.** Tags (`vX.Y.Z`) and version bumps are the owner's. The plan for releases, not yet in place (no image is
-  published and GitHub Actions has no runners): merging to `main` builds images tagged with the commit SHA; staging
+  published yet): merging to `main` builds images tagged with the commit SHA; staging
   gets them and the Playwright smoke tests run against it; a tag promotes the same images to production (no rebuild),
   migrations first. A rollback redeploys the previous tag, so a migration must stay backward compatible for one
   release (expand, migrate, contract).
@@ -204,7 +204,7 @@ Agent Spec exports loaded with pyagentspec), `images` (Docker builds with every 
 1. A review of the code the work touched, and its fixes; for a large piece, an end-to-end pass through the API and
    the browser.
 2. All suites green locally (`make check`, and `scripts/ci-local.sh` stages for what the change touches: `api` on
-   Postgres, `e2e`, `frameworks`, `export`, `images`), since GitHub Actions has no runners.
+   Postgres, `e2e`, `frameworks`, `export`, `images`), and the GitHub workflow green on the pull request.
 3. CHANGELOG, [hardening.md](hardening.md), the user guide and `mkdocs.yml` updated; schema regenerated
    (`make schema`, then `pnpm gen`).
 4. This file updated if the owner decided something new or a command or convention changed.

@@ -3,7 +3,7 @@
   "private": true,
   "description": "The local app connectors the sandbox's browser image comes with (gallery entries marked sandboxable)",
   "dependencies": {
-    "@modelcontextprotocol/server-sequential-thinking": "2026.8.31",
+    "@modelcontextprotocol/server-sequential-thinking": "2.1.1",
     "@playwright/mcp": "0.0.83"
   }
 }

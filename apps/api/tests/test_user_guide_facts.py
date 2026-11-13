@@ -57,8 +57,9 @@ def test_the_local_setup_is_described_as_it_is():
     assert "Redis" not in next(r for r in (GUIDE / "operations.md").read_text().splitlines() if r.startswith("| `dev`"))
     local = (GUIDE / "run-locally.md").read_text()
     assert "starts Redis" not in local
-    # CI runs on the developer's machine, and on GitHub only by hand (.github/workflows/ci.yml)
-    assert "workflow_dispatch" in (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    # CI runs on the developer's machine and on GitHub for pull requests, pushes to main and by hand
+    on = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text())[True]  # YAML 1.1: `on` loads as True
+    assert {"push", "pull_request", "workflow_dispatch"} <= set(on) and on["push"]["branches"] == ["main"]
     assert "on every change" not in local
 
 

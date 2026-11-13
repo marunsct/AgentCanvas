@@ -1,0 +1,49 @@
+name: Bug report
+description: Something in AgentCanvas does not work as the user guide says it should.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead. Screenshots help.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The shortest way to see it. A template name, or the workflow.ir.json from an export (Versions › Export › ⬇ Download), is ideal.
+      placeholder: |
+        1. Pick the "Support triage" template
+        2. Switch the framework to CrewAI
+        3. Press ▶ Run
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How you run AgentCanvas
+      options:
+        - Docker (make docker-up)
+        - From source (make dev-fake / make dev-api)
+        - Helm or a production compose file
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: framework
+    attributes:
+      label: Framework and model
+      placeholder: LangGraph, Ollama qwen3
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Shown under Settings › About, or `git rev-parse --short HEAD`.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: The API's log around the error (`make docker-logs`). Remove keys and personal data first.
+      render: text

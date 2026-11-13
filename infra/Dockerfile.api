@@ -43,9 +43,13 @@ ARG FRAMEWORKS=""
 ARG WITH_CREWAI=false
 RUN --mount=type=cache,target=/root/.cache/uv if [ "$WITH_CREWAI" = "true" ] || echo " $FRAMEWORKS " | tr , " " | grep -Eq " (all|crewai) "; then \
       UV_PYTHON_DOWNLOADS=automatic UV_PYTHON_INSTALL_DIR=/app/.python uv venv --python 3.13 .frameworks/crewai \
-      && uv pip sync --require-hashes --python .frameworks/crewai/bin/python framework-locks/crewai.txt; fi
+      && uv pip sync --require-hashes --python .frameworks/crewai/bin/python framework-locks/crewai.txt \
+      && rm -rf /app/.python/cpython-*/lib/python3.*/site-packages/pip /app/.python/cpython-*/lib/python3.*/site-packages/pip-*.dist-info \
+                /app/.python/cpython-*/lib/python3.*/ensurepip/_bundled; fi
 #   ^ CrewAI supports Python <3.14 (PyPI requires_python), so its environment gets a Python 3.13 of its own, kept
-#     under /app (the runtime stage copies /app), as `make crewai` and CI test it
+#     under /app (the runtime stage copies /app), as `make crewai` and CI test it. That Python's own pip (and the
+#     wheels ensurepip bundles) is removed: uv installs everything, and pip vendors msgpack, urllib3 and setuptools
+#     releases with HIGH advisories that the image scan reports
 # 4) optional (S29): Google ADK in an environment of its own, for workflows designed for ADK and ADK agents in mixed
 #   flows (about 350 MB): docker build --build-arg WITH_GOOGLE_ADK=true ...
 ARG WITH_GOOGLE_ADK=false

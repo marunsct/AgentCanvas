@@ -135,13 +135,13 @@
       "category": "Files",
       "description": "Read, write, move and search files inside the folders you allow.",
       "publisher": "official",
-      "config": {"transport": "stdio", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem@2026.8.31", "."]},
+      "config": {"transport": "stdio", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem@2.3.0", "."]},
       "secrets": [],
       "setup": "Replace `.` with the folder(s) the agent may use; it cannot reach anything outside them.",
       "auth": "none",
       "docs": "https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem",
-      "source": "npm:@modelcontextprotocol/server-filesystem@2026.8.31",
-      "verified": "npm @modelcontextprotocol/server-filesystem latest 2026.8.31, not deprecated"
+      "source": "npm:@modelcontextprotocol/server-filesystem@2.3.0",
+      "verified": "npm @modelcontextprotocol/server-filesystem latest 2.3.0, not deprecated (2026-11-12: the date-based versions are deprecated)"
     },
     {
       "id": "notion",
@@ -190,13 +190,13 @@
       "category": "Payments",
       "description": "Work with Stripe customers, products, prices, invoices, payment links and refunds.",
       "publisher": "vendor",
-      "config": {"transport": "stdio", "command": "npx", "args": ["-y", "@stripe/mcp@0.3.3"], "env": {"STRIPE_SECRET_KEY": {"$secret": "STRIPE_SECRET_KEY"}}},
-      "secrets": [{"name": "STRIPE_SECRET_KEY", "what": "A Stripe restricted API key (rk_...) with only the permissions the agent needs", "where": "https://dashboard.stripe.com/apikeys"}],
-      "setup": "Use a restricted key: its permissions decide which tools work. Start with a test-mode key.",
+      "config": {"transport": "http", "url": "https://mcp.stripe.com", "headers": {"Authorization": {"$secret": "STRIPE_MCP_AUTH"}}},
+      "secrets": [{"name": "STRIPE_MCP_AUTH", "what": "The word Bearer, a space, then a Stripe agent API key (marked Agent in the Dashboard) with only the permissions the agent needs", "where": "https://dashboard.stripe.com/apikeys"}],
+      "setup": "Create an agent API key (its permissions decide which tools work; start in a sandbox), then store `Bearer <your key>` as the secret STRIPE_MCP_AUTH. From December 2026 Stripe's server refuses secret keys and restricted keys without the Agent badge.",
       "auth": "key",
       "docs": "https://docs.stripe.com/mcp",
-      "source": "npm:@stripe/mcp@0.3.3",
-      "verified": "npm @stripe/mcp latest 0.3.3, not deprecated; README documents STRIPE_SECRET_KEY. (Stripe's hosted com.stripe/mcp in the registry lists no header auth.)"
+      "source": "remote:https://mcp.stripe.com",
+      "verified": "2026-11-12: npm @stripe/mcp is deprecated (no longer maintained); docs.stripe.com/mcp documents the hosted https://mcp.stripe.com with OAuth or an agent API key as an Authorization bearer token"
     },
     {
       "id": "supabase",
@@ -301,12 +301,12 @@
       "category": "Utilities",
       "description": "Give the agent a small knowledge graph to remember people, facts and relations between runs.",
       "publisher": "official",
-      "config": {"transport": "stdio", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-memory@2026.8.31"]},
+      "config": {"transport": "stdio", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-memory@2.1.1"]},
       "secrets": [],
       "auth": "none",
       "docs": "https://github.com/modelcontextprotocol/servers/tree/main/src/memory",
-      "source": "npm:@modelcontextprotocol/server-memory@2026.8.31",
-      "verified": "npm @modelcontextprotocol/server-memory latest 2026.8.31, not deprecated"
+      "source": "npm:@modelcontextprotocol/server-memory@2.1.1",
+      "verified": "npm @modelcontextprotocol/server-memory latest 2.1.1, not deprecated (2026-11-12: the date-based versions are deprecated)"
     },
     {
       "id": "git",
@@ -342,12 +342,12 @@
       "description": "Let the agent break a hard problem into numbered steps it can revise and branch.",
       "publisher": "official",
       "sandboxable": true,
-      "config": {"transport": "stdio", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-sequential-thinking@2026.8.31"]},
+      "config": {"transport": "stdio", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-sequential-thinking@2.1.1"]},
       "secrets": [],
       "auth": "none",
       "docs": "https://github.com/modelcontextprotocol/servers/tree/main/src/sequentialthinking",
-      "source": "npm:@modelcontextprotocol/server-sequential-thinking@2026.8.31",
-      "verified": "npm @modelcontextprotocol/server-sequential-thinking latest 2026.8.31, not deprecated"
+      "source": "npm:@modelcontextprotocol/server-sequential-thinking@2.1.1",
+      "verified": "npm @modelcontextprotocol/server-sequential-thinking latest 2.1.1, not deprecated (2026-11-12: the date-based versions are deprecated)"
     },
     {
       "id": "apify",

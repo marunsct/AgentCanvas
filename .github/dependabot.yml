@@ -8,6 +8,9 @@ updates:
     schedule: { interval: weekly }
     cooldown: { default-days: 7, semver-major-days: 14 }
     groups: { python: { patterns: ["*"] } }
+    # the framework environments' hashed locks come from `scripts/framework_versions.py lock` only: Dependabot moved
+    # packages in them without the new packages they need (PR #92), and the pins they follow are the entry below
+    exclude-paths: ["framework-locks/**"]
   - package-ecosystem: npm
     directory: /apps/web
     schedule: { interval: weekly }

@@ -249,3 +249,26 @@ def test_the_hosted_exporter_pins_every_connection(monkeypatch):
             assert (problem is None, len(hits)) == ((False, 0) if public_only else (True, 2)), (public_only, problem)
     finally:
         server.shutdown()
+
+
+def test_a_run_s_trace_starts_its_own_trace_whatever_span_is_active_here():
+    """The run's root span took the span active where the export ran as its parent (a request's span when the server
+    traces itself, or one a test left open): the destination got a trace whose root pointed at a span it never
+    received. It passed here and failed on GitHub's runners, where another test's span was still current."""
+    from opentelemetry import trace
+    from opentelemetry.sdk.trace import TracerProvider
+
+    from agentcanvas.services.trace_export import emit
+
+    captured = Captured()
+    records = [
+        {"name": "invoke_agent W", "parent": None, "start": 1, "end": 3, "attrs": {}},
+        {"name": "ask", "parent": 0, "start": 1, "end": 2, "attrs": {}},
+    ]
+    with TracerProvider().get_tracer("server").start_as_current_span("POST /runs") as server:
+        assert trace.get_current_span() is server
+        emit(captured.provider, records)
+    spans = {s.name: s for s in captured.memory.get_finished_spans()}
+    assert spans["invoke_agent W"].parent is None
+    assert spans["invoke_agent W"].context.trace_id != server.get_span_context().trace_id
+    assert spans["ask"].parent.span_id == spans["invoke_agent W"].context.span_id

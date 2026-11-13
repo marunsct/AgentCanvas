@@ -10,6 +10,67 @@ Merging, deleting branches and anything outward-facing stay with you: work is de
 - No version bump or tag (yours to decide); `CHANGELOG.md` "Unreleased" and `HARDENING.md` are kept current.
 - Prefer checks that grow with the product (driven by the OpenAPI document or the template list) over lists to maintain.
 
+## 2026-11-12 (developer adoption)
+
+You asked how to make AgentCanvas spread among developers, then said "resume" without picking a licence direction.
+I did the work that does not depend on it and left the licence alone.
+
+### The licence is unchanged; the choice is yours
+BSL 1.1 stays. Open-core (an Apache-2.0 core and exports, enterprise features under a commercial licence) or keeping
+the BSL but licensing what an export contains under MIT/Apache-2.0 would each help adoption. A licence is a business
+and legal choice, not a judgment call to make for you. The launch kit (`~/agentcanvas-launch-kit/README.md`, outside
+the repository) writes each post so the licence line is easy to swap.
+
+### Repository settings changed through the API
+Description (the old one said "Agen"), 20 topics, Discussions on, a `licensing` label for the commercial licence form,
+and Pages set to deploy from GitHub Actions (nothing is published until `docs-site.yml` runs on main). *Why:* they
+are what a visitor sees first and are all reversible under Settings. *Not done:* the social preview image
+(`docs/assets/social-preview.png`) can only be uploaded by hand, and the homepage link waits until the site exists.
+
+### The demo is a Playwright journey, not a screen recording
+`make demo` records `apps/web/e2e/demo.spec.ts` against the fake-model server and `scripts/demo-gif.sh` converts it.
+*Why:* it can be retaken after any UI change in a minute, and it shows made-up data only. The GIF is 5.9 MB (8 fps,
+1120 px); the MP4 (1 MB) is for posts. A visible pointer is drawn in, since recorded videos have none.
+
+### GitHub Actions runners work again, and the first run found four real problems
+The CI workflow (manual only since October) passed most jobs on GitHub on 2026-11-12. What failed, all fixed here:
+the nightly Copilot evaluation's first step ran in a directory the checkout had not made yet; a Settings test whose
+fetch mock answered `[]` to everything (timing-dependent, so it only failed on the slower runner); four gallery
+connectors on npm packages deprecated since the last local `ci-full`; and Pydantic AI marked as sharing the LangGraph
+host in mixed-flow exports although its pins no longer resolve with it.
+
+### CI runs on GitHub again, for every pull request and push to main
+It was manual-only because there were no runners. They are back, and the first runs found problems that local CI
+never sees: Dependabot's pull requests (#92 broke Google ADK and LlamaIndex in the image) and contributors' pull
+requests are never run through `make ci-full`. A public repository's runs cost nothing. Turned on only after a full
+run passed on GitHub. *Reverse:* remove `push:` and `pull_request:` from `.github/workflows/ci.yml`.
+
+### Pydantic AI moves to its own environment rather than raising the host's `openai`
+pydantic-ai-slim 2.66 needs openai 3.31 or later; the host pins 3.24.0. Raising the host's openai to 3.46 might let
+Pydantic AI, Agno and Strands all share the host (smaller exports), but it changes the API's own runtime and needs the
+full suites. *Why:* fix what is wrong now (requirements that do not install) with the smallest change, and leave the
+optimisation as a leftover in `hardening.md`.
+
+### Dependabot's uv update no longer touches the framework locks; CrewAI's lock stays as Dependabot left it
+PR #92 (merged 2026-11-11) rewrote `apps/api/framework-locks/*.txt` in place: Google ADK got litellm 1.108.2 (held at
+1.105.7) and LlamaIndex openai 3 without httpx2, so ADK and LlamaIndex runs failed in every image built since (your
+local Docker app included: redeploy after merging). The locks are regenerated with `scripts/framework_versions.py
+lock` and `exclude-paths` keeps Dependabot out of them; the `/infra/frameworks` entry still reports new framework
+releases. CrewAI's lock was not regenerated: its pinned release (1.15.39) is younger than the script's seven-day
+cooldown, and its tests pass on the lock Dependabot wrote. *Reverse:* `framework_versions.py lock crewai` once
+1.15.39 is a week old.
+
+### The image drops the pip of CrewAI's Python instead of upgrading it
+uv's standalone CPython 3.13 bundles pip 26.2.2, whose vendored msgpack, urllib3 and setuptools fail the image scan.
+Nothing runs that pip, so removing it (and ensurepip's wheels) is smaller and lasts longer than upgrading it, and
+a new download cannot bring an old one back. *Reverse:* delete the `rm -rf` line in `infra/Dockerfile.api`.
+
+### Stripe moves to Stripe's hosted MCP server
+`@stripe/mcp` is deprecated with no further fixes; Stripe's docs point to `https://mcp.stripe.com` with OAuth or an
+agent API key as a bearer token, the same shape as the GitHub and Apify entries. The secret is renamed
+`STRIPE_MCP_AUTH` because it now holds `Bearer <key>`. *Reverse:* none needed; the old package still installs but
+gets no security fixes.
+
 ## 2026-11-10 (leftovers)
 
 ### Judgment calls in the fourth wave (delete retries, withdrawn items, generated types, OAuth everywhere, approval links)

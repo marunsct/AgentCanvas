@@ -1,0 +1,42 @@
+name: docs-site
+# Publishes the documentation (mkdocs.yml: the user guide and the developer documentation) to GitHub Pages,
+# https://marunsct.github.io/AgentCanvas/, whenever main's docs change. Same build and pins as ci.yml's docs job and
+# `make docs`. Pages has to be set to "GitHub Actions" (Settings › Pages › Source).
+on:
+  push:
+    branches: [main]
+    paths: [docs/**, mkdocs.yml, .github/workflows/docs-site.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:  # one deployment at a time; a newer push waits rather than cancelling one half-way
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d  # v6.0.0
+      - run: uvx --from mkdocs==1.6.1 --with mkdocs-material==9.8.1 mkdocs build --strict -d site  # same pins: Makefile, ci.yml
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9  # v5.0.0
+        with: { path: site }
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346  # v5.0.1
