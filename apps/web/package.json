@@ -33,7 +33,7 @@
     "@xyflow/react": "^12.12.1",
     "codemirror": "^6.0.2",
     "elkjs": "^0.12.1",
-    "lucide-react": "1.70.0",
+    "lucide-react": "1.71.0",
     "oidc-client-ts": "^3.5.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
@@ -47,12 +47,12 @@
     "@testing-library/react": "^16.3.3",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
-    "@vitejs/plugin-react": "^6.2.1",
+    "@vitejs/plugin-react": "^6.3.0",
     "jsdom": "^31.0.0",
     "json-schema-to-typescript": "^16.0.0",
-    "oxlint": "^1.91.0",
+    "oxlint": "^1.93.0",
     "typescript": "^7.0.2",
-    "vite": "^8.3.6",
+    "vite": "^8.3.7",
     "vitest": "^5.1.0"
   }
 }
