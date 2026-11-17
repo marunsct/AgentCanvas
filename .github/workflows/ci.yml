@@ -263,7 +263,7 @@ jobs:
       - name: Local stack logs
         if: failure()
         run: docker compose -f infra/compose.local.yml logs --no-color
-      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310  # v5.0.1
+      - uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e  # v5.1.0
       - name: Lint and render the Helm chart
         run: |
           set -o pipefail
@@ -289,7 +289,7 @@ jobs:
             Makefile
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0; S36: Mastra exports are TypeScript projects
         with: { node-version: 22 }
-      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310  # v5.0.1
+      - uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e  # v5.1.0
       - run: cd apps/api && uv sync --frozen && uv run python scripts/export_templates.py "$EXPORTS"
       - name: Lint the deploy files
         run: |
