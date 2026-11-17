@@ -3,7 +3,7 @@
 # Dependabot watches this file. To take one of its updates: framework_versions.py bump <package> <version>,
 # then follow docs/developer/build-guide/16-framework-upgrades.md.
 agent-framework-core==1.25.0
-agent-framework-openai==1.18.1
+agent-framework-openai==1.18.2
 agno==3.1.12
 claude-agent-sdk==0.2.179
 crewai==1.15.39
